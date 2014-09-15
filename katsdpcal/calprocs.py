@@ -197,6 +197,7 @@ def wavg(data,flags,weights,axis=0):
    data    : array of complex
    flags   : array of boolean
    weights : array of floats
+   axis    : axis to average over
    
    Returns
    -------
@@ -215,6 +216,7 @@ def wavg_full(data,flags,weights,axis=0):
    data       : array of complex
    flags      : array of boolean
    weights    : array of floats
+   axis    : axis to average over
    
    Returns
    -------
@@ -227,6 +229,33 @@ def wavg_full(data,flags,weights,axis=0):
    # fake flags and weights for now
    av_flags = np.zeros_like(av_data,dtype=np.bool)
    av_weights = np.ones_like(av_data,dtype=np.float)
+   
+   return av_data, av_flags, av_weights
+   
+def wavg_full_t(data,flags,weights,solint,axis=0):
+   """
+   Perform weighted average of data, flags and weights, 
+   applying flags, over specified axis, for specified
+   solution interval increments
+   
+   Parameters
+   ----------
+   data       : array of complex
+   flags      : array of boolean
+   weights    : array of floats
+   solint     : index interval over which to average
+   axis       : axis to average over
+   
+   Returns
+   -------
+   av_data    : weighted average of data 
+   av_flags   : weighted average of flags
+   av_weights : weighted average of weights 
+   """
+   
+   inc_array = np.arange(0,data.shape[axis],solint)
+   wavg = np.array([wavg_full(data[ti:ti+solint],flags[ti:ti+solint],weights[ti:ti+solint],axis=0) for ti in inc_array])
+   av_data, av_flags, av_weights = wavg[:,0,:,:], np.bool_(wavg[:,1,:,:]), wavg[:,2,:,:]
    
    return av_data, av_flags, av_weights
 

@@ -16,15 +16,19 @@ from katcal import calprocs
 from katcal import calplots
 from katcal.calsolution import CalSolution
 
-PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k'] 
 
-BCHAN = 200
-ECHAN = 800
+# ----------------------------------------------------------
+# some general constants
+#    will mostly be in the Telescope Model later?
 
 REFANT = 4
 SOLINT = 10.0 #seconds
 
+# Hacky way to stop the simulated data 
 NUM_ITERS = 100
+# only use inner channels for simulation
+BCHAN = 200
+ECHAN = 800
 
 # ----------------------------------------------------------
 # H5 file to use for simulation
@@ -62,10 +66,9 @@ TM['dump_period'] = h5.dump_period
 num_ants = TM['num_ants']
 #num_chans = TM['num_channels'] 
 # just using innver 600 channels for now
-num_chans = 600
+num_chans = ECHAN-BCHAN
 chans = np.arange(num_chans)
 dump_period = TM['dump_period']
-
 
 # ----------------------------------------------------------
 # antenna mapping
@@ -138,18 +141,20 @@ for scan_ind, scan_state, target in h5.scans():
       
       # first average over time, for each solution interval
       dumps_per_solint = int(SOLINT/np.round(dump_period,3))
-      solint_increments = range(0,num_dumps,dumps_per_solint)
-      g_array = np.empty([len(solint_increments),num_ants],dtype=np.complex)
-      t_array = np.empty([len(solint_increments)],dtype=np.complex)
+      num_sol = int(np.ceil(1.0*num_dumps/dumps_per_solint)) # multiply by 1.0 to get float divide
+      g_array = np.empty([num_sol,num_ants],dtype=np.complex)
+      t_array = np.empty([num_sol],dtype=np.complex)
+
+      # first averge over time, for each solution interval
+      #   average the flags and weights too, for use in the next averging step
+      ave_vis_hh, ave_flags_hh, ave_weights_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,dumps_per_solint,axis=0)
+      # next average over channel
+      ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
 
       # solve for G for each solint
-      for i,ts in enumerate(solint_increments):
-         ave_vis_hh, ave_flags_hh, ave_weights_hh = calprocs.wavg_full(vis_hh[ts:ts+dumps_per_solint],
-            flags_hh[ts:ts+dumps_per_solint],weights_hh[ts:ts+dumps_per_solint],axis=0)
-         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=0)
-
-         g_array[i] = calprocs.g_fit(ave_vis_hh,g0,antlist1,antlist2,REFANT)
-         t_array[i] = times[ts]
+      for i in range(num_sol):
+         g_array[i] = calprocs.g_fit(ave_vis_hh[i],g0,antlist1,antlist2,REFANT)
+         t_array[i] = times[i*dumps_per_solint]
          
       g_soln_hh = CalSolution('G', g_array, t_array, SOLINT, corrprod_lookup_hh)
          
@@ -158,20 +163,59 @@ for scan_ind, scan_state, target in h5.scans():
       
       # ---------------------------------------
       # Apply preliminary G solution
-      
-      g_to_apply = g_soln_hh.interpolate(dump_period,num_dumps) #  np.repeat(g_array,dumps_per_solint,axis=0)[0:num_dumps]
-      #import matplotlib.pylab as plt
-      #plt.plot(np.abs(g_to_apply.values))
-      #plt.show()
+      g_to_apply = g_soln_hh.interpolate(num_dumps,dump_period=dump_period) #  np.repeat(g_array,dumps_per_solint,axis=0)[0:num_dumps]
       vis_hh = g_to_apply.apply(vis_hh)
+            
+      # plot data with G solutions applied:
+      calplots.plot_bp_data(vis_hh,plotavg=True)
       
+      # ---------------------------------------
+      # K solution
+      #   solve for delay 
+
+      # first averge over all time
+      ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
+      
+      k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=10),
+          np.ones(num_ants), 'inf', corrprod_lookup_hh)
+      # update TM
+      TM['K'].append(k_soln_hh.values)
+      TM['K_current'] = k_soln_hh.values
+
+      #import matplotlib.pylab as plt
+      #plt.plot(360.*(np.array([k*chans for k in k_soln_hh]).T)/(2.*np.pi),'-*')
+      #plt.show()
+      #pri
+      
+      # ---------------------------------------
+      # Apply K solution
+      #g_from_k = np.exp(1.0j*k_soln_hh.values*c) 
+      k_to_apply = k_soln_hh.interpolate(num_dumps) #  np.repeat(g_array,dumps_per_solint,axis=0)[0:num_dumps]
+      
+      print 
+      print
+      
+      vis_hh = k_to_apply.apply(vis_hh, chans)
+      
+      # ---------------------------------------
+      # K solution
+         
+      # apply the solns
       #for ti in range(num_dumps):
-      #   for cp in range(len(corrprod_lookup_hh)):
-      #      vis_hh[ti,:,cp] /= gains_to_apply[ti,corrprod_lookup_hh[cp][0]]*(gains_to_apply[ti,corrprod_lookup_hh[cp][1]].conj())
-            
+      #   for c in chans:
+      #      for cp in range(len(corrprod_lookup_hh)):
+      #         gains_to_apply = np.exp(1.0j*k_soln_hh.values*c) 
+               #print '888', k_solns.shape
+               #plt.plot(gains_to_apply)
+               #plt.show()
+      #         vis_hh[ti,c,cp] /= gains_to_apply[corrprod_lookup_hh[cp][0]]*(gains_to_apply[corrprod_lookup_hh[cp][1]].conj())
+               
+      #plt.show()
+      
       # plot all data:
-      #calplots.plot_bp_data(vis_hh,plotavg=True)
-            
+      calplots.plot_bp_data(vis_hh,plotavg=True)
+      
+      
       # ---------------------------------------
       # BP solution
         
@@ -187,39 +231,7 @@ for scan_ind, scan_state, target in h5.scans():
       TM['BP_current'] = bp_soln_hh.values
 
       # plot all data:
-      calplots.plot_bp_solns(bp_soln_hh.values)
-      
-      # ---------------------------------------
-      # K solution
-      #   solve for delay 
-      k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=10),
-          np.ones(num_ants), 'inf', corrprod_lookup_hh)
-      # update TM
-      TM['K'].append(k_soln_hh.values)
-      TM['K_current'] = k_soln_hh.values
-
-      #import matplotlib.pylab as plt
-      #plt.plot(360.*(np.array([k*chans for k in k_soln_hh]).T)/(2.*np.pi),'-*')
-      #plt.show()
-      #pri
-      
-      # ---------------------------------------
-      # K solution
-         
-      # apply the solns
-      for ti in range(num_dumps):
-         for c in chans:
-            for cp in range(len(corrprod_lookup_hh)):
-               gains_to_apply = np.exp(1.0j*k_soln_hh.values*c) 
-               #print '888', k_solns.shape
-               #plt.plot(gains_to_apply)
-               #plt.show()
-               vis_hh[ti,c,cp] /= gains_to_apply[corrprod_lookup_hh[cp][0]]*(gains_to_apply[corrprod_lookup_hh[cp][1]].conj())
-               
-      #plt.show()
-      
-      # plot all data:
-      calplots.plot_bp_data(vis_hh,plotavg=True)
+      #calplots.plot_bp_solns(bp_soln_hh.values)
       
       
                      
