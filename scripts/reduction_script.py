@@ -167,15 +167,15 @@ for scan_ind, scan_state, target in h5.scans():
       vis_hh = g_to_apply.apply(vis_hh)
             
       # plot data with G solutions applied:
-      calplots.plot_bp_data(vis_hh,plotavg=True)
+      #calplots.plot_bp_data(vis_hh,plotavg=True)
       
       # ---------------------------------------
       # K solution
       #   solve for delay 
 
-      # first averge over all time
+      # first average over all time
       ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
-      
+      # then solve for K
       k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=10),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)
       # update TM
@@ -189,46 +189,33 @@ for scan_ind, scan_state, target in h5.scans():
       
       # ---------------------------------------
       # Apply K solution
-      #g_from_k = np.exp(1.0j*k_soln_hh.values*c) 
-      k_to_apply = k_soln_hh.interpolate(num_dumps) #  np.repeat(g_array,dumps_per_solint,axis=0)[0:num_dumps]
-      
-      print 
-      print
-      
+      k_to_apply = k_soln_hh.interpolate(num_dumps) 
       vis_hh = k_to_apply.apply(vis_hh, chans)
       
-      # ---------------------------------------
-      # K solution
-         
-      # apply the solns
-      #for ti in range(num_dumps):
-      #   for c in chans:
-      #      for cp in range(len(corrprod_lookup_hh)):
-      #         gains_to_apply = np.exp(1.0j*k_soln_hh.values*c) 
-               #print '888', k_solns.shape
-               #plt.plot(gains_to_apply)
-               #plt.show()
-      #         vis_hh[ti,c,cp] /= gains_to_apply[corrprod_lookup_hh[cp][0]]*(gains_to_apply[corrprod_lookup_hh[cp][1]].conj())
-               
-      #plt.show()
-      
-      # plot all data:
+      # plot data with K solutions applied:
       calplots.plot_bp_data(vis_hh,plotavg=True)
-      
       
       # ---------------------------------------
       # BP solution
+      #   solve for bandpass
         
-      # set up data for BP solution
-      # average over time, including flags:
-      #    ave data shape num_chans,num_bl)       
+      # first average over all time
       ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
-      # solve for BP      
+      # then solve for BP    
       bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_hh,REFANT),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)
+
       # update TM
       TM['BP'].append(bp_soln_hh.values)
       TM['BP_current'] = bp_soln_hh.values
+      
+      # ---------------------------------------
+      # Apply BP solution 
+      bp_to_apply = bp_soln_hh.interpolate(num_dumps) 
+      vis_hh = bp_to_apply.apply(vis_hh)
+      
+      # plot data with K solutions applied:
+      calplots.plot_bp_data(vis_hh,plotavg=True)
 
       # plot all data:
       #calplots.plot_bp_solns(bp_soln_hh.values)

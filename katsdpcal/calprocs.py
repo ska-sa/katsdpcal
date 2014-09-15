@@ -177,8 +177,6 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
       fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=10, ref_ant=refant, init_gain=bp0[c])   
       bpass[c] = fitted_bp
       
-   print 'bp: ', bpass.shape 
-      
    # -----------------------------------------------------
    # find bandpass phase slopes (delays)
    for i,bp_phase in enumerate(np.angle(bpass).T):

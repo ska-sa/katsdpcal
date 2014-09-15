@@ -23,17 +23,12 @@ class Solution(object):
       dump_period = kwargs['dump_period']
       dumps_per_solint = int(self.solint/np.round(dump_period,3))
       interpSolution = self
-      print 'its = ', self.values.shape
       interpSolution.values = np.repeat(self.values,dumps_per_solint,axis=0)[0:num_dumps]
-      print 'its = ', self.values.shape, interpSolution.values.shape
       return interpSolution
       
    def inf_interpolate(self, num_dumps):
       interpSolution = self
-      print num_dumps, 'nd'
-      print 'its = ', self.values.shape
-      interpSolution.values = np.repeat(np.atleast_2d(self.values),num_dumps,axis=0)
-      print 'its = ', self.values.shape, interpSolution.values.shape
+      interpSolution.values = np.repeat(np.expand_dims(self.values,axis=0),num_dumps,axis=0)
       return interpSolution
       
    def _apply(self, data, solns, chans=None):
@@ -48,11 +43,12 @@ class Solution(object):
 
       Returns
       -------
-      """ 
-      print 'll'
-      print data.shape, solns.shape     
+      """     
       for cp in range(len(self.corrprod_lookup)):
-         data[:,:,cp] /= np.atleast_2d(solns[...,self.corrprod_lookup[cp][0]]*(solns[...,self.corrprod_lookup[cp][1]].conj())).T
+         if len(solns.shape) < 3:
+            data[:,:,cp] /= np.expand_dims(solns[...,self.corrprod_lookup[cp][0]]*(solns[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
+         else:
+            data[:,:,cp] /= solns[...,self.corrprod_lookup[cp][0]]*(solns[...,self.corrprod_lookup[cp][1]].conj())
 
       return data
         
@@ -64,23 +60,24 @@ class CalSolution(Solution):
    def interpolate(self, num_dumps, **kwargs):
       # set up more complex interpolation methods later
       if self.soltype is 'G': 
-         return self.simple_interpolate(num_dumps, **kwargs)
-         
+         return self.simple_interpolate(num_dumps, **kwargs)         
       if self.soltype is 'K': 
+         return self.inf_interpolate(num_dumps)
+      if self.soltype is 'B': 
          return self.inf_interpolate(num_dumps)
       
    def apply(self, data, chans=None):
       # set up more complex interpolation methods later
       if self.soltype is 'G': 
-         return self._apply(data, self.values)
-         
+         return self._apply(data, self.values)    
       if self.soltype is 'K': 
-         print self.solint, '**'
-         print self.values.shape
-         g_from_k = np.array([np.exp(1.0j*self.values*c) for c in chans])
-         print g_from_k.shape
+         # want dimensions num_times x num_chans x num_ants
+         g_from_k = np.zeros([data.shape[0],data.shape[1],self.values.shape[-1]],dtype=np.complex)
+         for c in chans:
+            g_from_k[:,c,:] = np.exp(1.0j*self.values*c)
          return self._apply(data, g_from_k)
-         #return self.inf_interpolate(num_dumps)
+      if self.soltype is 'B': 
+         return self._apply(data, self.values)
 
       return data
       
