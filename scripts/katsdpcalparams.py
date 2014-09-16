@@ -4,16 +4,20 @@ def set_params():
    parms = {}
    
    # general data parameters
-   parms['do_plots'] = False
+   parms['do_plots'] = True
    parms['bchan'] = 200
    parms['echan'] = 800
    parms['refant'] = 4
    
    # delay calibration
    parms['k_solint'] = 10.0 # seconds
+   parms['k_chan_sample'] = 10 # sample every 10th channel for pre-K BP soln
    
    # bandpass calibration
    parms['bp_solint'] = 10.0 # seconds
+   
+   # gain calibration
+   parms['g_solint'] = 10.0 # seconds
 
    # General data parameters
    #parms["check"]         = False      # Only check script, don't execute tasks

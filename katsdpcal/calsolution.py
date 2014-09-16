@@ -1,5 +1,6 @@
 
 import numpy as np
+import copy
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  CalSolution
@@ -22,12 +23,12 @@ class Solution(object):
    def simple_interpolate(self, num_dumps, **kwargs):
       dump_period = kwargs['dump_period']
       dumps_per_solint = int(self.solint/np.round(dump_period,3))
-      interpSolution = self
+      interpSolution = copy.deepcopy(self)
       interpSolution.values = np.repeat(self.values,dumps_per_solint,axis=0)[0:num_dumps]
       return interpSolution
       
    def inf_interpolate(self, num_dumps):
-      interpSolution = self
+      interpSolution = copy.deepcopy(self)
       interpSolution.values = np.repeat(np.expand_dims(self.values,axis=0),num_dumps,axis=0)
       return interpSolution
       
