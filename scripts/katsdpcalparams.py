@@ -4,9 +4,13 @@ def set_params():
    parms = {}
    
    # general data parameters
+   parms['do_plots'] = False
    parms['bchan'] = 200
    parms['echan'] = 800
    parms['refant'] = 4
+   
+   # delay calibration
+   parms['k_solint'] = 10.0 # seconds
    
    # bandpass calibration
    parms['bp_solint'] = 10.0 # seconds

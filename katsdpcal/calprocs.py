@@ -256,7 +256,44 @@ def wavg_full_t(data,flags,weights,solint,axis=0):
    av_data, av_flags, av_weights = wavg[:,0,:,:], np.bool_(wavg[:,1,:,:]), wavg[:,2,:,:]
    
    return av_data, av_flags, av_weights
+   
+def solint_from_nominal(solint,dump_period,num_times):
+   """
+   Given nominal solint, modify it by up to 20percent to optimally fit the scan length
+   and dump period. Times are assumed to be contiguous.
+   
+   Parameters
+   ----------
+   solint      : nominal solint
+   dump_period : dump period of the data
+   num_times   : number of time dumps in the scan  
+   
+   Returns
+   -------
+   nsolint     : new optimal solint
+   """
 
+   # number of dumps per nominal solution interval
+   dumps_per_solint = np.round(solint/dump_period)
+   # solution intervals across the total time range 
+   intervals = num_times/dumps_per_solint
+   
+   # range for searching: nominal solint +-20%
+   delta_dumps_per_solint = int(solint*0.2)
+   solint_check_range = range(-delta_dumps_per_solint,delta_dumps_per_solint+1)
+   
+   smallest_inc = np.empty(len(solint_check_range))
+   for i,s in enumerate(solint_check_range):
+      intervals = num_times/(dumps_per_solint+s)
+      # the size of the final fractional solution interval
+      smallest_inc[i] = intervals % int(intervals)
+      
+   # choose a solint to minimise the final fractional solution interval
+   nsolint = solint+solint_check_range[np.where(smallest_inc==max(smallest_inc))[0]]
+   # calculate new dumps per solints
+   dumps_per_solint = np.round(nsolint/dump_period)
+
+   return nsolint, dumps_per_solint
 
 
 
