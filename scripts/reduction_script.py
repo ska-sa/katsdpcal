@@ -20,6 +20,12 @@ import katcalparams
 from time import time
 
 # ----------------------------------------------------------
+# place holders
+
+def rfi():
+   print 'Some sort of RFI flagging?!'
+
+# ----------------------------------------------------------
 # set up timing file
 
 timing_file = 'timing.txt'
@@ -46,8 +52,6 @@ g_solint = params['g_solint'] #seconds
 # Hacky way to stop the simulated data 
 NUM_ITERS = 50
 
-
-
 # only use inner channels for simulation
 BCHAN = params['bchan']
 ECHAN = params['echan']
@@ -56,7 +60,7 @@ ECHAN = params['echan']
 # H5 file to use for simulation
 #   simulation of data and Temelcope Model (TM)
 
-h5filename = '1345897247.h5' #1345967709.h5' #1337360375.h5' #1373441586.h5'
+h5filename = 'tst.h5' #1345897247.h5' #1345967709.h5' #1337360375.h5' #1373441586.h5'
 file_prefix = h5filename.split('.')[0]
 h5 = katdal.open(h5filename)
 
@@ -138,7 +142,7 @@ for scan_ind, scan_state, target in h5.scans():
       #print "    scan %3d (%4d samples) skipped - too short" % (scan_ind, num_dumps)
       continue
    else:
-      print "Scan ", scan_ind, " Target: ", target.name, " ",   
+      print "Scan %3d Target: %s" % (scan_ind, target.name)   
 
    # -------------------------------------------
    # data has shape(num_times, num_chans, num_baselines)
@@ -159,6 +163,9 @@ for scan_ind, scan_state, target in h5.scans():
    taglist = [target.tags]
    
    t0 = time()
+
+   # initial RFI flagging?
+   rfi()
    
    # process data depending on tag
    if any( 'delaycal' in k for k in taglist ):
@@ -166,32 +173,24 @@ for scan_ind, scan_state, target in h5.scans():
       # Preliminary G solution
       # set up solution interval
       solint, dumps_per_solint = calprocs.solint_from_nominal(k_solint,dump_period,len(times))
-      num_sol = int(np.ceil(1.0*num_dumps/dumps_per_solint)) # multiply by 1.0 to get float divide
-
-      # first averge over time, for each solution interval
-      #   average the flags and weights too, for use in the next averging step
-      ave_vis_hh, ave_flags_hh, ave_weights_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,dumps_per_solint,axis=0)
-      # next average over channel
+      # first averge solution interval then channel
+      ave_vis_hh, ave_flags_hh, ave_weights_hh, times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+         dumps_per_solint,axis=0,times=times)
       ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
+      # solve for gains
+      g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+         times_hh, solint, corrprod_lookup_hh)
 
-      # empty arrays for solutions
-      g_array = np.empty([num_sol,num_ants],dtype=np.complex)
-      t_array = np.empty([num_sol],dtype=np.complex)
-      # solve for G for each solint
-      for i in range(num_sol):
-         g_array[i] = calprocs.g_fit(ave_vis_hh[i],g0,antlist1,antlist2,REFANT)
-         t_array[i] = times[i*dumps_per_solint]
-      g_soln_hh = CalSolution('G', g_array, t_array, solint, corrprod_lookup_hh)
-         
       # plot the G solutions
       #if do_plots: plotting.plot_g_solns(g_array)
       
       # ---------------------------------------
       # Apply preliminary G solution
-      g_to_apply = g_soln_hh.interpolate(num_dumps,dump_period=dump_period) #  np.repeat(g_array,dumps_per_solint,axis=0)[0:num_dumps]
-      vis_hh = g_to_apply.apply(vis_hh)     
+      g_to_apply = g_soln_hh.interpolate(num_dumps,dump_period=dump_period) 
+      vis_hh = g_to_apply.apply(vis_hh)    
+            
       # plot data with G solutions applied:
-      #if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+      if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       
       # ---------------------------------------
       # K solution
@@ -204,12 +203,15 @@ for scan_ind, scan_state, target in h5.scans():
       TM['K'].append(k_soln_hh.values)
       TM['K_current'] = k_soln_hh.values
       
+      # ---------------------------------------
       timing_file.write("Delay cal:    %s \n" % (np.round(time()-t0,3),))
       t0 = time()
 
    if any( 'bpcal' in k for k in taglist ):      
       # ---------------------------------------
       # Apply K solution
+      k_current = TM['K_current']
+      k_soln_hh = CalSolution('K', k_current, np.ones(num_ants), 'inf', corrprod_lookup_hh)
       k_to_apply = k_soln_hh.interpolate(num_dumps)
       vis_hh = k_to_apply.apply(vis_hh, chans)
       
@@ -220,22 +222,13 @@ for scan_ind, scan_state, target in h5.scans():
       # Preliminary G solution
       # set up solution interval
       solint, dumps_per_solint = calprocs.solint_from_nominal(bp_solint,dump_period,len(times))
-      num_sol = int(np.ceil(1.0*num_dumps/dumps_per_solint)) # multiply by 1.0 to get float divide
-
-      # first averge over time, for each solution interval
-      #   average the flags and weights too, for use in the next averging step
-      ave_vis_hh, ave_flags_hh, ave_weights_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,dumps_per_solint,axis=0)
-      # next average over channel
+      # first averge solution interval then channel
+      ave_vis_hh, ave_flags_hh, ave_weights_hh, times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+         dumps_per_solint,axis=0,times=times)
       ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
-
-      # empty arrays for solutions
-      g_array = np.empty([num_sol,num_ants],dtype=np.complex)
-      t_array = np.empty([num_sol],dtype=np.complex)
-      # solve for G for each solint
-      for i in range(num_sol):
-         g_array[i] = calprocs.g_fit(ave_vis_hh[i],g0,antlist1,antlist2,REFANT)
-         t_array[i] = times[i*dumps_per_solint]
-      g_soln_hh = CalSolution('G', g_array, t_array, solint, corrprod_lookup_hh)
+      # solve for gains
+      g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+         times_hh, solint, corrprod_lookup_hh)
          
       # plot the G solutions
       #if do_plots: plotting.plot_g_solns(g_array)
@@ -269,8 +262,9 @@ for scan_ind, scan_state, target in h5.scans():
       # plot data with K solutions applied:
       if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       # plot all data:
-      #if do_plots: plotting.plot_bp_solns(bp_soln_hh.values)
+      #if do_plots: plotting.plot_bp_solns(bp_soln_hh.values)   
       
+      # ---------------------------------------
       timing_file.write("Bandpass cal: %s \n" % (np.round(time()-t0,3),))
       t0 = time()
       
@@ -283,15 +277,9 @@ for scan_ind, scan_state, target in h5.scans():
       
    if any( 'gaincal' in k for k in taglist ):
       # ---------------------------------------
-      # Apply K solution
+      # Apply K and BP solutions
       k_to_apply = k_soln_hh.interpolate(num_dumps) 
       vis_hh = k_to_apply.apply(vis_hh, chans)
-      
-      # plot data with K solutions applied:
-      if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
-      
-      # ---------------------------------------
-      # Apply BP solution 
       bp_to_apply = bp_soln_hh.interpolate(num_dumps) 
       vis_hh = bp_to_apply.apply(vis_hh)
       
@@ -299,27 +287,64 @@ for scan_ind, scan_state, target in h5.scans():
       # Preliminary G solution
       # set up solution interval
       solint, dumps_per_solint = calprocs.solint_from_nominal(g_solint,dump_period,len(times))
-      num_sol = int(np.ceil(1.0*num_dumps/dumps_per_solint)) # multiply by 1.0 to get float divide
-
-      # first averge over time, for each solution interval
-      #   average the flags and weights too, for use in the next averging step
-      ave_vis_hh, ave_flags_hh, ave_weights_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,dumps_per_solint,axis=0)
-      # next average over channel
+      # first averge solution interval then channel
+      ave_vis_hh, ave_flags_hh, ave_weights_hh, times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+         dumps_per_solint,axis=0,times=times)
       ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
+      # solve for gains
+      g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+         times_hh, solint, corrprod_lookup_hh)
 
-      # empty arrays for solutions
-      g_array = np.empty([num_sol,num_ants],dtype=np.complex)
-      t_array = np.empty([num_sol],dtype=np.complex)
-      # solve for G for each solint
-      for i in range(num_sol):
-         g_array[i] = calprocs.g_fit(ave_vis_hh[i],g0,antlist1,antlist2,REFANT)
-         t_array[i] = times[i*dumps_per_solint]
-      g_soln_hh = CalSolution('G', g_array, t_array, solint, corrprod_lookup_hh)
+      # plot the G solutions
+      #if do_plots: plotting.plot_g_solns(g_array)
          
       # plot the G solutions
       if do_plots: plotting.plot_g_solns(g_array)
       
+      # ---------------------------------------
+      # RFI flagging
+      rfi()
+      
+      # ---------------------------------------
+      # Next G solution
+      # set up solution interval: just solve for two intervals per G scan
+      dumps_per_solint = num_dumps/2.0
+      solint = dumps_per_solint*dump_period
+      # first averge solution interval then channel
+      ave_vis_hh, ave_flags_hh, ave_weights_hh, times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+         dumps_per_solint,axis=0,times=times)
+      ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
+      # solve for gains
+      g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+         times_hh, solint, corrprod_lookup_hh)
+       
+      # plot the G solutions
+      if do_plots: plotting.plot_g_solns(g_array)
+      
       timing_file.write("Gain cal: %s \n" % (np.round(time()-t0,3),))
+      t0 = time()
+      
+   if any( 'target' in k for k in taglist ):
+      # ---------------------------------------
+      # Apply K and BP solutions
+      k_to_apply = k_soln_hh.interpolate(num_dumps) 
+      vis_hh = k_to_apply.apply(vis_hh, chans)
+      bp_to_apply = bp_soln_hh.interpolate(num_dumps) 
+      vis_hh = bp_to_apply.apply(vis_hh)
+      
+      # ---------------------------------------
+      # RFI flagging
+      rfi()
+      
+      # ---------------------------------------
+      # save calibrated data
+      data_indices = np.squeeze(np.where(h5._time_keep))
+      indi, indf = min(data_indices), max(data_indices)+1       
+      h5._vis[indi:indf,BCHAN:ECHAN,hh_mask,0] = vis_hh.real
+      h5._vis[indi:indf,BCHAN:ECHAN,hh_mask,1] = vis_hh.imag
+      
+      # ---------------------------------------
+      timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
       t0 = time()
       
 

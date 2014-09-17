@@ -101,6 +101,36 @@ def g_fit(data,g0,antlist1,antlist2,refant):
    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=10, ref_ant=refant, init_gain=g0)   
       
    return gainsoln
+   
+def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0):
+   """
+   Fit complex gains to visibility data.
+   
+   Parameters
+   ----------
+   data     : visibility data, array of complex, shape(num_sol, num_chans, baseline)
+   dumps_per_solint : number of dumps to average for a solution, integer
+   g0       : array of complex, shape(num_ants) or None
+   antlist1 : antenna mapping, for first antenna in bl pair 
+   antlist2 : antenna mapping, for second antenna in bl pair 
+   refant   : reference antenna
+
+   Returns
+   ------- 
+   g_array  : Array of gain solutions, shape(num_sol, num_ants)
+   """
+
+   num_sol = data.shape[0]
+   num_ants = ants_from_xcbl(data.shape[1])
+
+   # empty arrays for solutions
+   g_array = np.empty([num_sol,num_ants],dtype=np.complex)
+   t_array = np.empty([num_sol],dtype=np.complex)
+   # solve for G for each solint
+   for i in range(num_sol):
+      g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant)
+
+   return g_array
     
 def bp_fit(data,antlist1,antlist2,bp0=None,refant=0):
    """
@@ -183,7 +213,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
       A = np.array([ chans, np.ones(len(chans))])
       kdelay[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
    
-   return kdelay
+   return kdelay      
    
 def wavg(data,flags,weights,axis=0):
    """
@@ -230,7 +260,7 @@ def wavg_full(data,flags,weights,axis=0):
    
    return av_data, av_flags, av_weights
    
-def wavg_full_t(data,flags,weights,solint,axis=0):
+def wavg_full_t(data,flags,weights,solint,axis=0,times=None):
    """
    Perform weighted average of data, flags and weights, 
    applying flags, over specified axis, for specified
@@ -243,19 +273,24 @@ def wavg_full_t(data,flags,weights,solint,axis=0):
    weights    : array of floats
    solint     : index interval over which to average
    axis       : axis to average over
+   times      : optional array of times to average, array of floats
    
    Returns
    -------
    av_data    : weighted average of data 
    av_flags   : weighted average of flags
    av_weights : weighted average of weights 
+   av_times   : optional average of times
    """
    
    inc_array = np.arange(0,data.shape[axis],solint)
    wavg = np.array([wavg_full(data[ti:ti+solint],flags[ti:ti+solint],weights[ti:ti+solint],axis=0) for ti in inc_array])
    av_data, av_flags, av_weights = wavg[:,0,:,:], np.bool_(wavg[:,1,:,:]), wavg[:,2,:,:]
-   
-   return av_data, av_flags, av_weights
+   if np.any(times): 
+      av_times = np.array([np.average(times[ti:ti+solint],axis=0) for ti in inc_array])
+      return av_data, av_flags, av_weights, av_times
+   else:
+      return av_data, av_flags, av_weights
    
 def solint_from_nominal(solint,dump_period,num_times):
    """
