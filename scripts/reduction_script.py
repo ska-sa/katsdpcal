@@ -9,13 +9,11 @@ from math import pi
 import pickle
 import os
 
-import h5py
-import katdal
-
 from katcal import plotting
 from katcal import calprocs
 from katcal.calsolution import CalSolution
 import katcalparams
+import katcal.simulator as sim
 
 from time import time
 
@@ -40,7 +38,6 @@ timing_file = open("timing.txt", "w")
 params = katcalparams.set_params()
 
 do_plots = params['do_plots']
-
 REFANT = params['refant']
 
 # solution intervals
@@ -58,33 +55,17 @@ ECHAN = params['echan']
 
 # ----------------------------------------------------------
 # H5 file to use for simulation
-#   simulation of data and Temelcope Model (TM)
-
+#   simulation of data and Teselcope Model (TM)
 h5filename = 'tst.h5' #1345897247.h5' #1345967709.h5' #1337360375.h5' #1373441586.h5'
-file_prefix = h5filename.split('.')[0]
-h5 = katdal.open(h5filename)
+simdata = sim.get_h5_simdata(h5filename)
+simdata.select(channels=slice(BCHAN,ECHAN))
 
 # ----------------------------------------------------------
 # Fake Telescope Model dictionary
 #   faking it up for now, until such time as 
 #   kattelmod is more developed.
-
-# load initial bandpass from pickle
 TMfile = 'TM.pickle'
-TM = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
-
-# empty solutions - start with no solutions
-TM['BP'] = []
-TM['K'] = []
-TM['G'] = []
-
-# set siulated TM values from h5 file
-TM['antlist'] = [ant.name for ant in h5.ants]
-TM['num_ants'] = len(h5.ants)
-TM['num_channels'] = len(h5.channels)
-#antdesclist = [ant.description for ant in h5.ants]
-TM['corr_products'] = h5.corr_products
-TM['dump_period'] = h5.dump_period
+TM = sim.setup_TM(TMfile,simdata)
 
 # ----------------------------------------------------------
 # extract values we need frequently from the TM
@@ -130,10 +111,10 @@ g0 = None
 
 scan_iter = 0
 
-for scan_ind, scan_state, target in h5.scans():
+for scan_ind, scan_state, target in simdata.scans():
    scan_iter = scan_iter+1
 
-   num_dumps = h5.shape[0]
+   num_dumps = simdata.shape[0]
    
    if scan_state != 'track':
       #print "    scan %3d (%4d samples) skipped '%s' - not a track" % (scan_ind, num_dumps, scan_state)
@@ -146,11 +127,11 @@ for scan_ind, scan_state, target in h5.scans():
 
    # -------------------------------------------
    # data has shape(num_times, num_chans, num_baselines)
-   vis = h5.vis[:,BCHAN:ECHAN,:]
-   times = h5.timestamps[:]-h5.timestamps[:][0]
-   time_offset = h5.timestamps[:][0]
-   flags = h5.flags()[:,BCHAN:ECHAN,:]
-   weights = h5.weights()[:,BCHAN:ECHAN,:]
+   vis = simdata.vis[:]
+   times = simdata.timestamps[:]-simdata.timestamps[:][0]
+   time_offset = simdata.timestamps[:][0]
+   flags = simdata.flags()[:]
+   weights = simdata.weights()[:]
 
    # -------------------------------------------
    # extract hh and vv
@@ -338,10 +319,7 @@ for scan_ind, scan_state, target in h5.scans():
       
       # ---------------------------------------
       # save calibrated data
-      data_indices = np.squeeze(np.where(h5._time_keep))
-      indi, indf = min(data_indices), max(data_indices)+1       
-      h5._vis[indi:indf,BCHAN:ECHAN,hh_mask,0] = vis_hh.real
-      h5._vis[indi:indf,BCHAN:ECHAN,hh_mask,1] = vis_hh.imag
+      sim.write_h5_simdata(simdata,vis_hh,hh_mask)
       
       # ---------------------------------------
       timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
