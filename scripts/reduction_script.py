@@ -1,10 +1,6 @@
 
 
-from pyrap.tables import table
 import numpy as np
-#import matplotlib.pylab as plt
-from scipy.stats import nanmean
-from math import pi
 import optparse
 import sys
 
@@ -60,24 +56,27 @@ ECHAN = params['echan']
 # H5 file to use for simulation
 #   simulation of data and Teselcope Model (TM)
 
-parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Run MeerKAT calibration pipeline on h5 file')
+parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Run MeerKAT calibration pipeline on H5 file')
 parser.add_option("-C", "--channel-range", help="Range of frequency channels to process (zero-based inclusive 'first_chan,last_chan', default is all channels)")
+parser.add_option("-w", "--write-corrected", action="store_true", default=False, help="Write the corrected target data back into the H5 file")
 (options, args) = parser.parse_args()
 
 if len(args) < 1 or not args[0].endswith(".h5"):
     print "Please provide one or more HDF5 filenames as arguments"
     sys.exit(1)
     
+simdata = sim.get_h5_simdata(args)
+    
 # Select frequency channel range
+#   if channel range is set in the parser options it overrides the parameter file
 if options.channel_range is not None:
     channel_range = [int(chan_str) for chan_str in options.channel_range.split(',')]
     BCHAN, ECHAN = channel_range[0], channel_range[1]
 
-    if (first_chan < 0) or (last_chan >= h5.shape[1]):
-        print "Requested channel range outside data set boundaries. Set channels in the range [0,%s]" % (h5.shape[1]-1,)
+    if (BCHAN < 0) or (ECHAN >= simdata.shape[1]):
+        print "Requested channel range outside data set boundaries. Set channels in the range [0,%s]" % (simdata.shape[1]-1,)
         sys.exit(1)
-
-simdata = sim.get_h5_simdata(args)
+        
 simdata.select(channels=slice(BCHAN,ECHAN))
 
 # ----------------------------------------------------------
@@ -371,7 +370,7 @@ for scan_ind, scan_state, target in simdata.scans():
       
          # ---------------------------------------
          # write the calibrated target data back to h5 file
-         #sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_times,cmask=target_chans)
+         if options.write_corrected: sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_times,cmask=target_chans)
       
          # ---------------------------------------
          timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))

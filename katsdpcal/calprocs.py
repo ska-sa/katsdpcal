@@ -310,15 +310,14 @@ def solint_from_nominal(solint,dump_period,num_times):
 
    # number of dumps per nominal solution interval
    dumps_per_solint = np.round(solint/dump_period)
-   # solution intervals across the total time range 
-   intervals = num_times/dumps_per_solint
    
    # range for searching: nominal solint +-20%
-   delta_dumps_per_solint = int(solint*0.2)
+   delta_dumps_per_solint = int(dumps_per_solint*0.2)
    solint_check_range = range(-delta_dumps_per_solint,delta_dumps_per_solint+1)
    
    smallest_inc = np.empty(len(solint_check_range))
    for i,s in enumerate(solint_check_range):
+      # solution intervals across the total time range 
       intervals = num_times/(dumps_per_solint+s)
       # the size of the final fractional solution interval
       smallest_inc[i] = intervals % int(intervals)
