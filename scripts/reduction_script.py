@@ -5,6 +5,8 @@ import numpy as np
 #import matplotlib.pylab as plt
 from scipy.stats import nanmean
 from math import pi
+import optparse
+import sys
 
 import pickle
 import os
@@ -37,7 +39,8 @@ timing_file = open("timing.txt", "w")
 
 params = katcalparams.set_params()
 
-do_plots = params['do_plots']
+per_scan_plots = params['per_scan_plots']
+closing_plots = params['closing_plots']
 REFANT = params['refant']
 
 # solution intervals
@@ -47,7 +50,7 @@ k_chan_sample = params['k_chan_sample']
 g_solint = params['g_solint'] #seconds
 
 # Hacky way to stop the simulated data 
-NUM_ITERS = 50
+NUM_ITERS = 500
 
 # only use inner channels for simulation
 BCHAN = params['bchan']
@@ -56,8 +59,25 @@ ECHAN = params['echan']
 # ----------------------------------------------------------
 # H5 file to use for simulation
 #   simulation of data and Teselcope Model (TM)
-h5filename = 'tst.h5' #1345897247.h5' #1345967709.h5' #1337360375.h5' #1373441586.h5'
-simdata = sim.get_h5_simdata(h5filename)
+
+parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Run MeerKAT calibration pipeline on h5 file')
+parser.add_option("-C", "--channel-range", help="Range of frequency channels to process (zero-based inclusive 'first_chan,last_chan', default is all channels)")
+(options, args) = parser.parse_args()
+
+if len(args) < 1 or not args[0].endswith(".h5"):
+    print "Please provide one or more HDF5 filenames as arguments"
+    sys.exit(1)
+    
+# Select frequency channel range
+if options.channel_range is not None:
+    channel_range = [int(chan_str) for chan_str in options.channel_range.split(',')]
+    BCHAN, ECHAN = channel_range[0], channel_range[1]
+
+    if (first_chan < 0) or (last_chan >= h5.shape[1]):
+        print "Requested channel range outside data set boundaries. Set channels in the range [0,%s]" % (h5.shape[1]-1,)
+        sys.exit(1)
+
+simdata = sim.get_h5_simdata(args)
 simdata.select(channels=slice(BCHAN,ECHAN))
 
 # ----------------------------------------------------------
@@ -106,6 +126,7 @@ antlist2 = np.concatenate((corrprod_lookup_hh[:,1], corrprod_lookup_hh[:,0]))
 bp0_hh = None
 k0_hh = None
 g0 = None
+target_hh = None
 
 # ----------------------------------------------------------
 
@@ -128,7 +149,7 @@ for scan_ind, scan_state, target in simdata.scans():
    # -------------------------------------------
    # data has shape(num_times, num_chans, num_baselines)
    vis = simdata.vis[:]
-   times = simdata.timestamps[:]-simdata.timestamps[:][0]
+   times = simdata.timestamps[:] #-simdata.timestamps[:][0]
    time_offset = simdata.timestamps[:][0]
    flags = simdata.flags()[:]
    weights = simdata.weights()[:]
@@ -148,6 +169,17 @@ for scan_ind, scan_state, target in simdata.scans():
    # initial RFI flagging?
    rfi()
    
+   if any( 'target' in k for k in taglist ):
+      # ---------------------------------------
+      # save target data for processing after the gain cal solution
+      #   this assumes a model where we get data in chunks of 
+      #   [target, gaincal], [target, gaincal]...
+      #   mocking it up for now
+      target_hh = vis_hh
+      target_chans = simdata._freq_keep
+      target_times = simdata._time_keep
+      target_num_dumps = num_dumps
+   
    # process data depending on tag
    if any( 'delaycal' in k for k in taglist ):
       # ---------------------------------------
@@ -163,7 +195,7 @@ for scan_ind, scan_state, target in simdata.scans():
          times_hh, solint, corrprod_lookup_hh)
 
       # plot the G solutions
-      #if do_plots: plotting.plot_g_solns(g_array)
+      #if per_scan_plots: plotting.plot_g_solns(g_array)
       
       # ---------------------------------------
       # Apply preliminary G solution
@@ -171,7 +203,7 @@ for scan_ind, scan_state, target in simdata.scans():
       vis_hh = g_to_apply.apply(vis_hh)    
             
       # plot data with G solutions applied:
-      if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+      if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       
       # ---------------------------------------
       # K solution
@@ -180,6 +212,8 @@ for scan_ind, scan_state, target in simdata.scans():
       # solve for K
       k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=k_chan_sample),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)
+          
+      # ---------------------------------------  
       # update TM
       TM['K'].append(k_soln_hh.values)
       TM['K_current'] = k_soln_hh.values
@@ -197,7 +231,7 @@ for scan_ind, scan_state, target in simdata.scans():
       vis_hh = k_to_apply.apply(vis_hh, chans)
       
       # plot data with K solutions applied:
-      #if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+      #if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       
       # ---------------------------------------
       # Preliminary G solution
@@ -212,7 +246,7 @@ for scan_ind, scan_state, target in simdata.scans():
          times_hh, solint, corrprod_lookup_hh)
          
       # plot the G solutions
-      #if do_plots: plotting.plot_g_solns(g_array)
+      #if per_scan_plots: plotting.plot_g_solns(g_array)
       
       # ---------------------------------------
       # Apply preliminary G solution
@@ -220,7 +254,7 @@ for scan_ind, scan_state, target in simdata.scans():
       vis_hh = g_to_apply.apply(vis_hh)
             
       # plot data with G solutions applied:
-      #if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+      #if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       
       # ---------------------------------------
       # BP solution
@@ -231,6 +265,8 @@ for scan_ind, scan_state, target in simdata.scans():
       # then solve for BP    
       bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_hh,REFANT),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)
+              
+      # ---------------------------------------  
       # update TM
       TM['BP'].append(bp_soln_hh.values)
       TM['BP_current'] = bp_soln_hh.values
@@ -241,9 +277,9 @@ for scan_ind, scan_state, target in simdata.scans():
       vis_hh = bp_to_apply.apply(vis_hh)
       
       # plot data with K solutions applied:
-      if do_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+      if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
       # plot all data:
-      #if do_plots: plotting.plot_bp_solns(bp_soln_hh.values)   
+      #if per_scan_plots: plotting.plot_bp_solns(bp_soln_hh.values)   
       
       # ---------------------------------------
       timing_file.write("Bandpass cal: %s \n" % (np.round(time()-t0,3),))
@@ -277,10 +313,10 @@ for scan_ind, scan_state, target in simdata.scans():
          times_hh, solint, corrprod_lookup_hh)
 
       # plot the G solutions
-      #if do_plots: plotting.plot_g_solns(g_array)
+      #if per_scan_plots: plotting.plot_g_solns(g_array)
          
       # plot the G solutions
-      if do_plots: plotting.plot_g_solns(g_array)
+      if per_scan_plots: plotting.plot_g_solns(g_array)
       
       # ---------------------------------------
       # RFI flagging
@@ -300,30 +336,46 @@ for scan_ind, scan_state, target in simdata.scans():
          times_hh, solint, corrprod_lookup_hh)
        
       # plot the G solutions
-      if do_plots: plotting.plot_g_solns(g_array)
+      #if per_scan_plots: plotting.plot_g_solns(g_array)
+      
+      # ---------------------------------------  
+      # update TM
+      for g in g_soln_hh.values: TM['G'].append(g)
+      for t in times_hh: TM['G_times'].append(t)
+      #TM['G'].append(np.ravel(g_soln_hh.values))
+      TM['G_current'] = k_soln_hh.values
       
       timing_file.write("Gain cal: %s \n" % (np.round(time()-t0,3),))
       t0 = time()
       
-   if any( 'target' in k for k in taglist ):
-      # ---------------------------------------
-      # Apply K and BP solutions
-      k_to_apply = k_soln_hh.interpolate(num_dumps) 
-      vis_hh = k_to_apply.apply(vis_hh, chans)
-      bp_to_apply = bp_soln_hh.interpolate(num_dumps) 
-      vis_hh = bp_to_apply.apply(vis_hh)
+      if target_hh is not None:
+         # ---------------------------------------
+         # apply gains to target
+         #   this assumes a model where we get data in chunks of 
+         #   [target, gaincal], [target, gaincal]...
+         #   mocking it up for now
       
-      # ---------------------------------------
-      # RFI flagging
-      rfi()
+         # ---------------------------------------
+         # Apply K and BP solutions
+         k_to_apply = k_soln_hh.interpolate(target_num_dumps) 
+         target_hh = k_to_apply.apply(target_hh, chans)
+         bp_to_apply = bp_soln_hh.interpolate(target_num_dumps) 
+         target_hh = bp_to_apply.apply(target_hh)
       
-      # ---------------------------------------
-      # save calibrated data
-      sim.write_h5_simdata(simdata,vis_hh,hh_mask)
+         # ---------------------------------------
+         # Apply G solutions
       
-      # ---------------------------------------
-      timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
-      t0 = time()
+         # ---------------------------------------
+         # RFI flagging
+         rfi()
+      
+         # ---------------------------------------
+         # write the calibrated target data back to h5 file
+         #sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_times,cmask=target_chans)
+      
+         # ---------------------------------------
+         timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
+         t0 = time()
       
 
    print
@@ -332,5 +384,16 @@ for scan_ind, scan_state, target in simdata.scans():
 
 timing_file.close()
 pickle.dump(TM, open('TM.pickle', 'wb'))
+
+if closing_plots:
+   # plot BP solutions from TM
+   
+   # plot G solutions from TM
+   g_solns = np.array(TM['G'])
+   g_soln_times =  np.array(TM['G_times'])
+   plotting.plot_g_solns(g_soln_times,g_solns)
+   
+   # plot BP solutions
+   plotting.plot_bp_soln_list(np.array(TM['BP']))
 
 

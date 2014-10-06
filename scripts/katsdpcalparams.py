@@ -4,10 +4,11 @@ def set_params():
    parms = {}
    
    # general data parameters
-   parms['do_plots'] = False
+   parms['per_scan_plots'] = False
+   parms['closing_plots'] = True
    parms['bchan'] = 200
    parms['echan'] = 800
-   parms['refant'] = 4
+   parms['refant'] = 1
    
    # delay calibration
    parms['k_solint'] = 10.0 # nominal pre-k g solution interval, seconds

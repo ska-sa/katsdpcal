@@ -25,12 +25,12 @@ def plt_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
    if not chans: chans = np.arange(data.shape[-2])
 
    # plot amplitude
-   axes_[0].plot(chans,np.abs(data),'.') #,color=PLOT_COLORS[plotnum])
+   axes_[0].plot(chans,np.abs(data),'.-') #,color=PLOT_COLORS[plotnum])
    axes_[0].set_xlim([0,max(chans)])
    axes_[0].set_ylabel('Amplitude'+ylabelplus)
         
    # plot phase
-   axes_[1].plot(chans,360.*np.angle(data)/(2.*np.pi),'.')
+   axes_[1].plot(chans,360.*np.angle(data)/(2.*np.pi),'.-')
    axes_[1].set_xlim([0,max(chans)])
    axes_[1].set_ylabel('Phase'+ylabelplus)
 
@@ -82,7 +82,26 @@ def plot_bp_solns(data,chans=None):
 
    plt.show()
    
-def plot_g_solns(data):
+def plot_bp_soln_list(bplist,chans=None):
+   """
+   Plots bandpass solutions
+   
+   Parameters
+   ----------
+   data  : array of complex, shape(num_chans,num_ants)
+   chans : channel numbers, shape(num_chans)
+   """
+   # just label channels from zero if channel numbers not supplied
+   if not chans: chans = np.arange(bplist[0].shape[-2])
+
+   nrows, ncols = 1,2 
+   fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
+   for bp in bplist:
+      plt_v_chan(bp,axes,plotnum=0)
+
+   plt.show()
+   
+def plot_g_solns(times,data):
    """
    Plots gain solutions
    
@@ -91,17 +110,20 @@ def plot_g_solns(data):
    data  : array of complex, shape(num_times,num_ants)
    """
    nrows, ncols = 1,2 
-   fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
+   fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,4.0*nrows))
+   
+   times = np.array(times) - times[0]
+   data = np.array(data)
 
    # plot amplitude
-   axes[0].plot(np.abs(data),'.')
+   axes[0].plot(times/60.,np.abs(data),'.-')
    axes[0].set_ylabel('Amplitude')
         
    # plot phase
-   axes[1].plot(360.*np.angle(data)/(2.*np.pi),'.')
+   axes[1].plot(times/60.,360.*np.angle(data)/(2.*np.pi),'.-')
    axes[1].set_ylabel('Phase')
 
-   axes[0].set_xlabel('Time') 
-   axes[1].set_xlabel('Time') 
+   axes[0].set_xlabel('Time / [min]') 
+   axes[1].set_xlabel('Time / [min]') 
 
    plt.show()

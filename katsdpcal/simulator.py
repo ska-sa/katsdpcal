@@ -18,7 +18,7 @@ def get_h5_simdata(h5filename):
    """
    return katdal.open(h5filename)
    
-def write_h5_simdata(simdata,data,corrprod_mask):
+def write_h5_simdata(simdata,data,corrprod_mask,tmask=None,cmask=None):
    """
    Writes data into h5 file
    
@@ -28,9 +28,9 @@ def write_h5_simdata(simdata,data,corrprod_mask):
    data          : data to write into the file
    corrprod_mask : correlation product mask showing where to write the data
    """
-   data_indices = np.squeeze(np.where(simdata._time_keep))
-   ti, tf = min(data_indices), max(data_indices)+1   
-   data_indices = np.squeeze(np.where(simdata._freq_keep))
+   data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(simdata._time_keep))
+   ti, tf = min(data_indices), max(data_indices)+1 
+   data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(simdata._freq_keep))
    ci, cf = min(data_indices), max(data_indices)+1    
    simdata._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
    simdata._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
@@ -55,6 +55,7 @@ def setup_TM(TMfile,simdata):
    TM['BP'] = []
    TM['K'] = []
    TM['G'] = []
+   TM['G_times'] = []
 
    # set siulated TM values from h5 file
    TM['antlist'] = [ant.name for ant in simdata.ants]
