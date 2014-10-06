@@ -58,14 +58,15 @@ ECHAN = params['echan']
 
 parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Run MeerKAT calibration pipeline on H5 file')
 parser.add_option("-C", "--channel-range", help="Range of frequency channels to process (zero-based inclusive 'first_chan,last_chan', default is all channels)")
-parser.add_option("-w", "--write-corrected", action="store_true", default=False, help="Write the corrected target data back into the H5 file")
+parser.add_option("-t", "--write-target", action="store_true", default=False, help="Write the corrected target data back into the H5 file")
+parser.add_option("-b", "--write-bandpass", action="store_true", default=False, help="Write the corrected bandpass calibrator data back into the H5 file")
 (options, args) = parser.parse_args()
 
 if len(args) < 1 or not args[0].endswith(".h5"):
     print "Please provide one or more HDF5 filenames as arguments"
     sys.exit(1)
     
-simdata = sim.get_h5_simdata(args)
+simdata = sim.get_h5_simdata(args[0])
     
 # Select frequency channel range
 #   if channel range is set in the parser options it overrides the parameter file
@@ -281,6 +282,12 @@ for scan_ind, scan_state, target in simdata.scans():
       #if per_scan_plots: plotting.plot_bp_solns(bp_soln_hh.values)   
       
       # ---------------------------------------
+      # write the calibrated target data back to h5 file
+      bp_chans = simdata._freq_keep
+      bp_times = simdata._time_keep    
+      if options.write_bandpass: sim.write_h5_simdata(simdata,vis_hh,hh_mask,tmask=bp_times,cmask=bp_chans)
+      
+      # ---------------------------------------
       timing_file.write("Bandpass cal: %s \n" % (np.round(time()-t0,3),))
       t0 = time()
       
@@ -370,7 +377,7 @@ for scan_ind, scan_state, target in simdata.scans():
       
          # ---------------------------------------
          # write the calibrated target data back to h5 file
-         if options.write_corrected: sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_times,cmask=target_chans)
+         if options.write_target: sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_times,cmask=target_chans)
       
          # ---------------------------------------
          timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
