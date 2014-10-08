@@ -19,17 +19,27 @@ class Solution(object):
       # kwargs may include, for example, ???
       for key, value in kwargs.items():
          setattr(self, key, value)
+         
+   def linear_interpolate(self, times):
+      interpSolution = copy.deepcopy(self)
+      # interpolate complex solutions separately in real and imaginary
+      real_interp = np.array([np.interp(times, self.times, v.real) for v in self.values.T])
+      imag_interp = np.array([np.interp(times, self.times, v.imag) for v in self.values.T])
+      interpSolution.values = real_interp.T + 1.0j*imag_interp.T
+      interpSolution.times = times
+      return interpSolution
         
-   def simple_interpolate(self, num_dumps, **kwargs):
+   def self_interpolate(self, num_dumps, **kwargs):
       dump_period = kwargs['dump_period']
       dumps_per_solint = int(self.solint/np.round(dump_period,3))
       interpSolution = copy.deepcopy(self)
       interpSolution.values = np.repeat(self.values,dumps_per_solint,axis=0)[0:num_dumps]
       return interpSolution
       
-   def inf_interpolate(self, num_dumps):
+   def inf_interpolate(self, times):
       interpSolution = copy.deepcopy(self)
-      interpSolution.values = np.repeat(np.expand_dims(self.values,axis=0),num_dumps,axis=0)
+      interpSolution.values = np.repeat(np.expand_dims(self.values,axis=0),len(times),axis=0)
+      interpSolution.times = times
       return interpSolution
       
    def _apply(self, data, solns, chans=None):
@@ -58,14 +68,15 @@ class CalSolution(Solution):
    def __init__(self, soltype, solvalues, times, solint, corrprod_lookup, **kwargs):
       super(CalSolution, self).__init__(soltype, solvalues, times, solint, corrprod_lookup, **kwargs)
       
-   def interpolate(self, num_dumps, **kwargs):
+   def interpolate(self, times, **kwargs):
       # set up more complex interpolation methods later
       if self.soltype is 'G': 
-         return self.simple_interpolate(num_dumps, **kwargs)         
+         #return self.self_interpolate(num_dumps, **kwargs)   
+         return self.linear_interpolate(times)         
       if self.soltype is 'K': 
-         return self.inf_interpolate(num_dumps)
+         return self.inf_interpolate(times)
       if self.soltype is 'B': 
-         return self.inf_interpolate(num_dumps)
+         return self.inf_interpolate(times)
       
    def apply(self, data, chans=None):
       # set up more complex interpolation methods later
