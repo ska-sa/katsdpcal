@@ -1,6 +1,7 @@
 
 import numpy as np
 import copy
+import sys
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  CalSolution
@@ -30,6 +31,7 @@ class Solution(object):
       return interpSolution
         
    def self_interpolate(self, num_dumps, **kwargs):
+      # this is broken - need to fix
       dump_period = kwargs['dump_period']
       dumps_per_solint = int(self.solint/np.round(dump_period,3))
       interpSolution = copy.deepcopy(self)
@@ -65,8 +67,8 @@ class Solution(object):
         
 class CalSolution(Solution):
    
-   def __init__(self, soltype, solvalues, times, solint, corrprod_lookup, **kwargs):
-      super(CalSolution, self).__init__(soltype, solvalues, times, solint, corrprod_lookup, **kwargs)
+   def __init__(self, soltype, values, times, solint, corrprod_lookup, **kwargs):
+      super(CalSolution, self).__init__(soltype, values, times, solint, corrprod_lookup, **kwargs)
       
    def interpolate(self, times, **kwargs):
       # set up more complex interpolation methods later
@@ -92,6 +94,17 @@ class CalSolution(Solution):
          return self._apply(data, self.values)
 
       return data
+      
+   def concat(self, calsol2):
+      if not(self.soltype is calsol2.soltype):
+         print "Solution types %s and %s not compatible." % (self.soltype, calsol2.soltype)
+         sys.exit(1)
+         
+      self.values = np.append(self.values,calsol2.values,axis=0) 
+      self.times = np.append(self.times,calsol2.times,axis=0) 
+      return self
+      
+         
       
       
       
