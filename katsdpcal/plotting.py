@@ -171,6 +171,7 @@ def plot_RFI_mask(pltobj,extra=None,channelwidth=1e6):
    extra         : the locations of extra masks to plot
    channelwidth  : the width of the mask per channel
    """
+   
    pltobj.axvspan(1674e6,1677e6, alpha=0.3, color='grey')#Meteosat
    pltobj.axvspan(1667e6,1667e6, alpha=0.3, color='grey')#Fengun
    pltobj.axvspan(1682e6,1682e6, alpha=0.3, color='grey')#Meteosat
