@@ -127,3 +127,37 @@ def plot_g_solns(times,data):
    axes[1].set_xlabel('Time / [min]') 
 
    plt.show()
+
+def plot_waterfall(visdata,contrast=0.01,flags=None,channel_freqs=None):
+   """
+   Make a waterfall plot from visdata- with an option to plot flags
+   and show the frequency axis in MHz.
+        
+   Parameters
+   ----------
+   visdata       : array (ntimestamps,nchannels) of floats
+   contrast      : percentage of maximum and minimum data values to remove from lookup table
+   flags         : array of boolean with same shape as visdata
+   channel_freqs : array (nchannels) of frequencies represented by each channel
+   """
+
+   fig = plt.figure(figsize=(8.3,11.7))
+   kwargs={'aspect' : 'auto', 'origin' : 'lower', 'interpolation' : 'none'}
+   if channel_freqs: kwargs['extent'] = (channel_freqs[0],channel_freqs[1], -0.5, data.shape[0] - 0.5)
+   image=plt.imshow(visdata,**kwargs)
+   image.set_cmap('Rainbow')
+   #flagimage=plt.imshow(flags[:,:,0],**kwargs)
+   #Make an array of RGBA data for the flags (initialize to alpha=0)
+   if flags:
+      plotflags = np.zeros(flags.shape[0:2]+(4,))
+      plotflags[:,:,0] = 1.0
+      plotflags[:,:,3] = flags[:,:,0]
+      plt.imshow(plotflags,**kwargs)
+
+   ampsort=np.sort(visdata,axis=None)
+   arrayremove = int(len(ampsort)*contrast)
+   lowcut,highcut = ampsort[arrayremove],ampsort[-(arrayremove+1)]
+   image.norm.vmin = lowcut
+   image.norm.vmax = highcut
+   plt.show()
+   plt.close(fig)
