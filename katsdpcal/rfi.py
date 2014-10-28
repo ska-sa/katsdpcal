@@ -2,16 +2,8 @@
 # and other 2-d RFI related functions.
 import katdal
 import katpoint 
-from matplotlib.backends.backend_pdf import PdfPages
-from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
-from mpl_toolkits.axes_grid import Grid
-
-import matplotlib.pyplot as plt; plt.ioff()
-import matplotlib.gridspec as gridspec
-from matplotlib import ticker
 
 import numpy as np
-import optparse
 import scipy.signal as signal
 import scipy.interpolate as interpolate
 import scipy.ndimage as ndimage
@@ -20,19 +12,10 @@ import math
 import h5py
 import os
 
-#########################
-# RFI Detection routines
-#########################
 
-#----------------------------------------------------------------------------------
-#--- FUNCTION :  getbackground_spline
-# Fit the background to the array in "data" using an iterative fit of a spline to the 
-# data. On each iteration the number of density of knots in the spline is increased 
-# up to "spike_width", and residual peaks more than 5sigma are removed.
-#----------------------------------------------------------------------------------
-def getbackground_spline(data,spike_width):
+def getbackground_2dspline(data,spike_width):
 
-    """ From a 1-d data array determine a background iteratively by fitting a spline
+    """ From a 2-d data array determine a background iteratively by fitting a spline
     and removing data more than a few sigma from the spline """
 
     # Remove the first and last element in data from the fit.
@@ -89,6 +72,22 @@ def getbackground_spline(data,spike_width):
     thisfitted_data = np.insert(thisfitted_data,0,data[0])
 
     return(thisfitted_data)
+
+def getbackground_median(data,spike_width_freq=5,spike_width_time=5):
+    """
+    Determine a background using a 2d median filter for 2d arrays or a 1d one for 1d arrays. 
+    Just a call to median_filter from scipy.ndimage.
+    Parameters
+    ----------
+    data : a 2d array (time, frequency) of floats
+    spike_width_freq (int) : the median filter width in frequency
+    spike_width_time (int) : the median filter width in time (ignored for 1d input data)
+    """
+
+    if len(data.shape) == 1 : kernel = spike_width_freq
+    else : kernel = (spike_width_time,spike_width_freq)
+    return ndimage.filters.median_filter(data,size=kernel)
+
 
 
 def detect_spikes_sumthreshold(data, blarray=None, spike_width=5, outlier_sigma=11.0, window_size_auto=[1,3,5], window_size_cross=[2,4,8]):
@@ -392,43 +391,3 @@ def detect_spikes_orig(data, axis=0, spike_width=2, outlier_sigma=11.0):
     flags[...] = outliers[...]
     #return flags
     return flags
-
-##############################
-# End of RFI detection routines
-##############################
-
-def get_flag_data(h5data, norm_spec=None):
-    """
-    Given a katdal object, remove a dc offset for each record
-    (ignoring severe spikes) and correct for changes in elevation
-    during the observation then obtain an average spectrum of
-    all of the scans in the data - rejecting outliers in the DC offset domain.
-    Return the average spectrum with dc offset removed and the number of times
-    each channel is flagged. Optinally provide a spectrum (norm_spec) to 
-    divide into the calculated bandpass.
-    """
-
-    sumarray=np.zeros((h5data.shape[1],2))
-    offsetarray=np.zeros((h5data.shape[0],2))
-    weightsum=np.zeros((h5data.shape[1],2),dtype=np.int)
-    flags=np.zeros((h5data.shape[0],h5data.shape[1],2),dtype=np.bool)
-    for num,thisdata in enumerate(h5data.vis):
-        #Extract pols
-        thisdata = np.abs(thisdata[0,:,:2])
-        # normalise if defined
-        if norm_spec is not None: thisdata /= norm_spec
-        #Flag data for severe spikes
-        flags[num] = detect_spikes_sumthreshold(thisdata,outlier_sigma=8.0,spike_width=3.0)
-        #Get DC height (median rather than mean is more robust...)
-        offset = np.median(thisdata[np.where(flags[num]==0)],axis=0)
-        #Make an elevation corrected offset to remove outliers
-        offsetarray[num,:] = offset
-        #Remove the DC height
-        weights = (~flags[num]).astype(np.float)
-        thisdata = thisdata/offset
-        weightsum += weights
-        #Sum the data for this target
-        sumarray = sumarray + thisdata*weights
-    averagespec = sumarray/(weightsum.astype(np.float)+1.e-10)
-    flagfrac = 1. - (weightsum.astype(np.float)/h5data.shape[0].astype(np.float))
-    return {'spectrum': averagespec, 'numrecords_tot': h5data.shape[0], 'flagfrac': flagfrac, 'channel_freqs': h5data.channel_freqs, 'dump_period': h5data.dump_period},flags
