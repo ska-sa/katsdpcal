@@ -145,7 +145,7 @@ def plot_waterfall(visdata,contrast=0.01,flags=None,channel_freqs=None):
    kwargs={'aspect' : 'auto', 'origin' : 'lower', 'interpolation' : 'none'}
    if channel_freqs: kwargs['extent'] = (channel_freqs[0],channel_freqs[1], -0.5, data.shape[0] - 0.5)
    image=plt.imshow(visdata,**kwargs)
-   image.set_cmap('Rainbow')
+   image.set_cmap('Greys')
    #Make an array of RGBA data for the flags (initialize to alpha=0)
    if flags:
       plotflags = np.zeros(flags.shape[0:2]+(4,))
@@ -171,7 +171,7 @@ def plot_RFI_mask(pltobj,extra=None,channelwidth=1e6):
    extra         : the locations of extra masks to plot
    channelwidth  : the width of the mask per channel
    """
-   
+
    pltobj.axvspan(1674e6,1677e6, alpha=0.3, color='grey')#Meteosat
    pltobj.axvspan(1667e6,1667e6, alpha=0.3, color='grey')#Fengun
    pltobj.axvspan(1682e6,1682e6, alpha=0.3, color='grey')#Meteosat
