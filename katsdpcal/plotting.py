@@ -128,22 +128,37 @@ def plot_g_solns(times,data):
 
    plt.show()
 
-def plot_waterfall(visdata,contrast=0.01,flags=None,channel_freqs=None):
+def plot_waterfall(visdata,contrast=0.01,flags=None,channel_freqs=None,dump_timestamps=None):
    """
    Make a waterfall plot from visdata- with an option to plot flags
-   and show the frequency axis in MHz.
+   and show the frequency axis in MHz and dump in utc seconds if provided.
         
    Parameters
    ----------
-   visdata       : array (ntimestamps,nchannels) of floats
-   contrast      : percentage of maximum and minimum data values to remove from lookup table
-   flags         : array of boolean with same shape as visdata
-   channel_freqs : array (nchannels) of frequencies represented by each channel
+   visdata         : array (ntimestamps,nchannels) of floats (amp or phase).
+   contrast        : percentage of maximum and minimum data values to remove from lookup table
+   flags           : array of boolean with same shape as visdata
+   channel_freqs   : array (nchannels) of frequencies represented by each channel
+   dump_timestamps : array (ntimestamps) of timestamps represented by each dump
    """
 
    fig = plt.figure(figsize=(8.3,11.7))
    kwargs={'aspect' : 'auto', 'origin' : 'lower', 'interpolation' : 'none'}
-   if channel_freqs: kwargs['extent'] = (channel_freqs[0],channel_freqs[1], -0.5, data.shape[0] - 0.5)
+   #Defaults
+   kwargs['extent'] = [-0.5, visdata.shape[1] - 0.5, -0.5, visdata.shape[0] -0.5]
+   plt.xlabel('Channel number')
+   plt.ylabel('Dump number')
+   #Change defaults if frequencies or times specified.
+   if channel_freqs is not None: 
+      kwargs['extent'][0],kwargs['extent'][1] = channel_freqs[0],channel_freqs[-1]
+      #reverse the data if the frequencies are in descending order
+      if channel_freqs[1]-channel_freqs[0] < 0:
+         visdata=visdata[:,::-1]
+         kwargs['extent'][0],kwargs['extent'][1] = channel_freqs[-1]/1e6,channel_freqs[0]/1e6
+         plt.xlabel('Frequency (MHz)')
+   if dump_timestamps is not None:
+      kwargs['extent'][2],kwargs['extent'][3] = 0,dump_timestamps[-1]-dump_timestamps[0]
+      plt.ylabel('Time (UTC seconds)')
    image=plt.imshow(visdata,**kwargs)
    image.set_cmap('Greys')
    #Make an array of RGBA data for the flags (initialize to alpha=0)
@@ -208,4 +223,3 @@ def plot_RFI_mask(pltobj,extra=None,channelwidth=1e6):
    if not extra is None:
       for i in xrange(extra.shape[0]):
          pltobj.axvspan(extra[i]-channelwidth/2,extra[i]+channelwidth/2, alpha=0.7, color='Maroon')
-                
