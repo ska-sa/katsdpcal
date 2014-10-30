@@ -1,5 +1,4 @@
 numpy
 katdal
 scipy
-pickle
 matplotlib
