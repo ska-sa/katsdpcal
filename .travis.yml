@@ -15,8 +15,10 @@ before_install:
   # Install gfortran and numpy (to get proper f2py), followed by other dependencies
   #- sudo apt-get install -qq gfortran
   #- pip install numpy==1.5.0
-  # install deb package dependencies
-  - sudo apt-get install libblas-dev
+  # install deb package dependencies:
+  #  libblas, libatlas for scipy:
+  #- sudo apt-get install libblas-dev libatlas-dev
+  - sudo apt-get install libatlas-base-dev gfortran
   - ls
   # install pypi dependencies
   - pip install -r requirements.txt 
