@@ -1,0 +1,26 @@
+# After changing this file, check it on:
+#   http://lint.travis-ci.org/
+language: python
+
+python:
+  - 2.7
+
+before_install:
+  # Check environment a la the numpy Travis script
+  - uname -a
+  - free -m
+  - df -h
+  - ulimit -a
+  - python -V
+  # Install gfortran and numpy (to get proper f2py), followed by other dependencies
+  #- sudo apt-get install -qq gfortran
+  #- pip install numpy==1.5.0
+  # install dependencies
+  - pip install -r requirements.txt --use-mirrors
+
+install:
+  # Check if package is pip-installable while we are at it
+  - pip install .
+
+script:
+  - nosetests -v
