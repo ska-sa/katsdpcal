@@ -16,7 +16,7 @@ before_install:
   #  for scipy:
   - sudo apt-get install -qq gfortran libatlas-base-dev 
   # install pypi dependencies
-  - pip install -q -r requirements.txt 
+  - travis_wait pip install -q -r requirements.txt 
   # clone private repositories
   - git clone https://katpull:katpull4git@github.com/ska-sa/katdal.git
   - pip install -q katdal/
