@@ -17,9 +17,10 @@ before_install:
   #- pip install numpy==1.5.0
   # clone private repositories
   - git clone https://katpull:katpull4git@github.com/ska-sa/katdal.git
+  - ls
   # install dependencies
   - pip install -r requirements.txt 
-
+  - pip install katdal/
 install:
   # Check if package is pip-installable while we are at it
   - pip install .
