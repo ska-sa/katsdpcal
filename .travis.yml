@@ -15,12 +15,15 @@ before_install:
   # Install gfortran and numpy (to get proper f2py), followed by other dependencies
   #- sudo apt-get install -qq gfortran
   #- pip install numpy==1.5.0
+  # install deb package dependencies
+  - sudo apt-get install libblas-dev
+  - ls
+  # install pypi dependencies
+  - pip install -r requirements.txt 
   # clone private repositories
   - git clone https://katpull:katpull4git@github.com/ska-sa/katdal.git
-  - ls
-  # install dependencies
-  - pip install -r requirements.txt 
   - pip install katdal/
+
 install:
   # Check if package is pip-installable while we are at it
   - pip install .
