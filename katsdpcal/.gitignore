@@ -1,0 +1,6 @@
+
+# Ignore .pyc files
+*.pyc
+
+# Ignore backup files from text editors
+*~
