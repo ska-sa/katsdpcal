@@ -1,5 +1,5 @@
 numpy
-scipy
 katdal
+scipy
 pickle
 matplotlib
