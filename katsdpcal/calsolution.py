@@ -1,3 +1,4 @@
+"""Solution class for calibration solutions."""
 
 import numpy as np
 import copy

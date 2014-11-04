@@ -3,7 +3,7 @@ import numpy as np
 
 #PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k'] 
 
-def plt_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
+def plot_data_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
     """
     Plots data versus channel
     

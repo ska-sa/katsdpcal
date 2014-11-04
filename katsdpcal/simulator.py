@@ -1,68 +1,67 @@
+"""Simulator class for HDF5 files produced by KAT-7 correlator,
+   for testing of the MeerKAT pipeline."""
 
 import katdal
+from katdal import H5DataV2
 import pickle
 import os
 import numpy as np
 
-def get_h5_simdata(h5filename):
-    """
-    Opens h5 file to extract data and TM ekements from
-   
-    Parameters
-    ----------
-    h5filename : name of h5 file to open 
+#--------------------------------------------------------------------------------------------------
+#--- CLASS :  SimData
+#--------------------------------------------------------------------------------------------------
 
-    Returns
-    ------- 
-    katdal object
-    """
-    return katdal.open(h5filename)
+class SimData(katdal.H5DataV2):
+    
+    def __init__(self, h5filename):
+        H5DataV2.__init__(self, h5filename)
    
-def write_h5_simdata(simdata,data,corrprod_mask,tmask=None,cmask=None):
-    """
-    Writes data into h5 file
+    def write_h5(self,data,corrprod_mask,tmask=None,cmask=None):
+        """
+        Writes data into h5 file
    
-    Parameters
-    ----------
-    simdata       : h5 file to write data into (katdal object)
-    data          : data to write into the file
-    corrprod_mask : correlation product mask showing where to write the data
-    """
-    data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(simdata._time_keep))
-    ti, tf = min(data_indices), max(data_indices)+1 
-    data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(simdata._freq_keep))
-    ci, cf = min(data_indices), max(data_indices)+1    
-    simdata._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
-    simdata._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
+        Parameters
+        ----------
+        data          : data to write into the file
+        corrprod_mask : correlation product mask showing where to write the data
+        tmask         : time mask for timestamps to write
+        cmask         : channel mask for channels to write
+        """
+        
+        data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(self._time_keep))
+        ti, tf = min(data_indices), max(data_indices)+1 
+        data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(self._freq_keep))
+        ci, cf = min(data_indices), max(data_indices)+1    
+        self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
+        self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
    
-def setup_TM(TMfile,simdata):
-    """
-    Initialises the Telescope Model, optionally from existing TM pickle.
+    def setup_TM(self,TMfile):
+        """
+        Initialises the Telescope Model, optionally from existing TM pickle.
    
-    Parameters
-    ----------
-    TMfile  : name of TM pickle file to open 
-    simdata : katdal object containing simulated data and metadata 
+        Parameters
+        ----------
+        TMfile  : name of TM pickle file to open 
 
-    Returns
-    ------- 
-    TM      : Telescope Model dictionary
-    """   
+        Returns
+        ------- 
+        TM      : Telescope Model dictionary
+        """   
 
-    TM = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
+        TM = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
 
-    # empty solutions - start with no solutions
-    TM['BP'] = []
-    TM['K'] = []
-    TM['G'] = []
-    TM['G_times'] = []
+        # empty solutions - start with no solutions
+        TM['BP'] = []
+        TM['K'] = []
+        TM['G'] = []
+        TM['G_times'] = []
 
-    # set siulated TM values from h5 file
-    TM['antlist'] = [ant.name for ant in simdata.ants]
-    TM['num_ants'] = len(simdata.ants)
-    TM['num_channels'] = len(simdata.channels)
-    #antdesclist = [ant.description for ant in simdata.ants]
-    TM['corr_products'] = simdata.corr_products
-    TM['dump_period'] = simdata.dump_period
+        # set siulated TM values from h5 file
+        TM['antlist'] = [ant.name for ant in self.ants]
+        TM['num_ants'] = len(self.ants)
+        TM['num_channels'] = len(self.channels)
+        #antdesclist = [ant.description for ant in simdata.ants]
+        TM['corr_products'] = self.corr_products
+        TM['dump_period'] = self.dump_period
    
-    return TM
+        return TM

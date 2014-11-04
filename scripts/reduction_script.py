@@ -1,5 +1,4 @@
 
-
 import numpy as np
 import optparse
 import sys
@@ -11,8 +10,8 @@ import os
 from katcal import plotting
 from katcal import calprocs
 from katcal.calsolution import CalSolution
-import katcalparams
-import katcal.simulator as sim
+from katcal import parameters
+from katcal.simulator import SimData
 
 from time import time
 
@@ -34,7 +33,7 @@ timing_file = open("timing.txt", "w")
 #    will mostly be in the Telescope Model later?
 #    or combination of TM and param file?
 
-params = katcalparams.set_params()
+params = parameters.set_params()
 
 per_scan_plots = params['per_scan_plots']
 closing_plots = params['closing_plots']
@@ -67,8 +66,8 @@ parser.add_option("-g", "--write-gaincal", action="store_true", default=False, h
 if len(args) < 1 or not args[0].endswith(".h5"):
     print "Please provide one or more HDF5 filenames as arguments"
     sys.exit(1)
-    
-simdata = sim.get_h5_simdata(args[0])
+        
+simdata = SimData(args[0])
     
 # Select frequency channel range
 #   if channel range is set in the parser options it overrides the parameter file
@@ -87,7 +86,7 @@ simdata.select(channels=slice(BCHAN,ECHAN))
 #   faking it up for now, until such time as 
 #   kattelmod is more developed.
 TMfile = 'TM.pickle'
-TM = sim.setup_TM(TMfile,simdata)
+TM = simdata.setup_TM(TMfile)
 
 # ----------------------------------------------------------
 # extract values we need frequently from the TM
@@ -288,7 +287,7 @@ for scan_ind, scan_state, target in simdata.scans():
       
         # ---------------------------------------
         # write the calibrated bandpass data back to h5 file
-        if options.write_bandpass: sim.write_h5_simdata(simdata,vis_hh,hh_mask,tmask=simdata._time_keep,cmask=simdata._freq_keep)
+        if options.write_bandpass: simdata.write_h5(vis_hh,hh_mask)
       
         # ---------------------------------------
         timing_file.write("Bandpass cal: %s \n" % (np.round(time()-t0,3),))
@@ -363,7 +362,7 @@ for scan_ind, scan_state, target in simdata.scans():
         #    apply G solution 
         #g_to_apply = g_soln_hh.interpolate(times) 
         #vis_hh = g_to_apply.apply(vis_hh)
-        if options.write_gaincal: sim.write_h5_simdata(simdata,vis_hh,hh_mask,tmask=simdata._time_keep,cmask=simdata._freq_keep)
+        if options.write_gaincal: simdata.write_h5(vis_hh,hh_mask)
       
         # ---------------------------------------
         timing_file.write("Gain cal: %s \n" % (np.round(time()-t0,3),))
@@ -396,7 +395,7 @@ for scan_ind, scan_state, target in simdata.scans():
       
             # ---------------------------------------
             # write the calibrated target data back to h5 file
-            if options.write_target: sim.write_h5_simdata(simdata,target_hh,hh_mask,tmask=target_time_mask,cmask=target_chan_mask)
+            if options.write_target: simdata.write_h5(target_hh,hh_mask,tmask=target_time_mask,cmask=target_chan_mask)
       
             # ---------------------------------------
             timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
