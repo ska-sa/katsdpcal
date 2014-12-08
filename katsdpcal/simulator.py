@@ -35,20 +35,25 @@ class SimData(katdal.H5DataV2):
         self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
         self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
    
-    def setup_TM(self,TMfile):
+    def setup_TM(self,TMfile,params):
         """
         Initialises the Telescope Model, optionally from existing TM pickle.
    
         Parameters
         ----------
         TMfile  : name of TM pickle file to open 
+        params  : dictionary of default parameters
 
         Returns
         ------- 
         TM      : Telescope Model dictionary
         """   
 
-        TM = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
+        # initialise with parameter dictionary 
+        TM = params
+        # update TM with pickle file values
+        TM_update = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
+        for key in TM_update: TM[key] = TM_update[key]
 
         # empty solutions - start with no solutions
         TM['BP'] = []
