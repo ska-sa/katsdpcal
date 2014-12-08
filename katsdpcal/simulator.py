@@ -57,8 +57,11 @@ class SimData(katdal.H5DataV2):
 
         # empty solutions - start with no solutions
         TM['BP'] = []
+        TM['BP_std'] = []
         TM['K'] = []
+        TM['K_std'] = []
         TM['G'] = []
+        TM['G_std'] = []
         TM['G_times'] = []
 
         # set siulated TM values from h5 file

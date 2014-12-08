@@ -106,7 +106,7 @@ def plot_g_solns(times,data):
    
     Parameters
     ----------
-    data  : array of complex, shape(num_times,num_ants)
+    data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1,2 
     fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,4.0*nrows))
@@ -124,6 +124,45 @@ def plot_g_solns(times,data):
 
     axes[0].set_xlabel('Time / [min]') 
     axes[1].set_xlabel('Time / [min]') 
+
+    plt.show()
+    
+def plot_g_solns_with_errors(times,data,stddev):
+    """
+    Plots gain solutions and colour fill ranges for amplitude errors
+   
+    Parameters
+    ----------
+    data   : array of complex, shape(num_times,num_ants)
+    stddev : array of real, shape(num_times,num_ants)
+    """
+    
+    nrows, ncols = 2,2 
+    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,4.0*nrows))
+   
+    times = np.array(times) - times[0]
+    data = np.array(data)
+
+    # plot amplitude
+    amp = np.abs(data)
+    amp_max = amp + stddev
+    amp_min = amp - stddev
+    
+    axes[0,0].plot(times/60.,amp,'.-')
+    #axes[0,0].fill_between(times/60.,amp_min,amp_max,alpha=0.1)
+    for y in zip(amp_min.T,amp_max.T):
+        y0, y1 = y
+        axes[0,0].fill_between(times/60.,y0,y1,alpha=0.1,color='k')
+    axes[0,0].set_ylabel('Amplitude')
+        
+    # plot phase
+    axes[0,1].plot(times/60.,360.*np.angle(data)/(2.*np.pi),'.-')
+    axes[0,1].set_ylabel('Phase')
+
+    axes[0,0].set_xlabel('Time / [min]') 
+    axes[0,1].set_xlabel('Time / [min]') 
+    
+    axes[1,0].plot(times/60.,stddev,'.-')
 
     plt.show()
 
