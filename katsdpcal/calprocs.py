@@ -122,7 +122,6 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
     
-    print 'a', g_curr[0]
     return g_curr
     
 def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
@@ -171,7 +170,6 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         if verbose: print "Iteration %d: mean absolute gain change = %f" % (n + 1, 0.5 * np.abs(g_new - g_curr).mean())
         # Avoid getting stuck
         g_curr = 0.5 * (g_new + g_curr)
-    print 's', g_curr[0]
     return g_curr
     
 def g_from_K(chans,K):
