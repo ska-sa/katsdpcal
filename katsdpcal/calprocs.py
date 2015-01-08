@@ -1,6 +1,87 @@
 import numpy as np
 
-def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
+def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, conv_thresh=0.001, verbose=False):
+    """Solve for antenna gains using ADI StefCal.
+    ADI StefCal implimentation from:
+    'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
+    Analysis and applications', Salvini & Winjholds, 2014
+
+    Parameters
+    ----------
+    vis : array of complex, shape (N,)
+        Complex cross-correlations between antennas A and B
+    num_ants : int
+        Number of antennas
+    antA, antB : numpy array of int, shape (N,)
+        Antenna indices associated with visibilities
+    num_iters : int, optional
+        Number of iterations
+    ref_ant : int, optional
+        Reference antenna whose gain will be forced to be 1.0
+    init_gain : array of complex, shape(num_ants,) or None, optional
+        Initial gain vector (all equal to 1.0 by default)
+    conv_thresh : float, optional
+        Convergence threshold
+
+    Returns
+    -------
+    gains : array of complex, shape (num_ants,)
+        Complex gains, one per antenna
+
+    """
+    
+    # fudge add pretend autocorr data to the end 
+    vis = np.concatenate((vis,np.zeros(num_ants,dtype=np.complex)))
+    antA = np.concatenate((antA,range(num_ants)))
+    antB = np.concatenate((antB,range(num_ants)))
+    
+    # Initialise gain matrix
+    g_prev = np.ones(num_ants, dtype=np.complex)
+    g_curr = 1.0*g_prev
+    # initialise calibrator (unity) source model
+    #   zeros along the diagonals to ignore autocorr
+    M = 1.0 - np.eye(num_ants, dtype=np.complex)
+    
+    for i in range(num_iters):
+        # iterate through antennas, solving for each gain
+        for p in range(num_ants):
+            # z <- g_prev odot M[:,p]
+            z = [g*m for g,m in zip(g_prev,M[:,p])]
+
+            # R[:,p]
+            antA_vis = vis[antA==p]
+            # antenna order of R[:,p]
+            antB_order = antB[antA==p]
+
+            # re-order into increasing antenna order
+            mod_vis = np.empty_like(antA_vis)
+            for j,b in zip(range(num_ants),antB_order): mod_vis[b] = antA_vis[j] 
+
+            # g[p] <- (R[:,p] dot z)/(z^H dot z)
+            g_curr[p] = np.dot(mod_vis,z)/(np.dot(z,np.conjugate(z)))
+            
+            # Force reference gain to be zero phase
+            g_curr = abs(g_curr[ref_ant])*g_curr/g_curr[ref_ant]
+
+        # for even iterations, check convergence
+        # for odd iterations, average g_curr and g_prev  
+        #  note - i starts at zero, unlike Salvini & Winjholds (2014) algorithm  
+        if np.mod(i,2) == 1: 
+            # convergence criterion:
+            # abs(g_curr - g_prev) / abs(g_curr) < tau
+            diff = np.sum(np.abs(g_curr - g_prev)/np.abs(g_curr))
+            if diff < conv_thresh: 
+                break
+        else:
+            # G_curr <- (G_curr + G_prev)/2
+            g_curr = (g_curr + g_prev)/2.0
+           
+        # for next iteration, set g_prev to g_curr   
+        g_prev = 1.0*g_curr
+    
+    return g_curr
+    
+def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
     """Solve for antenna gains using StefCal.
     (Stolen from Ludwig's antsol solver.py)
 
@@ -97,7 +178,7 @@ def g_fit(data,g0,antlist1,antlist2,refant):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj())) 
-    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=10, ref_ant=refant, init_gain=g0)   
+    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0)   
       
     return gainsoln
    
@@ -118,7 +199,6 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0):
     ------- 
     g_array  : Array of gain solutions, shape(num_sol, num_ants)
     """
-
     num_sol = data.shape[0]
     num_ants = ants_from_xcbl(data.shape[1])
 
@@ -161,7 +241,7 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0):
     for c in range(data.shape[0]):
         # stefcal needs the visibilities as a list of [vis,vis.conjugate]
         vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=10, ref_ant=refant, init_gain=bp0[c])   
+        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c])   
         bpsoln[c] = fitted_bp
       
     return bpsoln
@@ -203,7 +283,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     for c in range(data.shape[0]):
         # stefcal needs the visibilities as a list of [vis,vis.conjugate]
         vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=10, ref_ant=refant, init_gain=bp0[c])   
+        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c])   
         bpass[c] = fitted_bp
       
     # -----------------------------------------------------
@@ -250,14 +330,18 @@ def wavg_full(data,flags,weights,axis=0):
     av_data    : weighted average of data 
     av_flags   : weighted average of flags
     av_weights : weighted average of weights 
+    av_sig     : sigma of weighted data
     """
    
+    av_sig = np.nanstd(data*weights*(~flags))
     av_data = np.nansum(data*weights*(~flags),axis=axis)/np.nansum(weights*(~flags),axis=axis)
+    #print np.nansum(weights*(~flags),axis=axis)
+    #pri
     # fake flags and weights for now
     av_flags = np.zeros_like(av_data,dtype=np.bool)
     av_weights = np.ones_like(av_data,dtype=np.float)
    
-    return av_data, av_flags, av_weights
+    return av_data, av_flags, av_weights, av_sig
    
 def wavg_full_t(data,flags,weights,solint,axis=0,times=None):
     """
@@ -279,17 +363,30 @@ def wavg_full_t(data,flags,weights,solint,axis=0,times=None):
     av_data    : weighted average of data 
     av_flags   : weighted average of flags
     av_weights : weighted average of weights 
+    av_sig     : sigma of averaged data
     av_times   : optional average of times
     """
    
     inc_array = np.arange(0,data.shape[axis],solint)
     wavg = np.array([wavg_full(data[ti:ti+solint],flags[ti:ti+solint],weights[ti:ti+solint],axis=0) for ti in inc_array])
-    av_data, av_flags, av_weights = wavg[:,0,:,:], np.bool_(wavg[:,1,:,:]), wavg[:,2,:,:]
+    
+    av_data, av_flags, av_weights, av_sig = [], [], [], []
+    for ti in inc_array:
+        w_out = wavg_full(data[ti:ti+solint],flags[ti:ti+solint],weights[ti:ti+solint],axis=0)
+        av_data.append(w_out[0])
+        av_flags.append(np.bool_(w_out[1]))
+        av_weights.append(w_out[2])
+        av_sig.append(w_out[3])
+    av_data = np.array(av_data)
+    av_flags = np.array(av_flags)
+    av_weights = np.array(av_weights)
+    av_sig = np.array(av_sig)
+
     if np.any(times): 
         av_times = np.array([np.average(times[ti:ti+solint],axis=0) for ti in inc_array])
-        return av_data, av_flags, av_weights, av_times
+        return av_data, av_flags, av_weights, av_sig, av_times
     else:
-        return av_data, av_flags, av_weights
+        return av_data, av_flags, av_sig, av_weights
    
 def solint_from_nominal(solint,dump_period,num_times):
     """
