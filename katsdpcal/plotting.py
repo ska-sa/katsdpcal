@@ -57,9 +57,9 @@ def plot_bp_data(data,chans=None,plotavg=False):
 
     tlist = np.arange(data.shape[0])
     for ti in tlist:
-        plt_v_chan(data[ti],axes,plotnum=0)
+        plot_data_v_chan(data[ti],axes,plotnum=0)
         
-    if plotavg: plt_v_chan(np.nanmean(data,axis=0),axes,plotnum=1,ylabelplus=' (Avg)')
+    if plotavg: plot_data_v_chan(np.nanmean(data,axis=0),axes,plotnum=1,ylabelplus=' (Avg)')
 
     plt.show()
     
@@ -77,7 +77,7 @@ def plot_bp_solns(data,chans=None):
 
     nrows, ncols = 1,2 
     fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
-    plt_v_chan(data,axes,plotnum=0)
+    plot_data_v_chan(data,axes,plotnum=0)
 
     plt.show()
    
@@ -96,7 +96,7 @@ def plot_bp_soln_list(bplist,chans=None):
     nrows, ncols = 1,2 
     fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
     for bp in bplist:
-        plt_v_chan(bp,axes,plotnum=0)
+        plot_data_v_chan(bp,axes,plotnum=0)
 
     plt.show()
    

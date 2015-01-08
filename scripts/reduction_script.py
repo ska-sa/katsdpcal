@@ -52,6 +52,9 @@ NUM_ITERS = 500
 BCHAN = params['bchan']
 ECHAN = params['echan']
 
+# plots per scan
+per_scan_plots = True
+
 # ----------------------------------------------------------
 # H5 file to use for simulation
 #   simulation of data and Teselcope Model (TM)
@@ -61,10 +64,11 @@ parser.add_option("-C", "--channel-range", help="Range of frequency channels to 
 parser.add_option("-t", "--write-target", action="store_true", default=False, help="Write the corrected target data back into the H5 file")
 parser.add_option("-b", "--write-bandpass", action="store_true", default=False, help="Write the corrected bandpass calibrator data back into the H5 file")
 parser.add_option("-g", "--write-gaincal", action="store_true", default=False, help="Write the corrected gain calibrator data back into the H5 file")
+parser.add_option("-s", "--keep-stats", action="store_true", default=False, help="Keep stats of calibration solution data along with the calibration solution")
 (options, args) = parser.parse_args()
 
 if len(args) < 1 or not args[0].endswith(".h5"):
-    print "Please provide one or more HDF5 filenames as arguments"
+    print "Please provide an H% filename as argument"
     sys.exit(1)
         
 simdata = SimData(args[0])
@@ -86,7 +90,8 @@ simdata.select(channels=slice(BCHAN,ECHAN))
 #   faking it up for now, until such time as 
 #   kattelmod is more developed.
 TMfile = 'TM.pickle'
-TM = simdata.setup_TM(TMfile)
+# use parameters from parameter file as defaults, but override with TMfile
+TM = simdata.setup_TM(TMfile,params)
 
 # ----------------------------------------------------------
 # extract values we need frequently from the TM
@@ -130,10 +135,13 @@ g0 = None
 target_hh = None
 
 # ----------------------------------------------------------
+# iterate through scans and calibrate scan by scan
 
 scan_iter = 0
 
 for scan_ind, scan_state, target in simdata.scans():
+  #if target.name == '0637-752':    
+    
     scan_iter = scan_iter+1
 
     num_dumps = simdata.shape[0]
@@ -191,7 +199,7 @@ for scan_ind, scan_state, target in simdata.scans():
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(k_solint,dump_period,len(times))
         # first averge solution interval then channel
-        ave_vis_hh, ave_flags_hh, ave_weights_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+        ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
@@ -215,12 +223,19 @@ for scan_ind, scan_state, target in simdata.scans():
         ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
         # solve for K
         k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=k_chan_sample),
-          np.ones(num_ants), 'inf', corrprod_lookup_hh)
+          np.ones(num_ants), 'inf', corrprod_lookup_hh)          
+        # solve for std deviation
+        if options.keep_stats:
+            stddev_hh = np.std(np.abs(ave_vis_hh),axis=0)
+            std_soln_hh = CalSolution('STD',calprocs.g_fit(stddev_hh,None,antlist1,antlist2,REFANT),np.ones(num_ants), 'inf', corrprod_lookup_hh)
           
         # ---------------------------------------  
         # update TM
         TM['K'].append(k_soln_hh.values)
         TM['K_current'] = k_soln_hh.values
+        if options.keep_stats:
+            TM['K_std'].append(std_soln_hh.values)
+            TM['K_std_current'] = std_soln_hh.values
       
         # ---------------------------------------
         timing_file.write("Delay cal:    %s \n" % (np.round(time()-t0,3),))
@@ -242,12 +257,19 @@ for scan_ind, scan_state, target in simdata.scans():
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(bp_solint,dump_period,len(times))
         # first averge solution interval then channel
-        ave_vis_hh, ave_flags_hh, ave_weights_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+        ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
         pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
+                
+        # solve for std deviation
+        if options.keep_stats:
+            stddev_hh = np.std(np.abs(ave_vis_hh),axis=0)
+            print av_sig_hh.shape, stddev_hh.shape
+            #pri
+            std_soln_hh = CalSolution('STD',calprocs.g_fit(stddev_hh,None,antlist1,antlist2,REFANT),np.ones(num_ants), 'inf', corrprod_lookup_hh)
          
         # plot the G solutions
         #if per_scan_plots: plotting.plot_g_solns(g_array)
@@ -274,6 +296,9 @@ for scan_ind, scan_state, target in simdata.scans():
         # update TM
         TM['BP'].append(bp_soln_hh.values)
         TM['BP_current'] = bp_soln_hh.values
+        if options.keep_stats:
+            TM['BP_std'].append(std_soln_hh.values)
+            TM['BP_std_current'] = std_soln_hh.values
       
         # ---------------------------------------
         # Apply BP solution 
@@ -303,8 +328,14 @@ for scan_ind, scan_state, target in simdata.scans():
     if any( 'gaincal' in k for k in taglist ):
         # ---------------------------------------
         # Apply K and BP solutions
-        k_to_apply = k_soln_hh.interpolate(times) 
+        # Apply K solution
+        k_current = TM['K_current']
+        k_soln_hh = CalSolution('K', k_current, np.ones(num_ants), 'inf', corrprod_lookup_hh)
+        k_to_apply = k_soln_hh.interpolate(times)
         vis_hh = k_to_apply.apply(vis_hh, chans)
+        
+        bp_current = TM['BP_current']
+        bp_soln_hh = CalSolution('B',bp_current, np.ones(num_ants), 'inf', corrprod_lookup_hh)
         bp_to_apply = bp_soln_hh.interpolate(times) 
         vis_hh = bp_to_apply.apply(vis_hh)
       
@@ -313,7 +344,7 @@ for scan_ind, scan_state, target in simdata.scans():
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(g_solint,dump_period,len(times))
         # first averge solution interval then channel
-        ave_vis_hh, ave_flags_hh, ave_weights_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+        ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
@@ -324,7 +355,7 @@ for scan_ind, scan_state, target in simdata.scans():
         #if per_scan_plots: plotting.plot_g_solns(g_array)
          
         # plot the G solutions
-        if per_scan_plots: plotting.plot_g_solns(g_array)
+        if per_scan_plots: plotting.plot_g_solns(g_soln_hh.times,g_soln_hh.values)
       
         # ---------------------------------------
         # RFI flagging
@@ -339,12 +370,20 @@ for scan_ind, scan_state, target in simdata.scans():
         dumps_per_solint = np.ceil(num_dumps/2.0)
         solint = dumps_per_solint*dump_period
         # first averge solution interval then channel
-        ave_vis_hh, ave_flags_hh, ave_weights_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
+        ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
                 dumps_per_solint,axis=0,times=times)
+        if options.keep_stats:
+            stddev_hh = np.std(np.abs(ave_vis_hh),axis=1)
+            # fidge for nans - fix later
+            stddev_hh[np.isnan(stddev_hh)] = np.nanmean(stddev_hh)
+
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
         g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
+                
+        # solve for std deviation
+        #std_soln_hh = CalSolution('STD',calprocs.g_fit_per_solint(av_sig_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT),np.ones(num_ants), 'inf', corrprod_lookup_hh)
        
         # plot the G solutions
         #if per_scan_plots: plotting.plot_g_solns(g_array)
@@ -356,6 +395,10 @@ for scan_ind, scan_state, target in simdata.scans():
         #TM['G'].append(np.ravel(g_soln_hh.values))
         #TM['G_times'].append(np.ravel(g_soln_hh.times))
         TM['G_current'] = g_soln_hh.values
+    
+        if options.keep_stats:
+            for s in std_soln_hh.values: TM['G_std'].append(s)
+            TM['G_std_current'] = std_soln_hh.values
 
         # ---------------------------------------
         # write the calibrated gaincal data back to h5 file
@@ -414,8 +457,13 @@ if closing_plots:
    
     # plot G solutions from TM
     g_solns = np.array(TM['G'])
+    if options.keep_stats: g_std = np.array(TM['G_std'])
     g_soln_times = np.array(TM['G_times'])
-    plotting.plot_g_solns(g_soln_times,g_solns)
+    #plotting.plot_g_solns(g_soln_times,g_solns)
+    if options.keep_stats:
+        plotting.plot_g_solns_with_errors(g_soln_times,g_solns,g_std)
+    else:
+        plotting.plot_g_solns(g_soln_times,g_solns) 
    
     # plot BP solutions
     #plotting.plot_bp_soln_list(np.array(TM['BP']))
