@@ -1,6 +1,49 @@
 import numpy as np
 
-def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, conv_thresh=0.001, verbose=False):
+def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
+    algorithm='adi', conv_thresh=0.001, verbose=False):
+    """Solve for antenna gains using ADI StefCal.
+    ADI StefCal implimentation from:
+    'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
+    Analysis and applications', Salvini & Winjholds, 2014
+
+    Parameters
+    ----------
+    vis : array of complex, shape (N,)
+        Complex cross-correlations between antennas A and B
+    num_ants : int
+        Number of antennas
+    antA, antB : numpy array of int, shape (N,)
+        Antenna indices associated with visibilities
+    num_iters : int, optional
+        Number of iterations
+    ref_ant : int, optional
+        Reference antenna whose gain will be forced to be 1.0
+    init_gain : array of complex, shape(num_ants,) or None, optional
+        Initial gain vector (all equal to 1.0 by default)
+    conv_thresh : float, optional
+        Convergence threshold, only for ADI stefcal
+    algorithm : string, optional
+        Stefcal algorithm:
+        'adi' -      ADI stefcal (default)
+        'schwardt' - Schwardt stefcal
+
+    Returns
+    -------
+    gains : array of complex, shape (num_ants,)
+        Complex gains, one per antenna
+
+    """
+    if algorithm == 'adi':
+        return adi_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
+                init_gain, conv_thresh, verbose)
+    elif algorithm == 'schwardt':
+        return schwardt_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
+                init_gain, verbose)
+    else:
+        raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
+
+def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, conv_thresh=0.001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -79,6 +122,7 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
     
+    print 'a', g_curr[0]
     return g_curr
     
 def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
@@ -127,6 +171,7 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         if verbose: print "Iteration %d: mean absolute gain change = %f" % (n + 1, 0.5 * np.abs(g_new - g_curr).mean())
         # Avoid getting stuck
         g_curr = 0.5 * (g_new + g_curr)
+    print 's', g_curr[0]
     return g_curr
     
 def g_from_K(chans,K):
