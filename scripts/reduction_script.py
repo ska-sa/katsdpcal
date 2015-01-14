@@ -12,6 +12,7 @@ from katcal import calprocs
 from katcal.calsolution import CalSolution
 from katcal import parameters
 from katcal.simulator import SimData
+from katcal import report
 
 from time import time
 
@@ -53,7 +54,7 @@ BCHAN = params['bchan']
 ECHAN = params['echan']
 
 # plots per scan
-per_scan_plots = True
+#per_scan_plots = True
 
 # ----------------------------------------------------------
 # H5 file to use for simulation
@@ -71,7 +72,9 @@ if len(args) < 1 or not args[0].endswith(".h5"):
     print "Please provide an H% filename as argument"
     sys.exit(1)
         
-simdata = SimData(args[0])
+file_name = args[0]
+project_name = file_name.split('.')[0]
+simdata = SimData(file_name)
     
 # Select frequency channel range
 #   if channel range is set in the parser options it overrides the parameter file
@@ -134,13 +137,17 @@ k0_hh = None
 g0 = None
 target_hh = None
 
+# initialise list to hold figures
+fig_list = []
+
 # ----------------------------------------------------------
 # iterate through scans and calibrate scan by scan
 
 scan_iter = 0
 
 for scan_ind, scan_state, target in simdata.scans():
-  #if target.name == '0637-752':    
+  #if target.name == '0637-752':   
+  if scan_ind < 8: 
     
     scan_iter = scan_iter+1
 
@@ -215,7 +222,7 @@ for scan_ind, scan_state, target in simdata.scans():
         vis_hh = g_to_apply.apply(vis_hh)    
             
         # plot data with G solutions applied:
-        if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+        if per_scan_plots: fig_list.append(plotting.plot_bp_data(vis_hh,plotavg=True))
       
         # ---------------------------------------
         # K solution
@@ -306,7 +313,7 @@ for scan_ind, scan_state, target in simdata.scans():
         vis_hh = bp_to_apply.apply(vis_hh)
       
         # plot data with K solutions applied:
-        if per_scan_plots: plotting.plot_bp_data(vis_hh,plotavg=True)
+        if per_scan_plots: fig_list.append(plotting.plot_bp_data(vis_hh,plotavg=True))
         # plot all data:
         #if per_scan_plots: plotting.plot_bp_solns(bp_soln_hh.values)   
       
@@ -355,7 +362,7 @@ for scan_ind, scan_state, target in simdata.scans():
         #if per_scan_plots: plotting.plot_g_solns(g_array)
          
         # plot the G solutions
-        if per_scan_plots: plotting.plot_g_solns(g_soln_hh.times,g_soln_hh.values)
+        if per_scan_plots: fig_list.append(plotting.plot_g_solns(g_soln_hh.times,g_soln_hh.values))
       
         # ---------------------------------------
         # RFI flagging
@@ -450,7 +457,7 @@ for scan_ind, scan_state, target in simdata.scans():
         
 
 timing_file.close()
-pickle.dump(TM, open('TM.pickle', 'wb'))
+#pickle.dump(TM, open('TM.pickle', 'wb'))
 
 if closing_plots:
     # plot BP solutions from TM
@@ -461,11 +468,15 @@ if closing_plots:
     g_soln_times = np.array(TM['G_times'])
     #plotting.plot_g_solns(g_soln_times,g_solns)
     if options.keep_stats:
-        plotting.plot_g_solns_with_errors(g_soln_times,g_solns,g_std)
+        fig_list.append(plotting.plot_g_solns_with_errors(g_soln_times,g_solns,g_std))
     else:
-        plotting.plot_g_solns(g_soln_times,g_solns) 
-   
+        fig_list.append(plotting.plot_g_solns(g_soln_times,g_solns)) 
+           
     # plot BP solutions
-    #plotting.plot_bp_soln_list(np.array(TM['BP']))
-
+    fig_list.append(plotting.plot_bp_soln_list(np.array(TM['BP'])))
+    
+# plotting.flush_plots()
+report_name = file_name.replace('.h5','.pdf')
+#plotting.flush_plots(fig_list,report_name)
+report.make_cal_report(project_name,fig_list)
 

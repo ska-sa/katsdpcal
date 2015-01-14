@@ -34,6 +34,7 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
         Complex gains, one per antenna
 
     """
+    #algorithm = 'schwardt'
     if algorithm == 'adi':
         return adi_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
                 init_gain, conv_thresh, verbose)

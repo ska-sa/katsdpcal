@@ -1,7 +1,31 @@
 import matplotlib.pylab as plt
 import numpy as np
 
+# for multiple page pdf plotting
+from matplotlib.backends.backend_pdf import PdfPages
+
 #PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k'] 
+    
+def flush_plots(fig_list,report_name='cal_report.pdf'):
+    """
+    Plots accumulated figures to pdf document and screen
+    
+    Parameters
+    ----------
+    fig_list    : list of matplotlib figures to plot
+    report_name : name of pdf to save
+    """
+    
+    # create multi-page pdf document for report
+    pdf_pages = PdfPages(report_name)
+    # plot each figure to a separate page 
+    #  (till we decide on a better way to do the reporting)
+    for fig in fig_list:
+        pdf_pages.savefig(fig)
+    pdf_pages.close()
+    
+    # also plot figures to screen
+    plt.show()
 
 def plot_data_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
     """
@@ -53,7 +77,7 @@ def plot_bp_data(data,chans=None,plotavg=False):
         nrows, ncols = 2,2 
     else:
         nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
 
     tlist = np.arange(data.shape[0])
     for ti in tlist:
@@ -61,7 +85,7 @@ def plot_bp_data(data,chans=None,plotavg=False):
         
     if plotavg: plot_data_v_chan(np.nanmean(data,axis=0),axes,plotnum=1,ylabelplus=' (Avg)')
 
-    plt.show()
+    return fig
     
 def plot_bp_solns(data,chans=None):
     """
@@ -76,10 +100,10 @@ def plot_bp_solns(data,chans=None):
     if not chans: chans = np.arange(data.shape[-2])
 
     nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
     plot_data_v_chan(data,axes,plotnum=0)
 
-    plt.show()
+    return fig
    
 def plot_bp_soln_list(bplist,chans=None):
     """
@@ -94,11 +118,11 @@ def plot_bp_soln_list(bplist,chans=None):
     if not chans: chans = np.arange(bplist[0].shape[-2])
 
     nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,3.5*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
     for bp in bplist:
         plot_data_v_chan(bp,axes,plotnum=0)
 
-    plt.show()
+    return fig
    
 def plot_g_solns(times,data):
     """
@@ -109,7 +133,7 @@ def plot_g_solns(times,data):
     data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,4.0*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
    
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -125,7 +149,7 @@ def plot_g_solns(times,data):
     axes[0].set_xlabel('Time / [min]') 
     axes[1].set_xlabel('Time / [min]') 
 
-    plt.show()
+    return fig
     
 def plot_g_solns_with_errors(times,data,stddev):
     """
@@ -138,7 +162,7 @@ def plot_g_solns_with_errors(times,data,stddev):
     """
     
     nrows, ncols = 2,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(14.0*ncols,4.0*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
    
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -164,7 +188,7 @@ def plot_g_solns_with_errors(times,data,stddev):
     
     axes[1,0].plot(times/60.,stddev,'.-')
 
-    plt.show()
+    return fig
 
 def plot_waterfall(visdata,contrast=0.01,flags=None,channel_freqs=None,dump_timestamps=None):
     """
@@ -253,7 +277,7 @@ def plot_RFI_mask(pltobj,extra=None,channelwidth=1e6):
     pltobj.axvspan(1258e6,1278e6, alpha=0.3, color='green')#Beidou
     pltobj.axvspan(1559e6,1563e6, alpha=0.3, color='green')#Beidou  
     pltobj.axvspan(1555e6,1596e6, alpha=0.3, color='green')#GPS L1  1555 -> 1596 
-    pltobj.axvspan(1207e6,1238e6, alpha=0.3, color='green')#GPS L2  1207 -> 1248 
+    pltobj.axvspan(1207e6,1238e6, alpha=0.3, color='green')#GPS L2  1207 -> 1188 
     pltobj.axvspan(1378e6,1384e6, alpha=0.3, color='green')#GPS L3  
     pltobj.axvspan(1588e6,1615e6, alpha=0.3, color='green')#GLONASS  1588 -> 1615 L1
     pltobj.axvspan(1232e6,1259e6, alpha=0.3, color='green')#GLONASS  1232 -> 1259 L2
