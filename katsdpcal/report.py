@@ -25,7 +25,14 @@ def get_path_from_env(envvar,filename):
     return None 
     
 def insert_fig_list(report,fig_list):
-    # append images to report
+    """
+    Appends images to report
+    
+    Parameters
+    ----------
+    report   : open report file to write into
+    fig_list : list of matplitlib figures 
+    """
     for i, fig in enumerate(fig_list):
         figname = str(i)+'.jpeg'
         fig.savefig(figname,bbox_inches='tight')
@@ -37,7 +44,15 @@ def insert_fig_list(report,fig_list):
         report.write('\n')
 
 def make_cal_report(project_name,fig_list):
+    """
+    Creates pdf calibration pipeline report
+    Report is built from template and list of figures.
     
+    Parameters
+    ----------
+    project_name : name of observation project
+    fig_list     : list of matplitlib figures 
+    """
     # make calibration report directory and move into it
     os.mkdir(project_name)
     os.chdir(project_name)
