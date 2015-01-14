@@ -56,8 +56,10 @@ def make_cal_report(project_name,fig_list):
 
     # open report to append to
     cal_rst = open(report_file, 'a')
+    cal_rst.write('Calibration pipeline report for observation {0}\n\n'.format(project_name))
     
     # add images to report
+    cal_rst.write('Gain solutions\n\n')
     insert_fig_list(cal_rst,fig_list)
     
     # close off report
