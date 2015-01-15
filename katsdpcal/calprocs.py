@@ -73,7 +73,82 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
     -------
     gains : array of complex, shape (num_ants,)
         Complex gains, one per antenna
+    """
+    
+    # Initialise gain matrix
+    g_prev = np.ones(num_ants, dtype=np.complex) if init_gain is None else init_gain  
+    g_curr = 1.0*g_prev
+    # initialise calibrator source model
+    #   default is unity with zeros along the diagonals to ignore autocorr
+    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
+    
+    for i in range(num_iters):
+        # iterate through antennas, solving for each gain
+        for p in range(num_ants):
+            # z <- g_prev odot M[:,p]
+            z = [g*m for g,m in zip(g_prev,M[:,p])]
+            z.pop(p)
 
+            # R[:,p]
+            antA_vis = vis[antA==p]
+            # antenna order of R[:,p]
+            antB_order = antB[antA==p].tolist()
+
+            # g[p] <- (R[:,p] dot z)/(z^H dot z)
+            antlist = range(num_ants)
+            antlist.pop(p)
+            g_curr[p] = np.sum([antA_vis[antB_order.index(j)]*zj for j,zj in zip(antlist,z)])/(np.dot(np.conjugate(z),z))
+            
+            # Force reference gain to be zero phase
+            g_curr *= abs(g_curr[ref_ant])/g_curr[ref_ant]
+
+        # for even iterations, check convergence
+        # for odd iterations, average g_curr and g_prev  
+        #  note - i starts at zero, unlike Salvini & Winjholds (2014) algorithm  
+        if np.mod(i,2) == 1: 
+            # convergence criterion:
+            # abs(g_curr - g_prev) / abs(g_curr) < tau
+            diff = np.sum(np.abs(g_curr - g_prev)/np.abs(g_curr))
+            if diff < conv_thresh: 
+                break
+        else:
+            # G_curr <- (G_curr + G_prev)/2
+            g_curr = (g_curr + g_prev)/2.0
+           
+        # for next iteration, set g_prev to g_curr   
+        g_prev = 1.0*g_curr
+    
+    return g_curr    
+    
+def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+    """Solve for antenna gains using ADI StefCal, including fake autocorr data
+    ADI StefCal implimentation from:
+    'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
+    Analysis and applications', Salvini & Winjholds, 2014
+    
+    Parameters
+    ----------
+    vis         : array of complex, shape (N,)
+        Complex cross-correlations between antennas A and B
+    num_ants    : int
+        Number of antennas
+    antA, antB  : numpy array of int, shape (N,)
+        Antenna indices associated with visibilities
+    num_iters   : int, optional
+        Number of iterations
+    ref_ant     : int, optional
+        Reference antenna whose gain will be forced to be 1.0
+    init_gain   : array of complex, shape(num_ants,) or None, optional
+        Initial gain vector (all equal to 1.0 by default)
+    model       : array of complex, shape(num_ants, num_ants) or None, optional
+        Sky model   
+    conv_thresh : float, optional
+        Convergence threshold
+        
+    Returns
+    -------
+    gains : array of complex, shape (num_ants,)
+        Complex gains, one per antenna
     """
     
     # fudge add pretend autocorr data to the end 
@@ -121,7 +196,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
     
-    return g_curr    
+    return g_curr  
     
 def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
     """Solve for antenna gains using StefCal.
