@@ -97,14 +97,10 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
             # R[:,p]
             antA_vis = vis[antA==p]
             # antenna order of R[:,p]
-            antB_order = antB[antA==p]
-
-            # re-order into increasing antenna order
-            mod_vis = np.empty_like(antA_vis)
-            for j,b in zip(range(num_ants),antB_order): mod_vis[b] = antA_vis[j] 
+            antB_order = antB[antA==p].tolist()
 
             # g[p] <- (R[:,p] dot z)/(z^H dot z)
-            g_curr[p] = np.dot(mod_vis,z)/(np.dot(z,np.conjugate(z)))
+            g_curr[p] = np.sum([antA_vis[antB_order.index(j)]*z[j] for j in range(num_ants)])/(np.dot(np.conjugate(z),z))
             
             # Force reference gain to be zero phase
             g_curr *= abs(g_curr[ref_ant])/g_curr[ref_ant]
@@ -125,7 +121,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
     
-    return g_curr        
+    return g_curr    
     
 def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
     """Solve for antenna gains using StefCal.
