@@ -1,3 +1,10 @@
+'''
+Calibration procedures for MeerKAT calibration pipeline
+=======================================================
+
+Solvers and averagers for use in the MeerKAT calibration pipeline.
+'''
+
 import numpy as np
 
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 

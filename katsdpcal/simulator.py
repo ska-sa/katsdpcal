@@ -1,5 +1,10 @@
-"""Simulator class for HDF5 files produced by KAT-7 correlator,
-   for testing of the MeerKAT pipeline."""
+"""
+KAT-7 Simulator for testing MeerKAT calibration pipeline
+========================================================
+
+Simulator class for HDF5 files produced by KAT-7 correlator,
+for testing of the MeerKAT pipeline.
+"""
 
 import katdal
 from katdal import H5DataV2

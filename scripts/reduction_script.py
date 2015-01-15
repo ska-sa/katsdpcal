@@ -132,10 +132,10 @@ antlist2 = np.concatenate((corrprod_lookup_hh[:,1], corrprod_lookup_hh[:,0]))
 # ----------------------------------------------------------
 # set initial values for fits
 
-bp0_hh = None
-k0_hh = None
-g0 = None
-target_hh = None
+bp0_h = None
+k0_h = None
+g0_h = None
+target_h = None
 
 # initialise list to hold figures
 fig_list = []
@@ -147,7 +147,7 @@ scan_iter = 0
 
 for scan_ind, scan_state, target in simdata.scans():
   #if target.name == '0637-752':   
-  if scan_ind < 8: 
+  #if scan_ind < 8: 
     
     scan_iter = scan_iter+1
 
@@ -191,7 +191,7 @@ for scan_ind, scan_state, target in simdata.scans():
         #   this assumes a model where we get data in chunks of 
         #   [target, gaincal], [target, gaincal]...
         #   mocking it up for now
-        target_hh = vis_hh
+        target_h = vis_hh
         target_chan_mask = simdata._freq_keep
         target_time_mask = simdata._time_keep
         target_times = times
@@ -210,7 +210,7 @@ for scan_ind, scan_state, target in simdata.scans():
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
-        pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+        pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
 
         # plot the G solutions
@@ -229,7 +229,7 @@ for scan_ind, scan_state, target in simdata.scans():
         # average over all time
         ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
         # solve for K
-        k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_hh,bp0_hh,REFANT,chan_sample=k_chan_sample),
+        k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_h,bp0_h,REFANT,chan_sample=k_chan_sample),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)          
         # solve for std deviation
         if options.keep_stats:
@@ -268,7 +268,7 @@ for scan_ind, scan_state, target in simdata.scans():
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
-        pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+        pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
                 
         # solve for std deviation
@@ -296,7 +296,7 @@ for scan_ind, scan_state, target in simdata.scans():
         # first average over all time
         ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
         # then solve for BP    
-        bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_hh,REFANT),
+        bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_h,REFANT),
           np.ones(num_ants), 'inf', corrprod_lookup_hh)
               
         # ---------------------------------------  
@@ -355,7 +355,7 @@ for scan_ind, scan_state, target in simdata.scans():
                 dumps_per_solint,axis=0,times=times)
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
-        g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+        g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
 
         # plot the G solutions
@@ -386,7 +386,7 @@ for scan_ind, scan_state, target in simdata.scans():
 
         ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
         # solve for gains
-        g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0,REFANT), 
+        g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
                 ave_times_hh, solint, corrprod_lookup_hh)
                 
         # solve for std deviation
@@ -418,7 +418,7 @@ for scan_ind, scan_state, target in simdata.scans():
         timing_file.write("Gain cal: %s \n" % (np.round(time()-t0,3),))
         t0 = time()
       
-        if target_hh is not None:
+        if target_h is not None:
             # ---------------------------------------
             # apply gains to target
             #   this assumes a model where we get data in chunks of 
@@ -428,16 +428,16 @@ for scan_ind, scan_state, target in simdata.scans():
             # ---------------------------------------
             # Apply K and BP solutions
             k_to_apply = k_soln_hh.interpolate(target_times) 
-            target_hh = k_to_apply.apply(target_hh, chans)
+            target_h = k_to_apply.apply(target_h, chans)
             bp_to_apply = bp_soln_hh.interpolate(target_times) 
-            target_hh = bp_to_apply.apply(target_hh)
+            target_h = bp_to_apply.apply(target_h)
       
             # ---------------------------------------
             # Apply G solutions
          
             cal_g_sol_hh = g_soln_hh.concat(pre_target_g_hh)
             g_sol_hh_to_apply = cal_g_sol_hh.interpolate(target_times)
-            target_hh = g_sol_hh_to_apply.apply(target_hh)
+            target_h = g_sol_hh_to_apply.apply(target_h)
       
             # ---------------------------------------
             # RFI flagging
@@ -445,7 +445,7 @@ for scan_ind, scan_state, target in simdata.scans():
       
             # ---------------------------------------
             # write the calibrated target data back to h5 file
-            if options.write_target: simdata.write_h5(target_hh,hh_mask,tmask=target_time_mask,cmask=target_chan_mask)
+            if options.write_target: simdata.write_h5(target_h,hh_mask,tmask=target_time_mask,cmask=target_chan_mask)
       
             # ---------------------------------------
             timing_file.write("Source (cal application): %s \n" % (np.round(time()-t0,3),))
@@ -457,6 +457,7 @@ for scan_ind, scan_state, target in simdata.scans():
         
 
 timing_file.close()
+# save TM
 #pickle.dump(TM, open('TM.pickle', 'wb'))
 
 if closing_plots:
@@ -475,7 +476,6 @@ if closing_plots:
     # plot BP solutions
     fig_list.append(plotting.plot_bp_soln_list(np.array(TM['BP'])))
     
-# plotting.flush_plots()
 report_name = file_name.replace('.h5','.pdf')
 #plotting.flush_plots(fig_list,report_name)
 report.make_cal_report(project_name,fig_list)
