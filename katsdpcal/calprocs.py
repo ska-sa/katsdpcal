@@ -1,7 +1,7 @@
 import numpy as np
 
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
-    algorithm='adi', conv_thresh=0.001, verbose=False):
+    model=None, algorithm='adi', conv_thresh=0.001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -37,14 +37,14 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
     #algorithm = 'schwardt'
     if algorithm == 'adi':
         return adi_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
-                init_gain, conv_thresh, verbose)
+                init_gain, model, conv_thresh, verbose)
     elif algorithm == 'schwardt':
         return schwardt_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
                 init_gain, verbose)
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
-
-def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, conv_thresh=0.001, verbose=False):
+        
+def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -52,18 +52,20 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
 
     Parameters
     ----------
-    vis : array of complex, shape (N,)
+    vis         : array of complex, shape (N,)
         Complex cross-correlations between antennas A and B
-    num_ants : int
+    num_ants    : int
         Number of antennas
-    antA, antB : numpy array of int, shape (N,)
+    antA, antB  : numpy array of int, shape (N,)
         Antenna indices associated with visibilities
-    num_iters : int, optional
+    num_iters   : int, optional
         Number of iterations
-    ref_ant : int, optional
+    ref_ant     : int, optional
         Reference antenna whose gain will be forced to be 1.0
-    init_gain : array of complex, shape(num_ants,) or None, optional
+    init_gain   : array of complex, shape(num_ants,) or None, optional
         Initial gain vector (all equal to 1.0 by default)
+    model       : array of complex, shape(num_ants, num_ants) or None, optional
+        Sky model   
     conv_thresh : float, optional
         Convergence threshold
 
@@ -80,11 +82,11 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
     antB = np.concatenate((antB,range(num_ants)))
     
     # Initialise gain matrix
-    g_prev = np.ones(num_ants, dtype=np.complex)
+    g_prev = np.ones(num_ants, dtype=np.complex) if init_gain is None else init_gain  
     g_curr = 1.0*g_prev
-    # initialise calibrator (unity) source model
-    #   zeros along the diagonals to ignore autocorr
-    M = 1.0 - np.eye(num_ants, dtype=np.complex)
+    # initialise calibrator source model
+    #   default is unity with zeros along the diagonals to ignore autocorr
+    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
     
     for i in range(num_iters):
         # iterate through antennas, solving for each gain
@@ -105,7 +107,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
             g_curr[p] = np.dot(mod_vis,z)/(np.dot(z,np.conjugate(z)))
             
             # Force reference gain to be zero phase
-            g_curr = abs(g_curr[ref_ant])*g_curr/g_curr[ref_ant]
+            g_curr *= abs(g_curr[ref_ant])/g_curr[ref_ant]
 
         # for even iterations, check convergence
         # for odd iterations, average g_curr and g_prev  
@@ -123,7 +125,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
     
-    return g_curr
+    return g_curr        
     
 def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
     """Solve for antenna gains using StefCal.
