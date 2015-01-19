@@ -6,7 +6,7 @@ Calibration pipeline package for MeerKAT.
 """
 
 import logging
-logging.basicConfig(filename='tstlog.log')
+logging.basicConfig(filename='pipeline.log')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
