@@ -3,6 +3,11 @@ import numpy as np
 from katcal.control_threads import accumulator_thread, pipeline_thread
 import threading
 
+import optparse
+
+from katcal.simulator import SimData
+from katcal import parameters
+
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -20,14 +25,34 @@ def create_buffer_arrays(array_length,nchan,nbl,npol):
     times = np.empty([array_length],dtype=np.float)
     return vis,flags, times
           
-def run_threads():
+def run_threads(h5file):
     
     # data parameters for buffer
     buffer_maxsize = 1000e6 #128.e9
     element_size = 8. # 8 bits in an np.complex64
-    nchan = 32768
-    nbl = 3
+
+    # ------------------------------------------------------------
+    # for fake meerkat ingest data:    
+#    nchan = 32768
+#    nbl = 3
+#    npol = 4
+
+    # for kat7 simulated data:
+    # get data shape from telescope model
+    #   for the moment - mock this up from the simulated data
+    file_name = h5file
+    simdata = SimData(file_name)
+    params = parameters.set_params()
+    TMfile = 'TM.pickle'
+    # use parameters from parameter file as defaults, but override with TMfile
+    TM = simdata.setup_TM(TMfile,params)
+
+    nchan = TM['echan'] - TM['bchan']
+    # including autocorrelations
+    nbl = TM['num_ants']*(TM['num_ants']+1)/2
     npol = 4
+    # ------------------------------------------------------------
+    
     array_length = buffer_maxsize/(element_size*nchan*npol*nbl)
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
@@ -75,4 +100,8 @@ def run_threads():
     pipeline2.join()
 
 if __name__ == '__main__':
-    run_threads()
+    
+    parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Run MeerKAT calibration pipeline on H5 file')
+    (options, args) = parser.parse_args()
+    
+    run_threads(args[0])

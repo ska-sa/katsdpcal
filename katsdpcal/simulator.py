@@ -82,6 +82,14 @@ class SimData(katdal.H5DataV2):
         return TM
         
     def h5toSPEAD(self,port):
+        """
+        Iterates through H5 file and transmits data as a spead stream.
+        
+        Parameters
+        ----------
+        port : port to send spead tream to
+        
+        """
         
         print 'TX: Initializing...'
         tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', port))
@@ -91,9 +99,7 @@ class SimData(katdal.H5DataV2):
             # transmit the data from this scan, timestamp by timestamp
             scan_data = self.vis[:]
             scan_flags = self.flags()[:]
-            
-            transmit_state(tx, scan_state)
-            
+
             # transmit data
             for i in range(scan_data.shape[0]): # time axis
 
@@ -101,38 +107,49 @@ class SimData(katdal.H5DataV2):
                 tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
 
-                transmit_ts(tx, tx_time, tx_vis, tx_flags)
+                # transmit timestamps, vis, flags and scan state (which stays the same for a scan)
+                transmit_ts(tx, tx_time, tx_vis, tx_flags, scan_state)
                 time.sleep(0.01)
                 
         end_transmit(tx)
                     
 def end_transmit(tx):
-    tx.end()
-    print 'TX: done.'
+    """
+    Send stop packet to spead stream tx
     
-def transmit_ts(tx, tx_time, tx_vis, tx_flags):
+    Parameters
+    ----------
+    tx       : spead stream
+    """
+    tx.end()
+    
+def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_state):
+    """
+    Send spead packet containing time, visibility, flags and array state
+    
+    Parameters
+    ----------
+    tx       : spead stream
+    tx_time  : timestamp, float
+    tx_vis   : visibilities, complex array 
+    tx_flags : flags, int array
+    tx_state : current state of array, string 
+               e.g. 'track', 'slew'
+    """
     ig = spead.ItemGroup()
 
-    ig.add_item(name='time', description='Timestamp',
+    ig.add_item(name='timestamp', description='Timestamp',
         shape=[], fmt=spead.mkfmt(('f',64)),
         init_val=tx_time)
 
-    ig.add_item(name='vis', description='Full visibility array',
+    ig.add_item(name='correlator_data', description='Full visibility array',
         init_val=tx_vis)
 
     ig.add_item(name='flags', description='Flag array',
         init_val=tx_flags)
-
-    tx.send_heap(ig.get_heap())
-    print 'TX: sent ts.'
-    
-def transmit_state(tx, tx_state):
-    ig = spead.ItemGroup()
-
-    ig.add_item(name='state', description='antenna state',
-        init_val=np.array([tx_state]))
         
+    ig.add_item(name='state', description='array state',
+        init_val=np.array([tx_state]))
+
     tx.send_heap(ig.get_heap())
-    print 'TX: sent state.'
-    
     
