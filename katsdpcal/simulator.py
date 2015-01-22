@@ -11,6 +11,8 @@ from katdal import H5DataV2
 import pickle
 import os
 import numpy as np
+import spead64_48 as spead
+import time
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  SimData
@@ -78,3 +80,59 @@ class SimData(katdal.H5DataV2):
         TM['dump_period'] = self.dump_period
    
         return TM
+        
+    def h5toSPEAD(self,port):
+        
+        print 'TX: Initializing...'
+        tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', port))
+        
+        for scan_ind, scan_state, target in self.scans(): 
+            
+            # transmit the data from this scan, timestamp by timestamp
+            scan_data = self.vis[:]
+            scan_flags = self.flags()[:]
+            
+            transmit_state(tx, scan_state)
+            
+            # transmit data
+            for i in range(scan_data.shape[0]): # time axis
+
+                tx_time = self.timestamps[i] # time
+                tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
+                tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
+
+                transmit_ts(tx, tx_time, tx_vis, tx_flags)
+                time.sleep(0.01)
+                
+        end_transmit(tx)
+                    
+def end_transmit(tx):
+    tx.end()
+    print 'TX: done.'
+    
+def transmit_ts(tx, tx_time, tx_vis, tx_flags):
+    ig = spead.ItemGroup()
+
+    ig.add_item(name='time', description='Timestamp',
+        shape=[], fmt=spead.mkfmt(('f',64)),
+        init_val=tx_time)
+
+    ig.add_item(name='vis', description='Full visibility array',
+        init_val=tx_vis)
+
+    ig.add_item(name='flags', description='Flag array',
+        init_val=tx_flags)
+
+    tx.send_heap(ig.get_heap())
+    print 'TX: sent ts.'
+    
+def transmit_state(tx, tx_state):
+    ig = spead.ItemGroup()
+
+    ig.add_item(name='state', description='antenna state',
+        init_val=np.array([tx_state]))
+        
+    tx.send_heap(ig.get_heap())
+    print 'TX: sent state.'
+    
+    
