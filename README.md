@@ -16,4 +16,4 @@ Instructions for running code with h5 simulator:
  > python run_cal.py   
 
 * run the h5 data stream:
- > python sim_h5_stream.py   \<h5file.py\>
+ > python sim_h5_stream.py   \<h5file.h5\>
