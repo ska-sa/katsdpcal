@@ -271,3 +271,10 @@ def set_params():
     #parms["doVOTable"]     =  True       # VOTable
    
     return parms
+    
+def init_tm(tm):
+    # start with empty TM
+    for key in tm.list_keys(): tm.delete(key)
+    # then populate with parameters from parameter file
+    param_dict = set_params()
+    for key in param_dict.keys(): tm.add(key, param_dict[key])

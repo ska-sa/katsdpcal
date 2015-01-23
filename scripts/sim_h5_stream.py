@@ -5,6 +5,7 @@ import sys
 
 from katcal import parameters
 from katcal.simulator import SimData
+from katcal.telescope_model import TelescopeModel
 
 # ----------------------------------------------------------
 # H5 file to use for simulation
@@ -20,14 +21,12 @@ if len(args) < 1 or not args[0].endswith(".h5"):
 file_name = args[0]
 simdata = SimData(file_name)
 
-# set up Telescope model
-TMfile = 'TM.pickle'
-params = parameters.set_params()
-TM = simdata.setup_TM(TMfile,params)
+# use TM set up by run_cal script
+tm = TelescopeModel(host='127.0.0.1',db=1)
     
 # select data to transmit    
-BCHAN = TM['bchan']
-ECHAN = TM['echan']       
+BCHAN = tm['bchan']
+ECHAN = tm['echan']      
 simdata.select(channels=slice(BCHAN,ECHAN))
 
 # transmit data

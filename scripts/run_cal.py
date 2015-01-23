@@ -8,6 +8,8 @@ import optparse
 from katcal.simulator import SimData
 from katcal import parameters
 
+from katcal.telescope_model import TelescopeModel
+
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -42,14 +44,17 @@ def run_threads(h5file):
     #   for the moment - mock this up from the simulated data
     file_name = h5file
     simdata = SimData(file_name)
-    params = parameters.set_params()
-    TMfile = 'TM.pickle'
-    # use parameters from parameter file as defaults, but override with TMfile
-    TM = simdata.setup_TM(TMfile,params)
+    
+    # create TM
+    tm = TelescopeModel(host='127.0.0.1',db=1)
+    # use parameters from parameter file to initialise TM
+    parameters.init_tm(tm)
+    # add and override with TM data from simulator 
+    simdata.setup_TM(tm)
 
-    nchan = TM['echan'] - TM['bchan']
+    nchan = tm['echan'] - tm['bchan']
     # including autocorrelations
-    nbl = TM['num_ants']*(TM['num_ants']+1)/2
+    nbl = tm['num_ants']*(tm['num_ants']+1)/2
     npol = 4
     # ------------------------------------------------------------
     

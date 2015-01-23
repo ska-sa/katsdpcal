@@ -42,44 +42,20 @@ class SimData(katdal.H5DataV2):
         self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
         self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
    
-    def setup_TM(self,TMfile,params):
+    def setup_TM(self,tm): #tmfile,params):
         """
         Initialises the Telescope Model, optionally from existing TM pickle.
    
         Parameters
         ----------
-        TMfile  : name of TM pickle file to open 
-        params  : dictionary of default parameters
-
-        Returns
-        ------- 
-        TM      : Telescope Model dictionary
+        tm : Telescope Model dictionary
         """   
-
-        # initialise with parameter dictionary 
-        TM = params
-        # update TM with pickle file values
-        TM_update = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
-        for key in TM_update: TM[key] = TM_update[key]
-
-        # empty solutions - start with no solutions
-        TM['BP'] = []
-        TM['BP_std'] = []
-        TM['K'] = []
-        TM['K_std'] = []
-        TM['G'] = []
-        TM['G_std'] = []
-        TM['G_times'] = []
-
-        # set siulated TM values from h5 file
-        TM['antlist'] = [ant.name for ant in self.ants]
-        TM['num_ants'] = len(self.ants)
-        TM['num_channels'] = len(self.channels)
-        #antdesclist = [ant.description for ant in simdata.ants]
-        TM['corr_products'] = self.corr_products
-        TM['dump_period'] = self.dump_period
-   
-        return TM
+        # set simulated tm values from h5 file
+        tm.add('antlist', [ant.name for ant in self.ants])
+        tm.add('num_ants', len(self.ants))
+        tm.add('num_channels', len(self.channels))
+        tm.add('corr_products', self.corr_products)
+        tm.add('dump_period', self.dump_period)
         
     def h5toSPEAD(self,port):
         """
