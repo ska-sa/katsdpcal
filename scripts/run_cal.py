@@ -78,9 +78,14 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     # Parameters which define the size of the array to initialise.
     # Needs to be made generic
     element_size = 8. # 8 bytes in an np.complex64
-    nchan = 32768
-    nbl = 3
+
+    # start TM
+    tm = TelescopeModel(host='127.0.0.1',db=1)
+    nchan = tm['echan'] - tm['bchan']
+    # number of baselines includes autocorrelations
+    nbl = tm['num_ants']*(tm['num_ants']+1)/2
     npol = 4
+    
     # ------------------------------------------------------------
     
     array_length = buffer_maxsize/(element_size*nchan*npol*nbl)
@@ -127,5 +132,7 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
 if __name__ == '__main__':
     
     (options, args) = parse_args()
+    print options
+    print args
 
     run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, spead_ip=options.spead_ip)

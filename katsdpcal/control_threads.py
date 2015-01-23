@@ -99,6 +99,8 @@ class accumulator_thread(threading.Thread):
 
         ig = spead.ItemGroup()
         start_flag = True
+        array_index = -1
+        max_length = data_buffer['times'].shape[0]
         
         # receive SPEAD stream
         print 'Got heaps: ',
