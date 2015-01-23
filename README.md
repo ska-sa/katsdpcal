@@ -7,13 +7,13 @@ Instructions for running code with h5 simulator:
 
 * Start a redis server 
 
-* run the TM simulator:
+* run the h5 TM simulator:
   
  > python sim_h5_tm.py   \<h5file.h5\>
 
-* start the pipeline controller:
+* run the pipeline controller:
 
- > python run_cal.py   \<h5file.h5\>
+ > python run_cal.py   
 
-* start the h5 data stread:
+* run the h5 data stream:
  > python sim_h5_stream.py   \<h5file.py\>
