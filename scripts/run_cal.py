@@ -45,12 +45,8 @@ def run_threads(h5file):
     file_name = h5file
     simdata = SimData(file_name)
     
-    # create TM
+    # start TM
     tm = TelescopeModel(host='127.0.0.1',db=1)
-    # use parameters from parameter file to initialise TM
-    parameters.init_tm(tm)
-    # add and override with TM data from simulator 
-    simdata.setup_TM(tm)
 
     nchan = tm['echan'] - tm['bchan']
     # including autocorrelations
