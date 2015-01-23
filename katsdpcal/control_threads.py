@@ -99,18 +99,22 @@ class accumulator_thread(threading.Thread):
 
         ig = spead.ItemGroup()
         start_flag = True
-        max_length = data_buffer['times'].shape[0]
-        array_index = -1
+        
         # receive SPEAD stream
         print 'Got heaps: ',
         for heap in spead.iterheaps(spead_stream): 
             ig.update(heap)
             print ig.heap_cnt, 
             array_index += 1
+
             if start_flag: 
                 start_time = ig['timestamp'] 
                 start_flag = False
-    
+                
+                
+            print ig['correlator_data'].shape
+            print self.nchan,self.nbl,self.npol
+
             # reshape data and put into relevent arrays
             data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol])  
             data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol])   

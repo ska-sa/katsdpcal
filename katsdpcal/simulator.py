@@ -42,46 +42,30 @@ class SimData(katdal.H5DataV2):
         self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
         self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
    
-    def setup_TM(self,TMfile,params):
+    def setup_TM(self,tm): #tmfile,params):
         """
         Initialises the Telescope Model, optionally from existing TM pickle.
    
         Parameters
         ----------
-        TMfile  : name of TM pickle file to open 
-        params  : dictionary of default parameters
-
-        Returns
-        ------- 
-        TM      : Telescope Model dictionary
+        tm : Telescope Model dictionary
         """   
-
-        # initialise with parameter dictionary 
-        TM = params
-        # update TM with pickle file values
-        TM_update = pickle.load(open(TMfile, 'rb')) if os.path.isfile(TMfile) else {}
-        for key in TM_update: TM[key] = TM_update[key]
-
-        # empty solutions - start with no solutions
-        TM['BP'] = []
-        TM['BP_std'] = []
-        TM['K'] = []
-        TM['K_std'] = []
-        TM['G'] = []
-        TM['G_std'] = []
-        TM['G_times'] = []
-
-        # set siulated TM values from h5 file
-        TM['antlist'] = [ant.name for ant in self.ants]
-        TM['num_ants'] = len(self.ants)
-        TM['num_channels'] = len(self.channels)
-        #antdesclist = [ant.description for ant in simdata.ants]
-        TM['corr_products'] = self.corr_products
-        TM['dump_period'] = self.dump_period
-   
-        return TM
+        # set simulated tm values from h5 file
+        tm.add('antlist', [ant.name for ant in self.ants])
+        tm.add('num_ants', len(self.ants))
+        tm.add('num_channels', len(self.channels))
+        tm.add('corr_products', self.corr_products)
+        tm.add('dump_period', self.dump_period)
         
     def h5toSPEAD(self,port):
+        """
+        Iterates through H5 file and transmits data as a spead stream.
+        
+        Parameters
+        ----------
+        port : port to send spead tream to
+        
+        """
         
         print 'TX: Initializing...'
         tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', port))
@@ -91,9 +75,7 @@ class SimData(katdal.H5DataV2):
             # transmit the data from this scan, timestamp by timestamp
             scan_data = self.vis[:]
             scan_flags = self.flags()[:]
-            
-            transmit_state(tx, scan_state)
-            
+
             # transmit data
             for i in range(scan_data.shape[0]): # time axis
 
@@ -101,38 +83,49 @@ class SimData(katdal.H5DataV2):
                 tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
 
-                transmit_ts(tx, tx_time, tx_vis, tx_flags)
+                # transmit timestamps, vis, flags and scan state (which stays the same for a scan)
+                transmit_ts(tx, tx_time, tx_vis, tx_flags, scan_state)
                 time.sleep(0.01)
                 
         end_transmit(tx)
                     
 def end_transmit(tx):
-    tx.end()
-    print 'TX: done.'
+    """
+    Send stop packet to spead stream tx
     
-def transmit_ts(tx, tx_time, tx_vis, tx_flags):
+    Parameters
+    ----------
+    tx       : spead stream
+    """
+    tx.end()
+    
+def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_state):
+    """
+    Send spead packet containing time, visibility, flags and array state
+    
+    Parameters
+    ----------
+    tx       : spead stream
+    tx_time  : timestamp, float
+    tx_vis   : visibilities, complex array 
+    tx_flags : flags, int array
+    tx_state : current state of array, string 
+               e.g. 'track', 'slew'
+    """
     ig = spead.ItemGroup()
 
-    ig.add_item(name='time', description='Timestamp',
+    ig.add_item(name='timestamp', description='Timestamp',
         shape=[], fmt=spead.mkfmt(('f',64)),
         init_val=tx_time)
 
-    ig.add_item(name='vis', description='Full visibility array',
+    ig.add_item(name='correlator_data', description='Full visibility array',
         init_val=tx_vis)
 
     ig.add_item(name='flags', description='Flag array',
         init_val=tx_flags)
-
-    tx.send_heap(ig.get_heap())
-    print 'TX: sent ts.'
-    
-def transmit_state(tx, tx_state):
-    ig = spead.ItemGroup()
-
-    ig.add_item(name='state', description='antenna state',
-        init_val=np.array([tx_state]))
         
+    ig.add_item(name='state', description='array state',
+        init_val=np.array([tx_state]))
+
     tx.send_heap(ig.get_heap())
-    print 'TX: sent state.'
-    
     

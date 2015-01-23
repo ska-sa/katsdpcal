@@ -7,6 +7,13 @@ import os
 
 from katcal.control_threads import accumulator_thread, pipeline_thread
 
+import optparse
+
+from katcal.simulator import SimData
+from katcal import parameters
+
+from katcal.telescope_model import TelescopeModel
+
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -74,6 +81,8 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     nchan = 32768
     nbl = 3
     npol = 4
+    # ------------------------------------------------------------
+    
     array_length = buffer_maxsize/(element_size*nchan*npol*nbl)
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
