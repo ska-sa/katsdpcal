@@ -15,6 +15,10 @@ before_install:
   # install deb package dependencies
   #  for scipy:
   - sudo apt-get install -qq gfortran libatlas-base-dev 
+  # install redis
+  - wget http://download.redis.io/releases/redis-2.8.19.tar.gz -O /tmp/redis.tar.gz
+  - tar -xzvf /tmp/redis.tar.gz
+  - cd /tmp/redis && make 
   # install pypi dependencies
   - travis_wait pip install -q -r requirements.txt 
   # clone private repositories
@@ -24,6 +28,9 @@ before_install:
 install:
   # Check if package is pip-installable while we are at it
   - pip install .
+
+before_script:
+  - cd /tmp/redis && ./redis-server
 
 script:
   - nosetests -v
