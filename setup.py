@@ -10,6 +10,7 @@ setup (
     packages = find_packages(),
     scripts = [
         "scripts/reduction_script.py",
+	"scripts/run_cal.py"	
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

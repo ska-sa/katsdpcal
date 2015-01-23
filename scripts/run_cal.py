@@ -1,30 +1,76 @@
 
+#! /usr/bin/env python
 import numpy as np
-from katcal.control_threads import accumulator_thread, pipeline_thread
 import threading
+import time
+import os
+
+from katcal.control_threads import accumulator_thread, pipeline_thread
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-import time
+from optparse import OptionParser
 
-PORT = 8890
+def parse_args():
+    usage = "%s [options]"%os.path.basename(__file__)
+    description = "Set up and wait for a spead stream to run the pipeline."
+    parser= OptionParser( usage=usage, description=description)
+    parser.add_option("--num_buffers", default=2, type="int", help="Specify the number of data buffers to use. default: 2")
+    parser.add_option("--buffer_maxsize", default=1000e6, type="float", help="The amount of memory (in bytes?) to allocate to each buffer. default: 1e9")
+    parser.add_option("--spead_port", default=8890, type="int", help="The port on which to listen for the spead stream. default: 8890")
+    parser.add_option("--spead_ip", default="localhost", help="The ip to listen for the spead streap. default: localhost")
+    return parser.parse_args()
+
+
+def all_alive(process_list):
+    """
+    Check if all of the process in process list are alive and return True
+    if they are or False if they are not.
+    Inputs
+    ======
+    process_list:  list of threading:Thread: objects
+    """
+
+    alive = True
+    for process in process_list:
+        alive = alive and process.isAlive()
+    return alive
             
 def create_buffer_arrays(array_length,nchan,nbl,npol):
     """
-    Create empty buffer arrays using specified dimensions
+    Create empty buffer record using specified dimensions
     """
-    vis = np.empty([array_length,nchan,nbl,npol],dtype=np.complex64)
-    flags = np.empty([array_length,nchan,nbl,npol],dtype=np.uint8)
-    times = np.empty([array_length],dtype=np.float)
-    return vis,flags, times
-          
-def run_threads():
-    
-    # data parameters for buffer
-    buffer_maxsize = 1000e6 #128.e9
-    element_size = 8. # 8 bits in an np.complex64
+    data={}
+    data['vis'] = np.empty([array_length,nchan,nbl,npol],dtype=np.complex64)
+    data['flags'] = np.empty([array_length,nchan,nbl,npol],dtype=np.uint8)
+    data['times'] = np.empty([array_length],dtype=np.float)
+    return data
+
+def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip="localhost"):
+    """
+    Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
+    This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
+    extra accumulator thread the reads data from the spead stream into each buffer
+    seen by the pipeline.
+    Inputs
+    ======
+    num_buffers: int
+        The number of buffers to use- this will create a pipeline thread for each buffer
+        and an extra accumulator thread to read the spead stream.
+    buffer_maxsize: float
+        The maximum size of the buffer. Memory for each buffer will be allocated at first
+        and then populated by the accumulator from the spead stream.
+    spead_port: int
+        The port to read the spead stream from
+    spead_ip: string
+        The ip to read the spead stream from.
+    """ 
+
+    # Parameters which define the size of the array to initialise.
+    # Needs to be made generic
+    element_size = 8. # 8 bytes in an np.complex64
     nchan = 32768
     nbl = 3
     npol = 4
@@ -32,47 +78,45 @@ def run_threads():
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
     
-    # create empty buffer arrays
-    vis1, flags1, times1 = create_buffer_arrays(array_length,nchan,nbl,npol)
-    vis2, flags2, times2 = create_buffer_arrays(array_length,nchan,nbl,npol)
+    # Set up empty buffers
+    buffers = [create_buffer_arrays(array_length,nchan,nbl,npol) for i in range(num_buffers)]
+
+    # set up conditions for the buffers
+    scan_accumulator_conditions = [threading.Condition() for i in range(num_buffers)]
     
-    # set up conditions for the two buffers
-    scan_accumulator_condition1 = threading.Condition()
-    scan_accumulator_condition2 = threading.Condition()
+    # Set up the accumulator
+    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, spead_port, spead_ip)
+
+    #Set up the pipelines (one per buffer)
+    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i) for i in range(num_buffers)]
     
-    accumulator = accumulator_thread(times1, vis1, flags1, scan_accumulator_condition1,
-        times2, vis2, flags2, scan_accumulator_condition2, PORT)
-    pipeline1 = pipeline_thread(times1, vis1, flags1, scan_accumulator_condition1, '1')
-    pipeline2 = pipeline_thread(times2, vis2, flags2, scan_accumulator_condition2, '2')
-    
+    #Start the accumulator thread
+    accumulator.start()
+    #Start the pipeline threads
+    map(lambda x: x.start(), pipelines)
+
     try:
-        accumulator.start()
-        pipeline1.start()
-        pipeline2.start()
-        while accumulator.isAlive() and pipeline1.isAlive() and pipeline2.isAlive(): 
-            # not sure if there is an appreciable cost to this - stole from the web
-            accumulator.join(1)  
-            pipeline1.join(1) 
-            pipeline2.join(1)
+        while all_alive([accumulator]+pipelines):
+            time.sleep(.1)
     except (KeyboardInterrupt, SystemExit):
         print '\nReceived keyboard interrupt! Quitting threads.\n'
+        #Stop pipelines first so they recieve correct signal before accumulator acquires the condition
+        map(lambda x: x.stop(), pipelines)
         accumulator.stop()
-        # wait for accumulator to release all before stopping pipeline
-        time.sleep(0.1)
-        pipeline1.stop()
-        pipeline2.stop()
     except:
-        print '\nUnexpected error! Quitting threads.\n'
+        print '\nUnknown error\n'
+        map(lambda x: x.stop(), pipelines)
         accumulator.stop()
-        # wait for accumulator to release all before stopping pipeline
-        pipeline1.stop()
-        pipeline2.stop()
         
-    time.sleep(2.)
-    print '***',  accumulator.isAlive(), pipeline1.isAlive(), pipeline2.isAlive()     
     accumulator.join()
-    pipeline1.join()
-    pipeline2.join()
+    print "Accumulator Stopped"
+
+    map(lambda x: x.join(), pipelines)
+    print "Pipelines Stopped"
+
 
 if __name__ == '__main__':
-    run_threads()
+    
+    (options, args) = parse_args()
+
+    run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, spead_ip=options.spead_ip)
