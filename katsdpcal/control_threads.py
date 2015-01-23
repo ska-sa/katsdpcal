@@ -123,7 +123,6 @@ class accumulator_thread(threading.Thread):
             # end accumulation if maximum array size has been accumulated
             if array_index >= max_length - 1: break
     
-        print
         return array_index
                
 class pipeline_thread(threading.Thread):
