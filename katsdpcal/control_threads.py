@@ -199,7 +199,7 @@ class pipeline_thread(threading.Thread):
             
             # run the pipeline - mock up for now
             self.pipeline_logger.debug('Pipeline run start on accumulated data.')
-            run_pipeline(self.data,self.ts_db,self.ts_ip)
+            run_pipeline(self.data,self.ts_db,self.ts_ip,self.name)
             
             print 'condition released by %s' % self.name
             self.scan_accumulator_condition.release()
@@ -211,11 +211,12 @@ class pipeline_thread(threading.Thread):
         return self._stop.isSet()
         
         
-def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1'):
+def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline'):
     
     print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0]
     
     # start TM
     ts = TelescopeState(host=ts_ip,db=ts_db)
     # run pipeline calibration
-    pipeline(data,ts)
+    pipeline(data,ts,thread_name=thread_name)
+    

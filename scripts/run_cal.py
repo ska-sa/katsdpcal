@@ -111,7 +111,7 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     accumulator = accumulator_thread(buffers, scan_accumulator_conditions, spead_port, spead_ip)
 
     #Set up the pipelines (one per buffer)
-    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i) for i in range(num_buffers)]
+    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i, ts_db, ts_ip) for i in range(num_buffers)]
     
     #Start the pipeline threads
     map(lambda x: x.start(), pipelines)

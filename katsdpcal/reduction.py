@@ -16,6 +16,18 @@ from katcal import report
 
 from time import time
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+class ThreadLoggingAdapter(logging.LoggerAdapter):
+    """
+    This example adapter expects the passed in dict-like object to have a
+    'connid' key, whose value in brackets is prepended to the log message.
+    """
+    def process(self, msg, kwargs):
+        return '[%s] %s' % (self.extra['connid'], msg), kwargs
+
 # ----------------------------------------------------------
 # place holders
 
@@ -34,7 +46,10 @@ def find_tracks(ts,start_time,end_time):
 
     
 
-def pipeline(data, ts):
+def pipeline(data, ts, thread_name):
+    # ----------------------------------------------------------    
+    # set up logging adapter for the pipeline thread
+    pipeline_logger = ThreadLoggingAdapter(logger, {'connid': thread_name})
     
     # ----------------------------------------------------------
     # set up timing file
@@ -222,5 +237,5 @@ def pipeline(data, ts):
                             ave_times_hh, solint, corrprod_lookup)
                         
                     print 'gains - ' #, g_soln_hh.values
-                    
+                    pipeline_logger.info('Saving gains to TS')
                     ts.add('g_soln',g_soln_hh.values)
