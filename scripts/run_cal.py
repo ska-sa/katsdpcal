@@ -32,7 +32,6 @@ def parse_args():
     parser.add_option("--ts_ip", default="127.0.0.1", help="Telescope state ip address. default: 127.0.0.1")
     return parser.parse_args()
 
-
 def all_alive(process_list):
     """
     Check if all of the process in process list are alive and return True

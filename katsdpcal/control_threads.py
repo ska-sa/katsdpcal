@@ -9,6 +9,14 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+class ThreadLoggingAdapter(logging.LoggerAdapter):
+    """
+    This example adapter expects the passed in dict-like object to have a
+    'connid' key, whose value in brackets is prepended to the log message.
+    """
+    def process(self, msg, kwargs):
+        return '[%s] %s' % (self.extra['connid'], msg), kwargs
+
 class accumulator_thread(threading.Thread):
     """
     Thread which accumutates data from spead into numpy arrays
@@ -34,13 +42,16 @@ class accumulator_thread(threading.Thread):
         self.nbl = buffers[0]['vis'].shape[2]
         self.npol = buffers[0]['vis'].shape[3]
         
+        # set up logging adapter for the thread
+        self.accumulator_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
+        
     def run(self):
         """
         Thread run method. Append random vis to the vis list
         at random time.
         """
         # Initialise SPEAD stream
-        logger.info('RX: Initializing...')
+        self.accumulator_logger.info('RX: Initializing...')
         spead_stream = spead.TransportUDPrx(self.spead_port)
 
         # Iincrement between buffers, filling and releasing iteratively
@@ -53,7 +64,7 @@ class accumulator_thread(threading.Thread):
             # Loop through the buffers and send data to pipeline thread when accumulation terminate conditions are met.
 
             self.scan_accumulator_conditions[current_buffer].acquire()
-            logger.debug('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
+            self.accumulator_logger.debug('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             print 'scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,)
             
             # accumulate data scan by scan into buffer arrays
@@ -95,11 +106,11 @@ class accumulator_thread(threading.Thread):
         tx.end()
         
     def accumulate(self, spead_stream, data_buffer):
-        '''
+        """
         Accumulates spead data into arrays
            till **TBD** metadata indicates scan has stopped, or
            till array reaches max buffer size 
-        '''
+        """
 
         ig = spead.ItemGroup()
         
@@ -166,6 +177,9 @@ class pipeline_thread(threading.Thread):
         self._stop = threading.Event()
         self.ts_db = ts_db
         self.ts_ip = ts_ip
+        
+        # set up logging adapter for the thread
+        self.pipeline_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
     
     def run(self):
         """
@@ -184,6 +198,7 @@ class pipeline_thread(threading.Thread):
             self.scan_accumulator_condition.wait()
             
             # run the pipeline - mock up for now
+            self.pipeline_logger.debug('Pipeline run start on accumulated data.')
             run_pipeline(self.data,self.ts_db,self.ts_ip)
             
             print 'condition released by %s' % self.name

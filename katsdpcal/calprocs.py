@@ -1,9 +1,9 @@
-'''
+"""
 Calibration procedures for MeerKAT calibration pipeline
 =======================================================
 
 Solvers and averagers for use in the MeerKAT calibration pipeline.
-'''
+"""
 
 import numpy as np
 import logging
