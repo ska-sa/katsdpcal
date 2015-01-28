@@ -275,7 +275,7 @@ def set_params():
 def init_ts(ts):
     # start with empty Telescope State
     try:
-        for key in ts.list_keys(): tm.delete(key)
+        for key in ts.keys(): tm.delete(key)
     except AttributeError:
         # the Telescope State is empty
         pass
