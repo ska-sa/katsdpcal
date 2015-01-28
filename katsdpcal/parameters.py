@@ -272,9 +272,13 @@ def set_params():
    
     return parms
     
-def init_tm(tm):
-    # start with empty TM
-    for key in tm.list_keys(): tm.delete(key)
+def init_ts(ts):
+    # start with empty Telescope State
+    try:
+        for key in ts.list_keys(): tm.delete(key)
+    except AttributeError:
+        # the Telescope State is empty
+        pass
     # then populate with parameters from parameter file
     param_dict = set_params()
-    for key in param_dict.keys(): tm.add(key, param_dict[key])
+    for key in param_dict.keys(): ts.add(key, param_dict[key])

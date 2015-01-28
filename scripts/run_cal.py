@@ -12,7 +12,7 @@ import optparse
 from katcal.simulator import SimData
 from katcal import parameters
 
-from katcal.telescope_model import TelescopeModel
+from katsdptelstate.telescope_state import TelescopeState
 
 import logging
 logger = logging.getLogger(__name__)
@@ -28,8 +28,8 @@ def parse_args():
     parser.add_option("--buffer_maxsize", default=1000e6, type="float", help="The amount of memory (in bytes?) to allocate to each buffer. default: 1e9")
     parser.add_option("--spead_port", default=8890, type="int", help="The port on which to listen for the spead stream. default: 8890")
     parser.add_option("--spead_ip", default="localhost", help="The ip to listen for the spead streap. default: localhost")
-    parser.add_option("--tm_db", default=1, type="int", help="Telescope model database number. default: 1")
-    parser.add_option("--tm_ip", default="127.0.0.1", help="Telescope model ip address. default: 127.0.0.1")
+    parser.add_option("--ts_db", default=1, type="int", help="Telescope state database number. default: 1")
+    parser.add_option("--ts_ip", default="127.0.0.1", help="Telescope state ip address. default: 127.0.0.1")
     return parser.parse_args()
 
 
@@ -60,7 +60,7 @@ def create_buffer_arrays(array_length,nchan,nbl,npol):
     return data
 
 def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip="localhost", 
-                tm_db=1, tm_ip='127.0.0.1'):
+                ts_db=1, ts_ip='127.0.0.1'):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -78,9 +78,9 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
         The port to read the spead stream from
     spead_ip: string
         The ip to read the spead stream from.
-    tm_db : int
+    ts_db : int
         The telescope model database number
-    tm_ip : string
+    ts_ip : string
         The telescope model ip address
     """ 
 
@@ -89,10 +89,10 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     element_size = 8. # 8 bytes in an np.complex64
 
     # start TM
-    tm = TelescopeModel(host=tm_ip,db=tm_db)
-    nchan = tm.echan - tm.bchan
+    ts = TelescopeState(host=ts_ip,db=ts_db)
+    nchan = ts.echan - ts.bchan
     # number of baselines includes autocorrelations
-    nants = tm.num_ants
+    nants = ts.num_ants
     nbl = nants*(nants+1)/2
     npol = 4
     
@@ -151,4 +151,4 @@ if __name__ == '__main__':
     time.sleep(5.)
 
     run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, 
-               spead_ip=options.spead_ip, tm_db=options.tm_db, tm_ip=options.tm_ip)
+               spead_ip=options.spead_ip, ts_db=options.ts_db, ts_ip=options.ts_ip)

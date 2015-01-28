@@ -14,8 +14,6 @@ from katcal import parameters
 from katcal.simulator import SimData
 from katcal import report
 
-from katcal.telescope_model import TelescopeModel
-
 from time import time
 
 # ----------------------------------------------------------
@@ -24,19 +22,19 @@ from time import time
 def rfi():
     print 'Some sort of RFI flagging?!'
     
-def get_nearest_from_tm(tm,value,t,dt=15.0):    
-    value_list = np.array(tm.get(value,st=t-dt,et=t+dt))
+def get_nearest_from_ts(ts,value,t,dt=15.0):    
+    value_list = np.array(ts.get_range(value,st=t-dt,et=t+dt))
     time_diffs = [np.float(line[1]) - t for line in value_list]
     return value_list[np.argmin(time_diffs)] 
     
-def find_tracks(tm,start_time,end_time):
-    states = tm.get('scan_state',st=start_time,et=end_time)
+def find_tracks(ts,start_time,end_time):
+    states = ts.get('scan_state',st=start_time,et=end_time)
     print states
     pri
 
     
 
-def pipeline(data, tm):
+def pipeline(data, ts):
     
     # ----------------------------------------------------------
     # set up timing file
@@ -69,17 +67,17 @@ def pipeline(data, tm):
     # ----------------------------------------------------------
     # extract values we need frequently from the TM
 
-    nant = tm.num_ants
+    nant = ts.num_ants
     
     nbl = nant*(nant+1)/2
     #num_chans = TM['num_channels'] 
     # just using innver 600 channels for now
-    nchan = tm.echan - tm.bchan
+    nchan = ts.echan - ts.bchan
     
     chan = np.arange(nchan)
-    dump_period = tm.dump_period
-    antlist = tm.antlist
-    corr_products = tm.corr_products
+    dump_period = ts.dump_period
+    antlist = ts.antlist
+    corr_products = ts.corr_products
 
     # ----------------------------------------------------------
     # antenna mapping
@@ -165,9 +163,9 @@ def pipeline(data, tm):
             # -------------------------------------------
             t0 = times[ti0]
         
-            target = get_nearest_from_tm(tm,'target',t0)[0]
-            scan_state = get_nearest_from_tm(tm,'scan_state',t0)[0]
-            taglist = get_nearest_from_tm(tm,'tag',t0)[0]
+            target = get_nearest_from_ts(ts,'target',t0)[0]
+            scan_state = get_nearest_from_ts(ts,'scan_state',t0)[0]
+            taglist = get_nearest_from_ts(ts,'tag',t0)[0]
             print target, scan_state, taglist
             
             if 'track' in scan_state:
@@ -225,4 +223,4 @@ def pipeline(data, tm):
                         
                     print 'gains - ' #, g_soln_hh.values
                     
-                    tm.add('g_soln',g_soln_hh.values)
+                    ts.add('g_soln',g_soln_hh.values)

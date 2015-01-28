@@ -24,7 +24,7 @@ class SimData(katdal.H5DataV2):
     def __init__(self, h5filename):
         H5DataV2.__init__(self, h5filename)
    
-    def write_h5(self,data,corrprod_mask,tmask=None,cmask=None):
+    def write_h5(self,data,corrprod_mask,tsask=None,cmask=None):
         """
         Writes data into h5 file
    
@@ -32,39 +32,39 @@ class SimData(katdal.H5DataV2):
         ----------
         data          : data to write into the file
         corrprod_mask : correlation product mask showing where to write the data
-        tmask         : time mask for timestamps to write
+        tsask         : time mask for timestamps to write
         cmask         : channel mask for channels to write
         """
         
-        data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(self._time_keep))
+        data_indices = np.squeeze(np.where(tsask)) if np.any(tsask) else np.squeeze(np.where(self._time_keep))
         ti, tf = min(data_indices), max(data_indices)+1 
         data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(self._freq_keep))
         ci, cf = min(data_indices), max(data_indices)+1    
         self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
         self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
    
-    def setup_TM(self,tm): #tmfile,params):
+    def setup_ts(self,ts):
         """
         Initialises the Telescope Model, optionally from existing TM pickle.
    
         Parameters
         ----------
-        tm : Telescope Model dictionary
+        ts : Telescope Model dictionary
         """   
-        # set simulated tm values from h5 file
-        tm.add('antlist', [ant.name for ant in self.ants])
-        tm.add('num_ants', len(self.ants))
-        tm.add('num_channels', len(self.channels))
-        tm.add('corr_products', self.corr_products)
-        tm.add('dump_period', self.dump_period)
+        # set simulated ts values from h5 file
+        ts.add('antlist', [ant.name for ant in self.ants])
+        ts.add('num_ants', len(self.ants))
+        ts.add('num_channels', len(self.channels))
+        ts.add('corr_products', self.corr_products)
+        ts.add('dump_period', self.dump_period)
         
-    def h5toSPEAD(self,tm,port):
+    def h5toSPEAD(self,ts,port):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
         Parameters
         ----------
-        tm   : Telescope Model dictionary
+        ts   : Telescope State 
         port : port to send spead tream to
         
         """
@@ -73,12 +73,12 @@ class SimData(katdal.H5DataV2):
         tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', port))
         
         for scan_ind, scan_state, target in self.scans(): 
-            # update telescope model with scan information
+            # update telescope state with scan information
             #   add random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
-            tm.add('target',target.description,ts=self.timestamps[0]+random()*0.1)
-            tm.add('tag',target.tags,ts=self.timestamps[0]+random()*0.1)
-            tm.add('scan_state',scan_state,ts=self.timestamps[0]+random()*0.1)
+            ts.add('target',target.description,ts=self.timestamps[0]+random()*0.1)
+            ts.add('tag',target.tags,ts=self.timestamps[0]+random()*0.1)
+            ts.add('scan_state',scan_state,ts=self.timestamps[0]+random()*0.1)
             print scan_state
             
             # transmit the data from this scan, timestamp by timestamp

@@ -3,7 +3,7 @@ import threading
 import time
 
 from katcal.reduction import pipeline
-from katcal.telescope_model import TelescopeModel
+from katsdptelstate.telescope_state import TelescopeState
 
 import logging
 logger = logging.getLogger(__name__)
@@ -158,14 +158,14 @@ class pipeline_thread(threading.Thread):
     Thread which runs pipeline
     """
 
-    def __init__(self, data, scan_accumulator_condition, pipenum, tm_db=1, tm_ip='127.0.0.1'):
+    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1'):
         threading.Thread.__init__(self)
         self.data = data
         self.scan_accumulator_condition = scan_accumulator_condition
         self.name = 'Pipeline_thread_'+str(pipenum)
         self._stop = threading.Event()
-        self.tm_db = tm_db
-        self.tm_ip = tm_ip
+        self.ts_db = ts_db
+        self.ts_ip = ts_ip
     
     def run(self):
         """
@@ -184,7 +184,7 @@ class pipeline_thread(threading.Thread):
             self.scan_accumulator_condition.wait()
             
             # run the pipeline - mock up for now
-            run_pipeline(self.data,self.tm_db,self.tm_ip)
+            run_pipeline(self.data,self.ts_db,self.ts_ip)
             
             print 'condition released by %s' % self.name
             self.scan_accumulator_condition.release()
@@ -196,11 +196,11 @@ class pipeline_thread(threading.Thread):
         return self._stop.isSet()
         
         
-def run_pipeline(data, tm_db=1, tm_ip='127.0.0.1'):
+def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1'):
     
     print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0]
     
     # start TM
-    tm = TelescopeModel(host=tm_ip,db=tm_db)
+    ts = TelescopeState(host=ts_ip,db=ts_db)
     # run pipeline calibration
-    pipeline(data,tm)
+    pipeline(data,ts)
