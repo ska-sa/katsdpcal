@@ -36,6 +36,7 @@ def all_alive(process_list):
     """
     Check if all of the process in process list are alive and return True
     if they are or False if they are not.
+    
     Inputs
     ======
     process_list:  list of threading:Thread: objects
@@ -65,6 +66,7 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
     extra accumulator thread the reads data from the spead stream into each buffer
     seen by the pipeline.
+    
     Inputs
     ======
     num_buffers: int
@@ -143,8 +145,6 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
 if __name__ == '__main__':
     
     (options, args) = parse_args()
-    print options
-    print args
 
     # short weit to give me time to start up the simulated spead stream
     time.sleep(5.)

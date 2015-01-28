@@ -128,7 +128,8 @@ class accumulator_thread(threading.Thread):
             print array_index, 
             
             array_index += 1
-            # accumulate list of track start times indices 
+            # accumulate list of track start time indices in the array
+            #   for use in the pipeline, to index each track easily 
             if 'track' in ig['state'] and not 'track' in state:
                 data_buffer['track_start_indices'].append(array_index)
                 
@@ -137,7 +138,6 @@ class accumulator_thread(threading.Thread):
                 print "\nbreak for scan transition!"
                 break
             state = ig['state']
-    
 
             if start_flag: 
                 start_time = ig['timestamp'] 
