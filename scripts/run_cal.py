@@ -28,6 +28,8 @@ def parse_args():
     parser.add_option("--buffer_maxsize", default=1000e6, type="float", help="The amount of memory (in bytes?) to allocate to each buffer. default: 1e9")
     parser.add_option("--spead_port", default=8890, type="int", help="The port on which to listen for the spead stream. default: 8890")
     parser.add_option("--spead_ip", default="localhost", help="The ip to listen for the spead streap. default: localhost")
+    parser.add_option("--tm_db", default=1, type="int", help="Telescope model database number. default: 1")
+    parser.add_option("--tm_ip", default="127.0.0.1", help="Telescope model ip address. default: 127.0.0.1")
     return parser.parse_args()
 
 
@@ -57,7 +59,8 @@ def create_buffer_arrays(array_length,nchan,nbl,npol):
     data['track_start_indices'] = []
     return data
 
-def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip="localhost"):
+def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip="localhost", 
+                tm_db=1, tm_ip='127.0.0.1'):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -75,6 +78,10 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
         The port to read the spead stream from
     spead_ip: string
         The ip to read the spead stream from.
+    tm_db : int
+        The telescope model database number
+    tm_ip : string
+        The telescope model ip address
     """ 
 
     # Parameters which define the size of the array to initialise.
@@ -82,7 +89,7 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     element_size = 8. # 8 bytes in an np.complex64
 
     # start TM
-    tm = TelescopeModel(host='127.0.0.1',db=1)
+    tm = TelescopeModel(host=tm_ip,db=tm_db)
     nchan = tm.echan - tm.bchan
     # number of baselines includes autocorrelations
     nants = tm.num_ants
@@ -143,4 +150,5 @@ if __name__ == '__main__':
     # short weit to give me time to start up the simulated spead stream
     time.sleep(5.)
 
-    run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, spead_ip=options.spead_ip)
+    run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, 
+               spead_ip=options.spead_ip, tm_db=options.tm_db, tm_ip=options.tm_ip)

@@ -36,7 +36,7 @@ def find_tracks(tm,start_time,end_time):
 
     
 
-def pipeline(data):
+def pipeline(data, tm):
     
     # ----------------------------------------------------------
     # set up timing file
@@ -65,10 +65,6 @@ def pipeline(data):
 
     # plots per scan
     #per_scan_plots = True
-
-    # ----------------------------------------------------------
-    # start TM
-    tm = TelescopeModel(host='127.0.0.1',db=1)
 
     # ----------------------------------------------------------
     # extract values we need frequently from the TM
