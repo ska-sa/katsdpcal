@@ -4,6 +4,8 @@ import optparse
 from katcal.simulator import SimData
 from katcal import parameters
 
+import sys
+
 from katcal.telescope_model import TelescopeModel
 
 # ----------------------------------------------------------

@@ -21,7 +21,7 @@ if len(args) < 1 or not args[0].endswith(".h5"):
 file_name = args[0]
 simdata = SimData(file_name)
 
-# use TM set up by run_cal script
+# use TM set up by sim_h5_tm.py and run_cal.py scripts
 tm = TelescopeModel(host='127.0.0.1',db=1)
     
 # select data to transmit    
@@ -30,6 +30,6 @@ ECHAN = tm['echan']
 simdata.select(channels=slice(BCHAN,ECHAN))
 
 # transmit data
-simdata.h5toSPEAD(8890)
+simdata.h5toSPEAD(tm,8890)
 print 'TX: ended.'
 

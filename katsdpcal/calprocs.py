@@ -273,6 +273,12 @@ def ants_from_xcbl(bl):
     Returns the number of antennas calculated from the number of cross-correlation baselines
     """
     return int((1+np.sqrt(1+8*bl))/2)
+    
+def ants_from_allbl(bl):
+    """
+    Returns the number of antennas calculated from the number of cross-correlation and auto-correlation baselines
+    """
+    return int((np.sqrt(1+8*bl)-1)/2)
    
 def xcbl_from_ants(a):
     """
@@ -296,8 +302,7 @@ def g_fit(data,g0,antlist1,antlist2,refant):
     ------- 
     gainsoln : Gain solutions, shape(num_ants)
     """
-   
-    num_ants = int(ants_from_xcbl(data.shape[0]))
+    num_ants = int(ants_from_allbl(data.shape[0]))
    
     # -----------------------------------------------------
     # initialise values for solver
@@ -330,7 +335,7 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0):
     g_array  : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_sol = data.shape[0]
-    num_ants = ants_from_xcbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[1])
 
     # empty arrays for solutions
     g_array = np.empty([num_sol,num_ants],dtype=np.complex)
@@ -358,7 +363,7 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0):
     bpass : Bandpass, shape(num_chans, num_ants)
     """
    
-    num_ants = ants_from_xcbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[1])
    
     # -----------------------------------------------------
     # initialise values for solver
@@ -394,7 +399,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     ksoln : Bandpass, shape(num_chans, num_ants)
     """
    
-    num_ants = ants_from_xcbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[1])
    
     # -----------------------------------------------------
     # if channel sampling is specified, thin down the data and channel list

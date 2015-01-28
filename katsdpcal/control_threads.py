@@ -2,6 +2,8 @@ import spead64_48 as spead
 import threading
 import time
 
+from katcal.reduction import pipeline
+
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -40,6 +42,7 @@ class accumulator_thread(threading.Thread):
         logger.info('RX: Initializing...')
         spead_stream = spead.TransportUDPrx(self.spead_port)
 
+        # Iincrement between buffers, filling and releasing iteratively
         #Initialise current buffer counter
         current_buffer=-1
         while not self._stop.isSet():
@@ -61,7 +64,7 @@ class accumulator_thread(threading.Thread):
             self.scan_accumulator_conditions[current_buffer].notify()
             print 'scan_accumulator_condition %d released by %s' % (current_buffer,self.name)
             self.scan_accumulator_conditions[current_buffer].release()
-            print '$1'
+
             #print 'times - acc ', self.times1.shape
             time.sleep(0.5)
    
@@ -98,36 +101,54 @@ class accumulator_thread(threading.Thread):
         '''
 
         ig = spead.ItemGroup()
+        
         start_flag = True
         array_index = -1
+        data_buffer['track_start_indices'] = []
+        
         max_length = data_buffer['times'].shape[0]
+        state = 'none'
         
         # receive SPEAD stream
         print 'Got heaps: ',
         for heap in spead.iterheaps(spead_stream): 
             ig.update(heap)
-            print ig.heap_cnt, 
+            print array_index, 
+            
             array_index += 1
+            # accumulate list of track start times indices 
+            if 'track' in ig['state'] and not 'track' in state:
+                data_buffer['track_start_indices'].append(array_index)
+                
+            # break if this scan is a slew that follows a track
+            if 'slew' in ig['state'] and 'track' in state:
+                print "\nbreak for scan transition!"
+                break
+            state = ig['state']
+    
 
             if start_flag: 
                 start_time = ig['timestamp'] 
                 start_flag = False
-                
-                
-            print ig['correlator_data'].shape
-            print self.nchan,self.nbl,self.npol
 
             # reshape data and put into relevent arrays
             data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol])  
-            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol])   
+            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol])  
+            data_buffer['weights'][array_index,:,:,:] = ig['weights'].reshape([self.nchan,self.nbl,self.npol])   
             data_buffer['times'][array_index] = ig['timestamp']
 
             # this is a temporary mock up of a natural break in the data stream
             # will ultimately be provided by some sort of sensor
             duration = ig['timestamp']-start_time
-            if duration>15: break
+            if duration>2000000: 
+                print "\nbeak for duration!"
+                break
             # end accumulation if maximum array size has been accumulated
-            if array_index >= max_length - 1: break
+            if array_index >= max_length - 1: 
+                print "\nbreak for buffer size limit!"
+                break
+                
+        data_buffer['track_start_indices'].append(array_index)
     
         return array_index
                
@@ -155,14 +176,14 @@ class pipeline_thread(threading.Thread):
             self.scan_accumulator_condition.acquire()
             print 'scan_accumulator_condition acquired by %s' % self.name
 
+            # release lock and wait for notify from accumulator
+            print 'scan_accumulator_condition wait by %s' % self.name
+            self.scan_accumulator_condition.wait()
+            
             # run the pipeline - mock up for now
             run_pipeline(self.data)
             
-            # then wait for next condition on data
-            print 'scan_accumulator_condition wait by %s' % self.name
-            self.scan_accumulator_condition.wait()
             print 'condition released by %s' % self.name
-            
             self.scan_accumulator_condition.release()
         
     def stop(self):
@@ -173,4 +194,7 @@ class pipeline_thread(threading.Thread):
         
         
 def run_pipeline(data):
-    print 'pipeline! ', data['times'][0:5], data['times'].shape, data['vis'][3,0]
+    
+    print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0]
+
+    pipeline(data)
