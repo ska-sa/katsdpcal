@@ -91,10 +91,10 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
 
     # start TM
     ts = TelescopeState(host=ts_ip,db=ts_db)
-    nchan = ts.echan - ts.bchan
+    nchan = ts.nchan
     # number of baselines includes autocorrelations
-    nants = ts.num_ants
-    nbl = nants*(nants+1)/2
+    nant = ts.nant
+    nbl = nant*(nant+1)/2
     npol = 4
     
     # ------------------------------------------------------------

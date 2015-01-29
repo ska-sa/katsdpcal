@@ -76,8 +76,8 @@ def pipeline(data, ts, thread_name):
 
     params = parameters.set_params()
 
-    per_scan_plots = params['per_scan_plots']
-    closing_plots = params['closing_plots']
+    #per_scan_plots = params['per_scan_plots']
+    #closing_plots = params['closing_plots']
     REFANT = params['refant']
 
     # solution intervals
@@ -225,13 +225,13 @@ def pipeline(data, ts, thread_name):
         if any( 'bpcal' in k for k in taglist ):  
             # ---------------------------------------
             # Apply K solution
-            if False: #try:
+            try:
                 pipeline_logger.info('Applying delay to bandpass calibrator {0}'.format(target.split(',')[0],))
                 k_current = ts.get('K')
                 k_soln_hh = CalSolution('K', k_current, np.ones(nant), 'inf', corrprod_lookup)
                 k_to_apply = k_soln_hh.interpolate(times_hh)
                 vis_hh = k_to_apply.apply(vis_hh, chans)
-            #except KeyError:
+            except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('Solving for gain prior to delay correction')
       
@@ -273,8 +273,6 @@ def pipeline(data, ts, thread_name):
             run_t0 = time()
         
         if any('gaincal' in k for k in taglist):
-            # ---------------------------------------
-            # Apply K and BP solutions
             # Apply K solution
             try:
                 pipeline_logger.info('Applying delay to gain calibrator {0}'.format(target.split(',')[0],))
@@ -285,11 +283,17 @@ def pipeline(data, ts, thread_name):
             except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('Solving for gain prior to delay correction')
-
-            #bp_current = TM['BP_current']
-            #bp_soln_hh = CalSolution('B',bp_current, np.ones(num_ants), 'inf', corrprod_lookup_hh)
-            #bp_to_apply = bp_soln_hh.interpolate(times) 
-            #vis_hh = bp_to_apply.apply(vis_hh)
+                
+            # Apply BP solution    
+            try:
+                pipeline_logger.info('Applying bandpass to gain calibrator {0}'.format(target.split(',')[0],))
+                bp_current = ts.get('BP')
+                bp_soln_hh = CalSolution('B',bp_current, np.ones(nant), 'inf', corrprod_lookup)
+                bp_to_apply = bp_soln_hh.interpolate(times_hh) 
+                vis_hh = bp_to_apply.apply(vis_hh)
+            except KeyError:
+                # TS doesn't yet contain 'B'
+                pipeline_logger.info('Solving for gain prior to bandpass correction')
         
             # ---------------------------------------
             # Preliminary G solution

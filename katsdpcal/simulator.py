@@ -54,7 +54,7 @@ class SimData(katdal.H5DataV2):
         # set simulated ts values from h5 file
         ts.add('antlist', [ant.name for ant in self.ants])
         ts.add('nant', len(self.ants))
-        ts.add('nchan', len(self.channels))
+        ts.add('nchan', ts.echan-ts.bchan)
         ts.add('corr_products', self.corr_products)
         ts.add('dump_period', self.dump_period)
         
