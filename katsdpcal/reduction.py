@@ -92,9 +92,9 @@ def pipeline(data, ts, thread_name):
     # ----------------------------------------------------------
     # extract values we need frequently from the TM
 
-    nant = ts.num_ants
+    nant = ts.nant
     nbl = nant*(nant+1)/2
-    nchan = ts.echan - ts.bchan
+    nchan = ts.nchan
     chans = np.arange(nchan)
     dump_period = ts.dump_period
     antlist = ts.antlist
@@ -308,6 +308,6 @@ def pipeline(data, ts, thread_name):
                 
             print 'gains - ' #, g_soln_hh.values
             pipeline_logger.info('Saving gains to TS')
-            ts.add('g_soln',g_soln_hh.values)
+            ts.add('G',g_soln_hh.values)
             
 

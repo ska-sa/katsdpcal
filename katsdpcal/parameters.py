@@ -4,8 +4,8 @@ def set_params():
     parms = {}
    
     # general data parameters
-    parms['per_scan_plots'] = False
-    parms['closing_plots'] = True
+    #parms['per_scan_plots'] = False
+    #parms['closing_plots'] = True
     parms['bchan'] = 50
     parms['echan'] = 950
     parms['refant'] = 1
