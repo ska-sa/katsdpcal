@@ -52,7 +52,7 @@ class Solution(object):
    
         Parameters
         ----------
-        data     : array of complex, shape(num_times, num_chans, baseline)
+        data     : array of complex, shape(ntime x nchan x nbl)
         chans    :
 
         Returns
@@ -86,7 +86,7 @@ class CalSolution(Solution):
         if self.soltype is 'G': 
             return self._apply(data, self.values)    
         if self.soltype is 'K': 
-            # want dimensions num_times x num_chans x num_ants
+            # want dimensions ntime x nchan x nant
             g_from_k = np.zeros([data.shape[0],data.shape[1],self.values.shape[-1]],dtype=np.complex)
             for c in chans:
                 g_from_k[:,c,:] = np.exp(1.0j*self.values*c)

@@ -6,24 +6,24 @@ def set_params():
     # general data parameters
     parms['per_scan_plots'] = False
     parms['closing_plots'] = True
-    parms['bchan'] = 200
-    parms['echan'] = 800
+    parms['bchan'] = 50
+    parms['echan'] = 950
     parms['refant'] = 1
    
     # delay calibration
-    parms['K'] = []
-    parms['K_std'] = []
+    #parms['K'] = []
+    #parms['K_std'] = []
     parms['k_solint'] = 10.0 # nominal pre-k g solution interval, seconds
     parms['k_chan_sample'] = 10 # sample every 10th channel for pre-K BP soln
    
     # bandpass calibration
-    parms['BP'] = []
-    parms['BP_std'] = []
+    #parms['BP'] = []
+    #parms['BP_std'] = []
     parms['bp_solint'] = 10.0 # nominal pre-bp g solution interval, seconds
    
     # gain calibration
-    parms['G'] = []
-    parms['G_std'] = []
+    #parms['G'] = []
+    #parms['G_std'] = []
     parms['g_solint'] = 10.0 # nominal g solution interval, seconds
 
     # General data parameters
