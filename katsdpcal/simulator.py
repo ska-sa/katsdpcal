@@ -93,9 +93,10 @@ class SimData(katdal.H5DataV2):
                 tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
                 tx_weights = scan_weights[i,:,:]
+                tx_tags = np.array(target.tags)
 
                 # transmit timestamps, vis, flags and scan state (which stays the same for a scan)
-                transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state)
+                transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state, tx_tags)
                 # delay so receiver isn't overwhelmed
                 time.sleep(0.5)
             
@@ -114,7 +115,7 @@ def end_transmit(tx):
     """
     tx.end()
     
-def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state):
+def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
     """
     Send spead packet containing time, visibility, flags and array state
     
@@ -127,6 +128,7 @@ def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state):
     tx_weights : weights, float array
     tx_state   : current state of array, string 
                  e.g. 'track', 'slew'
+    tx_tags    : intent tags, string array
     """
     ig = spead.ItemGroup()
 
@@ -140,11 +142,14 @@ def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state):
     ig.add_item(name='flags', description='Flag array',
         init_val=tx_flags)
         
-    ig.add_item(name='weights', description='Weightarray',
+    ig.add_item(name='weights', description='Weight array',
         init_val=tx_weights)
         
     ig.add_item(name='state', description='array state',
         shape=-1, fmt=spead.mkfmt(('s', 8)), init_val=tx_state)
+        
+    ig.add_item(name='tags', description='intent tags',
+        init_val=tx_tags)
 
     tx.send_heap(ig.get_heap())
     

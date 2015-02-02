@@ -64,7 +64,7 @@ class accumulator_thread(threading.Thread):
             # Loop through the buffers and send data to pipeline thread when accumulation terminate conditions are met.
 
             self.scan_accumulator_conditions[current_buffer].acquire()
-            self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))s
+            self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             
             # accumulate data scan by scan into buffer arrays
             buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
@@ -91,7 +91,6 @@ class accumulator_thread(threading.Thread):
             scan_accumulator.notify()
             scan_accumulator.release()
 
-        
     def stopped(self):
         return self._stop.isSet()
         
@@ -108,6 +107,13 @@ class accumulator_thread(threading.Thread):
         Accumulates spead data into arrays
            till **TBD** metadata indicates scan has stopped, or
            till array reaches max buffer size 
+           
+        SPEAD item groups contain:
+           correlator_data
+           flags
+           weights
+           timestamp
+           state        
         """
 
         ig = spead.ItemGroup()
@@ -124,6 +130,12 @@ class accumulator_thread(threading.Thread):
         for heap in spead.iterheaps(spead_stream): 
             ig.update(heap)
             print array_index, 
+            
+            
+        
+            print '***'
+            for k in ig.keys(): print k
+            pri
             
             array_index += 1
             # accumulate list of track start time indices in the array
@@ -151,11 +163,11 @@ class accumulator_thread(threading.Thread):
             # will ultimately be provided by some sort of sensor
             duration = ig['timestamp']-start_time
             if duration>2000000: 
-                print "\nbeak for duration!"
+                self.accumulator_logger.info('Accumulate break due to duration')
                 break
             # end accumulation if maximum array size has been accumulated
             if array_index >= max_length - 1: 
-                print "\nbreak for buffer size limit!"
+                self.accumulator_logger.info('Accumulate break due to buffer size limit')
                 break
                 
         data_buffer['track_start_indices'].append(array_index)
