@@ -85,21 +85,24 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
         The telescope model ip address
     """ 
 
-    # Parameters which define the size of the array to initialise.
-    # Needs to be made generic
-    element_size = 8. # 8 bytes in an np.complex64
-
-    # start TM
+    # start TM and extract data shape parameters 
     ts = TelescopeState(host=ts_ip,db=ts_db)
     nchan = ts.nchan
-    # number of baselines includes autocorrelations
-    nant = ts.nant
-    nbl = nant*(nant+1)/2
     npol = 4
+    nant = ts.nant
+    # number of baselines includes autocorrelations
+    nbl = nant*(nant+1)/2
     
     # ------------------------------------------------------------
-    
-    array_length = buffer_maxsize/(element_size*nchan*npol*nbl)
+    # buffer needs to include:
+    #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
+    #   flags, shape(time,channel,baseline,pol), type int8 (? confirm)
+    #   weights, shape(time,channel,baseline,pol), type int8 (? confirm)
+    #   time, shape(time), type float64 (8 bytes)
+    # plus minimal extra for scan transition indices
+    scale_factor = 8. + 1. + 1.  # vis + flags + weights
+    time_factor = 8.
+    array_length = buffer_maxsize/((scale_factor*nchan*npol*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
     
