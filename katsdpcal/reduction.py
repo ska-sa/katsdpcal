@@ -159,6 +159,10 @@ def pipeline(data, ts, thread_name):
         # fudge for now to add delay cal tag to bpcals
         if 'bpcal' in taglist: taglist.append('delaycal')
         
+        target_name = target.split(',')[0]
+        pipeline_logger.info('Target: {0}'.format(target_name,))
+        pipeline_logger.info('Tags:   {0}'.format(taglist,))
+        
         print 'Pipeline calibration of target: ', target, scan_state, taglist
 
         # -------------------------------------------
@@ -172,12 +176,8 @@ def pipeline(data, ts, thread_name):
         # initial RFI flagging
         rfi()
 
-        # -------------------------------------------
-        # perform calibration as appropriate, from scan intent tags        
-        
-        # process data depending on tag
         run_t0 = time()
-        
+        # perform calibration as appropriate, from scan intent tags           
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------
             # Preliminary G solution
@@ -212,8 +212,8 @@ def pipeline(data, ts, thread_name):
             #    stddev_hh = np.std(np.abs(ave_vis_hh),axis=0)
             #    std_soln_hh = CalSolution('STD',calprocs.g_fit(stddev_hh,None,antlist1,antlist2,REFANT),np.ones(num_ants), 'inf', corrprod_lookup_hh)
           
-            # ---------------------------------------  
             # update TS
+            pipeline_logger.info('Saving delay to Telescope State')
             ts.add('K',k_soln_hh.values)
             #if options.keep_stats:
             #    ts.add('K_std',std_soln_hh.values)
@@ -233,11 +233,11 @@ def pipeline(data, ts, thread_name):
                 vis_hh = k_to_apply.apply(vis_hh, chans)
             except KeyError:
                 # TS doesn't yet contain 'K'
-                pipeline_logger.info('Solving for gain prior to delay correction')
+                pipeline_logger.info('Solving for gain without applying delay correction')
       
             # ---------------------------------------
             # Preliminary G solution
-            pipeline_logger.info('Solving for preliminary gain on delay calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('Solving for preliminary gain on bandpass calibrator {0}'.format(target.split(',')[0],))
             
             # set up solution interval
             solint, dumps_per_solint = calprocs.solint_from_nominal(k_solint,dump_period,len(times_hh))
@@ -257,6 +257,8 @@ def pipeline(data, ts, thread_name):
             # ---------------------------------------
             # BP solution
             #   solve for bandpass
+            pipeline_logger.info('Solving for bandpass on bandpass calibrator {0}'.format(target.split(',')[0],))
+            
         
             # first average over all time
             ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
@@ -264,8 +266,8 @@ def pipeline(data, ts, thread_name):
             bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_h,REFANT),
               np.ones(nant), 'inf', corrprod_lookup)
               
-            # ---------------------------------------  
-            # update TM
+            # update TS
+            pipeline_logger.info('Saving bandpass to Telescope State')
             ts.add('B',bp_soln_hh.values)
       
             # ---------------------------------------
@@ -282,18 +284,18 @@ def pipeline(data, ts, thread_name):
                 vis_hh = k_to_apply.apply(vis_hh, chans)
             except KeyError:
                 # TS doesn't yet contain 'K'
-                pipeline_logger.info('Solving for gain prior to delay correction')
+                pipeline_logger.info('Solving for gain without applying delay correction')
                 
             # Apply BP solution    
             try:
                 pipeline_logger.info('Applying bandpass to gain calibrator {0}'.format(target.split(',')[0],))
-                bp_current = ts.get('BP')
+                bp_current = ts.get('B')
                 bp_soln_hh = CalSolution('B',bp_current, np.ones(nant), 'inf', corrprod_lookup)
                 bp_to_apply = bp_soln_hh.interpolate(times_hh) 
                 vis_hh = bp_to_apply.apply(vis_hh)
             except KeyError:
                 # TS doesn't yet contain 'B'
-                pipeline_logger.info('Solving for gain prior to bandpass correction')
+                pipeline_logger.info('Solving for gain without applying bandpass correction')
         
             # ---------------------------------------
             # Preliminary G solution
@@ -310,8 +312,8 @@ def pipeline(data, ts, thread_name):
             g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
                     ave_times_hh, solint, corrprod_lookup)
                 
-            print 'gains - ' #, g_soln_hh.values
-            pipeline_logger.info('Saving gains to TS')
+            # update TS
+            pipeline_logger.info('Saving gains to Telescope State')
             ts.add('G',g_soln_hh.values)
             
 

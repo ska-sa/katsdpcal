@@ -51,7 +51,7 @@ class accumulator_thread(threading.Thread):
         at random time.
         """
         # Initialise SPEAD stream
-        self.accumulator_logger.info('RX: Initializing...')
+        self.accumulator_logger.info('Initializing SPEAD receiver')
         spead_stream = spead.TransportUDPrx(self.spead_port)
 
         # Iincrement between buffers, filling and releasing iteratively
@@ -64,7 +64,7 @@ class accumulator_thread(threading.Thread):
             # Loop through the buffers and send data to pipeline thread when accumulation terminate conditions are met.
 
             self.scan_accumulator_conditions[current_buffer].acquire()
-            self.accumulator_logger.debug('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
+            self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             print 'scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,)
             
             # accumulate data scan by scan into buffer arrays
@@ -76,6 +76,7 @@ class accumulator_thread(threading.Thread):
             self.scan_accumulator_conditions[current_buffer].notify()
             print 'scan_accumulator_condition %d released by %s' % (current_buffer,self.name)
             self.scan_accumulator_conditions[current_buffer].release()
+            self.accumulator_logger.info('scan_accumulator_condition %d release by %s' %(current_buffer, self.name,))
 
             #print 'times - acc ', self.times1.shape
             time.sleep(0.5)
@@ -192,17 +193,20 @@ class pipeline_thread(threading.Thread):
             # acquire condition on data
             self.scan_accumulator_condition.acquire()
             print 'scan_accumulator_condition acquired by %s' % self.name
-
             # release lock and wait for notify from accumulator
             print 'scan_accumulator_condition wait by %s' % self.name
+            
+            self.pipeline_logger.info('scan_accumulator_condition acquire, relase and wait by %s' %(self.name,))
             self.scan_accumulator_condition.wait()
             
-            # run the pipeline - mock up for now
-            self.pipeline_logger.debug('Pipeline run start on accumulated data.')
+            self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
+            # run the pipeline 
+            self.pipeline_logger.info('Pipeline run start on accumulated data')
             run_pipeline(self.data,self.ts_db,self.ts_ip,self.name)
             
             print 'condition released by %s' % self.name
             self.scan_accumulator_condition.release()
+            self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
         
     def stop(self):
         self._stop.set()
