@@ -128,8 +128,8 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # for next iteration, set g_prev to g_curr   
         g_prev = 1.0*g_curr
         
-        # if max iters reached without convergence, log a warning
-        if i==num_iters-1: logger.warning('ADI stefcal convergence not reached after {0} iterations'.format(num_iters,))
+        # if max iters reached without convergence, log it
+        if i==num_iters-1: logger.debug('ADI stefcal convergence not reached after {0} iterations'.format(num_iters,))
     
     return g_curr    
     

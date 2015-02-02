@@ -64,21 +64,18 @@ class accumulator_thread(threading.Thread):
             # Loop through the buffers and send data to pipeline thread when accumulation terminate conditions are met.
 
             self.scan_accumulator_conditions[current_buffer].acquire()
-            self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
-            print 'scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,)
+            self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))s
             
             # accumulate data scan by scan into buffer arrays
             buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
-            #time.sleep(1)
-            
-            # release buffer array for use in pipeline
-            print 'scan_accumulator_condition %d notified by %s' % (current_buffer,self.name)
+        
+            # awaken pipeline thread that was waiting for condition lock
             self.scan_accumulator_conditions[current_buffer].notify()
-            print 'scan_accumulator_condition %d released by %s' % (current_buffer,self.name)
+            self.accumulator_logger.info('scan_accumulator_condition %d notification sent by %s' %(current_buffer, self.name,))
+            # release pipeline thread that was waiting for condition lock
             self.scan_accumulator_conditions[current_buffer].release()
-            self.accumulator_logger.info('scan_accumulator_condition %d release by %s' %(current_buffer, self.name,))
+            self.accumulator_logger.info('scan_accumulator_condition %d released by %s' %(current_buffer, self.name,))
 
-            #print 'times - acc ', self.times1.shape
             time.sleep(0.5)
    
     def stop(self):        
@@ -186,25 +183,24 @@ class pipeline_thread(threading.Thread):
         """
         Thread run method. Runs pipeline
         """
-        
+    
         # run until stop is set   
         while not self._stop.isSet():
-            
             # acquire condition on data
-            self.scan_accumulator_condition.acquire()
-            print 'scan_accumulator_condition acquired by %s' % self.name
+            self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
+            self.scan_accumulator_condition.acquire()            
+
             # release lock and wait for notify from accumulator
-            print 'scan_accumulator_condition wait by %s' % self.name
-            
-            self.pipeline_logger.info('scan_accumulator_condition acquire, relase and wait by %s' %(self.name,))
+            self.pipeline_logger.info('scan_accumulator_condition release and wait by %s' %(self.name,))
             self.scan_accumulator_condition.wait()
             
+            # after notify from accumulator, condition lock re-aquired 
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
             run_pipeline(self.data,self.ts_db,self.ts_ip,self.name)
             
-            print 'condition released by %s' % self.name
+            # release condition after pipeline run finished
             self.scan_accumulator_condition.release()
             self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
         
@@ -217,7 +213,7 @@ class pipeline_thread(threading.Thread):
         
 def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline'):
     
-    print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0]
+    print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0], '\n'
     
     # start TS
     ts = TelescopeState(host=ts_ip,db=ts_db)

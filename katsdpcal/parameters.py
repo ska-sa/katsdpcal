@@ -6,8 +6,8 @@ def set_params():
     # general data parameters
     #parms['per_scan_plots'] = False
     #parms['closing_plots'] = True
-    parms['bchan'] = 50
-    parms['echan'] = 950
+    parms['bchan'] = 200
+    parms['echan'] = 800
     parms['refant'] = 1
    
     # delay calibration

@@ -32,7 +32,8 @@ def rfi():
     """
     Place holder for RFI detection algorithms to come.
     """
-    print 'Some sort of RFI flagging?!'
+    #print 'Some sort of RFI flagging?!'
+    pass
     
 def get_nearest_from_ts(ts,key,t,dt=15.0):
     """
@@ -153,6 +154,7 @@ def pipeline(data, ts, thread_name):
         t0 = times[ti0]
     
         # extract scan info from the TS
+        #  target string contains: 'target name, tags, RA, DEC'
         target = get_nearest_from_ts(ts,'target',t0)[0]
         scan_state = get_nearest_from_ts(ts,'scan_state',t0)[0]
         taglist = get_nearest_from_ts(ts,'tag',t0)[0]        
@@ -162,18 +164,15 @@ def pipeline(data, ts, thread_name):
         target_name = target.split(',')[0]
         pipeline_logger.info('Target: {0}'.format(target_name,))
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
-        
-        print 'Pipeline calibration of target: ', target, scan_state, taglist
 
-        # -------------------------------------------
         # extract hh and vv
-        vis_hh = data['vis'][ti0:ti1,:,:,0] #np.array([vis_row[:,hh_mask] for vis_row in vis])
-        flags_hh = data['flags'][ti0:ti1,:,:,0] #np.array([flag_row[:,hh_mask] for flag_row in flags])
-        weights_hh = data['weights'][ti0:ti1,:,:,0] #np.array([weight_row[:,hh_mask] for weight_row in weights])
+        vis_hh = data['vis'][ti0:ti1,:,:,0]
+        flags_hh = data['flags'][ti0:ti1,:,:,0] 
+        weights_hh = data['weights'][ti0:ti1,:,:,0]
         times_hh = data['times'][ti0:ti1]
-        # -------------------------------------------
 
         # initial RFI flagging
+        pipeline_logger.info('Preliminary flagging')
         rfi()
 
         run_t0 = time()
