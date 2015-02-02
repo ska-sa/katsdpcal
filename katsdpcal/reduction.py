@@ -145,10 +145,13 @@ def pipeline(data, ts, thread_name):
     weights = np.ones_like(flags,dtype=np.float)
     
     # iterate through the track scans accumulated into the data buffer
-    for i in range(len(data['track_start_indices'])-1):
+    #    iterate backwards in time through the scans, 
+    #    for the case where a gains need to be calculated from a gain scan after a target scan,
+    #    for application to the target scan
+    for i in range(len(data['track_start_indices'])-1,0,-1):
         # start and end indices for this track in the data buffer
-        ti0 = data['track_start_indices'][i]
-        ti1 = data['track_start_indices'][i+1]
+        ti0 = data['track_start_indices'][i-1]
+        ti1 = data['track_start_indices'][i]
     
         # start time
         t0 = times[ti0]

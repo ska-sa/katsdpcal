@@ -139,6 +139,8 @@ class accumulator_thread(threading.Thread):
                 data_buffer['track_start_indices'].append(array_index)
                 
             # break if this scan is a slew that follows a track
+            #   unless previous scan was a target, in which case accumulate subsequent gain scan too
+            # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY ********** 
             if ('slew' in ig['state'] and 'track' in prev_state) and 'target' not in prev_tags:
                 self.accumulator_logger.info('Accumulate break due to transition')
                 break
