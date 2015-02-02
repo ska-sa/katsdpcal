@@ -93,7 +93,6 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     # number of baselines includes autocorrelations
     nbl = nant*(nant+1)/2
     
-    # ------------------------------------------------------------
     # buffer needs to include:
     #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
     #   flags, shape(time,channel,baseline,pol), type int8 (? confirm)
