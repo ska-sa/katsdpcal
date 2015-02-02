@@ -123,7 +123,8 @@ class accumulator_thread(threading.Thread):
         data_buffer['track_start_indices'] = []
         
         max_length = data_buffer['times'].shape[0]
-        state = 'none'
+        prev_state = 'none'
+        prev_tage = 'none'
         
         # receive SPEAD stream
         print 'Got heaps: ',
@@ -131,23 +132,16 @@ class accumulator_thread(threading.Thread):
             ig.update(heap)
             print array_index, 
             
-            
-        
-            print '***'
-            for k in ig.keys(): print k
-            pri
-            
             array_index += 1
             # accumulate list of track start time indices in the array
             #   for use in the pipeline, to index each track easily 
-            if 'track' in ig['state'] and not 'track' in state:
+            if 'track' in ig['state'] and not 'track' in prev_state:
                 data_buffer['track_start_indices'].append(array_index)
                 
             # break if this scan is a slew that follows a track
-            if 'slew' in ig['state'] and 'track' in state:
-                print "\nbreak for scan transition!"
+            if ('slew' in ig['state'] and 'track' in prev_state) and 'target' not in prev_tags:
+                self.accumulator_logger.info('Accumulate break due to transition')
                 break
-            state = ig['state']
 
             if start_flag: 
                 start_time = ig['timestamp'] 
@@ -169,6 +163,9 @@ class accumulator_thread(threading.Thread):
             if array_index >= max_length - 1: 
                 self.accumulator_logger.info('Accumulate break due to buffer size limit')
                 break
+                
+            prev_state = ig['state']
+            prev_tags = ig['tags']
                 
         data_buffer['track_start_indices'].append(array_index)
     
