@@ -215,11 +215,11 @@ Lightweight solution class to hold calibration solutions along with their times 
 """
 
 class CalSolution(object):
-    def __init__(self, type, values, times):
+    def __init__(self, soltype, values, times):
         if len(values) != len(times):
             raise ValueError('Solution numbers and timestamps of unequal length!')
         
-        self.type = type
+        self.type = soltype
         self.values = values
         # start (? middle?) times of each solution
         self.times = times
