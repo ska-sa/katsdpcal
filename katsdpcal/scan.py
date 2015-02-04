@@ -187,13 +187,13 @@ class Scan(object):
         
     def interpolate(self, solns, **kwargs):
         # set up more complex interpolation methods later
-        soltype = solns.type
-        if solns.type is 'G': 
+        soltype = solns.soltype
+        if soltype is 'G': 
             #return self.self_interpolate(num_dumps, **kwargs)   
             return self.linear_interpolate(solns)         
-        if solns.type is 'K': 
+        if soltype is 'K': 
             return self.inf_interpolate(solns)
-        if solns.type is 'B': 
+        if soltype is 'B': 
             return self.inf_interpolate(solns)
             
     def linear_interpolate(self, solns):
@@ -203,7 +203,7 @@ class Scan(object):
         real_interp = np.array([np.interp(self.times, times, v.real) for v in values.T])
         imag_interp = np.array([np.interp(self.times, times, v.imag) for v in values.T])
         interp_solns = real_interp.T + 1.0j*imag_interp.T
-        return CalSolution(solns.type, interp_solns, self.times)
+        return CalSolution(solns.soltype, interp_solns, self.times)
         
         
 #--------------------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ class CalSolution(object):
         if len(values) != len(times):
             raise ValueError('Solution numbers and timestamps of unequal length!')
         
-        self.type = soltype
+        self.soltype = soltype
         self.values = values
         # start (? middle?) times of each solution
         self.times = times
