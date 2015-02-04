@@ -5,11 +5,11 @@ Preliminary calibration node code.
 
 Instructions for running code with h5 simulator:
 
-* Start a redis server 
+* start a redis server 
 
-* run the h5 TM simulator:
+* run the h5 Telescope State simulator:
   
- > python sim_h5_tm.py   \<h5file.h5\>
+ > python sim_h5_ts.py   \<h5file.h5\>
 
 * run the pipeline controller:
 
