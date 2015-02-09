@@ -561,8 +561,15 @@ def solint_from_nominal(solint,dump_period,num_times):
     return nsolint, dumps_per_solint
 
 
+#--------------------------------------------------------------------------------------------------
+#--- CLASS :  CalSolution
+#--------------------------------------------------------------------------------------------------
 
-
-
+class CalSolution(Solution):
+   
+    def __init__(self, soltype, values, times):
+        self.soltype = soltype
+        self.solvalues = solvalues
+        self.times = times
 
 
