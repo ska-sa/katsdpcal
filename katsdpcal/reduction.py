@@ -116,8 +116,9 @@ def pipeline(data, ts, thread_name):
         ti0 = data['track_start_indices'][i-1]
         ti1 = data['track_start_indices'][i]
         
-        # start time
+        # start time, end time
         t0 = data['times'][ti0]
+        t1 = data['times'][ti1]
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
@@ -257,6 +258,17 @@ def pipeline(data, ts, thread_name):
             except KeyError:
                 # TS doesn't yet contain 'B'
                 pipeline_logger.info('No bandpass correction applied to target data')
+                
+            try:
+                pipeline_logger.info('Applying gains to target {0}'.format(target.split(',')[0],))
+                # get G values for 20 minute range on either side of target scan
+                sol, soltime = ts.get_range('G',st=t0-20.*60.,et=tf+20.*60)
+                print 'G: ', sol.shape
+                #b_soln = CalSolution('B', sol, soltime)
+                #b_to_apply = s.interpolate(b_soln)
+            except KeyError:
+                # TS doesn't yet contain 'B'
+                pipeline_logger.info('No gain correction applied to target data')
             
             
             

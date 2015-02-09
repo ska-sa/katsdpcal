@@ -224,7 +224,7 @@ class pipeline_thread(threading.Thread):
         
 def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline'):
     
-    print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0], '\n'
+    #print '\nPipeline - ', data['times'][0:10], data['times'].shape, data['vis'][3,0,0,0], '\n'
     
     # start TS
     ts = TelescopeState(host=ts_ip,db=ts_db)

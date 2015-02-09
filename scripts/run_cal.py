@@ -149,7 +149,7 @@ if __name__ == '__main__':
     (options, args) = parse_args()
 
     # short weit to give me time to start up the simulated spead stream
-    time.sleep(5.)
+    # time.sleep(5.)
 
     run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=options.spead_port, 
                spead_ip=options.spead_ip, ts_db=options.ts_db, ts_ip=options.ts_ip)
