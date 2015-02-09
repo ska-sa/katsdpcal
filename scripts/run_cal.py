@@ -119,8 +119,8 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     
     #Start the pipeline threads
     map(lambda x: x.start(), pipelines)
-    # give the pipeline threads a shirt while to aquire conditions then wait
-    time.sleep(5.)
+    # might need delay here for pipeline threads to aquire conditions then wait?
+    #time.sleep(5.)
     #Start the accumulator thread
     accumulator.start()
 

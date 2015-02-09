@@ -567,9 +567,9 @@ def solint_from_nominal(solint,dump_period,num_times):
 
 class CalSolution(object):
    
-    def __init__(self, soltype, values, times):
+    def __init__(self, soltype, solvalues, soltimes):
         self.soltype = soltype
-        self.solvalues = solvalues
-        self.times = times
+        self.values = solvalues
+        self.times = soltimes
 
 
