@@ -89,6 +89,7 @@ def pipeline(data, ts, thread_name):
     k_solint = params['k_solint'] #seconds
     k_chan_sample = params['k_chan_sample']
     g_solint = params['g_solint'] #seconds
+    dump_period = ts.dump_period
 
     # plots per scan
     #per_scan_plots = True
@@ -222,12 +223,15 @@ def pipeline(data, ts, thread_name):
         
             # ---------------------------------------
             # Preliminary G solution
-            pipeline_logger.info('Solving for preliminary gain on gain calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('Solving for gain on gain calibrator {0}'.format(target.split(',')[0],))
+            # set up solution interval: just solve for two intervals per G scan (ignore ts g_solint for now)
+            dumps_per_solint = np.ceil((ti1-ti0)/2.0)
+            g_solint = dumps_per_solint*dump_period            
             g_soln = s.g_sol(g_solint,g0_h,REFANT,pre_apply=[k_to_apply,b_to_apply])
             
             # ---------------------------------------
             # update TS
-            pipeline_logger.info('Saving bandpass to Telescope State')
+            pipeline_logger.info('Saving gain to Telescope State')
             # add gains to TS, iterating through solution times 
             for v,t in zip(g_soln.values,g_soln.times): 
                 ts.add(g_soln.soltype,v,ts=t) 
@@ -238,7 +242,7 @@ def pipeline(data, ts, thread_name):
             
         if any('target' in k for k in taglist):
             # ---------------------------------------
-            # get K and B solutions to apply and interpolate it to scan timestamps
+            # get K, B and G solutions to apply and interpolate it to scan timestamps
             try:
                 pipeline_logger.info('Applying delay to target {0}'.format(target.split(',')[0],))
                 # get most recent K
@@ -261,13 +265,13 @@ def pipeline(data, ts, thread_name):
                 
             try:
                 pipeline_logger.info('Applying gains to target {0}'.format(target.split(',')[0],))
-                # get G values for 20 minute range on either side of target scan
-                sol, soltime = ts.get_range('G',st=t0-20.*60.,et=tf+20.*60)
-                print 'G: ', sol.shape
-                #b_soln = CalSolution('B', sol, soltime)
-                #b_to_apply = s.interpolate(b_soln)
+                # get G values for an hour range on either side of target scan
+                gsols = np.array(ts.get_range('G',st=t0-60.*60.,et=t1+60.*60))
+                print 'G: ', gsols.shape
+                g_soln = CalSolution('B', gsols[:,0], gsols[:,1])
+                g_to_apply = s.interpolate(g_soln)
             except KeyError:
-                # TS doesn't yet contain 'B'
+                # TS doesn't yet contain 'G'
                 pipeline_logger.info('No gain correction applied to target data')
             
             
