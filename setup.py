@@ -10,7 +10,9 @@ setup (
     packages = find_packages(),
     scripts = [
         "scripts/reduction_script.py",
-	"scripts/run_cal.py"	
+	"scripts/run_cal.py",	
+        "scripts/sim_h5_ts.py",
+        "scripts/sim_h5_stream.py"
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

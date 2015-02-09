@@ -58,7 +58,7 @@ class SimData(katdal.H5DataV2):
         ts.add('corr_products', self.corr_products)
         ts.add('dump_period', self.dump_period)
         
-    def h5toSPEAD(self,ts,port):
+    def h5toSPEAD(self,ts,port,host='127.0.0.1'):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
@@ -70,7 +70,7 @@ class SimData(katdal.H5DataV2):
         """
         
         print 'TX: Initializing...'
-        tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1', port))
+        tx = spead.Transmitter(spead.TransportUDPtx(host,port))
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
