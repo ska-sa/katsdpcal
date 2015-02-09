@@ -22,6 +22,9 @@ class Scan(object):
         self.weights = np.ones_like(self.flags,dtype=np.float)
         self.times = data['times'][ti0:ti1]
         
+        # intermediate product visibility - use sparingly!
+        self.modvis = None
+        
         self.nchan = self.vis.shape[1]
         self.chans = range(self.nchan)
         self.nant = len(antlist)
@@ -107,14 +110,17 @@ class Scan(object):
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
         
-    def g_sol(self,input_solint,g0,REFANT):
-
+    def g_sol(self,input_solint,g0,REFANT,pre_apply=[]):
+        
+        if self.modvis is None: self.modvis = self.vis
+        for soln in pre_apply:
+           self.modvis = self.apply(soln,origvis=False) 
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
     
         # first averge in time over solution interval
-        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.vis,self.flags,self.weights,
+        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.modvis,self.flags,self.weights,
                 dumps_per_solint,axis=0,times=self.times)
         # second average over all channels
         ave_vis = calprocs.wavg(ave_vis,ave_flags,ave_weights,axis=1)
@@ -130,13 +136,13 @@ class Scan(object):
         
         #app = pre_apply[0]
         #vis_transform = g_to_apply.apply
-        
+
+        if self.modvis is None: self.modvis = self.vis
         for soln in pre_apply:
-           modvis = self.apply(soln) 
-    
+           self.modvis = self.apply(soln,origvis=False) 
     
         # average over all time (no averaging over channel)
-        ave_vis = calprocs.wavg(modvis,self.flags,self.weights,axis=0) #,transform=vis_transform)
+        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0) #,transform=vis_transform)
     
         # solve for delay K
         antlist1, antlist2 = self.corr_antlists
@@ -146,10 +152,25 @@ class Scan(object):
     
         return CalSolution('K', k_soln, np.ones(len(k_soln))) 
         
+    def b_sol(self,bp0,REFANT,pre_apply=[]):
+
+        if self.modvis is None: self.modvis = self.vis
+        for soln in pre_apply:
+           self.modvis = self.apply(soln,origvis=False) 
+    
+        # average over all time (no averaging over channel)
+        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0)
+    
+        # solve for bandpass
+        antlist1, antlist2 = self.corr_antlists
+        b_soln = calprocs.bp_fit(ave_vis,antlist1,antlist2,bp0,REFANT)
+
+        return CalSolution('B', b_soln, np.ones(len(b_soln))) 
+        
     # ---------------------------------------------------------------------------------------------
     # solution application 
       
-    def _apply(self, solval):
+    def _apply(self, solval, origvis=True):
         """
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
@@ -159,29 +180,28 @@ class Scan(object):
         solval : multiplicative solution values to be applied to visibility data
         """    
         
-        modvis = copy.deepcopy(self.vis) 
+        outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
         
         for cp in range(len(self.corrprod_lookup)):
             if len(solval.shape) < 3:
-                modvis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
+                outvis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
             else:
-                modvis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+                outvis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
                 
-        return modvis
+        return outvis
     
-    
-    def apply(self, soln, chans=None):
+    def apply(self, soln, chans=None, origvis=True):
         # set up more complex interpolation methods later
         if soln.soltype is 'G': 
             return self._apply(soln.values)    
         if soln.soltype is 'K': 
             # want dimensions ntime x nchan x nant
-            g_from_k = np.zeros([data.shape[0],data.shape[1],soln.values.shape[-1]],dtype=np.complex)
-            for c in chans:
+            g_from_k = np.zeros([self.vis.shape[0],self.vis.shape[1],soln.values.shape[-1]],dtype=np.complex)
+            for c in self.chans:
                 g_from_k[:,c,:] = np.exp(1.0j*soln.values*c)
-            return self._apply(data, g_from_k)
+            return self._apply(g_from_k)
         if soln.soltype is 'B': 
-            return self._apply(data, soln.values)
+            return self._apply(soln.values)
 
         return data
     
