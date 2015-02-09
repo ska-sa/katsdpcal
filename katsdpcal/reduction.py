@@ -9,10 +9,13 @@ import os
 
 from katcal import plotting
 from katcal import calprocs
-from katcal.calsolution import CalSolution
+#from katcal.calsolution import CalSolution
 from katcal import parameters
 from katcal.simulator import SimData
 from katcal import report
+from katcal.scan import Scan
+
+from katcal.calprocs import CalSolution
 
 from time import time
 
@@ -92,58 +95,18 @@ def pipeline(data, ts, thread_name):
 
     # ----------------------------------------------------------
     # extract values we need frequently from the TM
-
-    nant = ts.nant
-    nbl = nant*(nant+1)/2
-    nchan = ts.nchan
-    chans = np.arange(nchan)
-    dump_period = ts.dump_period
-    antlist = ts.antlist
-    corr_products = ts.corr_products
-
-    # ----------------------------------------------------------
-    # antenna mapping
-
-    # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
-    antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
-    corr_products_lookup = np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in corr_products])
-    
-    # from full list of correlator products, get list without repeats (ie no repeats for pol)
-    corrprod_lookup = -1*np.ones([nbl,2],dtype=np.int) # start with array of -1
-    bl = -1
-    for c in corr_products_lookup: 
-        if not np.all(corrprod_lookup[bl] == c): 
-            bl += 1
-            corrprod_lookup[bl] = c
-  
-    # NOTE: no longer need hh and vv masks as we re-ordered the data to be ntime x nchan x nbl x npol
-
-    # get antenna number lists for stefcal - need vis then vis.conj (assume constant over an observation)
-    # assume same for hh and vv
-    antlist1 = np.concatenate((corrprod_lookup[:,0], corrprod_lookup[:,1]))
-    antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
+    #nant = ts.nant
+    #nbl = nant*(nant+1)/2
+    #nchan = ts.nchan
 
     # ----------------------------------------------------------
     # set initial values for fits
-
     bp0_h = None
     k0_h = None
     g0_h = None
     target_h = None
 
     # ----------------------------------------------------------
-    
-
-
-    #print "Scan %3d Target: %s" % (scan_ind, target.name)   
-
-    # -------------------------------------------
-    # data has shape(ntime x nchan x nbl x npol)
-    vis = data['vis']
-    times = data['times']
-    flags = data['flags']
-    weights = np.ones_like(flags,dtype=np.float)
-    
     # iterate through the track scans accumulated into the data buffer
     #    iterate backwards in time through the scans, 
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
@@ -152,10 +115,10 @@ def pipeline(data, ts, thread_name):
         # start and end indices for this track in the data buffer
         ti0 = data['track_start_indices'][i-1]
         ti1 = data['track_start_indices'][i]
-    
+        
         # start time
-        t0 = times[ti0]
-    
+        t0 = data['times'][ti0]
+
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
         target = get_nearest_from_ts(ts,'target',t0)[0]
@@ -167,12 +130,9 @@ def pipeline(data, ts, thread_name):
         target_name = target.split(',')[0]
         pipeline_logger.info('Target: {0}'.format(target_name,))
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
-
-        # extract hh and vv
-        vis_hh = data['vis'][ti0:ti1,:,:,0]
-        flags_hh = data['flags'][ti0:ti1,:,:,0] 
-        weights_hh = data['weights'][ti0:ti1,:,:,0]
-        times_hh = data['times'][ti0:ti1]
+        
+        # set up scan
+        s = Scan(data, ti0, ti1, ts.dump_period, ts.antlist, ts.corr_products)
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
@@ -182,108 +142,53 @@ def pipeline(data, ts, thread_name):
         # perform calibration as appropriate, from scan intent tags           
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------
-            # Preliminary G solution
+            # preliminary G solution
             pipeline_logger.info('Solving for preliminary gain on delay calibrator {0}'.format(target.split(',')[0],))
+            # solve and interpolate to scan timestamps
+            pre_g_soln = s.g_sol(k_solint,g0_h,REFANT)
+            g_to_apply = s.interpolate(pre_g_soln)
             
-            # set up solution interval
-            solint, dumps_per_solint = calprocs.solint_from_nominal(k_solint,dump_period,len(times_hh))
-            # first averge solution interval then channel
-            ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
-                    dumps_per_solint,axis=0,times=times_hh)
-            ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
-            # solve for gains
-            pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
-                    ave_times_hh, solint, corrprod_lookup)
-                  
-            # ---------------------------------------
-            # Apply preliminary G solution
-            g_to_apply = pre_g_soln_hh.interpolate(times_hh,dump_period=dump_period) 
-            vis_hh = g_to_apply.apply(vis_hh)    
-      
             # ---------------------------------------
             # K solution
             pipeline_logger.info('Solving for delay on delay calibrator {0}'.format(target.split(',')[0],))
+            k_soln = s.k_sol(k_chan_sample,k0_h,bp0_h,REFANT,pre_apply=[g_to_apply])
             
-            # average over all time
-            ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
-            # solve for K
-            k_soln_hh = CalSolution('K',calprocs.k_fit(ave_vis_hh,antlist1,antlist2,chans,k0_h,bp0_h,REFANT,chan_sample=k_chan_sample),
-              np.ones(nant), 'inf', corrprod_lookup)          
-            # solve for std deviation
-            #if options.keep_stats:
-            #    stddev_hh = np.std(np.abs(ave_vis_hh),axis=0)
-            #    std_soln_hh = CalSolution('STD',calprocs.g_fit(stddev_hh,None,antlist1,antlist2,REFANT),np.ones(num_ants), 'inf', corrprod_lookup_hh)
-          
+            # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving delay to Telescope State')
-            ts.add('K',k_soln_hh.values)
-            #if options.keep_stats:
-            #    ts.add('K_std',std_soln_hh.values)
-      
+            for v,t in zip(k_soln.values,k_soln.times): ts.add(k_soln.soltype,v,ts=t)
+            
             # ---------------------------------------
             timing_file.write("Delay cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            run_t0 = time()     
             
-        if any( 'bpcal' in k for k in taglist ):  
+        if any('bpcal' in k for k in taglist):  
             # ---------------------------------------
-            # Apply K solution
+            # get K solution to apply and interpolate it to scan timestamps
             try:
                 pipeline_logger.info('Applying delay to bandpass calibrator {0}'.format(target.split(',')[0],))
-                k_current = ts.get('K')
-                k_soln_hh = CalSolution('K', k_current, np.ones(nant), 'inf', corrprod_lookup)
-                k_to_apply = k_soln_hh.interpolate(times_hh)
-                vis_hh = k_to_apply.apply(vis_hh, chans)
+                sol, soltime = ts.get_range('K')
+                k_soln = CalSolution('K', sol, soltime)
+                k_to_apply = s.interpolate(k_soln)
             except KeyError:
                 # TS doesn't yet contain 'K'
-                pipeline_logger.info('Solving for gain without applying delay correction')
-      
+                pipeline_logger.info('Solving for bandpass without applying delay correction')
+        
             # ---------------------------------------
             # Preliminary G solution
             pipeline_logger.info('Solving for preliminary gain on bandpass calibrator {0}'.format(target.split(',')[0],))
+            # solve and interpolate to scan timestamps
+            pre_g_soln = s.g_sol(g_solint,g0_h,REFANT)
+            g_to_apply = s.interpolate(pre_g_soln)
             
-            # set up solution interval
-            solint, dumps_per_solint = calprocs.solint_from_nominal(k_solint,dump_period,len(times_hh))
-            # first averge solution interval then channel
-            ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
-                    dumps_per_solint,axis=0,times=times_hh)
-            ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
-            # solve for gains
-            pre_g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
-                    ave_times_hh, solint, corrprod_lookup)
-                  
-            # ---------------------------------------
-            # Apply preliminary G solution
-            g_to_apply = pre_g_soln_hh.interpolate(times_hh,dump_period=dump_period) 
-            vis_hh = g_to_apply.apply(vis_hh) 
-      
-            # ---------------------------------------
-            # BP solution
-            #   solve for bandpass
-            pipeline_logger.info('Solving for bandpass on bandpass calibrator {0}'.format(target.split(',')[0],))
-            
-        
-            # first average over all time
-            ave_vis_hh = calprocs.wavg(vis_hh,flags_hh,weights_hh,axis=0)
-            # then solve for BP    
-            bp_soln_hh = CalSolution('B',calprocs.bp_fit(ave_vis_hh,antlist1,antlist2,bp0_h,REFANT),
-              np.ones(nant), 'inf', corrprod_lookup)
-              
-            # update TS
-            pipeline_logger.info('Saving bandpass to Telescope State')
-            ts.add('B',bp_soln_hh.values)
-      
-            # ---------------------------------------
-            timing_file.write("Bandpass cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
-        
         if any('gaincal' in k for k in taglist):
-            # Apply K solution
+            # ---------------------------------------
+            # get K solution to apply and interpolate it to scan timestamps
             try:
                 pipeline_logger.info('Applying delay to gain calibrator {0}'.format(target.split(',')[0],))
-                k_current = ts.get('K')
-                k_soln_hh = CalSolution('K', k_current, np.ones(nant), 'inf', corrprod_lookup)
-                k_to_apply = k_soln_hh.interpolate(times_hh)
-                vis_hh = k_to_apply.apply(vis_hh, chans)
+                sol, soltime = ts.get_range('K')
+                k_soln = CalSolution('K', sol, soltime)
+                k_to_apply = s.interpolate(k_soln)
             except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('Solving for gain without applying delay correction')
@@ -292,9 +197,8 @@ def pipeline(data, ts, thread_name):
             try:
                 pipeline_logger.info('Applying bandpass to gain calibrator {0}'.format(target.split(',')[0],))
                 bp_current = ts.get('B')
-                bp_soln_hh = CalSolution('B',bp_current, np.ones(nant), 'inf', corrprod_lookup)
-                bp_to_apply = bp_soln_hh.interpolate(times_hh) 
-                vis_hh = bp_to_apply.apply(vis_hh)
+                b_soln = CalSolution('B', sol, soltime)
+                b_to_apply = s.interpolate(b_soln)
             except KeyError:
                 # TS doesn't yet contain 'B'
                 pipeline_logger.info('Solving for gain without applying bandpass correction')
@@ -303,19 +207,4 @@ def pipeline(data, ts, thread_name):
             # Preliminary G solution
             pipeline_logger.info('Solving for preliminary gain on gain calibrator {0}'.format(target.split(',')[0],))
             
-            # set up solution interval
-            solint, dumps_per_solint = calprocs.solint_from_nominal(g_solint,dump_period,len(times_hh))
-            # first averge solution interval then channel
             
-            ave_vis_hh, ave_flags_hh, ave_weights_hh, av_sig_hh, ave_times_hh = calprocs.wavg_full_t(vis_hh,flags_hh,weights_hh,
-                    dumps_per_solint,axis=0,times=times_hh)
-            ave_vis_hh = calprocs.wavg(ave_vis_hh,ave_flags_hh,ave_weights_hh,axis=1)
-            # solve for gains
-            g_soln_hh = CalSolution('G', calprocs.g_fit_per_solint(ave_vis_hh,dumps_per_solint,antlist1,antlist2,g0_h,REFANT), 
-                    ave_times_hh, solint, corrprod_lookup)
-                
-            # update TS
-            pipeline_logger.info('Saving gains to Telescope State')
-            ts.add('G',g_soln_hh.values)
-            
-

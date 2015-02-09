@@ -99,9 +99,6 @@ class SimData(katdal.H5DataV2):
                 transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state, tx_tags)
                 # delay so receiver isn't overwhelmed
                 time.sleep(0.5)
-            
-            # insert little delay between scans
-            time.sleep(1.5)
                 
         end_transmit(tx)
                     

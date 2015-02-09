@@ -1,8 +1,9 @@
-"""Scan class to data and operations on data."""
+r"""Scan class to data and operations on data."""
 
 import numpy as np
+import copy
 
-#from katcal.calsolution import CalSolution
+from katcal.calprocs import CalSolution
 
 from katcal import calprocs
 
@@ -15,8 +16,9 @@ class Scan(object):
     def __init__(self, data, ti0, ti1, dump_period, antlist, corr_products):
 
         # get references to this time chunk of data
-        self.vis = data['vis'][ti0:ti1,:,:,:] 
-        self.flags = data['flags'][ti0:ti1,:,:,:] 
+        # -- just using first polarisation for now
+        self.vis = data['vis'][ti0:ti1,:,:,0] 
+        self.flags = data['flags'][ti0:ti1,:,:,0] 
         self.weights = np.ones_like(self.flags,dtype=np.float)
         self.times = data['times'][ti0:ti1]
         
@@ -126,64 +128,65 @@ class Scan(object):
         
     def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
         
+        #app = pre_apply[0]
+        #vis_transform = g_to_apply.apply
         
-        #for solns in pre_apply:
-        #    def vis_transform(solns): 
-        #        self.apply(solns)
+        for soln in pre_apply:
+           modvis = self.apply(soln) 
     
     
         # average over all time (no averaging over channel)
-        ave_vis = calprocs.wavg(self.vis,self.flags,self.weights,axis=0) #,transform=vis_transform)
+        ave_vis = calprocs.wavg(modvis,self.flags,self.weights,axis=0) #,transform=vis_transform)
     
         # solve for delay K
         antlist1, antlist2 = self.corr_antlists
         k_soln = calprocs.k_fit(ave_vis,antlist1,antlist2,self.chans,k0,bp0,REFANT,chan_sample=chan_sample)
     
-        print len(k_soln)
+        #print len(k_soln)
     
         return CalSolution('K', k_soln, np.ones(len(k_soln))) 
         
     # ---------------------------------------------------------------------------------------------
-    
+    # solution application 
       
-    def _apply(self, data, solns, chans=None):
+    def _apply(self, solval):
         """
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
-   
-        Parameters
-        ----------
-        data     : array of complex, shape(ntime x nchan x nbl)
-        chans    :
-
-        Returns
-        -------
-        """     
+        
+        Inputs:
+        ------
+        solval : multiplicative solution values to be applied to visibility data
+        """    
+        
+        modvis = copy.deepcopy(self.vis) 
+        
         for cp in range(len(self.corrprod_lookup)):
-            if len(solns.shape) < 3:
-                data[:,:,cp] /= np.expand_dims(solns[...,self.corrprod_lookup[cp][0]]*(solns[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
+            if len(solval.shape) < 3:
+                modvis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
             else:
-                data[:,:,cp] /= solns[...,self.corrprod_lookup[cp][0]]*(solns[...,self.corrprod_lookup[cp][1]].conj())
-
-        return data
+                modvis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+                
+        return modvis
     
     
-    def apply(self, solns, chans=None):
+    def apply(self, soln, chans=None):
         # set up more complex interpolation methods later
-        if self.soltype is 'G': 
-            return self._apply(solns)    
-        if self.soltype is 'K': 
+        if soln.soltype is 'G': 
+            return self._apply(soln.values)    
+        if soln.soltype is 'K': 
             # want dimensions ntime x nchan x nant
-            g_from_k = np.zeros([data.shape[0],data.shape[1],self.values.shape[-1]],dtype=np.complex)
+            g_from_k = np.zeros([data.shape[0],data.shape[1],soln.values.shape[-1]],dtype=np.complex)
             for c in chans:
-                g_from_k[:,c,:] = np.exp(1.0j*self.values*c)
+                g_from_k[:,c,:] = np.exp(1.0j*soln.values*c)
             return self._apply(data, g_from_k)
-        if self.soltype is 'B': 
-            return self._apply(data, self.values)
+        if soln.soltype is 'B': 
+            return self._apply(data, soln.values)
 
         return data
     
     # ---------------------------------------------------------------------------------------------
+    # interpolation
         
     def interpolate(self, solns, **kwargs):
         # set up more complex interpolation methods later
@@ -205,23 +208,11 @@ class Scan(object):
         interp_solns = real_interp.T + 1.0j*imag_interp.T
         return CalSolution(solns.soltype, interp_solns, self.times)
         
+    def inf_interpolate(self, solns):
+        values = solns.values
+        interp_solns = np.repeat(np.expand_dims(values,axis=0),len(self.times),axis=0)
+        return CalSolution(solns.soltype, interp_solns, self.times)
         
-#--------------------------------------------------------------------------------------------------
-#--- CLASS :  CalSolution
-#--------------------------------------------------------------------------------------------------
-
-"""
-Lightweight solution class to hold calibration solutions along with their times and type.
-"""
-
-class CalSolution(object):
-    def __init__(self, soltype, values, times):
-        if len(values) != len(times):
-            raise ValueError('Solution numbers and timestamps of unequal length!')
         
-        self.soltype = soltype
-        self.values = values
-        # start (? middle?) times of each solution
-        self.times = times
         
 
