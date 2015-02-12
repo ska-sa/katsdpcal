@@ -44,7 +44,6 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
         Complex gains, one per antenna
 
     """
-    #algorithm = 'schwardt'
     if algorithm == 'adi':
         return adi_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant, 
                 init_gain, model, conv_thresh, verbose)
@@ -83,8 +82,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
     -------
     gains : array of complex, shape (num_ants,)
         Complex gains, one per antenna
-    """
-    
+    """    
     # Initialise gain matrix
     g_prev = np.ones(num_ants, dtype=np.complex) if init_gain is None else init_gain  
     g_curr = 1.0*g_prev
@@ -238,6 +236,12 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         Complex gains, one per antenna
 
     """
+    # ignore autocorr data
+    vis = vis[antA!=antB]
+    antA_new = antA[antA!=antB]
+    antB = antB[antA!=antB]
+    antA = antA_new
+    
     # Initialise design matrix for solver
     g_prev = np.zeros((len(vis), num_ants), dtype=np.complex)
     rows = np.arange(len(vis))
@@ -261,6 +265,7 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
     
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
+    print '999', g_array.shape, K.shape
     for i,c in enumerate(chans):
         g_array[:,:,i] = np.cos(2*np.pi*K*c) + 1.0j*np.sin(2*np.pi*K*c)
     return g_array
@@ -286,7 +291,7 @@ def xcbl_from_ants(a):
     """
     return a*(a-1)/2
    
-def g_fit(data,g0,antlist1,antlist2,refant):
+def g_fit(data,g0,antlist1,antlist2,refant,algorithm='adi'):
     """
     Fit gains to visibility data.
    
@@ -313,11 +318,11 @@ def g_fit(data,g0,antlist1,antlist2,refant):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj())) 
-    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0)   
+    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)   
       
     return gainsoln
    
-def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0):
+def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,algorithm='adi'):
     """
     Fit complex gains to visibility data.
    
@@ -342,11 +347,11 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0):
     t_array = np.empty([num_sol],dtype=np.complex)
     # solve for G for each solint
     for i in range(num_sol):
-        g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant)
+        g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant,algorithm=algorithm)
 
     return g_array
     
-def bp_fit(data,antlist1,antlist2,bp0=None,refant=0):
+def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     """
     Fit bandpass to visibility data.
    
@@ -376,12 +381,12 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0):
     for c in range(data.shape[0]):
         # stefcal needs the visibilities as a list of [vis,vis.conjugate]
         vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c])   
+        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c], algorithm=algorithm)   
         bpsoln[c] = fitted_bp
       
     return bpsoln
    
-def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sample=None):
+def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
     """
     Fit bandpass to visibility data.
    
@@ -399,6 +404,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     ksoln : Bandpass, shape(num_chans, num_ants)
     """
    
+    print '&&&& ', refant, ' ******'
     num_ants = ants_from_allbl(data.shape[1])
    
     # -----------------------------------------------------
@@ -418,16 +424,20 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     for c in range(data.shape[0]):
         # stefcal needs the visibilities as a list of [vis,vis.conjugate]
         vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c])   
+        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c], algorithm=algorithm)   
         bpass[c] = fitted_bp
       
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
     for i,bp_phase in enumerate(np.angle(bpass).T):
+        import matplotlib.pylab as plt
+        plt.plot(180.*bp_phase/np.pi)
+        plt.show()
         A = np.array([ chans, np.ones(len(chans))])
         kdelay[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
    
-    return kdelay      
+    print '*****', kdelay
+    return bpass, kdelay      
    
 def wavg(data,flags,weights,axis=0):
     """
