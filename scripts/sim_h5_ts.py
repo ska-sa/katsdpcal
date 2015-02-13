@@ -22,7 +22,7 @@ filename, options = get_args()
 simdata = SimData(filename)
 
 print "Create TS."
-ts = TelescopeState(host=options.ts_ip,db=options.ts_db)
+ts = TelescopeState(endpoint=options.ts_ip,db=options.ts_db)
 print "Use parameters from parameter file to initialise TS."
 parameters.init_ts(ts)
 print "Add and override with TS data from simulator."

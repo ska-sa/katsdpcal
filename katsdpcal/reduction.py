@@ -249,11 +249,11 @@ def pipeline(data, ts, thread_name):
         if any('target' in k for k in taglist):
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s,ts,['K','B','G'],target_name,pipeline_logger,time_range=[t0,t1])        
+            #solns_to_apply = get_solns_to_apply(s,ts,['K','B','G'],target_name,pipeline_logger,time_range=[t0,t1])        
                 
             # apply solutions  
-            for soln in solns_to_apply:    
-                s.apply(soln, inplace=True)
+            #for soln in solns_to_apply:    
+            #    s.apply(soln, inplace=True)
                 
             # return calibrated target data to be streamed to L1
             return s.vis, s.flags, s.weights, s.times

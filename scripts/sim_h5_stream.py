@@ -23,7 +23,7 @@ filename, options = get_args()
 simdata = SimData(filename)
 
 print "Use TS set up by sim_h5_ts.py and run_cal.py scripts."
-ts = TelescopeState(host=options.ts_ip,db=options.ts_db)
+ts = TelescopeState(endpoint=options.ts_ip,db=options.ts_db)
 
 print "Selecting data to transmit. Slice using ts values."
 simdata.select(channels=slice(ts.bchan,ts.echan))

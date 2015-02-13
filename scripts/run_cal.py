@@ -157,7 +157,7 @@ if __name__ == '__main__':
     # short weit to give me time to start up the simulated spead stream
     # time.sleep(5.)
     
-    input_port, input_ip = options.l0_spectral_spead.split(':') 
-    l1_port, l1_ip = options.l1_spectral_spead.split(':') 
+    input_ip, input_port = options.l0_spectral_spead.split(':') 
+    l1_ip, l1_port = options.l1_spectral_spead.split(':') 
     run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, spead_port=input_port, 
                spead_ip=input_ip, ts_db=options.ts_db, ts_ip=options.ts_ip, l1_port=l1_port, l1_ip=l1_ip)

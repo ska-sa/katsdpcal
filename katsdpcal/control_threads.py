@@ -30,7 +30,7 @@ class accumulator_thread(threading.Thread):
         threading.Thread.__init__(self)
         
         self.buffers = buffers
-        self.spead_port = spead_port
+        self.spead_port = int(spead_port)
         self.spead_ip = spead_ip
         self.scan_accumulator_conditions = scan_accumulator_conditions        
         self.num_buffers = len(buffers) 
@@ -195,7 +195,7 @@ class pipeline_thread(threading.Thread):
         self._stop = threading.Event()
         self.ts_db = ts_db
         self.ts_ip = ts_ip
-        self.l1_port = l1_port
+        self.l1_port = int(l1_port)
         self.l1_ip = l1_ip
         
         # set up logging adapter for the thread
@@ -232,13 +232,13 @@ class pipeline_thread(threading.Thread):
     def stopped(self):
         return self._stop.isSet()
         
-def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline', l1_port=8891, l1_ip='127.0.0.1'):    
+def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', l1_port=8891, l1_ip='127.0.0.1', thread_name='Pipeline'):    
     # start TS
-    ts = TelescopeState(host=ts_ip,db=ts_db)
+    ts = TelescopeState(endpoint=ts_ip,db=ts_db)
     # run pipeline calibration
     calibrated_data = pipeline(data,ts,thread_name=thread_name)
     # if target data was calibated in the pipeline, send to L1 spead
-    if calibrated_data is not none:
+    if calibrated_data is not None:
         data_to_SPEAD(calibrated_data,l1_port,l1_ip)
         
 # ---------------------------------------------------------------------------------------
@@ -262,12 +262,12 @@ def data_to_SPEAD(data,port,host):
         tx_vis = data[0][i]
         tx_flags = data[1][i]
         tx_weights = data[2][i]
-        tx_times = data[3][i]
+        tx_time = data[3][i]
 
         # transmit timestamps, vis, flags and weights
         transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights)
         # delay so receiver isn't overwhelmed
-        time.sleep(0.5)
+        time.sleep(0.05)
             
     end_transmit(tx)
     
