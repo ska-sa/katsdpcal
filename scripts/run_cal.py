@@ -86,7 +86,7 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, spead_port=8890, spead_ip=
     """ 
 
     # start TM and extract data shape parameters 
-    ts = TelescopeState(host=ts_ip,db=ts_db)
+    ts = TelescopeState(endpoint=ts_ip,db=ts_db)
     nchan = ts.nchan
     npol = 4
     nant = ts.nant
