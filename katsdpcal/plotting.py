@@ -53,7 +53,7 @@ def plot_data_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
     axes_[0].set_ylabel('Amplitude'+ylabelplus)
         
     # plot phase
-    axes_[1].plot(chans,360.*np.angle(data)/(2.*np.pi),'.-')
+    axes_[1].plot(chans,360.*np.angle(data)/(2.*np.pi),'.')
     axes_[1].set_xlim([0,max(chans)])
     axes_[1].set_ylabel('Phase'+ylabelplus)
 

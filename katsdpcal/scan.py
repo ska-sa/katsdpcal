@@ -112,7 +112,11 @@ class Scan(object):
         
     def g_sol(self,input_solint,g0,REFANT,pre_apply=[]):
         
-        if self.modvis is None: self.modvis = self.vis
+        if len(pre_apply) > 0:
+            self.modvis = copy.deepcopy(self.vis)
+        else:
+            self.modvis = self.vis
+        
         for soln in pre_apply:
            self.modvis = self.apply(soln,origvis=False) 
 
@@ -134,10 +138,11 @@ class Scan(object):
         
     def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
         
-        #app = pre_apply[0]
-        #vis_transform = g_to_apply.apply
-
-        if self.modvis is None: self.modvis = self.vis
+        if len(pre_apply) > 0:
+            self.modvis = copy.deepcopy(self.vis)
+        else:
+            self.modvis = self.vis
+        
         for soln in pre_apply:
            self.modvis = self.apply(soln,origvis=False) 
     
@@ -154,7 +159,11 @@ class Scan(object):
         
     def b_sol(self,bp0,REFANT,pre_apply=[]):
 
-        if self.modvis is None: self.modvis = self.vis
+        if len(pre_apply) > 0:
+            self.modvis = copy.deepcopy(self.vis)
+        else:
+            self.modvis = self.vis
+        
         for soln in pre_apply:
            self.modvis = self.apply(soln,origvis=False) 
     
@@ -168,9 +177,26 @@ class Scan(object):
         return CalSolution('B', b_soln, np.ones(len(b_soln))) 
         
     # ---------------------------------------------------------------------------------------------
-    # solution application 
+    # solution application
+    
+    def _apply(self, solval, origvis=True, inplace=False):
+        """
+        Applies calibration solutions.
+        Must already be interpolated to either full time or full frequency.
+        
+        Inputs:
+        ------
+        solval : multiplicative solution values to be applied to visibility data
+        """  
+        
+        if inplace is True:
+            self._apply_inplace(solval)
+            return
+        else:
+            return self._apply_newvis(solval, origvis=origvis)
+     
       
-    def _apply(self, solval, origvis=True):
+    def _apply_newvis(self, solval, origvis=True):
         """
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
@@ -189,26 +215,42 @@ class Scan(object):
                 outvis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
                 
         return outvis
+        
+    def _apply_inplace(self, solval):
+        """
+        Applies calibration solutions.
+        Must already be interpolated to either full time or full frequency.
+        
+        Inputs:
+        ------
+        solval : multiplicative solution values to be applied to visibility data
+        """    
+        
+        for cp in range(len(self.corrprod_lookup)):
+            if len(solval.shape) < 3:
+                self.vis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
+            else:
+                self.vis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
     
-    def apply(self, soln, chans=None, origvis=True):
+    def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
         if soln.soltype is 'G': 
-            return self._apply(soln.values)    
-        if soln.soltype is 'K': 
+            return self._apply(soln.values,origvis=origvis,inplace=inplace)    
+        elif soln.soltype is 'K': 
             # want dimensions ntime x nchan x nant
             g_from_k = np.zeros([self.vis.shape[0],self.vis.shape[1],soln.values.shape[-1]],dtype=np.complex)
             for c in self.chans:
                 g_from_k[:,c,:] = np.exp(1.0j*soln.values*c)
-            return self._apply(g_from_k)
-        if soln.soltype is 'B': 
-            return self._apply(soln.values)
-
-        return data
+            return self._apply(g_from_k,origvis=origvis,inplace=inplace)
+        elif soln.soltype is 'B': 
+            return self._apply(soln.values,origvis=origvis,inplace=inplace)
+        else:
+            return ValueError('Solution type is invalid.')
     
     # ---------------------------------------------------------------------------------------------
     # interpolation
         
-    def interpolate(self, solns, **kwargs):
+    def interpolate(self, solns):
         # set up more complex interpolation methods later
         soltype = solns.soltype
         if soltype is 'G': 
