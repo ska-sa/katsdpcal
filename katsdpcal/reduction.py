@@ -167,12 +167,14 @@ def pipeline(data, ts, thread_name):
         if any('bpcal' in k for k in taglist):  
             # ---------------------------------------
             # get K solutions to apply and interpolate it to scan timestamps
+            solns_to_apply = []
+            
             try:
                 pipeline_logger.info('Applying delay to bandpass calibrator {0}'.format(target.split(',')[0],))
                 # get most recent K
                 sol, soltime = ts.get_range('K')
                 k_soln = CalSolution('K', sol, soltime)
-                k_to_apply = s.interpolate(k_soln)
+                solns_to_apply.append(s.interpolate(k_soln))
             except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('Solving for bandpass without applying delay correction')
@@ -181,32 +183,42 @@ def pipeline(data, ts, thread_name):
             # Preliminary G solution
             pipeline_logger.info('Solving for preliminary gain on bandpass calibrator {0}'.format(target.split(',')[0],))
             # solve and interpolate to scan timestamps
-            pre_g_soln = s.g_sol(bp_solint,g0_h,REFANT,pre_apply=[k_to_apply])
+            pre_g_soln = s.g_sol(bp_solint,g0_h,REFANT,pre_apply=solns_to_apply)
             g_to_apply = s.interpolate(pre_g_soln)
             
             # ---------------------------------------
             # B solution
             pipeline_logger.info('Solving for bandpass on bandpass calibrator {0}'.format(target.split(',')[0],))
-            b_soln = s.b_sol(bp0_h,REFANT,pre_apply=[k_to_apply,g_to_apply])
+            solns_to_apply.append(g_to_apply)
+            for j in solns_to_apply: print '!!', j.soltype
+            b_soln = s.b_sol(bp0_h,REFANT,pre_apply=solns_to_apply)
 
             # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving bandpass to Telescope State')
             ts.add(b_soln.soltype,b_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
             
+            # check
+            #s.apply(s.interpolate(k_soln), inplace=True)
+            #s.apply(s.interpolate(b_soln), inplace=True)
+            #plotting.plot_bp_data(s.vis)
+            
             # ---------------------------------------
             timing_file.write("Bandpass cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()  
             
+            
         if any('gaincal' in k for k in taglist):
             # ---------------------------------------
             # get K and B solutions to apply and interpolate it to scan timestamps
+            solns_to_apply = []
+            
             try:
                 pipeline_logger.info('Applying delay to gain calibrator {0}'.format(target.split(',')[0],))
                 # get most recent K
                 sol, soltime = ts.get_range('K')
                 k_soln = CalSolution('K', sol, soltime)
-                k_to_apply = s.interpolate(k_soln)
+                solns_to_apply.append(s.interpolate(k_soln))
             except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('Solving for gain without applying delay correction')
@@ -216,7 +228,7 @@ def pipeline(data, ts, thread_name):
                 # get most recent B
                 sol, soltime = ts.get_range('B')
                 b_soln = CalSolution('B', sol, soltime)
-                b_to_apply = s.interpolate(b_soln)
+                solns_to_apply.append(s.interpolate(b_soln))
             except KeyError:
                 # TS doesn't yet contain 'B'
                 pipeline_logger.info('Solving for gain without applying bandpass correction')
@@ -227,7 +239,7 @@ def pipeline(data, ts, thread_name):
             # set up solution interval: just solve for two intervals per G scan (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((ti1-ti0)/2.0)
             g_solint = dumps_per_solint*dump_period            
-            g_soln = s.g_sol(g_solint,g0_h,REFANT,pre_apply=[k_to_apply,b_to_apply])
+            g_soln = s.g_sol(g_solint,g0_h,REFANT,pre_apply=solns_to_apply)
             
             # ---------------------------------------
             # update TS
@@ -235,7 +247,14 @@ def pipeline(data, ts, thread_name):
             # add gains to TS, iterating through solution times 
             for v,t in zip(g_soln.values,g_soln.times): 
                 ts.add(g_soln.soltype,v,ts=t) 
-            
+                
+            # check
+            g_to_apply = s.interpolate(g_soln)
+            solns_to_apply.append(g_to_apply)
+            for soln in solns_to_apply:    
+                s.apply(soln, inplace=True)
+            plotting.plot_bp_data(s.vis)            
+
             # ---------------------------------------
             timing_file.write("Gain cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time() 
@@ -243,12 +262,14 @@ def pipeline(data, ts, thread_name):
         if any('target' in k for k in taglist):
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
+            solns_to_apply = []            
+
             try:
                 pipeline_logger.info('Applying delay to target {0}'.format(target.split(',')[0],))
                 # get most recent K
                 sol, soltime = ts.get_range('K')
                 k_soln = CalSolution('K', sol, soltime)
-                k_to_apply = s.interpolate(k_soln)
+                solns_to_apply.append(s.interpolate(k_soln))
             except KeyError:
                 # TS doesn't yet contain 'K'
                 pipeline_logger.info('No delay correction applied to target data')
@@ -258,7 +279,7 @@ def pipeline(data, ts, thread_name):
                 # get most recent B
                 sol, soltime = ts.get_range('B')
                 b_soln = CalSolution('B', sol, soltime)
-                b_to_apply = s.interpolate(b_soln)
+                solns_to_apply.append(s.interpolate(b_soln))
             except KeyError:
                 # TS doesn't yet contain 'B'
                 pipeline_logger.info('No bandpass correction applied to target data')
@@ -266,13 +287,21 @@ def pipeline(data, ts, thread_name):
             try:
                 pipeline_logger.info('Applying gains to target {0}'.format(target.split(',')[0],))
                 # get G values for an hour range on either side of target scan
-                gsols = np.array(ts.get_range('G',st=t0-60.*60.,et=t1+60.*60))
-                print 'G: ', gsols.shape
-                g_soln = CalSolution('B', gsols[:,0], gsols[:,1])
-                g_to_apply = s.interpolate(g_soln)
+                gsols = ts.get_range('G',st=t0-60.*60.,et=t1+60.*60,return_format='recarray')
+                solval, soltime = gsols['value'], gsols['time']
+                g_soln = CalSolution('G', solval, soltime)
+                solns_to_apply.append(s.interpolate(g_soln))
             except KeyError:
                 # TS doesn't yet contain 'G'
                 pipeline_logger.info('No gain correction applied to target data')
+                
+            #plotting.plot_bp_data(s.vis)
+                
+            for soln in solns_to_apply:    
+                s.apply(soln, inplace=True)
+
+            
+            #plotting.plot_bp_data(s.vis)
             
             
             
