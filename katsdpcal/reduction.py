@@ -82,7 +82,7 @@ def get_solns_to_apply(s,ts,sol_list,target_name,pipeline_logger,time_range=[]):
             
     return solns_to_apply 
 
-def pipeline(data, ts, thread_name):
+def pipeline(data, ts, l1_port, l1_ip, thread_name):
     """
     Pipeline calibration
     """
@@ -254,6 +254,8 @@ def pipeline(data, ts, thread_name):
             # apply solutions  
             for soln in solns_to_apply:    
                 s.apply(soln, inplace=True)
+                
+            s.data_to_SPEAD
             
             
             

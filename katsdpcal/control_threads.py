@@ -178,7 +178,8 @@ class pipeline_thread(threading.Thread):
     Thread which runs pipeline
     """
 
-    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1'):
+    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1',
+           l1_port=8891, l1_ip='127.0.0.1'):
         threading.Thread.__init__(self)
         self.data = data
         self.scan_accumulator_condition = scan_accumulator_condition
@@ -186,6 +187,8 @@ class pipeline_thread(threading.Thread):
         self._stop = threading.Event()
         self.ts_db = ts_db
         self.ts_ip = ts_ip
+        self.l1_port = l1_port
+        self.l1_ip = l1_ip
         
         # set up logging adapter for the thread
         self.pipeline_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -209,7 +212,7 @@ class pipeline_thread(threading.Thread):
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
-            run_pipeline(self.data,self.ts_db,self.ts_ip,self.name)
+            run_pipeline(self.data,self.ts_db,self.ts_ip,self.l1_port,self.l1_ip,self.name)
             
             # release condition after pipeline run finished
             self.scan_accumulator_condition.release()
@@ -222,9 +225,9 @@ class pipeline_thread(threading.Thread):
         return self._stop.isSet()
         
         
-def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline'):    
+def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline', l1_port=8891, l1_ip='127.0.0.1'):    
     # start TS
     ts = TelescopeState(host=ts_ip,db=ts_db)
     # run pipeline calibration
-    pipeline(data,ts,thread_name=thread_name)
+    pipeline(data,ts,l1_port,l1_ip,thread_name=thread_name)
     
