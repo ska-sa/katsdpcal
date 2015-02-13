@@ -161,7 +161,6 @@ def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref
     gains : array of complex, shape (num_ants,)
         Complex gains, one per antenna
     """
-    
     # fudge add pretend autocorr data to the end 
     vis = np.concatenate((vis,np.zeros(num_ants,dtype=np.complex)))
     antA = np.concatenate((antA,range(num_ants)))
@@ -265,9 +264,8 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
     
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
-    print '999', g_array.shape, K.shape
     for i,c in enumerate(chans):
-        g_array[:,:,i] = np.cos(2*np.pi*K*c) + 1.0j*np.sin(2*np.pi*K*c)
+        g_array[:,:,i] = np.exp(1.0j*K*c) 
     return g_array
 
 def nanAve(x,axis=0):
@@ -429,6 +427,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
     for i,bp in enumerate(bpass.T):
+        # unwrap angles before fitting for slope
         bp_phase = np.unwrap(np.angle(bp))
         A = np.array([ chans, np.ones(len(chans))])
         kdelay[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
@@ -476,8 +475,7 @@ def wavg_full(data,flags,weights,axis=0):
    
     av_sig = np.nanstd(data*weights*(~flags))
     av_data = np.nansum(data*weights*(~flags),axis=axis)/np.nansum(weights*(~flags),axis=axis)
-    #print np.nansum(weights*(~flags),axis=axis)
-    #pri
+
     # fake flags and weights for now
     av_flags = np.zeros_like(av_data,dtype=np.bool)
     av_weights = np.ones_like(av_data,dtype=np.float)

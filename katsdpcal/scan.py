@@ -3,9 +3,8 @@ r"""Scan class to data and operations on data."""
 import numpy as np
 import copy
 
-from katcal.calprocs import CalSolution
-
 from katcal import calprocs
+from katcal.calprocs import CalSolution
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  Scan
@@ -35,11 +34,6 @@ class Scan(object):
         self.dump_period = dump_period
         self.corrprod_lookup = self.get_corrprods(antlist, corr_products)
         self.corr_antlists = self.get_antlists(self.corrprod_lookup)
-
-        # kwargs may include, for example, ???
-        #for key, value in kwargs.items():
-        #        setattr(self, key, value)
-                
           
     def get_corrprods(self, antlist, corr_products):            
         """
@@ -133,7 +127,6 @@ class Scan(object):
         antlist1, antlist2 = self.corr_antlists
         g_soln = calprocs.g_fit_per_solint(ave_vis,dumps_per_solint,antlist1,antlist2,g0,REFANT)
     
-        #return CalSolution('G', g_soln, ave_times, solint, corrprod_lookup)
         return CalSolution('G', g_soln, ave_times)
         
     def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
@@ -147,13 +140,11 @@ class Scan(object):
            self.modvis = self.apply(soln,origvis=False) 
     
         # average over all time (no averaging over channel)
-        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0) #,transform=vis_transform)
+        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0)
     
         # solve for delay K
         antlist1, antlist2 = self.corr_antlists
         k_soln = calprocs.k_fit(ave_vis,antlist1,antlist2,self.chans,k0,bp0,REFANT,chan_sample=chan_sample)
-    
-        #print len(k_soln)
     
         return CalSolution('K', k_soln, np.ones(len(k_soln))) 
         

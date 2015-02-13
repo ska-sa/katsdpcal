@@ -84,6 +84,9 @@ def plot_bp_data(data,chans=None,plotavg=False):
         plot_data_v_chan(data[ti],axes,plotnum=0)
         
     if plotavg: plot_data_v_chan(np.nanmean(data,axis=0),axes,plotnum=1,ylabelplus=' (Avg)')
+    
+    # debug
+    #plt.savefig('tst.png')
 
     return fig
     
