@@ -404,7 +404,6 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     ksoln : Bandpass, shape(num_chans, num_ants)
     """
    
-    print '&&&& ', refant, ' ******'
     num_ants = ants_from_allbl(data.shape[1])
    
     # -----------------------------------------------------
@@ -429,15 +428,12 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
       
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
-    for i,bp_phase in enumerate(np.angle(bpass).T):
-        import matplotlib.pylab as plt
-        plt.plot(180.*bp_phase/np.pi)
-        plt.show()
+    for i,bp in enumerate(bpass.T):
+        bp_phase = np.unwrap(np.angle(bp))
         A = np.array([ chans, np.ones(len(chans))])
         kdelay[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
    
-    print '*****', kdelay
-    return bpass, kdelay      
+    return kdelay      
    
 def wavg(data,flags,weights,axis=0):
     """
