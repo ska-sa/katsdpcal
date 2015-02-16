@@ -8,7 +8,7 @@ def parse_args():
     usage = "%s [options]"%os.path.basename(__file__)
     description = "Receive L1 SPEAD data."
     parser = OptionParser( usage=usage, description=description)
-    parser.add_option("--l1-spectral-spead", default="8891", help="destination port for spectral L1 input. default: 8890")
+    parser.add_option("--l1-spectral-spead", default="127.0.0.1:8891", help="destination host:port for spectral L1 output. default: 127.0.0.1:8891")
     return parser.parse_args()
 
 def receive_l1(spead_stream):
@@ -41,6 +41,7 @@ if __name__ == '__main__':
     
     (options, args) = parse_args()  
     # Initialise spead receiver
-    spead_stream = spead.TransportUDPrx(int(options.l1_spectral_spead))
+    l1_ip, l1_port = options.l1_spectral_spead.split(':') 
+    spead_stream = spead.TransportUDPrx(int(l1_port))
     # recieve stream
     receive_l1(spead_stream)

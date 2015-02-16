@@ -29,7 +29,7 @@ print "Selecting data to transmit. Slice using ts values."
 simdata.select(channels=slice(ts.bchan,ts.echan))
 
 print "TX: start."
-host, port = options.l0_spectral_spead.split(':')
-simdata.h5toSPEAD(ts,int(port),host) 
+l0_ip, l0_port = options.l0_spectral_spead.split(':')
+simdata.h5toSPEAD(ts,int(l0_port),l0_ip) 
 print "TX: ended."
 

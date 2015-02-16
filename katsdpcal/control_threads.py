@@ -26,12 +26,12 @@ class accumulator_thread(threading.Thread):
     Thread which accumutates data from spead into numpy arrays
     """
 
-    def __init__(self, buffers, scan_accumulator_conditions, spead_port, spead_ip):
+    def __init__(self, buffers, scan_accumulator_conditions, l0_port, l0_ip):
         threading.Thread.__init__(self)
         
         self.buffers = buffers
-        self.spead_port = int(spead_port)
-        self.spead_ip = spead_ip
+        self.l0_port = int(l0_port)
+        self.l0_ip = l0_ip
         self.scan_accumulator_conditions = scan_accumulator_conditions        
         self.num_buffers = len(buffers) 
 
@@ -56,7 +56,7 @@ class accumulator_thread(threading.Thread):
         """
         # Initialise SPEAD stream
         self.accumulator_logger.info('Initializing SPEAD receiver')
-        spead_stream = spead.TransportUDPrx(self.spead_port)
+        spead_stream = spead.TransportUDPrx(self.l0_port)
 
         # Iincrement between buffers, filling and releasing iteratively
         #Initialise current buffer counter
@@ -103,7 +103,7 @@ class accumulator_thread(threading.Thread):
         Send stop packed to force shut down of SPEAD receiver
         """
         print 'sending stop packet'
-        tx = spead.Transmitter(spead.TransportUDPtx(self.spead_ip,self.spead_port))
+        tx = spead.Transmitter(spead.TransportUDPtx(self.l0_ip,self.l0_port))
         tx.end()
         
     def accumulate(self, spead_stream, data_buffer):
