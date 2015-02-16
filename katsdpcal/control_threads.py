@@ -16,6 +16,10 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
     """
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
+        
+# ---------------------------------------------------------------------------------------
+# Accumulator
+# ---------------------------------------------------------------------------------------
 
 class accumulator_thread(threading.Thread):
     """
@@ -26,7 +30,7 @@ class accumulator_thread(threading.Thread):
         threading.Thread.__init__(self)
         
         self.buffers = buffers
-        self.spead_port = spead_port
+        self.spead_port = int(spead_port)
         self.spead_ip = spead_ip
         self.scan_accumulator_conditions = scan_accumulator_conditions        
         self.num_buffers = len(buffers) 
@@ -172,13 +176,18 @@ class accumulator_thread(threading.Thread):
         data_buffer['track_start_indices'].append(array_index)
     
         return array_index
+        
+# ---------------------------------------------------------------------------------------
+# Pipeline 
+# ---------------------------------------------------------------------------------------
                
 class pipeline_thread(threading.Thread):
     """
     Thread which runs pipeline
     """
 
-    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1'):
+    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1',
+           l1_port=8891, l1_ip='127.0.0.1'):
         threading.Thread.__init__(self)
         self.data = data
         self.scan_accumulator_condition = scan_accumulator_condition
@@ -186,6 +195,8 @@ class pipeline_thread(threading.Thread):
         self._stop = threading.Event()
         self.ts_db = ts_db
         self.ts_ip = ts_ip
+        self.l1_port = int(l1_port)
+        self.l1_ip = l1_ip
         
         # set up logging adapter for the thread
         self.pipeline_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -209,7 +220,7 @@ class pipeline_thread(threading.Thread):
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
-            run_pipeline(self.data,self.ts_db,self.ts_ip,self.name)
+            run_pipeline(self.data,self.ts_db,self.ts_ip,self.l1_port,self.l1_ip,self.name)
             
             # release condition after pipeline run finished
             self.scan_accumulator_condition.release()
@@ -221,10 +232,81 @@ class pipeline_thread(threading.Thread):
     def stopped(self):
         return self._stop.isSet()
         
-        
-def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', thread_name='Pipeline'):    
+def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', l1_port=8891, l1_ip='127.0.0.1', thread_name='Pipeline'):    
     # start TS
-    ts = TelescopeState(host=ts_ip,db=ts_db)
+    ts = TelescopeState(endpoint=ts_ip,db=ts_db)
     # run pipeline calibration
-    pipeline(data,ts,thread_name=thread_name)
+    calibrated_data = pipeline(data,ts,thread_name=thread_name)
+    # if target data was calibated in the pipeline, send to L1 spead
+    if calibrated_data is not None:
+        data_to_SPEAD(calibrated_data,l1_port,l1_ip)
+        
+# ---------------------------------------------------------------------------------------
+# SPEAD transmission
+# ---------------------------------------------------------------------------------------
+        
+def data_to_SPEAD(data,port,host):
+    """
+    Sends data to SPEAD stream
+    
+    data:
+       list of: vis, flags, weights, times
+    """
+    
+    print 'TX: L1 Stream initializing...'
+    tx = spead.Transmitter(spead.TransportUDPtx(host,port))
+
+    # transmit data
+    for i in range(len(data[-1])): # time axis
+
+        tx_vis = data[0][i]
+        tx_flags = data[1][i]
+        tx_weights = data[2][i]
+        tx_time = data[3][i]
+
+        # transmit timestamps, vis, flags and weights
+        transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights)
+        # delay so receiver isn't overwhelmed
+        time.sleep(0.05)
+            
+    end_transmit(tx)
+    
+def end_transmit(tx):
+    """
+    Send stop packet to spead stream tx
+    
+    Parameters
+    ----------
+    tx       : spead stream
+    """
+    tx.end()
+    
+def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights):
+    """
+    Send spead packet containing time, visibility, flags and array state
+    
+    Parameters
+    ----------
+    tx         : spead stream
+    tx_time    : timestamp, float
+    tx_vis     : visibilities, complex array 
+    tx_flags   : flags, int array
+    tx_weights : weights, float array
+    """
+    ig = spead.ItemGroup()
+
+    ig.add_item(name='timestamp', description='Timestamp',
+        shape=[], fmt=spead.mkfmt(('f',64)),
+        init_val=tx_time)
+
+    ig.add_item(name='correlator_data', description='Full visibility array',
+        init_val=tx_vis)
+
+    ig.add_item(name='flags', description='Flag array',
+        init_val=tx_flags)
+        
+    ig.add_item(name='weights', description='Weight array',
+        init_val=tx_weights)
+
+    tx.send_heap(ig.get_heap())
     
