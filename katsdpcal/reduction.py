@@ -126,8 +126,7 @@ def pipeline(data, ts, thread_name):
         #  target string contains: 'target name, tags, RA, DEC'
         target = ts.get_previous(target_key,t0,dt=10.)[0]
         scan_state = ts.get_previous(activity_key,t0,dt=10.)[0]
-        taglist = target.split(',')[1].split()
-        print taglist        
+        taglist = target.split(',')[1].split()    
         # fudge for now to add delay cal tag to bpcals
         if 'bpcal' in taglist: taglist.append('delaycal')
         
