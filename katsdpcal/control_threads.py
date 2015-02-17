@@ -256,7 +256,6 @@ def data_to_SPEAD(data,spead_endpoint):
        list of: vis, flags, weights, times
     """
     
-    print 'TX: L1 Stream initializing...'
     tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
 
     # transmit data
