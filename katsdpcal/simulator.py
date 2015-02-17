@@ -45,11 +45,11 @@ class SimData(katdal.H5DataV2):
    
     def setup_ts(self,ts):
         """
-        Initialises the Telescope Model, optionally from existing TM pickle.
+        Add key value pairs from h5 file to Telescope State
    
         Parameters
         ----------
-        ts : Telescope Model dictionary
+        ts : TelescopeState
         """   
         # set simulated ts values from h5 file
         ts.add('antlist', [ant.name for ant in self.ants])
@@ -58,7 +58,7 @@ class SimData(katdal.H5DataV2):
         ts.add('corr_products', self.corr_products)
         ts.add('dump_period', self.dump_period)
         
-    def h5toSPEAD(self,ts,port,host='127.0.0.1'):
+    def h5toSPEAD(self,ts,l0_endpoint):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
@@ -70,7 +70,7 @@ class SimData(katdal.H5DataV2):
         """
         
         print 'TX: Initializing...'
-        tx = spead.Transmitter(spead.TransportUDPtx(host,port))
+        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port))
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
@@ -96,7 +96,7 @@ class SimData(katdal.H5DataV2):
                 tx_tags = np.array(target.tags)
 
                 # transmit timestamps, vis, flags and scan state (which stays the same for a scan)
-                transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state, tx_tags)
+                transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state, tx_tags)
                 # delay so receiver isn't overwhelmed
                 time.sleep(0.5)
                 
@@ -112,7 +112,7 @@ def end_transmit(tx):
     """
     tx.end()
     
-def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
+def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
     """
     Send spead packet containing time, visibility, flags and array state
     

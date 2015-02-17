@@ -7,12 +7,12 @@ import os
 
 from katcal.control_threads import accumulator_thread, pipeline_thread
 
-import optparse
 
 from katcal.simulator import SimData
 from katcal import parameters
 
 from katsdptelstate.telescope_state import TelescopeState
+from katsdptelstate import endpoint, ArgumentParser
 
 import logging
 logger = logging.getLogger(__name__)
@@ -20,16 +20,13 @@ logger.setLevel(logging.DEBUG)
 
 from optparse import OptionParser
 
-def parse_args():
-    usage = "%s [options]"%os.path.basename(__file__)
-    description = "Set up and wait for a spead stream to run the pipeline."
-    parser= OptionParser( usage=usage, description=description)
-    parser.add_option("--num-buffers", default=2, type="int", help="Specify the number of data buffers to use. default: 2")
-    parser.add_option("--buffer-maxsize", default=1000e6, type="float", help="The amount of memory (in bytes?) to allocate to each buffer. default: 1e9")
-    parser.add_option("--ts-db", default=1, type="int", help="Telescope state database number. default: 1")
-    parser.add_option("--ts-ip", default="127.0.0.1", help="Telescope state ip address. default: 127.0.0.1")
-    parser.add_option("--l0-spectral-spead", default="127.0.0.1:8890", help="destination host:port for spectral L0 input. default: 127.0.0.1:8890")
-    parser.add_option("--l1-spectral-spead", default="127.0.0.1:8891", help="destination host:port for spectral L1 output. default: 127.0.0.1:8891")
+def parse_opts():
+    parser = ArgumentParser(description = 'Set up and wait for a spead stream to run the pipeline.')    
+    parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
+    parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')    
+    parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
+    parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
 def all_alive(process_list):
@@ -59,9 +56,8 @@ def create_buffer_arrays(array_length,nchan,nbl,npol):
     data['track_start_indices'] = []
     return data
 
-def run_threads(num_buffers=2, buffer_maxsize=1000e6, ts_db=1, ts_ip='127.0.0.1',
-                 l0_port=8890, l0_ip="localhost", 
-                 l1_port=8891, l1_ip="localhost"):
+def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6, 
+           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202'):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -70,28 +66,21 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, ts_db=1, ts_ip='127.0.0.1'
     
     Inputs
     ======
+    ts: TelescopeState
+        The telescope state, default: 'localhost' database 0
     num_buffers: int
         The number of buffers to use- this will create a pipeline thread for each buffer
         and an extra accumulator thread to read the spead stream.
     buffer_maxsize: float
         The maximum size of the buffer. Memory for each buffer will be allocated at first
         and then populated by the accumulator from the spead stream.
-    ts_db : int
-        The telescope model database number
-    ts_ip : string
-        The telescope model ip address
-    l0_port: int
-        The port to read the L0 spead stream from
-    l0_ip: string
-        The ip to read the L0 spead stream from
-    l1_port: int
-        The port to send L1 spead stream to
-    l1_ip: string
-        The ip to send L1 spead stream to
+    l0_endpoint: endpoint
+        Endpoint to listen to for L0 stream, default: ':7200'
+    l1_endpoint: endpoint
+        Destination endpoint for L1 stream, default: '127.0.0.1:7202'
     """ 
 
-    # start TM and extract data shape parameters 
-    ts = TelescopeState(endpoint=ts_ip,db=ts_db)
+    # extract data shape parameters from TS
     nchan = ts.nchan
     npol = 4
     nant = ts.nant
@@ -117,10 +106,10 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, ts_db=1, ts_ip='127.0.0.1'
     scan_accumulator_conditions = [threading.Condition() for i in range(num_buffers)]
     
     # Set up the accumulator
-    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, l0_port, l0_ip)
+    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, l0_endpoint)
 
     #Set up the pipelines (one per buffer)
-    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i, ts_db, ts_ip, l1_port, l1_ip) for i in range(num_buffers)]
+    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
     
     #Start the pipeline threads
     map(lambda x: x.start(), pipelines)
@@ -151,14 +140,10 @@ def run_threads(num_buffers=2, buffer_maxsize=1000e6, ts_db=1, ts_ip='127.0.0.1'
 
 if __name__ == '__main__':
     
-    (options, args) = parse_args()
+    opts = parse_opts()
 
     # short weit to give me time to start up the simulated spead stream
     # time.sleep(5.)
-    
-    l0_ip, l0_port = options.l0_spectral_spead.split(':') 
-    l1_ip, l1_port = options.l1_spectral_spead.split(':') 
-    run_threads(num_buffers=options.num_buffers, buffer_maxsize=options.buffer_maxsize, 
-           ts_db=options.ts_db, ts_ip=options.ts_ip, 
-           l0_port=l0_port, l0_ip=l0_ip,
-           l1_port=l1_port, l1_ip=l1_ip)
+
+    run_threads(opts.telstate, num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, 
+           l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead)

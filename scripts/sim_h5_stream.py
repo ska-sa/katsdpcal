@@ -3,33 +3,28 @@
 # H5 file to use for simulation
 #   simulation of data and Teselcope State (TS)
 
-
-import optparse
-
 from katcal.simulator import SimData
 from katsdptelstate.telescope_state import TelescopeState
+from katsdptelstate import endpoint, ArgumentParser
 
-def get_args():
-    parser = optparse.OptionParser(usage="%prog [options] <filename.h5>", description='Simulate SPEAD data stream from H5 file.')
-    parser.add_option("--ts-db", default=1, type="int", help="Telescope state database number. default: 1")
-    parser.add_option("--ts-ip", default="127.0.0.1", help="Telescope state ip address. default: 127.0.0.1")
-    parser.add_option("--l0-spectral-spead", default="127.0.0.1:8890", help="destination host:port for spectral L0 input. default: 127.0.0.1:8890")
-    (options, args) = parser.parse_args()
-    if len(args) < 1 or not args[0].endswith(".h5"):
-        parser.error("Please provide a .h5 filename as argument")
-    return args[0], options
+def parse_opts():
+    parser = ArgumentParser(description = 'Simulate SPEAD data stream from H5 file')    
+    parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_parser(7200), default='127.0.0.1:7200', 
+            help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument('--h5file', type=str, help='H5 file for simulated data')
+    parser.set_defaults(telstate='localhost')
+    return parser.parse_args()
 
-filename, options = get_args()
-simdata = SimData(filename)
+opts = parse_opts()
+simdata = SimData(opts.h5file)
 
 print "Use TS set up by sim_h5_ts.py and run_cal.py scripts."
-ts = TelescopeState(endpoint=options.ts_ip,db=options.ts_db)
+ts = opts.telstate
 
 print "Selecting data to transmit. Slice using ts values."
 simdata.select(channels=slice(ts.bchan,ts.echan))
 
 print "TX: start."
-l0_ip, l0_port = options.l0_spectral_spead.split(':')
-simdata.h5toSPEAD(ts,int(l0_port),l0_ip) 
+simdata.h5toSPEAD(ts,opts.l0_spectral_spead) 
 print "TX: ended."
 

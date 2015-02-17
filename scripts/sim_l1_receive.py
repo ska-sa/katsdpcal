@@ -1,14 +1,16 @@
+#!/usr/bin/env python
+# ----------------------------------------------------------
+# Simulate receiver for L1 data stream
 
 import spead64_48 as spead
 
-from optparse import OptionParser
-import os
+from katsdptelstate import endpoint, ArgumentParser
 
-def parse_args():
-    usage = "%s [options]"%os.path.basename(__file__)
-    description = "Receive L1 SPEAD data."
-    parser = OptionParser( usage=usage, description=description)
-    parser.add_option("--l1-spectral-spead", default="127.0.0.1:8891", help="destination host:port for spectral L1 output. default: 127.0.0.1:8891")
+def parse_opts():
+    parser = ArgumentParser(description = 'Simulate receiver for L1 data stream')    
+    parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_list_parser(7202, single_port=True), default=':7202', 
+            help='endpoints to listen for L1 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
 def receive_l1(spead_stream):
@@ -38,10 +40,8 @@ if __name__ == '__main__':
     Recieved a single scan L1 output stream
        and print some details to confirm all is going well
     """
-    
-    (options, args) = parse_args()  
+    opts = parse_opts() 
     # Initialise spead receiver
-    l1_ip, l1_port = options.l1_spectral_spead.split(':') 
-    spead_stream = spead.TransportUDPrx(int(l1_port))
+    spead_stream = spead.TransportUDPrx(opts.l1_spectral_spead[0].port)
     # recieve stream
     receive_l1(spead_stream)

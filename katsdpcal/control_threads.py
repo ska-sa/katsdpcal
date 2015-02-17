@@ -26,12 +26,11 @@ class accumulator_thread(threading.Thread):
     Thread which accumutates data from spead into numpy arrays
     """
 
-    def __init__(self, buffers, scan_accumulator_conditions, l0_port, l0_ip):
+    def __init__(self, buffers, scan_accumulator_conditions, l0_endpoint):
         threading.Thread.__init__(self)
         
         self.buffers = buffers
-        self.l0_port = int(l0_port)
-        self.l0_ip = l0_ip
+        self.l0_endpoint = l0_endpoint
         self.scan_accumulator_conditions = scan_accumulator_conditions        
         self.num_buffers = len(buffers) 
 
@@ -56,7 +55,7 @@ class accumulator_thread(threading.Thread):
         """
         # Initialise SPEAD stream
         self.accumulator_logger.info('Initializing SPEAD receiver')
-        spead_stream = spead.TransportUDPrx(self.l0_port)
+        spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
 
         # Iincrement between buffers, filling and releasing iteratively
         #Initialise current buffer counter
@@ -103,7 +102,7 @@ class accumulator_thread(threading.Thread):
         Send stop packed to force shut down of SPEAD receiver
         """
         print 'sending stop packet'
-        tx = spead.Transmitter(spead.TransportUDPtx(self.l0_ip,self.l0_port))
+        tx = spead.Transmitter(spead.TransportUDPtx(self.l0_endpoint.host,self.l0_endpoint.port))
         tx.end()
         
     def accumulate(self, spead_stream, data_buffer):
@@ -186,17 +185,14 @@ class pipeline_thread(threading.Thread):
     Thread which runs pipeline
     """
 
-    def __init__(self, data, scan_accumulator_condition, pipenum, ts_db=1, ts_ip='127.0.0.1',
-           l1_port=8891, l1_ip='127.0.0.1'):
+    def __init__(self, data, scan_accumulator_condition, pipenum, l1_endpoint, telstate):
         threading.Thread.__init__(self)
         self.data = data
         self.scan_accumulator_condition = scan_accumulator_condition
         self.name = 'Pipeline_thread_'+str(pipenum)
         self._stop = threading.Event()
-        self.ts_db = ts_db
-        self.ts_ip = ts_ip
-        self.l1_port = int(l1_port)
-        self.l1_ip = l1_ip
+        self.telstate = telstate
+        self.l1_endpoint = l1_endpoint
         
         # set up logging adapter for the thread
         self.pipeline_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -220,7 +216,7 @@ class pipeline_thread(threading.Thread):
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
-            run_pipeline(self.data,self.ts_db,self.ts_ip,self.l1_port,self.l1_ip,self.name)
+            run_pipeline(self.data,self.telstate,self.l1_endpoint,self.name)
             
             # release condition after pipeline run finished
             self.scan_accumulator_condition.release()
@@ -232,20 +228,18 @@ class pipeline_thread(threading.Thread):
     def stopped(self):
         return self._stop.isSet()
         
-def run_pipeline(data, ts_db=1, ts_ip='127.0.0.1', l1_port=8891, l1_ip='127.0.0.1', thread_name='Pipeline'):    
-    # start TS
-    ts = TelescopeState(endpoint=ts_ip,db=ts_db)
+def run_pipeline(data, ts, l1_endpoint, thread_name='Pipeline'):    
     # run pipeline calibration
     calibrated_data = pipeline(data,ts,thread_name=thread_name)
     # if target data was calibated in the pipeline, send to L1 spead
     if calibrated_data is not None:
-        data_to_SPEAD(calibrated_data,l1_port,l1_ip)
+        data_to_SPEAD(calibrated_data,l1_endpoint)
         
 # ---------------------------------------------------------------------------------------
 # SPEAD transmission
 # ---------------------------------------------------------------------------------------
         
-def data_to_SPEAD(data,port,host):
+def data_to_SPEAD(data,spead_endpoint):
     """
     Sends data to SPEAD stream
     
@@ -254,7 +248,7 @@ def data_to_SPEAD(data,port,host):
     """
     
     print 'TX: L1 Stream initializing...'
-    tx = spead.Transmitter(spead.TransportUDPtx(host,port))
+    tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
 
     # transmit data
     for i in range(len(data[-1])): # time axis
@@ -265,7 +259,7 @@ def data_to_SPEAD(data,port,host):
         tx_time = data[3][i]
 
         # transmit timestamps, vis, flags and weights
-        transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights)
+        transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
         # delay so receiver isn't overwhelmed
         time.sleep(0.05)
             
@@ -281,7 +275,7 @@ def end_transmit(tx):
     """
     tx.end()
     
-def transmit_ts(tx, tx_time, tx_vis, tx_flags, tx_weights):
+def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights):
     """
     Send spead packet containing time, visibility, flags and array state
     
