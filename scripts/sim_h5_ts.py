@@ -15,11 +15,15 @@ def parse_opts():
     return parser.parse_args()
 
 opts = parse_opts()
-simdata = SimData(opts.h5file)
+ts = opts.telstate
 
 print "Use parameters from parameter file to initialise TS."
-parameters.init_ts(opts.telstate)
-print "Add and override with TS data from simulator."
-simdata.setup_ts(opts.telstate)
+parameters.init_ts(ts)
+
+print "Open H5 file using appropriate reference antenna for sensor reference."
+simdata = SimData(opts.h5file,ts.cal_refant)
+
+print "Add and override TS data from simulator."
+simdata.setup_ts(ts)
 print "Done."
 

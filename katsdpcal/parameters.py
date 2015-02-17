@@ -8,7 +8,7 @@ def set_params():
     #parms['cal_closing_plots'] = True
     parms['cal_bchan'] = 200
     parms['cal_echan'] = 800
-    parms['cal_refant'] = 1
+    parms['cal_refant'] = 'ant1'
    
     # delay calibration
     #parms['cal_K'] = []

@@ -26,10 +26,11 @@ class accumulator_thread(threading.Thread):
     Thread which accumutates data from spead into numpy arrays
     """
 
-    def __init__(self, buffers, scan_accumulator_conditions, l0_endpoint):
+    def __init__(self, buffers, scan_accumulator_conditions, l0_endpoint, telstate):
         threading.Thread.__init__(self)
         
         self.buffers = buffers
+        self.telstate = telstate
         self.l0_endpoint = l0_endpoint
         self.scan_accumulator_conditions = scan_accumulator_conditions        
         self.num_buffers = len(buffers) 
@@ -115,8 +116,7 @@ class accumulator_thread(threading.Thread):
            correlator_data
            flags
            weights
-           timestamp
-           state        
+           timestamp      
         """
 
         ig = spead.ItemGroup()
@@ -126,25 +126,33 @@ class accumulator_thread(threading.Thread):
         data_buffer['track_start_indices'] = []
         
         max_length = data_buffer['times'].shape[0]
-        prev_state = 'none'
-        prev_tage = 'none'
+        prev_activity = 'none'
+        prev_tags = 'none'
+        
+        # get names of activity and target TS keys, using TS reference antenna
+        target_key = '{0}_target'.format(self.telstate.cal_refant,)
+        activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
         
         # receive SPEAD stream
         print 'Got heaps: ',
         for heap in spead.iterheaps(spead_stream): 
             ig.update(heap)
             print array_index, 
-            
             array_index += 1
+            
+            # get activity and target tag from TS
+            activity = self.telstate[activity_key]
+            target = self.telstate[target_key]
+            
             # accumulate list of track start time indices in the array
             #   for use in the pipeline, to index each track easily 
-            if 'track' in ig['state'] and not 'track' in prev_state:
+            if 'track' in activity and not 'track' in prev_activity:
                 data_buffer['track_start_indices'].append(array_index)
                 
             # break if this scan is a slew that follows a track
             #   unless previous scan was a target, in which case accumulate subsequent gain scan too
             # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY ********** 
-            if ('slew' in ig['state'] and 'track' in prev_state) and 'target' not in prev_tags:
+            if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
                 self.accumulator_logger.info('Accumulate break due to transition')
                 break
 
@@ -169,8 +177,9 @@ class accumulator_thread(threading.Thread):
                 self.accumulator_logger.info('Accumulate break due to buffer size limit')
                 break
                 
-            prev_state = ig['state']
-            prev_tags = ig['tags']
+            prev_activity = activity
+            # extract tags from target description string
+            prev_tags = target.split(',')[1]
                 
         data_buffer['track_start_indices'].append(array_index)
     

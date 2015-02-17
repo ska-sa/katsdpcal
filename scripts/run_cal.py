@@ -106,7 +106,7 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
     scan_accumulator_conditions = [threading.Condition() for i in range(num_buffers)]
     
     # Set up the accumulator
-    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, l0_endpoint)
+    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, l0_endpoint, ts)
 
     #Set up the pipelines (one per buffer)
     pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]

@@ -21,8 +21,10 @@ from random import random
 
 class SimData(katdal.H5DataV2):
     
-    def __init__(self, h5filename):
-        H5DataV2.__init__(self, h5filename)
+    def __init__(self, h5filename, refant=''):
+        H5DataV2.__init__(self, h5filename, refant)
+        # need reference antenna for simulating activity and target sensors
+        self.refant = refant
    
     def write_h5(self,data,corrprod_mask,tsask=None,cmask=None):
         """
@@ -74,11 +76,10 @@ class SimData(katdal.H5DataV2):
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
-            #   add random offset to time, <= 0.1 seconds, to simulate
+            #   subtract random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
-            ts.add('target',target.description,ts=self.timestamps[0]+random()*0.1)
-            ts.add('tag',target.tags,ts=self.timestamps[0]+random()*0.1)
-            ts.add('scan_state',scan_state,ts=self.timestamps[0]+random()*0.1)
+            ts.add('{0}_target'.format(self.refant,),target.description,ts=self.timestamps[0]-random()*0.1)
+            ts.add('{0}_activity'.format(self.refant,),scan_state,ts=self.timestamps[0]-random()*0.1)
             print scan_state
             
             # transmit the data from this scan, timestamp by timestamp
@@ -93,10 +94,9 @@ class SimData(katdal.H5DataV2):
                 tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
                 tx_weights = scan_weights[i,:,:]
-                tx_tags = np.array(target.tags)
 
-                # transmit timestamps, vis, flags and scan state (which stays the same for a scan)
-                transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, scan_state, tx_tags)
+                # transmit timestamps, vis, flags, weights
+                transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
                 # delay so receiver isn't overwhelmed
                 time.sleep(0.5)
                 
@@ -112,7 +112,7 @@ def end_transmit(tx):
     """
     tx.end()
     
-def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
+def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights):
     """
     Send spead packet containing time, visibility, flags and array state
     
@@ -123,9 +123,6 @@ def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
     tx_vis     : visibilities, complex array 
     tx_flags   : flags, int array
     tx_weights : weights, float array
-    tx_state   : current state of array, string 
-                 e.g. 'track', 'slew'
-    tx_tags    : intent tags, string array
     """
     ig = spead.ItemGroup()
 
@@ -141,12 +138,6 @@ def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights, tx_state, tx_tags):
         
     ig.add_item(name='weights', description='Weight array',
         init_val=tx_weights)
-        
-    ig.add_item(name='state', description='array state',
-        shape=-1, fmt=spead.mkfmt(('s', 8)), init_val=tx_state)
-        
-    ig.add_item(name='tags', description='intent tags',
-        init_val=tx_tags)
 
     tx.send_heap(ig.get_heap())
     
