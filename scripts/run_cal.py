@@ -7,7 +7,6 @@ import os
 
 from katcal.control_threads import accumulator_thread, pipeline_thread
 
-
 from katcal.simulator import SimData
 from katcal import parameters
 
@@ -17,8 +16,6 @@ from katsdptelstate import endpoint, ArgumentParser
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-from optparse import OptionParser
 
 def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for a spead stream to run the pipeline.')    
