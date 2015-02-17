@@ -22,7 +22,7 @@ print "Use TS set up by sim_h5_ts.py and run_cal.py scripts."
 ts = opts.telstate
 
 print "Selecting data to transmit. Slice using ts values."
-simdata.select(channels=slice(ts.bchan,ts.echan))
+simdata.select(channels=slice(ts.cal_bchan,ts.cal_echan))
 
 print "TX: start."
 simdata.h5toSPEAD(ts,opts.l0_spectral_spead) 

@@ -12,7 +12,7 @@ from katcal.calprocs import CalSolution
 
 class Scan(object):
    
-    def __init__(self, data, ti0, ti1, dump_period, antlist, corr_products):
+    def __init__(self, data, ti0, ti1, dump_period, antlist, bls_ordering):
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
@@ -32,17 +32,17 @@ class Scan(object):
         
         # scan meta-data
         self.dump_period = dump_period
-        self.corrprod_lookup = self.get_corrprods(antlist, corr_products)
+        self.corrprod_lookup = self.get_corrprods(antlist, bls_ordering)
         self.corr_antlists = self.get_antlists(self.corrprod_lookup)
           
-    def get_corrprods(self, antlist, corr_products):            
+    def get_corrprods(self, antlist, bls_ordering):            
         """
         Get correlation product antenna mapping
         
         Inputs:
         -------
         antlist : list of antennas, string
-        corr_products : list of correlation products, string shape(nbl * npol,2)
+        bls_ordering : list of correlation products, string shape(nbl * npol,2)
         
         Returns:
         --------
@@ -51,7 +51,7 @@ class Scan(object):
         
         # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
         antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
-        corr_products_lookup = np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in corr_products])
+        corr_products_lookup = np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in bls_ordering])
     
         # from full list of correlator products, get list without repeats (ie no repeats for pol)
         corrprod_lookup = -1*np.ones([self.nbl,2],dtype=np.int) # start with array of -1

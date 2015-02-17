@@ -81,9 +81,9 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
     """ 
 
     # extract data shape parameters from TS
-    nchan = ts.nchan
+    nchan = ts.cbf_n_chans
     npol = 4
-    nant = ts.nant
+    nant = ts.cbf_n_ants
     # number of baselines includes autocorrelations
     nbl = nant*(nant+1)/2
     

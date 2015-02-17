@@ -45,18 +45,18 @@ class SimData(katdal.H5DataV2):
    
     def setup_ts(self,ts):
         """
-        Add key value pairs from h5 file to Telescope State
+        Add key value pairs from h5 file to to Telescope State
    
         Parameters
         ----------
         ts : TelescopeState
         """   
         # set simulated ts values from h5 file
-        ts.add('antlist', [ant.name for ant in self.ants])
-        ts.add('nant', len(self.ants))
-        ts.add('nchan', ts.echan-ts.bchan)
-        ts.add('corr_products', self.corr_products)
-        ts.add('dump_period', self.dump_period)
+        ts.add('antenna_mask', ','.join([ant.name for ant in self.ants]))
+        ts.add('l0_int_time', self.dump_period)
+        ts.add('cbf_n_ants', len(self.ants))
+        ts.add('cbf_n_chans', ts.cal_echan-ts.cal_bchan)
+        ts.add('cbf_bls_ordering', self.corr_products)
         
     def h5toSPEAD(self,ts,l0_endpoint):
         """

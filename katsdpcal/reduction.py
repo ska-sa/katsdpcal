@@ -9,7 +9,6 @@ import os
 
 from katcal import plotting
 from katcal import calprocs
-from katcal import parameters
 from katcal.simulator import SimData
 from katcal import report
 from katcal.scan import Scan
@@ -98,31 +97,24 @@ def pipeline(data, ts, thread_name):
     timing_file = open("timing.txt", "w")
 
     # ----------------------------------------------------------
-    # some general constants
-    #    will mostly be in the Telescope Model later?
-    #    or combination of TM and param file?
+    # extract some some commonly used constants from the TS
 
-    params = parameters.set_params()
-
-    #per_scan_plots = params['per_scan_plots']
-    #closing_plots = params['closing_plots']
-    REFANT = params['refant']
+    #per_scan_plots = ts.cal_per_scan_plots
+    #closing_plots = ts.cal_closing_plots
+    REFANT = ts.cal_refant
 
     # solution intervals
-    bp_solint = params['bp_solint'] #seconds
-    k_solint = params['k_solint'] #seconds
-    k_chan_sample = params['k_chan_sample']
-    g_solint = params['g_solint'] #seconds
-    dump_period = ts.dump_period
+    bp_solint = ts.cal_bp_solint #seconds
+    k_solint = ts.cal_k_solint #seconds
+    k_chan_sample = ts.cal_k_chan_sample
+    g_solint = ts.cal_g_solint #seconds
+    
+    dump_period = ts.l0_int_time
+    
+    antlist = ts.antenna_mask.split(',')
 
     # plots per scan
     #per_scan_plots = True
-
-    # ----------------------------------------------------------
-    # extract values we need frequently from the TM
-    #nant = ts.nant
-    #nbl = nant*(nant+1)/2
-    #nchan = ts.nchan
 
     # ----------------------------------------------------------
     # set initial values for fits
@@ -158,7 +150,7 @@ def pipeline(data, ts, thread_name):
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
         
         # set up scan
-        s = Scan(data, ti0, ti1, ts.dump_period, ts.antlist, ts.corr_products)
+        s = Scan(data, ti0, ti1, dump_period, antlist, ts.cbf_bls_ordering)
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
