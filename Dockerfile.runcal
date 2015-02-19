@@ -38,8 +38,7 @@ RUN adduser --system katcal
 WORKDIR /home/katcal
 USER katcal
 
-# expose spead ports
-EXPOSE 7200
+# expose L1 spead port
 EXPOSE 7202
 
-CMD ["run_cal.py"]
+ENTRYPOINT ["run_cal.py"]
