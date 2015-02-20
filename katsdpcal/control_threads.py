@@ -225,7 +225,7 @@ class pipeline_thread(threading.Thread):
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
-            run_pipeline()
+            self.run_pipeline()
             
             # release condition after pipeline run finished
             self.scan_accumulator_condition.release()
