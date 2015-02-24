@@ -7,6 +7,7 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 
 import numpy as np
 import logging
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +54,11 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
         
-def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
-    """Solve for antenna gains using ADI StefCal.
+def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+    """Solve for antenna gains using ADI StefCal. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
     Analysis and applications', Salvini & Winjholds, 2014
-
     Parameters
     ----------
     vis         : array of complex, shape (N,)
@@ -77,7 +77,6 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         Sky model   
     conv_thresh : float, optional
         Convergence threshold
-
     Returns
     -------
     gains : array of complex, shape (num_ants,)
@@ -129,10 +128,96 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         # if max iters reached without convergence, log it
         if i==num_iters-1: logger.debug('ADI stefcal convergence not reached after {0} iterations'.format(num_iters,))
     
+    return g_curr
+
+def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+    """Solve for antenna gains using ADI StefCal. Parallel version of the algorithm.
+    ADI StefCal implimentation from:
+    'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
+    Analysis and applications', Salvini & Winjholds, 2014
+
+    Parameters
+    ----------
+    vis : array of complex, shape (M, ..., N)
+        Complex cross-correlations between antennas A and B, assuming *N*
+        baselines or antenna pairs on the last dimension
+    num_ants : int
+        Number of antennas
+    antA, antB : array of int, shape (N,)
+        Antenna indices associated with visibilities
+    num_iters   : int, optional
+        Number of iterations
+    ref_ant     : int, optional
+        Reference antenna whose gain will be forced to be 1.0
+    init_gain   : array of complex, shape(num_ants,) or None, optional
+        Initial gain vector (all equal to 1.0 by default)
+    model       : array of complex, shape(num_ants, num_ants) or None, optional
+        Sky model
+    conv_thresh : float, optional
+        Convergence threshold
+
+    Returns
+    -------
+    gains : array of complex, shape (M, ..., num_ants)
+        Complex gains per antenna
+    """
+    # Initialise gain matrix
+    gain_shape = tuple(list(vis.shape[:-1]) + [num_ants])
+    g_prev = np.ones(gain_shape, dtype=np.complex) if init_gain is None else init_gain
+    logger.debug("StefCal solving for %s gains from vis with shape %s" %
+                 ('x'.join(str(gs) for gs in gain_shape), vis.shape))
+    g_curr = copy.copy(g_prev)
+
+    # initialise calibrator source model
+    #   default is unity with zeros along the diagonals to ignore autocorr
+    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
+
+    for i in range(num_iters):
+        # iterate through antennas, solving for each gain
+        for p in range(num_ants):
+            # z <- g_prev odot M[:,p]
+            z = g_prev*M[...,p]
+            z = np.delete(z,p,axis=-1)
+
+            # R[:,p]
+            antA_vis = vis[...,antA==p]
+            # antenna order of R[:,p]
+            antB_order = antB[antA==p].tolist()
+
+            antlist = range(num_ants)
+            antlist.pop(p)
+            antB_order_indices = [antB_order.index(j) for j in antlist]
+
+            # g[p] <- (R[:,p] dot z)/(z^H dot z)
+            g_curr[...,p] = np.sum(antA_vis[...,antB_order_indices]*z,axis=-1)/np.sum(z.conj()*z,axis=-1)
+
+            # Force reference gain to be zero phase
+            norm_val = abs(g_curr[...,ref_ant][..., np.newaxis])/g_curr[...,ref_ant][..., np.newaxis]
+            g_curr *= norm_val
+
+        # for even iterations, check convergence
+        # for odd iterations, average g_curr and g_prev
+        #  note - i starts at zero, unlike Salvini & Winjholds (2014) algorithm
+        if np.mod(i,2) == 1:
+            # convergence criterion:
+            # abs(g_curr - g_prev) / abs(g_curr) < tau
+            diff = np.sum(np.abs(g_curr - g_prev)/np.abs(g_curr))
+            if diff < conv_thresh:
+                break
+        else:
+            # G_curr <- (G_curr + G_prev)/2
+            g_curr = (g_curr + g_prev)/2.0
+
+        # for next iteration, set g_prev to g_curr
+        g_prev = copy.copy(g_curr)
+
+        # if max iters reached without convergence, log it
+        if i==num_iters-1: logger.debug('ADI stefcal convergence not reached after {0} iterations'.format(num_iters,))
+
     return g_curr    
     
 def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
-    """Solve for antenna gains using ADI StefCal, including fake autocorr data
+    """Solve for antenna gains using ADI StefCal, including fake autocorr data. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
     Analysis and applications', Salvini & Winjholds, 2014
@@ -207,60 +292,93 @@ def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref
         g_prev = 1.0*g_curr
     
     return g_curr  
-    
-def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=0, init_gain=None, verbose=False):
-    """Solve for antenna gains using StefCal.
-    (Stolen from Ludwig's antsol solver.py)
 
+def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=-1, init_gain=None, verbose=False):
+    """Solve for antenna gains using StefCal (array dot product version).
+    The observed visibilities are provided in a NumPy array of any shape and
+    dimension, as long as the last dimension represents baselines. The gains
+    are then solved in parallel for the rest of the dimensions. For example,
+    if the *vis* array has shape (T, F, B) containing *T* dumps / timestamps,
+    *F* frequency channels and *B* baselines, the resulting gain array will be
+    of shape (T, F, num_ants), where *num_ants* is the number of antennas.
+    In order to get a proper solution it is important to include the conjugate
+    visibilities as well by reversing antenna pairs, e.g. by forming
+    full_vis = np.concatenate((vis, vis.conj()), axis=-1)
+    full_antA = np.r_[antA, antB]
+    full_antB = np.r_[antB, antA]
     Parameters
     ----------
-    vis : array of complex, shape (N,)
-        Complex cross-correlations between antennas A and B
+    vis : array of complex, shape (M, ..., N)
+        Complex cross-correlations between antennas A and B, assuming *N*
+        baselines or antenna pairs on the last dimension
     num_ants : int
         Number of antennas
     antA, antB : array of int, shape (N,)
         Antenna indices associated with visibilities
-    weights : float or array of float, shape (N,), optional
+    weights : float or array of float, shape (M, ..., N), optional
         Visibility weights (positive real numbers)
     num_iters : int, optional
         Number of iterations
     ref_ant : int, optional
-        Reference antenna whose gain will be forced to be 1.0
+        Reference antenna whose gain will be forced to be 1.0. Alternatively,
+        if *ref_ant* is -1, the average gain magnitude will be 1 and the median
+        gain phase will be 0.
     init_gain : array of complex, shape(num_ants,) or None, optional
         Initial gain vector (all equal to 1.0 by default)
-
     Returns
     -------
-    gains : array of complex, shape (num_ants,)
-        Complex gains, one per antenna
-
+    gains : array of complex, shape (M, ..., num_ants)
+        Complex gains per antenna
+    Notes
+    -----
+    The model visibilities are assumed to be 1, implying a point source model.
+    The algorithm is iterative but should converge in a small number of
+    iterations (10 to 30).
     """
     # ignore autocorr data
-    vis = vis[antA!=antB]
-    antA_new = antA[antA!=antB]
-    antB = antB[antA!=antB]
+    xcorr = antA!=antB
+    vis = vis[...,xcorr]
+    antA_new = antA[xcorr]
+    antB = antB[xcorr]
     antA = antA_new
     
-    # Initialise design matrix for solver
-    g_prev = np.zeros((len(vis), num_ants), dtype=np.complex)
-    rows = np.arange(len(vis))
+    # Each row of this array contains the indices of baselines with the same antA
+    baselines_per_antA = np.array([(antA == m).nonzero()[0] for m in range(num_ants)])
+    # Each row of this array contains the corresponding antB indices with the same antA
+    antB_per_antA = antB[baselines_per_antA]
     weighted_vis = weights * vis
-    weights = np.atleast_2d(weights).T
+    weighted_vis = weighted_vis[..., baselines_per_antA]
     # Initial estimate of gain vector
-    g_curr = np.ones(num_ants, dtype=np.complex) if init_gain is None else init_gain
+    gain_shape = tuple(list(vis.shape[:-1]) + [num_ants])
+    g_curr = np.ones(gain_shape, dtype=np.complex) if init_gain is None else init_gain
+    logger.debug("StefCal solving for %s gains from vis with shape %s" %
+                 ('x'.join(str(gs) for gs in gain_shape), vis.shape))
     for n in range(num_iters):
-        # Insert current gain into design matrix as gain B
-        # g_prev has shape(num_blx2,num_ants)
-        g_prev[rows, antA] = g_curr[antB].conj()
-        g_new = np.linalg.lstsq(weights * g_prev, weighted_vis)[0]
-        # Force reference gain to be zero phase
-        g_new = abs(g_new[ref_ant])*g_new/g_new[ref_ant]
-        # Force reference gain to be 1
-        #g_new /= g_new[ref_ant]
-        if verbose: print "Iteration %d: mean absolute gain change = %f" % (n + 1, 0.5 * np.abs(g_new - g_curr).mean())
-        # Avoid getting stuck
+        # Basis vector (collection) represents gain_B* times model (assumed 1)
+        g_basis = g_curr[..., antB_per_antA]
+        # Do scalar least-squares fit of basis vector to vis vector for whole collection in parallel
+        g_new = (g_basis * weighted_vis).sum(axis=-1) / (g_basis.conj() * g_basis).sum(axis=-1)
+        # ----------------
+        # THIS BIT HACKED BY LAURA
+        # Normalise g_new to match g_curr so that taking their average and
+        # difference make sense (without copy the elements of g_new are mangled up)
+   #     g_new /= (g_new[..., ref_ant][..., np.newaxis].copy() if ref_ant >= 0 else
+   #                  g_new[..., 0][..., np.newaxis].copy())
+        if ref_ant >= 0:
+            g_new = g_new*abs(g_new[..., ref_ant][..., np.newaxis])/g_new[..., ref_ant][..., np.newaxis] 
+        else:
+            g_new = g_new*abs(g_new[..., 0][..., np.newaxis])/g_new[..., 0][..., np.newaxis]
+        # ----------------
+        logger.debug("Iteration %d: mean absolute gain change = %f" %
+                     (n + 1, 0.5 * np.abs(g_new - g_curr).mean()))
+        # Avoid getting stuck during iteration
         g_curr = 0.5 * (g_new + g_curr)
-    return g_curr
+    if ref_ant < 0:
+        avg_amp = np.mean(np.abs(g_curr), axis=-1)
+        middle_angle = np.arctan2(np.median(g_curr.imag, axis=-1),
+                                  np.median(g_curr.real, axis=-1))
+        g_curr /= (avg_amp * np.exp(1j * middle_angle))[..., np.newaxis]
+    return g_currq
     
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
