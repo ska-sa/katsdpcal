@@ -378,7 +378,7 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         middle_angle = np.arctan2(np.median(g_curr.imag, axis=-1),
                                   np.median(g_curr.real, axis=-1))
         g_curr /= (avg_amp * np.exp(1j * middle_angle))[..., np.newaxis]
-    return g_currq
+    return g_curr
     
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
