@@ -53,7 +53,7 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
                 init_gain, verbose)
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
-        
+         
 def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
@@ -149,7 +149,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         Number of iterations
     ref_ant     : int, optional
         Reference antenna whose gain will be forced to be 1.0
-    init_gain   : array of complex, shape(num_ants,) or None, optional
+    init_gain   : array of complex, shape(M, ..., num_ants) or None, optional
         Initial gain vector (all equal to 1.0 by default)
     model       : array of complex, shape(num_ants, num_ants) or None, optional
         Sky model
@@ -464,8 +464,14 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,al
     # solve for G for each solint
     for i in range(num_sol):
         g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant,algorithm=algorithm)
+        
+        
+    # ------------
+    # stefcal needs the visibilities as a list of [vis,vis.conjugate]
+    vis_and_conj = np.hstack((data, data.conj())) 
+    return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
 
-    return g_array
+    #return g_array
     
 def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     """
@@ -489,18 +495,13 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     # -----------------------------------------------------
     # initialise values for solver
     bpsoln = np.empty([data.shape[0],num_ants],dtype=np.complex) # Make empty array to fill bandpass into
-    if not(np.any(bp0)): bp0 = np.empty([data.shape[0]], dtype=object) # set array init values to None if necessary
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
-
-    for c in range(data.shape[0]):
-        # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-        vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c], algorithm=algorithm)   
-        bpsoln[c] = fitted_bp
-      
-    return bpsoln
+        
+    # stefcal needs the visibilities as a list of [vis,vis.conjugate]
+    vis_and_conj = np.hstack((data, data.conj())) 
+    return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)   
    
 def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
     """
@@ -529,18 +530,15 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
    
     # -----------------------------------------------------
     # initialise values for solver
-    bpass = np.empty([data.shape[0],num_ants],dtype=np.complex) # Make empty array to fill bandpass into
     kdelay = np.empty(num_ants,dtype=np.complex) # Make empty array to fill delay into
-    if not(np.any(bp0)): bp0 = np.empty([data.shape[0]], dtype=object) # set array init values to None if necessary
     if not(np.any(chans)): chans = np.arange(data.shape[0])
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
-    for c in range(data.shape[0]):
-        # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-        vis_and_conj = np.concatenate((data[c], data[c].conj())) 
-        fitted_bp = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0[c], algorithm=algorithm)   
-        bpass[c] = fitted_bp
+    
+    # stefcal needs the visibilities as a list of [vis,vis.conjugate]
+    vis_and_conj = np.hstack((data, data.conj())) 
+    bpass = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)   
       
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
