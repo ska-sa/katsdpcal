@@ -1,9 +1,11 @@
 """Tests for the parameters module."""
 
-import katcal
+import unittest
 
-def dict_test():
-    """Check that parameters are being returned as a dict."""
-    from katcal import parameters
-    assert(isinstance(parameters.set_params(),dict))
+class TestParameters(unittest.TestCase):
+
+    def dict_test(self):
+        """Check that parameters are being returned as a dict."""
+        from katcal import parameters
+        self.AssertIsInstance(parameters.set_params(),dict)
 
