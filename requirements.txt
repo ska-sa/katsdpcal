@@ -1,4 +1,5 @@
-numpy
-scipy
-matplotlib
-redis
+
+redis==2.10.3
+git+https://git@github.com/ska-sa/katdal
+git+https://github.com/ska-sa/PySPEAD
+git+https://git@github.com/ska-sa/katsdptelstate
