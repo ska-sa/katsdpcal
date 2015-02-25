@@ -6,6 +6,7 @@ from katcal.reduction import pipeline
 from katsdptelstate.telescope_state import TelescopeState
 
 import logging
+import socket
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -56,6 +57,12 @@ class accumulator_thread(threading.Thread):
         """
         # Initialise SPEAD stream
         self.accumulator_logger.info('Initializing SPEAD receiver')
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if self.l0_endpoint.multicast_subscribe(sock):
+            logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
+
         spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
 
         # Iincrement between buffers, filling and releasing iteratively
