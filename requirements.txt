@@ -1,5 +1,5 @@
 
 redis==2.10.3
 git+ssh://git@github.com/ska-sa/katdal
-git+ssh://github.com/ska-sa/PySPEAD
+git+https://github.com/ska-sa/PySPEAD
 git+ssh://git@github.com/ska-sa/katsdptelstate
