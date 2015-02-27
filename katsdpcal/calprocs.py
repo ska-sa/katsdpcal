@@ -550,7 +550,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
    
     return kdelay      
    
-def wavg(data,flags,weights,axis=0):
+def wavg(data,flags,weights,times=False,axis=0):
     """
     Perform weighted average of data, applying flags, 
     over specified axis
@@ -560,14 +560,16 @@ def wavg(data,flags,weights,axis=0):
     data    : array of complex
     flags   : array of boolean
     weights : array of floats
+    times   : array of times. If times are given, average times are returned
     axis    : axis to average over
    
     Returns
     -------
-    average : weighted average of data  
+    vis, times : weighted average of data and, optionally, times 
     """
    
-    return np.nansum(data*weights*(~flags),axis=axis)/np.nansum(weights*(~flags),axis=axis)
+    vis = np.nansum(data*weights*(~flags),axis=axis)/np.nansum(weights*(~flags),axis=axis) 
+    return vis if times is False else (vis, np.average(times,axis=axis))
    
 def wavg_full(data,flags,weights,axis=0):
     """

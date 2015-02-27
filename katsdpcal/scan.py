@@ -140,13 +140,13 @@ class Scan(object):
            self.modvis = self.apply(soln,origvis=False) 
     
         # average over all time (no averaging over channel)
-        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0)
+        ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
     
         # solve for delay K
         antlist1, antlist2 = self.corr_antlists
         k_soln = calprocs.k_fit(ave_vis,antlist1,antlist2,self.chans,k0,bp0,REFANT,chan_sample=chan_sample)
     
-        return CalSolution('K', k_soln, np.ones(len(k_soln))) 
+        return CalSolution('K', k_soln, ave_time) 
         
     def b_sol(self,bp0,REFANT,pre_apply=[]):
 
@@ -159,13 +159,13 @@ class Scan(object):
            self.modvis = self.apply(soln,origvis=False) 
     
         # average over all time (no averaging over channel)
-        ave_vis = calprocs.wavg(self.modvis,self.flags,self.weights,axis=0)
+        ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
     
         # solve for bandpass
         antlist1, antlist2 = self.corr_antlists
         b_soln = calprocs.bp_fit(ave_vis,antlist1,antlist2,bp0,REFANT)
 
-        return CalSolution('B', b_soln, np.ones(len(b_soln))) 
+        return CalSolution('B', b_soln, ave_time) 
         
     # ---------------------------------------------------------------------------------------------
     # solution application

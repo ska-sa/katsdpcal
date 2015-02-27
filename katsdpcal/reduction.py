@@ -160,7 +160,7 @@ def pipeline(data, ts, thread_name):
             # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving K to Telescope State')
-            ts.add(k_soln.ts_solname,k_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
+            ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times) 
             
             # ---------------------------------------
             timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
@@ -187,7 +187,7 @@ def pipeline(data, ts, thread_name):
             # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving B to Telescope State')
-            ts.add(b_soln.ts_solname,b_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
+            ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times) 
             
             # ---------------------------------------
             timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
@@ -227,11 +227,10 @@ def pipeline(data, ts, thread_name):
         if any('target' in k for k in taglist):
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            #solns_to_apply = get_solns_to_apply(s,ts,['K','B','G'],target_name,pipeline_logger,time_range=[t0,t1])        
-                
+            solns_to_apply = get_solns_to_apply(s,ts,['K','B','G'],target_name,pipeline_logger,time_range=[t0,t1])            
             # apply solutions  
-            #for soln in solns_to_apply:    
-            #    s.apply(soln, inplace=True)
+            for soln in solns_to_apply:    
+                s.apply(soln, inplace=True)
                 
             # return calibrated target data to be streamed to L1
             return s.vis, s.flags, s.weights, s.times
