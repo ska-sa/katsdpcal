@@ -88,7 +88,7 @@ def pipeline(data, ts, thread_name):
     k_chan_sample = ts.cal_k_chan_sample
     g_solint = ts.cal_g_solint #seconds
     
-    dump_period = ts.l0_int_time
+    dump_period = ts.sdp_l0_int_time
     
     antlist = ts.antenna_mask.split(',')
     # refant index number in the antenna list
