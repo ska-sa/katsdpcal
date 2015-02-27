@@ -1,4 +1,4 @@
-r"""Scan class to data and operations on data."""
+"""Scan class to data and operations on data."""
 
 import numpy as np
 import copy

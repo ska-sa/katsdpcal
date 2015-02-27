@@ -691,5 +691,6 @@ class CalSolution(object):
         self.soltype = soltype
         self.values = solvalues
         self.times = soltimes
+        self.ts_solname =  'cal_product_{0}'.format(soltype,)  
 
 

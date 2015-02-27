@@ -39,16 +39,17 @@ def rfi():
 def get_solns_to_apply(s,ts,sol_list,target_name,pipeline_logger,time_range=[]):
     solns_to_apply = []
     
-    for X in sol_list:    
+    for X in sol_list: 
+        ts_solname = 'cal_product_{0}'.format(X,)   
         try:
             # get most recent solution value
-            sol, soltime = ts.get_range(X)
+            sol, soltime = ts.get_range(ts_solname)
             if X is not 'G':
                 soln = CalSolution(X, sol, soltime)
             else:    
                 # get G values for an hour range on either side of target scan
                 t0, t1 = time_range
-                gsols = ts.get_range('G',st=t0-60.*60.,et=t1+60.*60,return_format='recarray')
+                gsols = ts.get_range(ts_solname,st=t0-60.*60.,et=t1+60.*60,return_format='recarray')
                 solval, soltime = gsols['value'], gsols['time']
                 soln = CalSolution('G', solval, soltime)
                 
@@ -159,7 +160,7 @@ def pipeline(data, ts, thread_name):
             # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving K to Telescope State')
-            ts.add(k_soln.soltype,k_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
+            ts.add(k_soln.ts_solname,k_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
             
             # ---------------------------------------
             timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
@@ -186,7 +187,7 @@ def pipeline(data, ts, thread_name):
             # ---------------------------------------
             # update TS
             pipeline_logger.info('Saving B to Telescope State')
-            ts.add(b_soln.soltype,b_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
+            ts.add(b_soln.ts_solname,b_soln.values,ts=time()) # fix times later XXXXXXXXXXXXXXX
             
             # ---------------------------------------
             timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
@@ -210,7 +211,7 @@ def pipeline(data, ts, thread_name):
             pipeline_logger.info('Saving G to Telescope State')
             # add gains to TS, iterating through solution times 
             for v,t in zip(g_soln.values,g_soln.times): 
-                ts.add(g_soln.soltype,v,ts=t) 
+                ts.add(g_soln.ts_solname,v,ts=t) 
                 
             # debug check
             #g_to_apply = s.interpolate(g_soln)
