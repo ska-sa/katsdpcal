@@ -44,8 +44,8 @@ class accumulator_thread(threading.Thread):
 
         #Get data shape
         self.nchan = buffers[0]['vis'].shape[1]
-        self.nbl = buffers[0]['vis'].shape[2]
-        self.npol = buffers[0]['vis'].shape[3]
+        self.npol = buffers[0]['vis'].shape[2]
+        self.nbl = buffers[0]['vis'].shape[3]
         
         # set up logging adapter for the thread
         self.accumulator_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -168,9 +168,9 @@ class accumulator_thread(threading.Thread):
                 start_flag = False
 
             # reshape data and put into relevent arrays
-            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol])  
-            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol])  
-            data_buffer['weights'][array_index,:,:,:] = ig['weights'].reshape([self.nchan,self.nbl,self.npol])   
+            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)  
+            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)
+            data_buffer['weights'][array_index,:,:,:] = ig['weights'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)  
             data_buffer['times'][array_index] = ig['timestamp']
 
             # this is a temporary mock up of a natural break in the data stream

@@ -16,8 +16,10 @@ class Scan(object):
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
-        self.vis = data['vis'][ti0:ti1,:,:,0] 
-        self.flags = data['flags'][ti0:ti1,:,:,0] 
+        #self.vis = data['vis'][ti0:ti1,:,:,0:2][...,np.newaxis] 
+        #self.flags = data['flags'][ti0:ti1,:,:,0:2][...,np.newaxis] 
+        self.vis = data['vis'][ti0:ti1,:,0,:]
+        self.flags = data['flags'][ti0:ti1,:,0,:]
         self.weights = np.ones_like(self.flags,dtype=np.float)
         self.times = data['times'][ti0:ti1]
         
@@ -29,6 +31,7 @@ class Scan(object):
         self.nant = len(antlist)
         # baseline number includes autocorrs
         self.nbl = self.nant*(self.nant+1)/2
+        self.npol = 4
         
         # scan meta-data
         self.dump_period = dump_period
