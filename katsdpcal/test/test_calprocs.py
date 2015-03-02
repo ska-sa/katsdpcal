@@ -13,14 +13,17 @@ class TestCalprocs(unittest.TestCase):
         antlist = range(nants)
     
         list1 = np.array([])
-        for a,i in enumerate(range(nants,0,-1)):
+        for a,i in enumerate(range(nants-1,0,-1)):
             list1 = np.hstack([list1,np.ones(i)*a])
+        list1 = np.hstack([list1,antlist])
         list1 = np.int_(list1)
 
         list2 = np.array([], dtype=np.int)
-        for i in (range(len(antlist))):
-            list2 = np.hstack([list2,antlist[:]])
-            antlist.pop(0)
+        mod_antlist = antlist[1:]
+        for i in (range(0,len(mod_antlist))):
+            list2 = np.hstack([list2,mod_antlist[:]])
+            mod_antlist.pop(0)
+        list2 = np.hstack([list2,antlist])
     
         # create fake gains, if gains are not given as input
         if gains is None: gains = np.random.random(nants)
