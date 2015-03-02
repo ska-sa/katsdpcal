@@ -93,7 +93,8 @@ def get_reordering(antlist,bls_ordering):
     ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
     # how to use this:
     #print bls_ordering[ordering]
-    #print bls_ordering[ordering].reshape([4,nbl,2])    
+    #print bls_ordering[ordering].reshape([4,nbl,2])  
+    print ordering  
     return ordering
 
 class accumulator_thread(threading.Thread):
@@ -138,9 +139,6 @@ class accumulator_thread(threading.Thread):
             logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
         spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
-        
-        # Determine imput data shape
-        data_shape = get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
 
         # Increment between buffers, filling and releasing iteratively
         #Initialise current buffer counter
@@ -217,6 +215,8 @@ class accumulator_thread(threading.Thread):
         target_key = '{0}_target'.format(self.telstate.cal_refant,)
         activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
         
+        ordering = get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
+        
         # receive SPEAD stream
         print 'Got heaps: ',
         for heap in spead.iterheaps(spead_stream): 
@@ -245,9 +245,9 @@ class accumulator_thread(threading.Thread):
                 start_flag = False
 
             # reshape data and put into relevent arrays
-            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)  
-            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)
-            data_buffer['weights'][array_index,:,:,:] = ig['weights'].reshape([self.nchan,self.nbl,self.npol]).swapaxes(-1,-2)  
+            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
             data_buffer['times'][array_index] = ig['timestamp']
 
             # this is a temporary mock up of a natural break in the data stream
