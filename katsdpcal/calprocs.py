@@ -12,7 +12,7 @@ import copy
 logger = logging.getLogger(__name__)
 
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
-    model=None, algorithm='adi', conv_thresh=0.001, verbose=False):
+    model=None, algorithm='adi', conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -54,7 +54,7 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
          
-def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -130,7 +130,7 @@ def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=10
     
     return g_curr
 
-def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
@@ -216,7 +216,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
 
     return g_curr    
     
-def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.001, verbose=False):
+def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal, including fake autocorr data. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods: 
