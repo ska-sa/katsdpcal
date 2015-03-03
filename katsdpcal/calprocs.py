@@ -9,6 +9,8 @@ import numpy as np
 import logging
 import copy
 
+from scipy.interpolate import interp1d    
+
 logger = logging.getLogger(__name__)
 
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
@@ -423,7 +425,7 @@ def g_fit(data,g0,antlist1,antlist2,refant,algorithm='adi'):
     ------- 
     gainsoln : Gain solutions, shape(num_ants)
     """
-    num_ants = int(ants_from_allbl(data.shape[0]))
+    num_ants = int(ants_from_allbl(data.shape[-1]))
    
     # -----------------------------------------------------
     # initialise values for solver
@@ -433,7 +435,7 @@ def g_fit(data,g0,antlist1,antlist2,refant,algorithm='adi'):
     # solve for the gains
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.concatenate((data, data.conj())) 
+    vis_and_conj = np.concatenate((data, data.conj()),axis=-1) 
     gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)   
       
     return gainsoln
@@ -456,22 +458,21 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,al
     g_array  : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_sol = data.shape[0]
-    num_ants = ants_from_allbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[-1])
 
     # empty arrays for solutions
-    g_array = np.empty([num_sol,num_ants],dtype=np.complex)
-    t_array = np.empty([num_sol],dtype=np.complex)
+    #g_array = np.empty([num_sol,num_ants],dtype=np.complex)
+    #t_array = np.empty([num_sol],dtype=np.complex)
     # solve for G for each solint
-    for i in range(num_sol):
-        g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant,algorithm=algorithm)
+    #for i in range(num_sol):
+    #    g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant,algorithm=algorithm)
         
-        
+    # ^^XXXXXXXXXX fix!!! 
+       
     # ------------
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.hstack((data, data.conj())) 
+    vis_and_conj = np.concatenate((data, data.conj()),axis=-1) 
     return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
-
-    #return g_array
     
 def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     """
@@ -681,7 +682,131 @@ def solint_from_nominal(solint,dump_period,num_times):
     dumps_per_solint = np.round(nsolint/dump_period)
 
     return nsolint, dumps_per_solint
+    
+#--------------------------------------------------------------------------------------------------
+# Interpolation routines
+#--------------------------------------------------------------------------------------------------
 
+def interp_extrap_1d(x, y, **kwargs):
+    """
+    Wrapper for scipy.interpolate.interp1d function, 
+    which returns the edge values for times > or < the interpolation time range
+    """
+    
+    interpolator = interp1d(x, y, **kwargs)
+    
+    xs = interpolator.x
+    ys = interpolator.y
+
+    def pointwise(x):
+        if x < xs[0]:
+            #return ys[0]+(x-xs[0])*(ys[1]-ys[0])/(xs[1]-xs[0])
+            return ys.take(axis=interpolator.axis,indices=[0])
+        elif x > xs[-1]:
+            #return ys[-1]+(x-xs[-1])*(ys[-1]-ys[-2])/(xs[-1]-xs[-2])
+            return ys.take(axis=interpolator.axis,indices=[-1])
+        else:
+            return interpolator(x)
+
+    def ufunclike(xs):
+        return np.array(map(pointwise, np.array(xs)))
+
+    return ufunclike
+
+#--------------------------------------------------------------------------------------------------
+#--- Baseline ordering routines
+#--------------------------------------------------------------------------------------------------
+
+def get_ant_bls(pol_bls_ordering):
+    """
+    Given baseline list with polarisation information, return pure antenna list
+    e.g. from [['ant0h','ant0h'],['ant0v','ant0v'],['ant0h','ant0v'],['ant0v','ant0h'],['ant1h','ant1h']...]
+     to [['ant0,ant0'],['ant1','ant1']...]
+    """
+    
+    # get antenna only names from pol-included bls orderding
+    ant_bls = np.array([[a1[:-1],a2[:-1]] for a1,a2 in pol_bls_ordering])
+    ant_dtype = ant_bls[0,0].dtype 
+    # get list without repeats (ie no repeats for pol)
+    #     start with array of empty strings, shape (num_baselines x 2)
+    bls_ordering = np.empty([len(ant_bls)/4,2],dtype=ant_dtype) 
+
+    # iterate through baseline list and only include non-repeats
+    #   I know this is horribly non-pythonic. Fix later.
+    bls_ordering[0] = ant_bls[0]
+    bl = 0
+    for c in ant_bls: 
+        if not np.all(bls_ordering[bl] == c): 
+            bl += 1
+            bls_ordering[bl] = c
+            
+    return bls_ordering
+    
+def get_pol_bls(bls_ordering,pol):
+    """
+    Given baseline ordering and polarisation ordering, return full baseline-pol ordering array
+    """
+    pol_ant_dtype = np.array(bls_ordering[0,0]+'h').dtype 
+    nbl = bls_ordering.shape[0]
+    pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
+    for i,p in enumerate(pol):
+        for b,bls in enumerate(bls_ordering):
+            pol_bls_ordering[nbl*i+b] = bls[0]+p[0], bls[1]+p[1]    
+    return pol_bls_ordering
+    
+def get_reordering(antlist,bls_ordering):
+    """
+    Determine reordering necessary to change given bls_ordering into desired ordering
+    """
+    antlist = antlist.split(',')
+    nants = len(antlist)
+    nbl = nants*(nants+1)/2
+    
+    # determined desired correlator product ordering
+    #   first index
+    bls_wanted_1 = np.array([])
+    for a,i in enumerate(antlist[:-1]):
+        bls_wanted_1 = np.hstack([bls_wanted_1,[i]*(nants-a-1)])
+    bls_wanted_1 = np.hstack([bls_wanted_1,antlist])
+    #   second index
+    bls_wanted_2 = np.array([], dtype=np.int)
+    mod_antlist = antlist[1:]
+    for i in (range(0,len(mod_antlist))):
+        bls_wanted_2 = np.hstack([bls_wanted_2,mod_antlist[:]])
+        mod_antlist.pop(0)
+    bls_wanted_2 = np.hstack([bls_wanted_2,antlist])
+    #   combine into single array
+    bls_wanted = np.vstack([bls_wanted_1,bls_wanted_2]).T
+    #   add polarisation indices    
+    pol_order = np.array([['h','h'],['v','v'],['h','v'],['v','h']])
+    bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
+    
+    # find ordering necessary to change given bls_ordering into desired ordering
+    # note: ordering must be a numpy array to be used for indexing later
+    ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
+    # how to use this:
+    #print bls_ordering[ordering]
+    #print bls_ordering[ordering].reshape([4,nbl,2])  
+    return ordering, bls_wanted, pol_order
+    
+def get_bls_lookup(antlist,bls_ordering):            
+    """
+    Get correlation product antenna mapping
+    
+    Inputs:
+    -------
+    antlist : csv list of antennas, string
+    bls_ordering : list of correlation products, string shape(nbl,2)
+    
+    Returns:
+    --------
+    corrprod_lookup : lookup table of antenna indices for each baseline, shape(nbl,2)
+    """
+    
+    antlist = antlist.split(',')    
+    # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
+    antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
+    return np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in bls_ordering])
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  CalSolution
