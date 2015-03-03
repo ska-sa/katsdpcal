@@ -3,6 +3,7 @@ import threading
 import time
 
 from katcal.reduction import pipeline
+from katcal import calprocs
 from katsdptelstate.telescope_state import TelescopeState
 
 import logging
@@ -23,79 +24,6 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
 # ---------------------------------------------------------------------------------------
 # Accumulator
 # ---------------------------------------------------------------------------------------
-
-def get_ant_bls(pol_bls_ordering):
-    """
-    Given baseline list with polarisation information, return pure antenna list
-    e.g. from [['ant0h','ant0h'],['ant0v','ant0v'],['ant0h','ant0v'],['ant0v','ant0h'],['ant1h','ant1h']...]
-     to [['ant0,ant0'],['ant1','ant1']...]
-    """
-    
-    # get antenna only names from pol-included bls orderding
-    ant_bls = np.array([[a1[:-1],a2[:-1]] for a1,a2 in pol_bls_ordering])
-    ant_dtype = ant_bls[0,0].dtype 
-    # get list without repeats (ie no repeats for pol)
-    #     start with array of empty strings, shape (num_baselines x 2)
-    bls_ordering = np.empty([len(ant_bls)/4,2],dtype=ant_dtype) 
-
-    # iterate through baseline list and only include non-repeats
-    #   I know this is horribly non-pythonic. Fix later.
-    bls_ordering[0] = ant_bls[0]
-    bl = 0
-    for c in ant_bls: 
-        if not np.all(bls_ordering[bl] == c): 
-            bl += 1
-            bls_ordering[bl] = c
-            
-    return bls_ordering
-    
-def get_pol_bls(bls_ordering,pol):
-    """
-    Given baseline ordering and polarisation ordering, return full baseline-pol ordering array
-    """
-    pol_ant_dtype = np.array(bls_ordering[0,0]+'h').dtype 
-    nbl = bls_ordering.shape[0]
-    pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
-    for i,p in enumerate(pol):
-        for b,bls in enumerate(bls_ordering):
-            pol_bls_ordering[nbl*i+b] = bls[0]+p[0], bls[1]+p[1]    
-    return pol_bls_ordering
-    
-def get_reordering(antlist,bls_ordering):
-    """
-    Determine reordering necessary to change given bls_ordering into desired ordering
-    """
-    antlist = antlist.split(',')
-    nants = len(antlist)
-    nbl = nants*(nants+1)/2
-    
-    # determined desired correlator product ordering
-    #   first index
-    bls_wanted_1 = np.array([])
-    for a,i in enumerate(antlist[:-1]):
-        bls_wanted_1 = np.hstack([bls_wanted_1,[i]*(nants-a-1)])
-    bls_wanted_1 = np.hstack([bls_wanted_1,antlist])
-    #   second index
-    bls_wanted_2 = np.array([], dtype=np.int)
-    mod_antlist = antlist[1:]
-    for i in (range(0,len(mod_antlist))):
-        bls_wanted_2 = np.hstack([bls_wanted_2,mod_antlist[:]])
-        mod_antlist.pop(0)
-    bls_wanted_2 = np.hstack([bls_wanted_2,antlist])
-    #   combine into single array
-    bls_wanted = np.vstack([bls_wanted_1,bls_wanted_2]).T
-    #   add polarisation indices    
-    pol_order = np.array([['h','h'],['v','v'],['h','v'],['v','h']])
-    bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
-    
-    # find ordering necessary to change given bls_ordering into desired ordering
-    # note: ordering must be a numpy array to be used for indexing later
-    ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
-    # how to use this:
-    #print bls_ordering[ordering]
-    #print bls_ordering[ordering].reshape([4,nbl,2])  
-    print ordering  
-    return ordering
 
 class accumulator_thread(threading.Thread):
     """
@@ -139,7 +67,16 @@ class accumulator_thread(threading.Thread):
             logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
         spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
-
+        
+        # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
+        ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)  
+        # determine lookup list for baselines
+        bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)  
+        # save these to the TS for use in the pipeline/elsewhere  
+        self.telstate.add('cal_bls_ordering',bls_order)
+        self.telstate.add('cal_pol_ordering',pol_order)  
+        self.telstate.add('cal_bls_lookup',bls_lookup)
+        
         # Increment between buffers, filling and releasing iteratively
         #Initialise current buffer counter
         current_buffer=-1
@@ -153,7 +90,7 @@ class accumulator_thread(threading.Thread):
             self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             
             # accumulate data scan by scan into buffer arrays
-            buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
+            buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer], ordering)
         
             # awaken pipeline thread that was waiting for condition lock
             self.scan_accumulator_conditions[current_buffer].notify()
@@ -188,7 +125,7 @@ class accumulator_thread(threading.Thread):
         tx = spead.Transmitter(spead.TransportUDPtx(self.l0_endpoint.host,self.l0_endpoint.port))
         tx.end()
         
-    def accumulate(self, spead_stream, data_buffer):
+    def accumulate(self, spead_stream, data_buffer, ordering):
         """
         Accumulates spead data into arrays
            till **TBD** metadata indicates scan has stopped, or
@@ -214,8 +151,6 @@ class accumulator_thread(threading.Thread):
         # get names of activity and target TS keys, using TS reference antenna
         target_key = '{0}_target'.format(self.telstate.cal_refant,)
         activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
-        
-        ordering = get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
         
         # receive SPEAD stream
         print 'Got heaps: ',

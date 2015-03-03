@@ -136,7 +136,7 @@ def pipeline(data, ts, thread_name):
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
         
         # set up scan
-        s = Scan(data, ti0, ti1, dump_period, antlist, ts.cbf_bls_ordering)
+        s = Scan(data, ti0, ti1, dump_period, ts.cbf_n_ants, ts.cal_bls_lookup)
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
