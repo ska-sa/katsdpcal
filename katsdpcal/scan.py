@@ -12,14 +12,13 @@ from katcal.calprocs import CalSolution
 
 class Scan(object):
    
-    def __init__(self, data, ti0, ti1, dump_period, antlist, bls_ordering):
+    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup):
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
-        #self.vis = data['vis'][ti0:ti1,:,:,0:2][...,np.newaxis] 
-        #self.flags = data['flags'][ti0:ti1,:,:,0:2][...,np.newaxis] 
-        self.vis = data['vis'][ti0:ti1,:,0,:]
-        self.flags = data['flags'][ti0:ti1,:,0,:]
+        # data format is:   (time x channels x pol x bl)
+        self.vis = data['vis'][ti0:ti1,:,0:2,:]
+        self.flags = data['flags'][ti0:ti1,:,0:2,:]
         self.weights = np.ones_like(self.flags,dtype=np.float)
         self.times = data['times'][ti0:ti1]
         
@@ -28,43 +27,15 @@ class Scan(object):
         
         self.nchan = self.vis.shape[1]
         self.chans = range(self.nchan)
-        self.nant = len(antlist)
+        self.nant = nant
         # baseline number includes autocorrs
         self.nbl = self.nant*(self.nant+1)/2
         self.npol = 4
         
         # scan meta-data
         self.dump_period = dump_period
-        self.corrprod_lookup = self.get_corrprods(antlist, bls_ordering)
+        self.corrprod_lookup = bls_lookup
         self.corr_antlists = self.get_antlists(self.corrprod_lookup)
-          
-    def get_corrprods(self, antlist, bls_ordering):            
-        """
-        Get correlation product antenna mapping
-        
-        Inputs:
-        -------
-        antlist : list of antennas, string
-        bls_ordering : list of correlation products, string shape(nbl * npol,2)
-        
-        Returns:
-        --------
-        corrprod_lookup : lookup table of antenna indices for each baseline, matching data format, shape(nbl,2)
-        """
-        
-        # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
-        antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
-        corr_products_lookup = np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in bls_ordering])
-    
-        # from full list of correlator products, get list without repeats (ie no repeats for pol)
-        corrprod_lookup = -1*np.ones([self.nbl,2],dtype=np.int) # start with array of -1
-        bl = -1
-        for c in corr_products_lookup: 
-            if not np.all(corrprod_lookup[bl] == c): 
-                bl += 1
-                corrprod_lookup[bl] = c
-                
-        return corrprod_lookup
         
     def get_antlists(self, corrprod_lookup):
         """
@@ -258,10 +229,11 @@ class Scan(object):
     def linear_interpolate(self, solns):
         values = solns.values
         times = solns.times
-        # interpolate complex solutions separately in real and imaginary
-        real_interp = np.array([np.interp(self.times, times, v.real) for v in values.T])
-        imag_interp = np.array([np.interp(self.times, times, v.imag) for v in values.T])
-        interp_solns = real_interp.T + 1.0j*imag_interp.T
+        
+        real_interp = calprocs.interp_extrap_1d(times, values.real, kind='linear', axis=0)
+        imag_interp = calprocs.interp_extrap_1d(times, values.imag, kind='linear', axis=0)
+        
+        interp_solns = real_interp(self.times) + 1.0j*imag_interp(self.times)
         return CalSolution(solns.soltype, interp_solns, self.times)
         
     def inf_interpolate(self, solns):
