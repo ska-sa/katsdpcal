@@ -79,6 +79,12 @@ class Scan(object):
     # Calibration solution functions
         
     def g_sol(self,input_solint,g0,REFANT,pre_apply=[]):
+        """
+        Solve for Gain
+
+        Returns:
+           CalSolution with soltype 'G'. Solution values have shape (time, pol, nant)
+        """
         
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
@@ -104,6 +110,12 @@ class Scan(object):
         return CalSolution('G', g_soln, ave_times)
         
     def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
+        """
+        Solve for Delay
+
+        Returns:
+           CalSolution with soltype 'K'. Solution values have shape (nant)
+        """
         
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
@@ -123,6 +135,12 @@ class Scan(object):
         return CalSolution('K', k_soln, ave_time) 
         
     def b_sol(self,bp0,REFANT,pre_apply=[]):
+        """
+        Solve for Bandpass
+
+        Returns:
+           CalSolution with soltype 'B'. Solution values have shape (chan, pol, nant)
+        """
 
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
@@ -169,15 +187,16 @@ class Scan(object):
         Inputs:
         ------
         solval : multiplicative solution values to be applied to visibility data
+                 ndarray, shape (time, chan, pol, ant) where time and chan are optional
         """    
         
         outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
         
+        # check solution and vis shapes are compatible
+        if solval.shape[-2] !=  outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
+
         for cp in range(len(self.corrprod_lookup)):
-            if len(solval.shape) < 3:
-                outvis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
-            else:
-                outvis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+            outvis[...,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
                 
         return outvis
         
@@ -192,20 +211,20 @@ class Scan(object):
         """    
         
         for cp in range(len(self.corrprod_lookup)):
-            if len(solval.shape) < 3:
-                self.vis[:,:,cp] /= np.expand_dims(solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj()),axis=1)
-            else:
-                self.vis[:,:,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+            self.vis[...,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
     
     def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
         if soln.soltype is 'G': 
-            return self._apply(soln.values,origvis=origvis,inplace=inplace)    
+            # add empty channel dimension
+            full_sol = np.expand_dims(soln.values,axis=1)
+            return self._apply(full_sol,origvis=origvis,inplace=inplace)
         elif soln.soltype is 'K': 
-            # want dimensions ntime x nchan x nant
-            g_from_k = np.zeros([self.vis.shape[0],self.vis.shape[1],soln.values.shape[-1]],dtype=np.complex)
+            # want shape (ntime, nchan, npol, nant)
+            gain_shape = tuple(list(self.vis.shape[:-1]) + [self.nant])
+            g_from_k = np.zeros(gain_shape,dtype=np.complex)
             for c in self.chans:
-                g_from_k[:,c,:] = np.exp(1.0j*soln.values*c)
+                g_from_k[:,c,:,:] = np.exp(1.0j*soln.values*c)
             return self._apply(g_from_k,origvis=origvis,inplace=inplace)
         elif soln.soltype is 'B': 
             return self._apply(soln.values,origvis=origvis,inplace=inplace)
