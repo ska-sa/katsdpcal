@@ -9,8 +9,6 @@ import numpy as np
 import logging
 import copy
 
-from scipy.interpolate import interp1d    
-
 logger = logging.getLogger(__name__)
 
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
@@ -491,7 +489,7 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     bpass : Bandpass, shape(num_chans, num_ants)
     """
    
-    num_ants = ants_from_allbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[-1])
    
     # -----------------------------------------------------
     # initialise values for solver
@@ -501,7 +499,7 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
     # solve for the bandpass over the channel range
         
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.hstack((data, data.conj())) 
+    vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
     return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)   
    
 def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
@@ -510,11 +508,11 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
    
     Parameters
     ----------
-    data     : array of complex, shape(num_chans, baseline)
+    data     : array of complex, shape(num_chans, num_pols, baseline)
     antlist1 : antenna mapping, for first antenna in bl pair 
     antlist2 : antenna mapping, for second antenna in bl pair 
-    k0       : array of complex, shape(num_chans, num_ants) or None
-    bp0      : array of complex, shape(num_chans, num_ants) or None
+    k0       : array of complex, shape(num_chans, num_pols, num_ants) or None
+    bp0      : array of complex, shape(num_chans, num_pols, num_ants) or None
     refant   : reference antenna
 
     Returns
@@ -522,32 +520,34 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
     ksoln : Bandpass, shape(num_chans, num_ants)
     """
    
-    num_ants = ants_from_allbl(data.shape[1])
+    num_ants = ants_from_allbl(data.shape[-1])
    
     # -----------------------------------------------------
     # if channel sampling is specified, thin down the data and channel list
-    data = data[::chan_sample,:]
+    data = data[::chan_sample,...]
     if np.any(chans): chans = chans[::chan_sample]
    
     # -----------------------------------------------------
     # initialise values for solver
-    kdelay = np.empty(num_ants,dtype=np.complex) # Make empty array to fill delay into
+    kdelay = np.empty([2,num_ants],dtype=np.complex) # Make empty array to fill delay into
     if not(np.any(chans)): chans = np.arange(data.shape[0])
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
     
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.hstack((data, data.conj())) 
-    bpass = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)   
+    vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
+    bpass = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, algorithm=algorithm)   
       
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
     for i,bp in enumerate(bpass.T):
-        # unwrap angles before fitting for slope
-        bp_phase = np.unwrap(np.angle(bp))
-        A = np.array([ chans, np.ones(len(chans))])
-        kdelay[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
+        # polarisation
+        for p in range(2):
+            # unwrap angles before fitting for slope
+            bp_phase = np.unwrap(np.angle(bp[p]))
+            A = np.array([ chans, np.ones(len(chans))])
+            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
    
     return kdelay      
    
@@ -687,31 +687,21 @@ def solint_from_nominal(solint,dump_period,num_times):
 # Interpolation routines
 #--------------------------------------------------------------------------------------------------
 
-def interp_extrap_1d(x, y, **kwargs):
+import scipy.interpolate
+
+class interp_extrap_1d(scipy.interpolate.interp1d):
     """
-    Wrapper for scipy.interpolate.interp1d function, 
-    which returns the edge values for times > or < the interpolation time range
+    Subclasses the scipy.interpolate interp1d to be able to extrapolate
+    Extrapolated points are just == to edge interpolated values
     """
     
-    interpolator = interp1d(x, y, **kwargs)
-    
-    xs = interpolator.x
-    ys = interpolator.y
+    def __call__(cls, x, **kwds):
+        x_new = copy.copy(x)
 
-    def pointwise(x):
-        if x < xs[0]:
-            #return ys[0]+(x-xs[0])*(ys[1]-ys[0])/(xs[1]-xs[0])
-            return ys.take(axis=interpolator.axis,indices=[0])
-        elif x > xs[-1]:
-            #return ys[-1]+(x-xs[-1])*(ys[-1]-ys[-2])/(xs[-1]-xs[-2])
-            return ys.take(axis=interpolator.axis,indices=[-1])
-        else:
-            return interpolator(x)
+        x_new[x_new < cls.x[0]] = cls.x[0]
+        x_new[x_new > cls.x[-1]] = cls.x[-1]
 
-    def ufunclike(xs):
-        return np.array(map(pointwise, np.array(xs)))
-
-    return ufunclike
+        return scipy.interpolate.interp1d.__call__(cls, x_new, **kwds)
 
 #--------------------------------------------------------------------------------------------------
 #--- Baseline ordering routines
