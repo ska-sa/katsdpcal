@@ -457,15 +457,6 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,al
     """
     num_sol = data.shape[0]
     num_ants = ants_from_allbl(data.shape[-1])
-
-    # empty arrays for solutions
-    #g_array = np.empty([num_sol,num_ants],dtype=np.complex)
-    #t_array = np.empty([num_sol],dtype=np.complex)
-    # solve for G for each solint
-    #for i in range(num_sol):
-    #    g_array[i] = g_fit(data[i],g0,antlist1,antlist2,refant,algorithm=algorithm)
-        
-    # ^^XXXXXXXXXX fix!!! 
        
     # ------------
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
