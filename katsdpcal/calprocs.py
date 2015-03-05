@@ -11,6 +11,10 @@ import copy
 
 logger = logging.getLogger(__name__)
 
+#--------------------------------------------------------------------------------------------------
+#--- Solvers
+#--------------------------------------------------------------------------------------------------
+
 def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, 
     model=None, algorithm='adi', conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
@@ -380,6 +384,10 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         g_curr /= (avg_amp * np.exp(1j * middle_angle))[..., np.newaxis]
     return g_curr
     
+#--------------------------------------------------------------------------------------------------
+#--- Calibration helper functions
+#--------------------------------------------------------------------------------------------------
+    
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
     for i,c in enumerate(chans):
@@ -675,7 +683,7 @@ def solint_from_nominal(solint,dump_period,num_times):
     return nsolint, dumps_per_solint
     
 #--------------------------------------------------------------------------------------------------
-# Interpolation routines
+#--- Interpolation 
 #--------------------------------------------------------------------------------------------------
 
 import scipy.interpolate
@@ -695,7 +703,7 @@ class interp_extrap_1d(scipy.interpolate.interp1d):
         return scipy.interpolate.interp1d.__call__(cls, x_new, **kwds)
 
 #--------------------------------------------------------------------------------------------------
-#--- Baseline ordering routines
+#--- Baseline ordering 
 #--------------------------------------------------------------------------------------------------
 
 def get_ant_bls(pol_bls_ordering):
