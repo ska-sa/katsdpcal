@@ -68,12 +68,14 @@ def pipeline(data, ts, thread_name):
     """
 
     # ----------------------------------------------------------    
-    # set up logging adapter for the pipeline thread
+    # set up logging adapter for the pipeline thread/process
     pipeline_logger = ThreadLoggingAdapter(logger, {'connid': thread_name})
     
     # ----------------------------------------------------------
     # set up timing file
+    # at the moment this is re-made every scan! fix later!
     timing_file = 'timing.txt'
+    #print timing_file
     if os.path.isfile(timing_file): os.remove(timing_file)
     timing_file = open("timing.txt", "w")
 
@@ -111,14 +113,18 @@ def pipeline(data, ts, thread_name):
 
     # ----------------------------------------------------------
     # iterate through the track scans accumulated into the data buffer
+    #    first extract track scan indices from the buffer
     #    iterate backwards in time through the scans, 
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
     #    for application to the target scan
-    for i in range(len(data['track_start_indices'])-1,0,-1):
+    track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0]]
+    print 'track starts: ', track_starts
+
+    for i in range(len(track_starts)-1,0,-1):
         # start and end indices for this track in the data buffer
-        ti0 = data['track_start_indices'][i-1]
-        ti1 = data['track_start_indices'][i]
-        
+        ti0 = track_starts[i-1]
+        ti1 = track_starts[i]-1
+
         # start time, end time
         t0 = data['times'][ti0]
         t1 = data['times'][ti1]

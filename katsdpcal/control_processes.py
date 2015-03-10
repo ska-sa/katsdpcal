@@ -2,13 +2,18 @@ import spead64_48 as spead
 import threading
 import time
 
+import multiprocessing
+
 from katcal.reduction import pipeline
+from katcal import calprocs
 from katsdptelstate.telescope_state import TelescopeState
 
 import logging
 import socket
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+import numpy as np
 
 class ThreadLoggingAdapter(logging.LoggerAdapter):
     """
@@ -22,13 +27,13 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
 # Accumulator
 # ---------------------------------------------------------------------------------------
 
-class accumulator_thread(threading.Thread):
+class accumulator_thread(multiprocessing.Process):
     """
     Thread which accumutates data from spead into numpy arrays
     """
 
-    def __init__(self, buffers, scan_accumulator_conditions, l0_endpoint, telstate):
-        threading.Thread.__init__(self)
+    def __init__(self, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate):
+        multiprocessing.Process.__init__(self)
         
         self.buffers = buffers
         self.telstate = telstate
@@ -37,15 +42,19 @@ class accumulator_thread(threading.Thread):
         self.num_buffers = len(buffers) 
 
         self.name = 'Accumulator_thread'
-        self._stop = threading.Event()
+        self._stop = multiprocessing.Event()
         
         # flag for switching capture to the alternate buffer
         self._switch_buffer = False
 
-        #Get data shape
-        self.nchan = buffers[0]['vis'].shape[1]
-        self.nbl = buffers[0]['vis'].shape[2]
-        self.npol = buffers[0]['vis'].shape[3]
+        # Get data shape
+        self.buffer_shape = buffer_shape
+        self.max_length = buffer_shape[0]
+        self.nchan = buffer_shape[1]
+        self.npol = buffer_shape[2]
+        self.nbl = buffer_shape[3]
+        
+        
         
         # set up logging adapter for the thread
         self.accumulator_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -64,11 +73,22 @@ class accumulator_thread(threading.Thread):
             logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
         spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
-
-        # Iincrement between buffers, filling and releasing iteratively
+        
+        # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
+        ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)  
+        # determine lookup list for baselines
+        bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)  
+        # save these to the TS for use in the pipeline/elsewhere  
+        self.telstate.add('cal_bls_ordering',bls_order)
+        self.telstate.add('cal_pol_ordering',pol_order)  
+        self.telstate.add('cal_bls_lookup',bls_lookup)
+        
+        self.buffers_to_numpy()
+        
+        # Increment between buffers, filling and releasing iteratively
         #Initialise current buffer counter
         current_buffer=-1
-        while not self._stop.isSet():
+        while not self._stop.is_set():
             #Increment the current buffer
             current_buffer = (current_buffer+1)%self.num_buffers
             # ------------------------------------------------------------
@@ -78,7 +98,7 @@ class accumulator_thread(threading.Thread):
             self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             
             # accumulate data scan by scan into buffer arrays
-            buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
+            buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer], ordering)
         
             # awaken pipeline thread that was waiting for condition lock
             self.scan_accumulator_conditions[current_buffer].notify()
@@ -113,7 +133,19 @@ class accumulator_thread(threading.Thread):
         tx = spead.Transmitter(spead.TransportUDPtx(self.l0_endpoint.host,self.l0_endpoint.port))
         tx.end()
         
-    def accumulate(self, spead_stream, data_buffer):
+    def buffers_to_numpy(self):
+        
+        for current_buffer in self.buffers:
+            current_buffer['vis'] = np.frombuffer(current_buffer['vis'], dtype=np.float32).view(np.complex64)
+            current_buffer['vis'].shape = self.buffer_shape
+            current_buffer['flags'] = np.frombuffer(current_buffer['flags'], dtype=np.uint8)
+            current_buffer['flags'].shape = self.buffer_shape
+            current_buffer['weights'] = np.frombuffer(current_buffer['weights'], dtype=np.float32)
+            current_buffer['weights'].shape = self.buffer_shape
+            current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
+            current_buffer['track_start_indices'] = np.frombuffer(current_buffer['track_start_indices'], dtype=np.int32)
+        
+    def accumulate(self, spead_stream, data_buffer, ordering):
         """
         Accumulates spead data into arrays
            till **TBD** metadata indicates scan has stopped, or
@@ -130,9 +162,8 @@ class accumulator_thread(threading.Thread):
         
         start_flag = True
         array_index = -1
-        data_buffer['track_start_indices'] = []
+        track_start_indices = []
         
-        max_length = data_buffer['times'].shape[0]
         prev_activity = 'none'
         prev_tags = 'none'
         
@@ -154,7 +185,7 @@ class accumulator_thread(threading.Thread):
             # accumulate list of track start time indices in the array
             #   for use in the pipeline, to index each track easily 
             if 'track' in activity and not 'track' in prev_activity:
-                data_buffer['track_start_indices'].append(array_index)
+                track_start_indices.append(array_index)
                 
             # break if this scan is a slew that follows a track
             #   unless previous scan was a target, in which case accumulate subsequent gain scan too
@@ -168,9 +199,15 @@ class accumulator_thread(threading.Thread):
                 start_flag = False
 
             # reshape data and put into relevent arrays
-            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].reshape([self.nchan,self.nbl,self.npol])  
-            data_buffer['flags'][array_index,:,:,:] = ig['flags'].reshape([self.nchan,self.nbl,self.npol])  
-            data_buffer['weights'][array_index,:,:,:] = ig['weights'].reshape([self.nchan,self.nbl,self.npol])   
+
+            #self.vis[array_index] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            #self.flags[array_index] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            #self.weights[array_index] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
+            #self.times[array_index] = ig['timestamp']
+            
+            data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
+            data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
             data_buffer['times'][array_index] = ig['timestamp']
 
             # this is a temporary mock up of a natural break in the data stream
@@ -180,15 +217,18 @@ class accumulator_thread(threading.Thread):
                 self.accumulator_logger.info('Accumulate break due to duration')
                 break
             # end accumulation if maximum array size has been accumulated
-            if array_index >= max_length - 1: 
+            if array_index >= self.max_length - 1: 
                 self.accumulator_logger.info('Accumulate break due to buffer size limit')
                 break
                 
             prev_activity = activity
             # extract tags from target description string
             prev_tags = target.split(',')[1]
-                
-        data_buffer['track_start_indices'].append(array_index)
+
+        track_start_indices.append(array_index)                
+        track_start_indices.append(-1)
+        data_buffer['track_start_indices'][0:len(track_start_indices)] = track_start_indices
+        #print '======', data_buffer['track_start_indices']
     
         return array_index
         
@@ -196,19 +236,20 @@ class accumulator_thread(threading.Thread):
 # Pipeline 
 # ---------------------------------------------------------------------------------------
                
-class pipeline_thread(threading.Thread):
+class pipeline_thread(multiprocessing.Process):
     """
     Thread which runs pipeline
     """
 
-    def __init__(self, data, scan_accumulator_condition, pipenum, l1_endpoint, telstate):
-        threading.Thread.__init__(self)
+    def __init__(self, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, telstate):
+        multiprocessing.Process.__init__(self)
         self.data = data
         self.scan_accumulator_condition = scan_accumulator_condition
         self.name = 'Pipeline_thread_'+str(pipenum)
-        self._stop = threading.Event()
+        self._stop = multiprocessing.Event()
         self.telstate = telstate
         self.l1_endpoint = l1_endpoint
+        self.data_shape = data_shape
         
         # set up logging adapter for the thread
         self.pipeline_logger = ThreadLoggingAdapter(logger, {'connid': self.name})
@@ -217,9 +258,9 @@ class pipeline_thread(threading.Thread):
         """
         Thread run method. Runs pipeline
         """
-    
+            
         # run until stop is set   
-        while not self._stop.isSet():
+        while not self._stop.is_set():
             # acquire condition on data
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             self.scan_accumulator_condition.acquire()            
@@ -228,10 +269,15 @@ class pipeline_thread(threading.Thread):
             self.pipeline_logger.info('scan_accumulator_condition release and wait by %s' %(self.name,))
             self.scan_accumulator_condition.wait()
             
+
+            
             # after notify from accumulator, condition lock re-aquired 
             self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
             # run the pipeline 
             self.pipeline_logger.info('Pipeline run start on accumulated data')
+            
+            self.data_to_numpy()
+                        
             self.run_pipeline()
             
             # release condition after pipeline run finished
@@ -243,6 +289,20 @@ class pipeline_thread(threading.Thread):
 
     def stopped(self):
         return self._stop.isSet()
+        
+    def data_to_numpy(self):
+        
+        self.data['vis'] = np.ctypeslib.as_array(self.data['vis']).view(np.complex64)
+        self.data['vis'].shape = self.data_shape
+        
+        self.data['flags'] = np.ctypeslib.as_array(self.data['flags'])
+        self.data['flags'].shape = self.data_shape
+        
+        self.data['weights'] = np.ctypeslib.as_array(self.data['weights'])
+        self.data['weights'].shape = self.data_shape
+
+        self.data['times'] = np.ctypeslib.as_array(self.data['times'])
+        self.data['track_start_indices'] = np.ctypeslib.as_array(self.data['track_start_indices'])        
         
     def run_pipeline(self):    
         # run pipeline calibration

@@ -40,14 +40,14 @@ def all_alive(process_list):
         alive = alive and process.isAlive()
     return alive
             
-def create_buffer_arrays(array_length,nchan,npol,nbl):
+def create_buffer_arrays(array_length,nchan,nbl,npol):
     """
     Create empty buffer record using specified dimensions
     """
     data={}
-    data['vis'] = np.empty([array_length,nchan,npol,nbl],dtype=np.complex64)
-    data['flags'] = np.empty([array_length,nchan,npol,nbl],dtype=np.uint8)
-    data['weights'] = np.empty([array_length,nchan,npol,nbl],dtype=np.float64)
+    data['vis'] = np.empty([array_length,nchan,nbl,npol],dtype=np.complex64)
+    data['flags'] = np.empty([array_length,nchan,nbl,npol],dtype=np.uint8)
+    data['weights'] = np.empty([array_length,nchan,nbl,npol],dtype=np.float64)
     data['times'] = np.empty([array_length],dtype=np.float)
     data['track_start_indices'] = []
     return data
@@ -96,7 +96,7 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
     logger.info('Max length of buffer array : {0}'.format(array_length,))
     
     # Set up empty buffers
-    buffers = [create_buffer_arrays(array_length,nchan,npol,nbl) for i in range(num_buffers)]
+    buffers = [create_buffer_arrays(array_length,nchan,nbl,npol) for i in range(num_buffers)]
 
     # set up conditions for the buffers
     scan_accumulator_conditions = [threading.Condition() for i in range(num_buffers)]
