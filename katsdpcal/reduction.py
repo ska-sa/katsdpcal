@@ -62,14 +62,14 @@ def get_solns_to_apply(s,ts,sol_list,target_name,pipeline_logger,time_range=[]):
             
     return solns_to_apply 
 
-def pipeline(data, ts, thread_name):
+def pipeline(data, ts, task_name):
     """
     Pipeline calibration
     """
 
     # ----------------------------------------------------------    
     # set up logging adapter for the pipeline thread/process
-    pipeline_logger = ThreadLoggingAdapter(logger, {'connid': thread_name})
+    pipeline_logger = ThreadLoggingAdapter(logger, {'connid': task_name})
     
     # ----------------------------------------------------------
     # set up timing file
