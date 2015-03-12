@@ -21,7 +21,8 @@ def parse_opts():
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')    
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
-    parser.add_argument('--multiprocessing', type=bool, default=True, help='Use multiprocessing to control pipeline and accumulator (False to use threading) default: True')
+    parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
+    parser.set_defaults(threading=False)
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -173,7 +174,7 @@ if __name__ == '__main__':
     
     opts = parse_opts()
     
-    if opts.multiprocessing is True:
+    if opts.threading is False:
         import multiprocessing as control_method
         from multiprocessing import Process as control_task
         from ctypes import c_float, c_ubyte, c_double, c_int
@@ -186,4 +187,4 @@ if __name__ == '__main__':
 
     run_threads(opts.telstate, num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, 
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
-           mproc=opts.multiprocessing)
+           mproc=not(opts.threading))
