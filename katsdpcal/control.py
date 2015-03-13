@@ -199,13 +199,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     start_time = ig['timestamp'] 
                     start_flag = False
 
-                # reshape data and put into relevent arrays
-
-                #self.vis[array_index] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
-                #self.flags[array_index] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
-                #self.weights[array_index] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
-                #self.times[array_index] = ig['timestamp']
-            
+                # reshape data and put into relevent arrays            
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
@@ -228,8 +222,12 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             track_start_indices.append(array_index)                
             track_start_indices.append(-1)
-            data_buffer['track_start_indices'][0:len(track_start_indices)] = track_start_indices
-            #print '======', data_buffer['track_start_indices']
+            if 'multiprocessing' in str(control_method):
+                # multiprocessing case
+                data_buffer['track_start_indices'][0:len(track_start_indices)] = track_start_indices
+            else:
+                # threading case
+                data_buffer['track_start_indices'] = np.array(track_start_indices)
     
             return array_index
     
