@@ -40,5 +40,3 @@ USER katcal
 
 # expose L1 spead port
 EXPOSE 7202
-
-ENTRYPOINT ["run_cal.py"]
