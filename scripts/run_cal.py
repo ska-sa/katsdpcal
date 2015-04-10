@@ -1,16 +1,15 @@
 #! /usr/bin/env python
 import numpy as np
-import threading
 import time
 import os
-
-from katcal.control_threads import accumulator_thread, pipeline_thread
 
 from katcal.simulator import SimData
 from katcal import parameters
 
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
+
+from katcal.control import init_accumulator_control, init_pipeline_control
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,6 +21,8 @@ def parse_opts():
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')    
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
+    parser.set_defaults(threading=False)
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -32,28 +33,55 @@ def all_alive(process_list):
     
     Inputs
     ======
-    process_list:  list of threading:Thread: objects
+    process_list:  list of multpirocessing.Process objects
     """
 
     alive = True
     for process in process_list:
-        alive = alive and process.isAlive()
+        alive = alive and process.is_alive()
     return alive
             
-def create_buffer_arrays(array_length,nchan,npol,nbl):
+def create_buffer_arrays(buffer_shape,mproc=True):
     """
     Create empty buffer record using specified dimensions
     """
+    if mproc is True:
+        return create_buffer_arrays_multiprocessing(buffer_shape)
+    else:
+        return create_buffer_arrays_threading(buffer_shape)
+    
+def create_buffer_arrays_multiprocessing(buffer_shape):
+    """
+    Create empty buffer record using specified dimensions,
+    for multiprocessing shared memory appropriate buffers
+    """
     data={}
-    data['vis'] = np.empty([array_length,nchan,npol,nbl],dtype=np.complex64)
-    data['flags'] = np.empty([array_length,nchan,npol,nbl],dtype=np.uint8)
-    data['weights'] = np.empty([array_length,nchan,npol,nbl],dtype=np.float64)
-    data['times'] = np.empty([array_length],dtype=np.float)
+    array_length = buffer_shape[0]
+    buffer_size = reduce(lambda x, y: x*y, buffer_shape)
+    data['vis'] = control_method.RawArray(c_float, buffer_size*2) # times two for complex
+    data['flags'] = control_method.RawArray(c_ubyte, buffer_size)
+    data['weights'] = control_method.RawArray(c_float, buffer_size)
+    data['times'] = control_method.RawArray(c_double, array_length)
+    # assume max 1000 scans!
+    data['track_start_indices'] =  control_method.sharedctypes.RawArray(c_int, 1000) 
+    return data
+    
+def create_buffer_arrays_threading(buffer_shape):
+    """
+    Create empty buffer record using specified dimensions,
+    for thread appropriat numpy buffers
+    """
+    data={}
+    data['vis'] = np.empty(buffer_shape,dtype=np.complex64)
+    data['flags'] = np.empty(buffer_shape,dtype=np.uint8)
+    data['weights'] = np.empty(buffer_shape,dtype=np.float64)
+    data['times'] = np.empty(buffer_shape[0],dtype=np.float)
     data['track_start_indices'] = []
     return data
 
 def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6, 
-           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202'):
+           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202',
+           mproc=True):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -74,6 +102,8 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
         Endpoint to listen to for L0 stream, default: ':7200'
     l1_endpoint: endpoint
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
+    mproc: bool
+        True for control via multiprocessing, False for control via threading
     """ 
 
     # extract data shape parameters from TS
@@ -96,26 +126,32 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
     logger.info('Max length of buffer array : {0}'.format(array_length,))
     
     # Set up empty buffers
-    buffers = [create_buffer_arrays(array_length,nchan,npol,nbl) for i in range(num_buffers)]
+    buffer_shape = [array_length,nchan,npol,nbl]
+    buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
     # set up conditions for the buffers
-    scan_accumulator_conditions = [threading.Condition() for i in range(num_buffers)]
+    scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
     
     # Set up the accumulator
-    accumulator = accumulator_thread(buffers, scan_accumulator_conditions, l0_endpoint, ts)
-
-    #Set up the pipelines (one per buffer)
-    pipelines = [pipeline_thread(buffers[i], scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
+    accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)    
     
-    #Start the pipeline threads
+    #accumulator = accumulator_control(multiprocessing.Process, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
+
+    # Set up the pipelines (one per buffer)
+    #pipelines = [pipeline_control(buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
+    
+    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
+    
+    # Start the pipeline threads
     map(lambda x: x.start(), pipelines)
     # might need delay here for pipeline threads to aquire conditions then wait?
     #time.sleep(5.)
-    #Start the accumulator thread
+    # Start the accumulator thread
     accumulator.start()
 
     try:
         while all_alive([accumulator]+pipelines):
+
             time.sleep(.1)
     except (KeyboardInterrupt, SystemExit):
         print '\nReceived keyboard interrupt! Quitting threads.\n'
@@ -137,9 +173,18 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
 if __name__ == '__main__':
     
     opts = parse_opts()
+    
+    if opts.threading is False:
+        import multiprocessing as control_method
+        from multiprocessing import Process as control_task
+        from ctypes import c_float, c_ubyte, c_double, c_int
+    else:
+        import threading as control_method
+        from threading import Thread as control_task
 
     # short weit to give me time to start up the simulated spead stream
     # time.sleep(5.)
 
     run_threads(opts.telstate, num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, 
-           l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead)
+           l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
+           mproc=not(opts.threading))
