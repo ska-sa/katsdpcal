@@ -19,8 +19,9 @@ def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for a spead stream to run the pipeline.')    
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
-    # note - this extracts the number of channels from the config    
+    # note - the following lines extract the number of channels and antennas from the config    
     parser.add_argument('--cbf-channels', type=float, default=4096, help='The number of frequency channels in the visibility data. default: 4096')
+    parser.add_argument('--cbf-antennas', type=float, default=2, help='The number of antennas in the visibility data. default: 2')
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
