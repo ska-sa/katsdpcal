@@ -20,9 +20,9 @@ def parse_opts():
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     # note - the following lines extract various parameters from the MC config    
-    parser.add_argument('--cbf-channels', type=float, help='The number of frequency channels in the visibility data. Default from MC config')
-    parser.add_argument('--cbf-antennas', type=float, help='The number of antennas in the visibility data. Default from MC config')
-    parser.add_argument('--cbf-antenna-mask', type=float, help='List of antennas in the visibility data. Default from MC config')
+    parser.add_argument('--cbf-channels', type=int, help='The number of frequency channels in the visibility data. Default from MC config')
+    parser.add_argument('--antennas', type=int, help='The number of antennas in the visibility data. Default from MC config')
+    parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the visibility data. Default from MC config')
     # also need bls ordering    
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
