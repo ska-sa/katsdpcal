@@ -18,7 +18,9 @@ logger.setLevel(logging.DEBUG)
 def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for a spead stream to run the pipeline.')    
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
-    parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')    
+    parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
+    # note - this extracts the number of channels from the config    
+    parser.add_argument('--cbf-channels', type=float, default=4096, help='The number of frequency channels in the visibility data. default: 4096')
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
@@ -80,6 +82,7 @@ def create_buffer_arrays_threading(buffer_shape):
     return data
 
 def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6, 
+           cbf_n_chans, cbf_n_ants,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202',
            mproc=True):
     """
@@ -108,9 +111,10 @@ def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6,
 
     # extract data shape parameters from TS
     for k in ts.keys(): print k
-    nchan = ts.cbf_n_chans
+    print '*', cbf_n_chans, cbf_n_ants
+    nchan = cbf_n_chans
     npol = 4
-    nant = ts.cbf_n_ants
+    nant = cbf_n_ants
     # number of baselines includes autocorrelations
     nbl = nant*(nant+1)/2
     
@@ -187,5 +191,6 @@ if __name__ == '__main__':
     # time.sleep(5.)
 
     run_threads(opts.telstate, num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, 
+           cbf_n_chans=opts.cbf_channels, cbf_n_ants=opts.cbf_antennas,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
            mproc=not(opts.threading))
