@@ -200,7 +200,7 @@ if __name__ == '__main__':
     # time.sleep(5.)
 
     run_threads(opts.telstate,  
-           cbf_n_chans=opts.cbf_channels, cbf_n_ants=opts.cbf_antennas,
+           cbf_n_chans=opts.cbf_channels, cbf_n_ants=opts.antennas,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
            mproc=not(opts.threading))
