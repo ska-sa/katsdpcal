@@ -35,7 +35,7 @@ def parse_opts():
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
-    parser.set_defaults(telstate='localhost')
+    #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
 def all_alive(process_list):
