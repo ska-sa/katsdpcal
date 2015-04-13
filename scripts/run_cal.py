@@ -81,8 +81,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data['track_start_indices'] = []
     return data
 
-def run_threads(ts, num_buffers=2, buffer_maxsize=1000e6, 
-           cbf_n_chans, cbf_n_ants,
+def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e6, 
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202',
            mproc=True):
     """
@@ -190,7 +189,8 @@ if __name__ == '__main__':
     # short weit to give me time to start up the simulated spead stream
     # time.sleep(5.)
 
-    run_threads(opts.telstate, num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, 
+    run_threads(opts.telstate,  
            cbf_n_chans=opts.cbf_channels, cbf_n_ants=opts.cbf_antennas,
+           num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
            mproc=not(opts.threading))
