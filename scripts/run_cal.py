@@ -15,6 +15,13 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+def comma_list(type_):
+    """Return a function which splits a string on commas and converts each element to
+    `type_`."""
+    def convert(arg):
+        return [type_(x) for x in arg.split(',')]
+    return convert
+
 def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for a spead stream to run the pipeline.')    
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
