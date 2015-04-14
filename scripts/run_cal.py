@@ -122,7 +122,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e
     for k in ts.keys(): print k
     
     print
-    for k in ts.config: print k
+    for k in ts.config: 
+       print k
+       for jk in k:
+          print '   ', jk
     print
     
     print '*', cbf_n_chans, cbf_n_ants
