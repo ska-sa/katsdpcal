@@ -25,7 +25,6 @@ def print_dict(dictionary, ident = '', braces=1):
         else:
            print ident+'%s = %s' %(key, value)
 
-
 def comma_list(type_):
     """Return a function which splits a string on commas and converts each element to
     `type_`."""
@@ -39,8 +38,7 @@ def parse_opts():
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     # note - the following lines extract various parameters from the MC config    
     parser.add_argument('--cbf-channels', type=int, help='The number of frequency channels in the visibility data. Default from MC config')
-    parser.add_argument('--antennas', type=int, help='The number of antennas in the visibility data. Default from MC config')
-    parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the visibility data. Default from MC config')
+    parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the L0 data stream. Default from MC config')
     # also need bls ordering    
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
@@ -102,7 +100,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data['track_start_indices'] = []
     return data
 
-def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e6, 
+def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6, 
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202',
            mproc=True):
     """
@@ -140,10 +138,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e
     #      print '   ', jk
     print
     
-    print '*', cbf_n_chans, cbf_n_ants
+    print '*', cbf_n_chans, antenna_mask
     nchan = cbf_n_chans
     npol = 4
-    nant = cbf_n_ants
+    nant = len(antenna_mask.split(','))
     # number of baselines includes autocorrelations
     nbl = nant*(nant+1)/2
     
@@ -220,7 +218,7 @@ if __name__ == '__main__':
     # time.sleep(5.)
 
     run_threads(opts.telstate,  
-           cbf_n_chans=opts.cbf_channels, cbf_n_ants=opts.antennas,
+           cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead, 
            mproc=not(opts.threading))
