@@ -15,6 +15,17 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+def print_dict(dictionary, ident = '', braces=1):
+    """ Recursively prints nested dictionaries."""
+    
+    for key, value in dictionary.iteritems():
+        if isinstance(value, dict):
+           print '%s%s%s%s' %(ident,braces*'[',key,braces*']') 
+           print_dict(value, ident+'  ', braces+1)
+        else:
+           print ident+'%s = %s' %(key, value)
+
+
 def comma_list(type_):
     """Return a function which splits a string on commas and converts each element to
     `type_`."""
@@ -122,10 +133,11 @@ def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e
     for k in ts.keys(): print k
     
     print
-    for k in ts.config: 
-       print k
-       for jk in ts.config[k]:
-          print '   ', jk
+    print_dict(ts.config)
+    #for k in ts.config: 
+    #   print k
+    #   for jk in ts.config[k]:
+    #      print '   ', jk
     print
     
     print '*', cbf_n_chans, cbf_n_ants
