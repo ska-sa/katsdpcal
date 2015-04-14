@@ -120,6 +120,11 @@ def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e
 
     # extract data shape parameters from TS
     for k in ts.keys(): print k
+    
+    print
+    for k in ts.config: print k
+    print
+    
     print '*', cbf_n_chans, cbf_n_ants
     nchan = cbf_n_chans
     npol = 4
