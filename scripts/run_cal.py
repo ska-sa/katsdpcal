@@ -124,7 +124,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_ants, num_buffers=2, buffer_maxsize=1000e
     print
     for k in ts.config: 
        print k
-       for jk in k:
+       for jk in ts.config[k]:
           print '   ', jk
     print
     
