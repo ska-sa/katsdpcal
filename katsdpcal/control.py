@@ -53,6 +53,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.npol = buffer_shape[2]
             self.nbl = buffer_shape[3]
 
+            # baseline ordering, to use in re-ordering the data
+            #   will be set when data starts to flow
+            self.ordering = None
+
             # set up logging adapter for the task
             self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
         
@@ -70,15 +74,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
             spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
-        
-            # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
-            ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)  
-            # determine lookup list for baselines
-            bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)  
-            # save these to the TS for use in the pipeline/elsewhere  
-            self.telstate.add('cal_bls_ordering',bls_order)
-            self.telstate.add('cal_pol_ordering',pol_order)  
-            self.telstate.add('cal_bls_lookup',bls_lookup)
           
             # if we are usig multiprocessing, view ctypes array in numpy format
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
@@ -96,7 +91,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
             
                 # accumulate data scan by scan into buffer arrays
-                buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer], ordering)
+                buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
         
                 # awaken pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].notify()
@@ -145,6 +140,16 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 current_buffer['weights'].shape = self.buffer_shape
                 current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
                 current_buffer['track_start_indices'] = np.frombuffer(current_buffer['track_start_indices'], dtype=np.int32)
+
+        def set_ordering_parameters():
+            # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
+            self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)  
+            # determine lookup list for baselines
+            bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)  
+            # save these to the TS for use in the pipeline/elsewhere  
+            self.telstate.add('cal_bls_ordering',bls_order)
+            self.telstate.add('cal_pol_ordering',pol_order)  
+            self.telstate.add('cal_bls_lookup',bls_lookup)
         
         def accumulate(self, spead_stream, data_buffer, ordering):
             """
@@ -199,10 +204,13 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     start_time = ig['timestamp'] 
                     start_flag = False
 
+                    # when data starts to flow, set the baseline ordering parameters for re-ordering the data
+                    set_ordering_parameters()
+
                 # reshape data and put into relevent arrays            
-                data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
-                data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,ordering].reshape([self.nchan,self.npol,self.nbl])
-                data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,ordering].reshape([self.nchan,self.npol,self.nbl]) 
+                data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl]) 
                 data_buffer['times'][array_index] = ig['timestamp']
 
                 # this is a temporary mock up of a natural break in the data stream
