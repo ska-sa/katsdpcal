@@ -783,6 +783,9 @@ def get_reordering(antlist,bls_ordering):
     # note: ordering must be a numpy array to be used for indexing later
     print '&&', type(antlist)
     print '&&', type(bls_ordering)
+    print bls_ordering
+    print '*'
+    print bls_pol_wanted
     ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
     # how to use this:
     #print bls_ordering[ordering]
