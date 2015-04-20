@@ -145,6 +145,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
             print '^^^^^^^^^^^^^'
             print self.telstate.cbf_bls_ordering
+            print self.telstate.cbf_n_ants
+            print self.telstate.keys()
             print '^^^^^^^^^^^^^^'
             self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
             # determine lookup list for baselines
