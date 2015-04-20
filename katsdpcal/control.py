@@ -141,7 +141,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
                 current_buffer['track_start_indices'] = np.frombuffer(current_buffer['track_start_indices'], dtype=np.int32)
 
-        def set_ordering_parameters():
+        def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
             self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
             # determine lookup list for baselines
