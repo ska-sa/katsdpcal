@@ -758,7 +758,7 @@ def get_reordering(antlist,bls_ordering):
     nants = len(antlist)
     nbl = nants*(nants+1)/2
     # convert bls_ordering to a list, if it is not a list (e.g. np.ndarray)
-    if not isinstance(bls_ordering,list): bls_ordering = list(bls_ordering)
+    if not isinstance(bls_ordering,list): bls_ordering = bls_ordering.tolist()
 
     # determined desired correlator product ordering
     #   first index
