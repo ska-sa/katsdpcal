@@ -746,10 +746,19 @@ def get_pol_bls(bls_ordering,pol):
 def get_reordering(antlist,bls_ordering):
     """
     Determine reordering necessary to change given bls_ordering into desired ordering
+
+    Inputs:
+    -------
+    antlist : list of antennas, string shape(nants), or string of csv antenna names
+    bls_ordering : list of correlation products, string shape(nbl,2)
+
     """
-    antlist = antlist.split(',')
+    # convert antlist to list, if it is a csv string
+    if isinstance(antlist,str): antlist = antlist.split(',')
     nants = len(antlist)
     nbl = nants*(nants+1)/2
+    # convert bls_ordering to a list, if it is not a list (e.g. np.ndarray)
+    if not isinstance(bls_ordering,list): bls_ordering = list(bls_ordering)
 
     # determined desired correlator product ordering
     #   first index
