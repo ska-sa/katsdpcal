@@ -91,7 +91,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
 
                 # accumulate data scan by scan into buffer arrays
+                self.accumulator_logger.info('---1---')
                 buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
+                self.accumulator_logger.info('---END---')
 
                 # awaken pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].notify()
