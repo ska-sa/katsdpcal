@@ -71,7 +71,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if self.l0_endpoint.multicast_subscribe(sock):
-                logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
+                self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
             spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
 
@@ -79,7 +79,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
 
             # Increment between buffers, filling and releasing iteratively
-            #Initialise current buffer counter
+            # Initialise current buffer counter
             current_buffer=-1
             while not self._stop.is_set():
                 #Increment the current buffer
