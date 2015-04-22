@@ -213,7 +213,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
-                if 'weights' in ig:
+                if 'weights' in ig.keys():
                     data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty_like(data_buffer['vis'][array_index,:,:,:])
