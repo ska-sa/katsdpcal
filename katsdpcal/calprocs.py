@@ -771,6 +771,12 @@ def get_reordering(antlist,bls_ordering):
     antlist : list of antennas, string shape(nants), or string of csv antenna names
     bls_ordering : list of correlation products, string shape(nbl,2)
 
+    Returns:
+    --------
+    ordering : ordering array necessary to change given bls_ordering into desired ordering, numpy array shape(nbl*4, 2)
+    bls_wanted : ordering of baselines, without polarisation, list shape(nbl, 2)
+    pol_order : ordering of polarisations, list shape (4, 2)
+
     """
     # convert antlist to list, if it is a csv string
     if isinstance(antlist,str): antlist = antlist.split(',')
@@ -796,11 +802,6 @@ def get_reordering(antlist,bls_ordering):
 
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
-    print '&&', type(antlist)
-    print '&&', type(bls_ordering)
-    print bls_ordering
-    print '*'
-    print bls_pol_wanted
     ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
     # how to use this:
     #print bls_ordering[ordering]
