@@ -133,8 +133,8 @@ def pipeline(data, ts, task_name):
         print target_key
         print t0
         print t1
-        print time.time()
         print ts.get_range(target_key)
+        print time()
         target = ts.get_previous(target_key,t0,dt=10.)[0]
         scan_state = ts.get_previous(activity_key,t0,dt=10.)[0]
         taglist = target.split(',')[1].split()
