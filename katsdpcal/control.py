@@ -209,6 +209,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
+                    # set simulator offset time for aligning simulated data and sensors
+                    #   value set to offset betwen start_time and first setting of target value to TS
+                    self.ts.add('sim_sync_time',self.get_range[target_key][0][1]-start_time)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -218,7 +221,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
-                data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time
+                data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time - self.telstate.sim_sync_time
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
