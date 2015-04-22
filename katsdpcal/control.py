@@ -211,7 +211,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.set_ordering_parameters()
                     # set simulator offset time for aligning simulated data and sensors
                     #   value set to offset betwen start_time and first setting of target value to TS
-                    self.ts.add('sim_sync_time',self.get_range[target_key][0][1]-start_time)
+                    self.telstate.add('sim_sync_time',self.get_range[target_key][0][1]-start_time)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
