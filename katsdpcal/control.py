@@ -146,11 +146,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
         def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
-            print '^^^^^^^^^^^^^'
-            print self.telstate.cbf_bls_ordering
-            print self.telstate.cbf_n_ants
-            print self.telstate.keys()
-            print '^^^^^^^^^^^^^^'
             self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
             # determine lookup list for baselines
             bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)
@@ -218,7 +213,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
-                data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                if 'weights' in ig:
+                    data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                else:
+                    data_buffer['weights'][array_index,:,:,:] = np.empty_like(data_buffer['vis'][array_index,:,:,:])
                 data_buffer['times'][array_index] = ig['timestamp']
 
                 # this is a temporary mock up of a natural break in the data stream
