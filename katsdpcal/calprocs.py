@@ -745,15 +745,21 @@ def get_ant_bls(pol_bls_ordering):
 def get_pol_bls(bls_ordering,pol):
     """
     Given baseline ordering and polarisation ordering, return full baseline-pol ordering array
+
+    Inputs:
+    -------
+    bls_ordering : list of correlation products without polarisation information, string shape(nbl,2)
+
+    Returns:
+    --------
+    pol_bls_ordering : correlation products without polarisation information, numpy array shape(nbl*4, 2)
     """
     pol_ant_dtype = np.array(bls_ordering[0][0]+'h').dtype
     nbl = len(bls_ordering)
     pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
     for i,p in enumerate(pol):
         for b,bls in enumerate(bls_ordering):
-            print bls, bls[0], p[0]
-            pol_bls_ordering[nbl*i+b][0] = bls[0]+p[0]
-            pol_bls_ordering[nbl*i+b][1] = bls[1]+p[1]
+            pol_bls_ordering[nbl*i+b] = bls[0]+p[0], bls[1]+p[1]
     return pol_bls_ordering
 
 def get_reordering(antlist,bls_ordering):
@@ -784,23 +790,6 @@ def get_reordering(antlist,bls_ordering):
     bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
     bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
 
-
-    # determined desired correlator product ordering
-    #   first index
-    #bls_wanted_1 = np.array([])
-    #for a,i in enumerate(antlist[:-1]):
-    #    bls_wanted_1 = np.hstack([bls_wanted_1,[i]*(nants-a-1)])
-    #bls_wanted_1 = np.hstack([bls_wanted_1,antlist])
-    #   second index
-    #bls_wanted_2 = np.array([], dtype=np.int)
-    #mod_antlist = antlist[1:]
-    #for i in (range(0,len(mod_antlist))):
-    #    bls_wanted_2 = np.hstack([bls_wanted_2,mod_antlist[:]])
-    #    mod_antlist.pop(0)
-    #bls_wanted_2 = np.hstack([bls_wanted_2,antlist])
-    #   combine into single array
-    #bls_wanted = np.vstack([bls_wanted_1,bls_wanted_2]).T
-
     #   add polarisation indices
     pol_order = np.array([['h','h'],['v','v'],['h','v'],['v','h']])
     bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
@@ -812,10 +801,6 @@ def get_reordering(antlist,bls_ordering):
     print bls_ordering
     print '*'
     print bls_pol_wanted
-    for bls in bls_pol_wanted:
-      print bls
-      print np.all(bls_ordering==bls,axis=1)
-    print '^^^'
     ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
     # how to use this:
     #print bls_ordering[ordering]
