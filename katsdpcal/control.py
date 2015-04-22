@@ -221,7 +221,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
-                data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time - self.telstate.sim_sync_time
+                data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time + self.telstate.sim_sync_time
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
