@@ -210,8 +210,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
                     # set simulator offset time for aligning simulated data and sensors
-                    #   value set to offset betwen start_time and first setting of target value to TS
-                    self.telstate.add('sim_sync_time',self.telstate.get_range(target_key)[0][1]-start_time)
+                    #   value set to offset betwen start_time and first setting of activity value to TS
+                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[0][1]-start_time)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
