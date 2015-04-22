@@ -227,7 +227,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.accumulator_logger.info('Accumulate break due to duration')
                     break
                 # end accumulation if maximum array size has been accumulated
-                if array_index >= 2: # self.max_length - 1:
+                if array_index >= self.max_length - 1:
                     self.accumulator_logger.info('Accumulate break due to buffer size limit')
                     break
 
