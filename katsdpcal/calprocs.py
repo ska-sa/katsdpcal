@@ -771,21 +771,34 @@ def get_reordering(antlist,bls_ordering):
     # convert bls_ordering to a list, if it is not a list (e.g. np.ndarray)
     if not isinstance(bls_ordering,list): bls_ordering = bls_ordering.tolist()
 
+    # get current antenna list without polarisation
+    bls_ordering_nopol = [[b[0][0:4],b[1][0:4]] for b in bls_ordering]
+    # find unique elements
+    unique_bls = []
+    for b in bls_ordering_nopol:
+        if not b in unique_bls: unique_bls.append(b)
+
+    # re-order into XC then AC
+    bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
+    bls_wanted.append([b for b in unique_bls if b[0]==b[1]])
+
+
     # determined desired correlator product ordering
     #   first index
-    bls_wanted_1 = np.array([])
-    for a,i in enumerate(antlist[:-1]):
-        bls_wanted_1 = np.hstack([bls_wanted_1,[i]*(nants-a-1)])
-    bls_wanted_1 = np.hstack([bls_wanted_1,antlist])
+    #bls_wanted_1 = np.array([])
+    #for a,i in enumerate(antlist[:-1]):
+    #    bls_wanted_1 = np.hstack([bls_wanted_1,[i]*(nants-a-1)])
+    #bls_wanted_1 = np.hstack([bls_wanted_1,antlist])
     #   second index
-    bls_wanted_2 = np.array([], dtype=np.int)
-    mod_antlist = antlist[1:]
-    for i in (range(0,len(mod_antlist))):
-        bls_wanted_2 = np.hstack([bls_wanted_2,mod_antlist[:]])
-        mod_antlist.pop(0)
-    bls_wanted_2 = np.hstack([bls_wanted_2,antlist])
+    #bls_wanted_2 = np.array([], dtype=np.int)
+    #mod_antlist = antlist[1:]
+    #for i in (range(0,len(mod_antlist))):
+    #    bls_wanted_2 = np.hstack([bls_wanted_2,mod_antlist[:]])
+    #    mod_antlist.pop(0)
+    #bls_wanted_2 = np.hstack([bls_wanted_2,antlist])
     #   combine into single array
-    bls_wanted = np.vstack([bls_wanted_1,bls_wanted_2]).T
+    #bls_wanted = np.vstack([bls_wanted_1,bls_wanted_2]).T
+
     #   add polarisation indices
     pol_order = np.array([['h','h'],['v','v'],['h','v'],['v','h']])
     bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
