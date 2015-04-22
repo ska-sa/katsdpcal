@@ -751,6 +751,7 @@ def get_pol_bls(bls_ordering,pol):
     pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
     for i,p in enumerate(pol):
         for b,bls in enumerate(bls_ordering):
+            print bls, bls[0], p[0]
             pol_bls_ordering[nbl*i+b][0] = bls[0]+p[0]
             pol_bls_ordering[nbl*i+b][1] = bls[1]+p[1]
     return pol_bls_ordering
