@@ -131,6 +131,7 @@ def pipeline(data, ts, task_name):
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
         print target_key
+        print ts.get_range(target_key)
         target = ts.get_previous(target_key,t0,dt=10.)[0]
         scan_state = ts.get_previous(activity_key,t0,dt=10.)[0]
         taglist = target.split(',')[1].split()
