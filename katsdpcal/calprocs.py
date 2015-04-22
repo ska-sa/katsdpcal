@@ -782,7 +782,7 @@ def get_reordering(antlist,bls_ordering):
 
     # re-order into XC then AC
     bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
-    bls_wanted.append([b for b in unique_bls if b[0]==b[1]])
+    bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
 
 
     # determined desired correlator product ordering
