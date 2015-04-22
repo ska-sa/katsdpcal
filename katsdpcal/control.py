@@ -204,7 +204,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     break
 
                 if start_flag:
-                    start_time = ig['timestamp']
+                    start_time = ig['timestamp'] + self.telstate.cbf_sync_time
                     start_flag = False
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
@@ -225,7 +225,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
-                duration = ig['timestamp']-start_time
+                duration = (ig['timestamp']+ self.telstate.cbf_sync_time)-start_time
                 if duration>2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
                     break
