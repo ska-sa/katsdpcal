@@ -747,7 +747,7 @@ def get_pol_bls(bls_ordering,pol):
     Given baseline ordering and polarisation ordering, return full baseline-pol ordering array
     """
     pol_ant_dtype = np.array(bls_ordering[0][0]+'h').dtype
-    nbl = bls_ordering.shape[0]
+    nbl = len(bls_ordering)
     pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
     for i,p in enumerate(pol):
         for b,bls in enumerate(bls_ordering):
