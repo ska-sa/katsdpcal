@@ -135,8 +135,10 @@ def pipeline(data, ts, task_name):
         print t1
         print ts.get_range(target_key)
         print time()
-        target = ts.get_previous(target_key,t0,dt=10.)[0]
-        scan_state = ts.get_previous(activity_key,t0,dt=10.)[0]
+        #    add 0.5s to t0 to account for rounding errors where
+        #    the sensor values were set at ~=t0
+        target = ts.get_previous(target_key,t0+0.5,dt=10.)[0]
+        scan_state = ts.get_previous(activity_key,t0+0.5,dt=10.)[0]
         taglist = target.split(',')[1].split()
         # fudge for now to add delay cal tag to bpcals
         if 'bpcal' in taglist: taglist.append('delaycal')
