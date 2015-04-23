@@ -118,6 +118,7 @@ def pipeline(data, ts, task_name):
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
     #    for application to the target scan
     track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0][0]]
+    print 'TS -', track_starts
 
     for i in range(len(track_starts)-1,0,-1):
         # start and end indices for this track in the data buffer
