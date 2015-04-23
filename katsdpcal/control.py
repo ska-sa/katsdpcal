@@ -245,9 +245,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # threading case
                 data_buffer['track_start_indices'] = np.array(track_start_indices)
 
+            self.accumulator_logger.info('Accumulation ended')
             return array_index
 
-    self.accumulator_logger.info('Accumulation ended')
     return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate)
 
 # ---------------------------------------------------------------------------------------
