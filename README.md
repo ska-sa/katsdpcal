@@ -9,7 +9,7 @@ Instructions for running code with h5 simulator:
 
 * run the h5 Telescope State simulator:
   
- > python sim_h5_ts.py   \<h5file.h5\>
+ > python sim_h5_ts.py --telstate 127.0.0.1:6379 --h5file \<h5file.h5\>
 
 * run the L1 spead receive simulator (will only work on a single scan at a time):
 
@@ -21,4 +21,4 @@ Instructions for running code with h5 simulator:
 
 * run the h5 data stream:
 
- > python sim_h5_stream.py   \<h5file.h5\>
+ > python sim_h5_stream.py --telstate 127.0.0.1:6379 --h5file \<h5file.h5\>
