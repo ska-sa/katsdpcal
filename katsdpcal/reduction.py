@@ -92,6 +92,7 @@ def pipeline(data, ts, task_name):
     g_solint = ts.cal_g_solint #seconds
 
     dump_period = ts.sdp_l0_int_time
+    n_ants = len(ts.antenna_mask.split(','))
 
     antlist = ts.antenna_mask.split(',')
     # refant index number in the antenna list
@@ -147,7 +148,7 @@ def pipeline(data, ts, task_name):
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
 
         # set up scan
-        s = Scan(data, ti0, ti1, dump_period, ts.cbf_n_ants, ts.cal_bls_lookup)
+        s = Scan(data, ti0, ti1, dump_period, n_ants, ts.cal_bls_lookup)
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
