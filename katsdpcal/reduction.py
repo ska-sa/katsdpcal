@@ -118,12 +118,6 @@ def pipeline(data, ts, task_name):
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
     #    for application to the target scan
     track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0][0]]
-    print 'TS -', track_starts
-
-    print data['track_start_indices']
-    print ts.get_range(target_key)
-    print ts.get_range(activity_key)
-    print '**'
 
     for i in range(len(track_starts)-1,0,-1):
         # start and end indices for this track in the data buffer
@@ -136,11 +130,6 @@ def pipeline(data, ts, task_name):
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
-        print target_key
-        print t0
-        print t1
-        print ts.get_range(target_key)
-        print time()
         # The large 300s window here is to account for a target that may have been set prior to a
         # slew, prior to the current scan.
         target = ts.get_previous(target_key,t0,dt=300.)[0]
