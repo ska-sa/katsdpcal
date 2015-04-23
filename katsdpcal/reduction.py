@@ -104,6 +104,9 @@ def pipeline(data, ts, task_name):
     # plots per scan
     #per_scan_plots = True
 
+    # debug prints
+    print ts.cbf_bls_ordering
+
     # ----------------------------------------------------------
     # set initial values for fits
     bp0_h = None
