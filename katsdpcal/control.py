@@ -191,9 +191,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 activity = self.telstate[activity_key]
                 target = self.telstate[target_key]
 
-                self.accumulator_logger.info('--AA-- {0}', (activity,))
-                self.accumulator_logger.info('--AA-- {0}', (target,))
-
                 # accumulate list of track start time indices in the array
                 #   for use in the pipeline, to index each track easily
                 if 'track' in activity and not 'track' in prev_activity:
