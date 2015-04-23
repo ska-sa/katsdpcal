@@ -120,6 +120,7 @@ def pipeline(data, ts, task_name):
     track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0][0]]
     print 'TS -', track_starts
 
+    print data['track_start_indices']
     print ts.get_range(target_key)
     print ts.get_range(activity_key)
     print '**'
