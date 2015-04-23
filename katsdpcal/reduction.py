@@ -144,7 +144,8 @@ def pipeline(data, ts, task_name):
         # The large 300s window here is to account for a target that may have been set prior to a
         # slew, prior to the current scan.
         target = ts.get_previous(target_key,t0,dt=300.)[0]
-        scan_state = ts.get_previous(activity_key,t0,dt=300.)[0]
+        # add the dump period here to account for scan start and activity change being closely timed
+        scan_state = ts.get_previous(activity_key,t0+dump_period,dt=300.)[0]
         taglist = target.split(',')[1].split()
         # fudge for now to add delay cal tag to bpcals
         if 'bpcal' in taglist: taglist.append('delaycal')
