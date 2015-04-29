@@ -42,6 +42,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             self.name = 'Accumulator_task'
             self._stop = control_method.Event()
+            self._obsend = control_method.Event()
 
             # flag for switching capture to the alternate buffer
             self._switch_buffer = False
@@ -106,8 +107,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
         def stop(self):
             # set stop event
             self._stop.set()
-            # stop SPEAD stream recieval
-            self.capture_stop()
+            # stop SPEAD stream receival manually if the observation is still running
+            if not self.obs_finished(): self.capture_stop()
 
             # close off scan_accumulator_conditions
             #  - necessary for closing pipeline task which may be waiting on condition
@@ -116,8 +117,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 scan_accumulator.notify()
                 scan_accumulator.release()
 
+        def obs_finished(self):
+            return self._obsend.is_set()
+
         def stopped(self):
-            return self._stop.isSet()
+            return self._stop.is_set()
 
         def capture_stop(self):
             """
@@ -212,7 +216,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.set_ordering_parameters()
                     # set simulator offset time for aligning simulated data and sensors
                     #   value set to offset betwen start_time and first setting of activity value to TS
-                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[1]-start_time)
+                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[0][1]-start_time)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -254,7 +258,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             if obs_end_flag: 
                 self.accumulator_logger.info('Observation ended')
-                self._stop.set()
+                self._obsend.set()
 
             return array_index
 
@@ -318,7 +322,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self._stop.set()
 
         def stopped(self):
-            return self._stop.isSet()
+            return self._stop.is_set()
 
         def data_to_numpy(self):
             """

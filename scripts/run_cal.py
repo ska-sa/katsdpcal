@@ -63,6 +63,21 @@ def all_alive(process_list):
         alive = alive and process.is_alive()
     return alive
 
+def any_alive(process_list):
+    """
+    Check if any of the process in process list are alive and return True
+    if any are, False otherwise.
+
+    Inputs
+    ======
+    process_list:  list of multpirocessing.Process objects
+    """
+
+    alive = False
+    for process in process_list:
+        alive = alive or process.is_alive()
+    return alive
+
 def create_buffer_arrays(buffer_shape,mproc=True):
     """
     Create empty buffer record using specified dimensions
@@ -189,24 +204,33 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     accumulator.start()
 
     try:
-        while all_alive([accumulator]+pipelines):
+        # run tasks until the observation has ended
+        while all_alive([accumulator]+pipelines) and not accumulator.obs_finished():
 
             time.sleep(.1)
     except (KeyboardInterrupt, SystemExit):
-        print '\nReceived keyboard interrupt! Quitting threads.\n'
-        #Stop pipelines first so they recieve correct signal before accumulator acquires the condition
+        logger.info('Received keyboard interrupt! Quitting threads.')
+        # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
         map(lambda x: x.stop(), pipelines)
         accumulator.stop()
     except:
-        print '\nUnknown error\n'
+        logger.error('Unknown error')
         map(lambda x: x.stop(), pipelines)
         accumulator.stop()
+ 
+    # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
+    map(lambda x: x.stop(), pipelines)
+    # then stop accumulator (releasing conditions)
+    accumulator.stop()
 
+    # join tasks
     accumulator.join()
-    print "Accumulator Stopped"
-
-    map(lambda x: x.join(), pipelines)
-    print "Pipelines Stopped"
+    logger.info('Accumulator Stopped')
+    # wait till all pipeline runs finish then join
+    while any_alive(pipelines):
+        map(lambda x: x.join(), pipelines)
+        time.sleep(1.0)
+    logger.info('Pipelines Stopped')
 
 
 if __name__ == '__main__':
