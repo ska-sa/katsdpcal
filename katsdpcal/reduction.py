@@ -43,7 +43,7 @@ def get_solns_to_apply(s,ts,sol_list,target_name,pipeline_logger,time_range=[]):
         ts_solname = 'cal_product_{0}'.format(X,)
         try:
             # get most recent solution value
-            sol, soltime = ts.get_range(ts_solname)[0]
+            sol, soltime = ts.get_range(ts_solname)
             if X is not 'G':
                 soln = CalSolution(X, sol, soltime)
             else:

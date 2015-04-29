@@ -178,6 +178,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             target_key = '{0}_target'.format(self.telstate.cal_refant,)
             activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
 
+            obs_end_flag = True
+
             # receive SPEAD stream
             print 'Got heaps: ',
             for heap in spead.iterheaps(spead_stream):
@@ -199,6 +201,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
                 if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
                     self.accumulator_logger.info('Accumulate break due to transition')
+                    obs_end_flag = False 
                     break
 
                 if start_flag:
@@ -209,7 +212,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.set_ordering_parameters()
                     # set simulator offset time for aligning simulated data and sensors
                     #   value set to offset betwen start_time and first setting of activity value to TS
-                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[0][1]-start_time)
+                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[1]-start_time)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -226,10 +229,12 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 duration = (ig['timestamp']+ self.telstate.cbf_sync_time)-start_time
                 if duration>2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
+                    obs_end_flag = False
                     break
                 # end accumulation if maximum array size has been accumulated
                 if array_index >= self.max_length - 1:
                     self.accumulator_logger.info('Accumulate break due to buffer size limit')
+                    obs_end_flag = False
                     break
 
                 prev_activity = activity
@@ -246,6 +251,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 data_buffer['track_start_indices'] = np.array(track_start_indices)
 
             self.accumulator_logger.info('Accumulation ended')
+
+            if obs_end_flag: 
+                self.accumulator_logger.info('Observation ended')
+                self._stop.set()
+
             return array_index
 
     return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate)

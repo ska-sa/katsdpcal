@@ -54,13 +54,16 @@ class SimData(katdal.H5DataV2):
         ts : TelescopeState
         """   
         # set simulated ts values from h5 file
-        ts.add('antenna_mask', ','.join([ant.name for ant in self.ants]))
         ts.add('sdp_l0_int_time', self.dump_period)
         ts.add('cbf_n_ants', len(self.ants))
         ts.add('cbf_n_chans', ts.cal_echan-ts.cal_bchan)
         ts.add('cbf_bls_ordering', self.corr_products)
+        ts.add('cbf_sync_time', 0.0, immutable=True)
+        antenna_mask = ','.join([ant.name for ant in self.ants])
+        ts.add('antenna_mask', antenna_mask)
+        ts.add('config', {'h5_simulator':True})
         
-    def h5toSPEAD(self,ts,l0_endpoint):
+    def h5toSPEAD(self,ts,l0_endpoint,wait_time=0.5,spead_rate=1e9):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
@@ -72,7 +75,10 @@ class SimData(katdal.H5DataV2):
         """
         
         print 'TX: Initializing...'
-        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port))
+        # rate limit transmission to work on Laura's laptop
+        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
+
+        data_index = 0
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
@@ -97,8 +103,13 @@ class SimData(katdal.H5DataV2):
 
                 # transmit timestamps, vis, flags, weights
                 transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
+                print data_index,
+                data_index += 1
                 # delay so receiver isn't overwhelmed
-                time.sleep(0.5)
+                time.sleep(wait_time)
+
+            print
+            data_index = 0
                 
         end_transmit(tx)
                     

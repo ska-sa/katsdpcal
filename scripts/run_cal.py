@@ -128,19 +128,25 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         True for control via multiprocessing, False for control via threading
     """
 
-    # extract data shape parameters from TS
+    # debug print outs
+    print '\nTelescope state: '
     for k in ts.keys(): print k
-
-    print
+    print '\nTelescope state config graph: '
     print_dict(ts.config)
-    #for k in ts.config:
-    #   print k
-    #   for jk in ts.config[k]:
-    #      print '   ', jk
     print
 
-    print '*', cbf_n_chans, antenna_mask
-    nchan = cbf_n_chans
+    # extract data shape parameters from TS
+    #  antenna_mask and cbf_n_chans come from MC config if present, else try the TS 
+    try:
+        if antenna_mask is None: antenna_mask = ts.antenna_mask.split(',')
+    except:
+        raise RuntimeError("No antenna_mask set.")
+    try:
+        if cbf_n_chans is None: cbf_n_chans = ts.cbf_n_chans
+        nchan = cbf_n_chans
+    except:
+        raise RuntimeError("No cbf_n_chans set.")
+
     npol = 4
     nant = len(antenna_mask)
     # number of baselines includes autocorrelations
@@ -155,7 +161,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     scale_factor = 8. + 1. + 1.  # vis + flags + weights
     time_factor = 8.
     array_length = buffer_maxsize/((scale_factor*nchan*npol*nbl) + time_factor)
-    array_length = np.int(np.ceil(array_length))/100
+    array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
 
     # Set up empty buffers
