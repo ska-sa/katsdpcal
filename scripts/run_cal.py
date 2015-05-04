@@ -11,6 +11,8 @@ from katsdptelstate import endpoint, ArgumentParser
 
 from katcal.control import init_accumulator_control, init_pipeline_control
 
+from katcal.report import make_cal_report
+
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -231,6 +233,9 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         map(lambda x: x.join(), pipelines)
         time.sleep(1.0)
     logger.info('Pipelines Stopped')
+
+    # create pipeline report (very basic at the moment)
+    #make_cal_report(ts)
 
 
 if __name__ == '__main__':
