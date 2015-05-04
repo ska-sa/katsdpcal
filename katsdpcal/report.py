@@ -2,6 +2,10 @@
 import os
 import shutil
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 def get_path_from_env(envvar,filename):
     """
     Gets the path of a file from list of directories in an environment variable
@@ -43,7 +47,7 @@ def insert_fig_list(report,fig_list):
         report.write(fig_text)
         report.write('\n')
 
-def make_cal_report(project_name,fig_list):
+def make_cal_report(ts): #project_name,fig_list):
     """
     Creates pdf calibration pipeline report
     Report is built from template and list of figures.
