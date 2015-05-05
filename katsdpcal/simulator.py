@@ -63,7 +63,7 @@ class SimData(katdal.H5DataV2):
         ts.add('antenna_mask', antenna_mask)
         ts.add('config', {'h5_simulator':True})
         
-    def h5toSPEAD(self,ts,l0_endpoint,wait_time=0.5,spead_rate=1e9):
+    def h5toSPEAD(self,ts,l0_endpoint,wait_time=0.5,spead_rate=1e9,max_scans=None):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
@@ -79,6 +79,11 @@ class SimData(katdal.H5DataV2):
         tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
 
         num_scans = len(self.scan_indices)
+        # if the maximum number of scans to transmit has not been specified, set to total number of scans
+        if max_scans is None: 
+            max_scans = num_scans
+        else:
+            num_scans = max_scans
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
@@ -108,7 +113,8 @@ class SimData(katdal.H5DataV2):
                 # delay so receiver isn't overwhelmed
                 time.sleep(wait_time)
 
-            data_index = 0
+            if scan_ind+1 == max_scans:
+                break
                 
         end_transmit(tx)
                     
