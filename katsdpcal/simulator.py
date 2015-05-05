@@ -79,6 +79,8 @@ class SimData(katdal.H5DataV2):
         tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
 
         data_index = 0
+
+        num_scans = len(self.scan_indices)
         
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
@@ -86,7 +88,7 @@ class SimData(katdal.H5DataV2):
             #   slight differences in times of different sensors
             ts.add('{0}_target'.format(self.refant,),target.description,ts=self.timestamps[0]-random()*0.1)
             ts.add('{0}_activity'.format(self.refant,),scan_state,ts=self.timestamps[0]-random()*0.1)
-            print scan_state, target.description
+            print 'Scan', scan_ind, '/', num_scans, ' -- ', scan_state, target.description
             
             # transmit the data from this scan, timestamp by timestamp
             scan_data = self.vis[:]
