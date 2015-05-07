@@ -57,7 +57,6 @@ def plot_data_v_chan(data,axes,plotnum=0,chans=None,ylabelplus=''):
     axes_[1].set_xlim([0,max(chans)])
     axes_[1].set_ylabel('Phase'+ylabelplus)
 
-    axes_[0].set_xlabel('Channels') 
     axes_[1].set_xlabel('Channels') 
 
 def plot_bp_data(data,chans=None,plotavg=False): 
@@ -66,7 +65,7 @@ def plot_bp_data(data,chans=None,plotavg=False):
   
     Parameters
     ----------
-    data    : array of complex, shape(num_times, num_chans, num_ants)
+    data    : array of complex, shape(num_times, num_chans, num_pol, num_ants)
     chans   : channel numbers, shape(num_chans)
     plotavg : plot additional panel of the average of data over time
     """   
@@ -96,15 +95,18 @@ def plot_bp_solns(data,chans=None):
    
     Parameters
     ----------
-    data  : array of complex, shape(num_chans,num_ants)
+    data  : array of complex, shape(num_chans,num_pols,num_ants)
     chans : channel numbers, shape(num_chans)
     """
     # just label channels from zero if channel numbers not supplied
     if not chans: chans = np.arange(data.shape[-2])
 
-    nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
-    plot_data_v_chan(data,axes,plotnum=0)
+    npols = data.shape[-2]
+    nrows, ncols = npols, 2  
+
+    fig, axes = plt.subplots(nrows,ncols,figsize=(12.0*ncols,3.0*nrows))
+    for p in range(npols):
+        plot_data_v_chan(data[:,p,:],axes,plotnum=p,ylabelplus=' - POL '+str(p))
 
     return fig
    
@@ -136,7 +138,7 @@ def plot_g_solns(times,data):
     data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(18.0*ncols,5.0*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(12.0*ncols,3.0*nrows))
    
     times = np.array(times) - times[0]
     data = np.array(data)
