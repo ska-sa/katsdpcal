@@ -80,29 +80,40 @@ def write_summary(report,ts):
     report.writeln('* Antenna list: {0:s}'.format(ts.antenna_mask,))
     report.writeln()
 
-def write_table_timerow(report,header,time,data):
+    report.writeln('Source list:')
+    report.writeln()
+    for target in ts.get_range('cal_info_sources',st=0,return_format='recarray')['value']:
+        report.writeln('* {0:s}'.format(target,))
+
+    report.writeln()    
+
+def write_table_timerow(report,antennas,time,data):
     """
     Write RST style table to report, rows: time, columns: antenna
 
     Parameters
     ----------
-    report : report file to write to
-    header : table header
-    time   : list of times (equates to number of rows in the table)
-    data   : table data, shape (time, antenna)
+    report   : report file to write to
+    antennas : list of antenna names, comma separated string
+    time     : list of times (equates to number of rows in the table)
+    data     : table data, shape (time, antenna)
     """
+
+    # create table header
+    header = antennas.split(',')
+    header.insert(0,'time')
 
     n_entries = len(header)
     col_width = 15
     col_header = '='*col_width+' '
 
-    # table header
+    # write table header
     report.writeln()
     report.writeln(col_header*n_entries)
     report.writeln(" ".join([h.ljust(col_width) for h in header])) 
     report.writeln(col_header*n_entries)
 
-    # add each row to the table
+    # add each time row to the table
     for t, d in zip(time,data):
         data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
         report.write("{:.4e}".format(t,).ljust(col_width+1))
@@ -119,28 +130,33 @@ def write_table_timecol(report,antennas,time,data):
     Parameters
     ----------
     report : report file to write to
-    header : table header
+    antennas : list of antenna names, comma separated string
+    time     : list of times (equates to number of columns in the table)
+    data     : table data, shape (time, antenna)
     """
 
-    table_header = time
-    table_header.insert(0,'ant')
-
-    antlist = antennas.split(',')
-
-    n_entries = len(header)
+    n_entries = len(time) + 1
     col_width = 15
     col_header = '='*col_width+' '
 
+    # create table header
+    header = " ".join(["{:.4e}".format(t,).ljust(col_width) for t in time])
+    header = 'ant'.ljust(col_width+1) + header
+
+    # write table header
     report.writeln()
     report.writeln(col_header*n_entries)
-    report.writeln(" ".join([h.ljust(col_width) for h in header])) 
+    report.writeln(header) 
     report.writeln(col_header*n_entries)
 
-    for a, d in zip(antennas,data.T):
+    # add each antenna row to the table
+    antlist = antennas.split(',')
+    for a, d in zip(antlist,data.T):
         data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
         report.write(a.ljust(col_width+1))
         report.writeln(data_string)  
 
+    # table footer
     report.writeln(col_header*n_entries)
     report.writeln()
 
@@ -197,6 +213,9 @@ def make_cal_report(ts):
 
     # --------------------------------------------------------------------    
     # add cal products to report
+    antenna_mask = ts.antenna_mask
+
+
     # ---------------------------------
     # delay
     cal = 'K'
@@ -212,13 +231,10 @@ def make_cal_report(ts):
         # K shape is n_time, n_pol, n_ant
         times = product['time']
 
-        table_header = ts.antenna_mask.split(',')
-        table_header.insert(0,'time')
-
         cal_rst.writeln('**POL 0**')
-        write_table_timerow(cal_rst,table_header,times,vals[:,0,:])
+        write_table_timerow(cal_rst,antenna_mask,times,vals[:,0,:])
         cal_rst.writeln('**POL 1**')
-        write_table_timerow(cal_rst,table_header,times,vals[:,1,:])
+        write_table_timerow(cal_rst,antenna_mask,times,vals[:,1,:])
 
     # ---------------------------------
     # bandpass
@@ -262,8 +278,8 @@ def make_cal_report(ts):
 
     # --------------------------------------------------------------------
     # close off report
-    cal_rst.write('\n')
-    cal_rst.write('\n')
+    cal_rst.writeln()
+    cal_rst.writeln()
     cal_rst.close()
     
     # convert rst to pdf 
