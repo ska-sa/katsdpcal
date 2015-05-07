@@ -235,7 +235,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     logger.info('Pipelines Stopped')
 
     # create pipeline report (very basic at the moment)
-    #make_cal_report(ts)
+    make_cal_report(ts)
+    logger.info('Report compiled')
 
 
 if __name__ == '__main__':

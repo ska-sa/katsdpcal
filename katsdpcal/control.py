@@ -5,12 +5,12 @@ from katcal.reduction import pipeline
 from katcal import calprocs
 from katsdptelstate.telescope_state import TelescopeState
 
-import logging
 import socket
+import numpy as np
+
+import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-import numpy as np
 
 class TaskLoggingAdapter(logging.LoggerAdapter):
     """
