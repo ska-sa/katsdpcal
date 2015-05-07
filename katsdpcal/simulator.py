@@ -61,6 +61,7 @@ class SimData(katdal.H5DataV2):
         ts.add('cbf_sync_time', 0.0, immutable=True)
         antenna_mask = ','.join([ant.name for ant in self.ants])
         ts.add('antenna_mask', antenna_mask)
+        ts.add('experiment_id', self.experiment_id)
         ts.add('config', {'h5_simulator':True})
         
     def h5toSPEAD(self,ts,l0_endpoint,wait_time=0.5,spead_rate=1e9,max_scans=None):
@@ -69,6 +70,7 @@ class SimData(katdal.H5DataV2):
         
         Parameters
         ----------
+
         ts   : Telescope State 
         port : port to send spead tream to
         
