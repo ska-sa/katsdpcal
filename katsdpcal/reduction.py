@@ -82,9 +82,6 @@ def pipeline(data, ts, task_name):
     # ----------------------------------------------------------
     # extract some some commonly used constants from the TS
 
-    #per_scan_plots = ts.cal_per_scan_plots
-    #closing_plots = ts.cal_closing_plots
-
     # solution intervals
     bp_solint = ts.cal_bp_solint #seconds
     k_solint = ts.cal_k_solint #seconds
@@ -101,9 +98,6 @@ def pipeline(data, ts, task_name):
     # get names of activity and target TS keys, using TS reference antenna
     target_key = '{0}_target'.format(ts.cal_refant,)
     activity_key = '{0}_activity'.format(ts.cal_refant,)
-
-    # plots per scan
-    #per_scan_plots = True
 
     # debug prints
     #print ts.cbf_bls_ordering
@@ -136,9 +130,9 @@ def pipeline(data, ts, task_name):
         #  target string contains: 'target name, tags, RA, DEC'
         # The large 300s window here is to account for a target that may have been set prior to a
         # slew, prior to the current scan.
-        target = ts.get_previous(target_key,t0,dt=300.)[0]
+        target = ts.get_range(target_key,et=t0,include_previous=300.)[0][0]
         # add the dump period here to account for scan start and activity change being closely timed
-        scan_state = ts.get_previous(activity_key,t0+dump_period,dt=300.)[0]
+        scan_state = ts.get_range(activity_key,et=t0+dump_period,include_previous=300.)[0][0]
         taglist = target.split(',')[1].split()
         # fudge for now to add delay cal tag to bpcals
         if 'bpcal' in taglist: taglist.append('delaycal')
@@ -146,6 +140,13 @@ def pipeline(data, ts, task_name):
         target_name = target.split(',')[0]
         pipeline_logger.info('Target: {0}'.format(target_name,))
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
+
+        # update source list
+        try:
+            target_list = ts.get_range('cal_info_sources',st=0,return_format='recarray')['value']
+        except KeyError:
+            target_list = []
+        if not target in target_list: ts.add('cal_info_sources',target)
 
         # set up scan
         s = Scan(data, ti0, ti1, dump_period, n_ants, ts.cal_bls_lookup)
