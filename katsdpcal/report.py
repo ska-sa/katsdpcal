@@ -49,10 +49,10 @@ def insert_fig(report,fig,name=None):
     
     Parameters
     ----------
-    report : open repreport file to write to
+    report : open report file to write to
     fig    : matplitlib figure 
     """
-    figname = name+'.jpeg' if name is not None else str(fig)+'.jpeg'
+    figname = "{}.jpeg".format(name if name else str(fig))
     fig.savefig(figname,bbox_inches='tight')
     fig_text = \
     '''.. image:: {}
@@ -283,7 +283,7 @@ def make_cal_report(ts):
     cal_rst.close()
     
     # convert rst to pdf 
-    os.system('rst2pdf '+report_file+' -s eightpoint')
+    os.system('rst2pdf {} -s eightpoint'.format(report_file))
     # move to project directory
     shutil.move(report_file.replace('rst','pdf'),project_dir)
     
