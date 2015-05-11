@@ -10,6 +10,7 @@ from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
 from katcal.control import init_accumulator_control, init_pipeline_control
+from katcal.control import end_transmit
 
 from katcal.report import make_cal_report
 
@@ -45,6 +46,7 @@ def parse_opts():
     # also need bls ordering
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
     #parser.set_defaults(telstate='localhost')
@@ -119,7 +121,7 @@ def create_buffer_arrays_threading(buffer_shape):
     return data
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
-           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202',
+           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7,
            mproc=True):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
@@ -141,6 +143,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Endpoint to listen to for L0 stream, default: ':7200'
     l1_endpoint: endpoint
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
+    l1_rate : rate for L1 stream transmission, default 5e7
     mproc: bool
         True for control via multiprocessing, False for control via threading
     """
@@ -196,7 +199,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     # Set up the pipelines (one per buffer)
     #pipelines = [pipeline_control(buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
 
-    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
+    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
 
     # Start the pipeline threads
     map(lambda x: x.start(), pipelines)
@@ -222,22 +225,29 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
  
     # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
     map(lambda x: x.stop(), pipelines)
+    logger.info('Pipelines stopped')
     # then stop accumulator (releasing conditions)
     accumulator.stop()
+    logger.info('Accumulator stopped')
 
     # join tasks
     accumulator.join()
-    logger.info('Accumulator Stopped')
+    logger.info('Accumulator task closed')
     # wait till all pipeline runs finish then join
     while any_alive(pipelines):
         map(lambda x: x.join(), pipelines)
         time.sleep(1.0)
-    logger.info('Pipelines Stopped')
+    logger.info('Pipeline tasks closed')
+
+    # send L1 stop transmission
+    end_transmit(l1_endpoint)
+
+    # send spead end packet to L1
+    #l1_transmitter.end()
 
     # create pipeline report (very basic at the moment)
     make_cal_report(ts)
     logger.info('Report compiled')
-
 
 if __name__ == '__main__':
 
@@ -258,4 +268,4 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           mproc=not(opts.threading))
+           l1_rate=opts.l1_rate, mproc=not(opts.threading))
