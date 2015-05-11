@@ -272,9 +272,9 @@ def make_cal_report(ts):
         times = product['time']
 
         cal_rst.writeln('**POL 0**')
-        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,0,:]),name='G_P0_'+str(ti))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,0,:]),name='G_P0')
         cal_rst.writeln('**POL 1**')
-        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,1,:]),name='G_P1_'+str(ti))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,1,:]),name='G_P1')
 
     # --------------------------------------------------------------------
     # close off report
