@@ -16,7 +16,7 @@
 #
 #   * tmux session can be detached from, from the command line within the session, using
 #      > tmux detach
-#     or using the key-binding Ctrl-Sb :detach
+#     or using the key-binding Ctrl-b :detach
 #
 #   * To scroll up tmux pane history, use Ctrl-b PageUp
 #
