@@ -14,7 +14,7 @@ def parse_opts():
     parser.add_argument('--h5file', type=str, help='H5 file for simulated data')
     parser.add_argument('--wait-time', type=float, default=0.5, help='Wait time (seconds) between transmitting SPEAD packets. Default: 0.5')
     parser.add_argument('--spead-rate', type=float, default=1e9, help='SPEAD rate. For laptops, recommend rate of 1e7. Default: 1e9')
-    parser.add_argument('--max-scans', type=int, default=0, help='SPEAD rate. For laptops, recommend rate of 1e7. Default: 1e9')
+    parser.add_argument('--max-scans', type=int, default=0, help='Number of scans oto transmit. Default: all')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
