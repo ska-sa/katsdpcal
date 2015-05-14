@@ -185,29 +185,17 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             obs_end_flag = True
 
             # receive SPEAD stream
-            print 'Got heaps: ',
+            #print 'Got heaps: ',
             for heap in spead.iterheaps(spead_stream):
                 ig.update(heap)
-                print array_index,
+                #print array_index,
                 array_index += 1
 
                 # get activity and target tag from TS
                 activity = self.telstate[activity_key]
                 target = self.telstate[target_key]
 
-                # accumulate list of track start time indices in the array
-                #   for use in the pipeline, to index each track easily
-                if 'track' in activity and not 'track' in prev_activity:
-                    track_start_indices.append(array_index)
-
-                # break if this scan is a slew that follows a track
-                #   unless previous scan was a target, in which case accumulate subsequent gain scan too
-                # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
-                    self.accumulator_logger.info('Accumulate break due to transition')
-                    obs_end_flag = False 
-                    break
-
+                # if this is the first scan of the observation, set up some values
                 if start_flag:
                     start_time = ig['timestamp'] + self.telstate.cbf_sync_time
                     start_flag = False
@@ -218,6 +206,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     #   value set to offset betwen start_time and first setting of activity value to TS
                     self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[0][1]-start_time)
 
+                # accumulate list of track start time indices in the array
+                #   for use in the pipeline, to index each track easily
+                if 'track' in activity and not 'track' in prev_activity:
+                    track_start_indices.append(array_index)
+
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -227,6 +220,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time + self.telstate.sim_sync_time
+
+                # break if this scan is a slew that follows a track
+                #   unless previous scan was a target, in which case accumulate subsequent gain scan too
+                # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
+                if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
+                    self.accumulator_logger.info('Accumulate break due to transition')
+                    obs_end_flag = False
+                    break
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
@@ -245,6 +246,12 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # extract tags from target description string
                 prev_tags = target.split(',')[1]
 
+            # if we exited the loop because it was the end of the SPEAD transmission
+            if obs_end_flag:
+                self.accumulator_logger.info('Observation ended')
+                self._obsend.set()
+                array_index += 1
+
             track_start_indices.append(array_index)
             track_start_indices.append(-1)
             if 'multiprocessing' in str(control_method):
@@ -256,10 +263,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             self.accumulator_logger.info('Accumulation ended')
 
-            if obs_end_flag: 
-                self.accumulator_logger.info('Observation ended')
-                self._obsend.set()
-
             return array_index
 
     return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate)
@@ -268,21 +271,21 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, telstate):
+def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate):
 
     class pipeline_control(control_task):
         """
         Task (Process or Thread) which runs pipeline
         """
 
-        def __init__(self, control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, telstate):
+        def __init__(self, control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
             self.scan_accumulator_condition = scan_accumulator_condition
             self.name = 'Pipeline_task_'+str(pipenum)
             self._stop = control_method.Event()
             self.telstate = telstate
-            self.l1_endpoint = l1_endpoint
+            self.tx = spead.Transmitter(spead.TransportUDPtx(l1_endpoint.host,l1_endpoint.port,rate=l1_rate))
             self.data_shape = data_shape
 
             # set up logging adapter for the task
@@ -303,20 +306,21 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 self.pipeline_logger.info('scan_accumulator_condition release and wait by %s' %(self.name,))
                 self.scan_accumulator_condition.wait()
 
-                # after notify from accumulator, condition lock re-aquired
-                self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
-                # run the pipeline
-                self.pipeline_logger.info('Pipeline run start on accumulated data')
+                if not self._stop.is_set():
+                    # after notify from accumulator, condition lock re-aquired
+                    self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
+                    # run the pipeline
+                    self.pipeline_logger.info('Pipeline run start on accumulated data')
 
-                # if we are usig multiprocessing, view ctypes array in numpy format
-                if 'multiprocessing' in str(control_method): self.data_to_numpy()
+                    # if we are usig multiprocessing, view ctypes array in numpy format
+                    if 'multiprocessing' in str(control_method): self.data_to_numpy()
 
-                # run the pipeline
-                self.run_pipeline()
+                    # run the pipeline
+                    self.run_pipeline()
 
-                # release condition after pipeline run finished
-                self.scan_accumulator_condition.release()
-                self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
+                    # release condition after pipeline run finished
+                    self.scan_accumulator_condition.release()
+                    self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
 
         def stop(self):
             self._stop.set()
@@ -347,47 +351,51 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             # if target data was calibated in the pipeline, send to L1 spead
             if calibrated_data is not None:
                 self.pipeline_logger.info('Transmit L1 data')
-                data_to_SPEAD(calibrated_data,self.l1_endpoint)
+                data_to_SPEAD(self.data,self.tx)
 
-    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, telstate)
+            self.pipeline_logger.info('End transmit of L1 data')
+
+    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
 
 # ---------------------------------------------------------------------------------------
 # SPEAD transmission
 # ---------------------------------------------------------------------------------------
 
-def data_to_SPEAD(data,spead_endpoint):
+def data_to_SPEAD(data,tx):
     """
     Sends data to SPEAD stream
 
     data:
        list of: vis, flags, weights, times
     """
-
-    tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
+    track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0][0]]
+    ti = track_starts[0]
+    tf = track_starts[-1]+1
+    print  '  -------- ', track_starts, '  -------- '
 
     # transmit data
-    for i in range(len(data[-1])): # time axis
+    for i in range(ti,tf): # time axis
 
-        tx_vis = data[0][i]
-        tx_flags = data[1][i]
-        tx_weights = data[2][i]
-        tx_time = data[3][i]
+        tx_vis = data['vis'][i]
+        tx_flags = data['flags'][i]
+        # for now, just transmit flags as placeholder for weights
+        tx_weights = data['flags'][i]
+        tx_time = data['times'][i]
 
         # transmit timestamps, vis, flags and weights
         transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
         # delay so receiver isn't overwhelmed
-        time.sleep(0.05)
+        #time.sleep(0.05)
 
-    end_transmit(tx)
-
-def end_transmit(tx):
+def end_transmit(spead_endpoint):
     """
     Send stop packet to spead stream tx
 
     Parameters
     ----------
-    tx       : spead stream
+    spead_endpoint : endpoint to transmit to
     """
+    tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
     tx.end()
 
 def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights):
