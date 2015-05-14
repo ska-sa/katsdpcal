@@ -11,6 +11,8 @@ setup (
     scripts = [
         "scripts/reduction_script.py",
 	"scripts/run_cal.py",	
+        "scripts/run_sim.py",
+        "scripts/sim_l1_receive.py",
         "scripts/sim_h5_ts.py",
         "scripts/sim_h5_stream.py"
     ],
