@@ -179,7 +179,7 @@ def make_cal_report(ts):
     try:
         os.mkdir(project_name)
     except OSError:
-        project_name = project_name+'_0'
+        shutil.rmtree(project_name)
         os.mkdir(project_name)
 
     os.chdir(project_name)
