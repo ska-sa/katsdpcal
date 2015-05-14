@@ -12,7 +12,6 @@ def parse_opts():
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_parser(7200), default='127.0.0.1:7200', 
             help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--h5file', type=str, help='H5 file for simulated data')
-    parser.add_argument('--wait-time', type=float, default=0.5, help='Wait time (seconds) between transmitting SPEAD packets. Default: 0.5')
     parser.add_argument('--spead-rate', type=float, default=1e9, help='SPEAD rate. For laptops, recommend rate of 1e7. Default: 1e9')
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.set_defaults(telstate='localhost')
@@ -30,6 +29,6 @@ simdata.select(channels=slice(ts.cal_bchan,ts.cal_echan))
 
 print "TX: start."
 max_scans = opts.max_scans if not opts.max_scans == 0 else None
-simdata.h5toSPEAD(ts,opts.l0_spectral_spead,opts.wait_time,opts.spead_rate,max_scans=max_scans) 
+simdata.h5toSPEAD(ts,opts.l0_spectral_spead,opts.spead_rate,max_scans=max_scans) 
 print "TX: ended."
 

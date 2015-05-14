@@ -64,7 +64,7 @@ class SimData(katdal.H5DataV2):
         ts.add('experiment_id', self.experiment_id)
         ts.add('config', {'h5_simulator':True})
         
-    def h5toSPEAD(self,ts,l0_endpoint,wait_time=0.5,spead_rate=1e9,max_scans=None):
+    def h5toSPEAD(self,ts,l0_endpoint,spead_rate=1e9,max_scans=None):
         """
         Iterates through H5 file and transmits data as a spead stream.
         
@@ -112,8 +112,6 @@ class SimData(katdal.H5DataV2):
 
                 # transmit timestamps, vis, flags, weights
                 transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
-                # delay so receiver isn't overwhelmed
-                time.sleep(wait_time)
 
             if scan_ind+1 == max_scans:
                 break
