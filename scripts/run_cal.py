@@ -241,9 +241,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     # send L1 stop transmission
     end_transmit(l1_endpoint)
-
-    # send spead end packet to L1
-    #l1_transmitter.end()
+    logger.info('L1 stream ended')
 
     # create pipeline report (very basic at the moment)
     make_cal_report(ts)
