@@ -749,6 +749,7 @@ def get_pol_bls(bls_ordering,pol):
     Inputs:
     -------
     bls_ordering : list of correlation products without polarisation information, string shape(nbl,2)
+    pol : list of polarisation pairs, string shape (npol_pair, 2)
 
     Returns:
     --------
@@ -797,7 +798,7 @@ def get_reordering(antlist,bls_ordering):
     bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
 
     #   add polarisation indices
-    pol_order = np.array([['h','h'],['v','v'],['h','v'],['v','h']])
+    pol_order = [['h','h'],['v','v'],['h','v'],['v','h']]
     bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
 
     # find ordering necessary to change given bls_ordering into desired ordering
