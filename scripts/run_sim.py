@@ -16,7 +16,7 @@
 #
 #   * tmux session can be detached from, from the command line within the session, using
 #      > tmux detach
-#     or using the key-binding Ctrl-b :detach
+#     or using the key-binding Ctrl-b :detach, or Ctrl-b d
 #
 #   * To scroll up tmux pane history, use Ctrl-b PageUp
 #      To exit scroll mode, press q.
@@ -26,8 +26,6 @@
 import tmuxp
 import time
 from argparse import ArgumentParser
-
-KATCAL_DIR='/home/laura/git/pipeline-new/katsdppipelines/katcal'
 
 def parse_args():
     parser = ArgumentParser(description = 'Run simulated katcal from h5 file')
@@ -73,6 +71,8 @@ def create_pane(sname,tmserver,keep_session=False):
 if __name__ == '__main__':
 	opts = parse_args()
 
+	KATCAL_DIR = '$PYTHONPATH'
+
 	# create tmux server
 	tmserver = tmuxp.Server()
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
 	l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
 	l1_pane.cmd('send-keys','cd {}'.format(KATCAL_DIR,))
 	l1_pane.enter()
-	l1_pane.cmd('send-keys','python scripts/sim_l1_receive.py')
+	l1_pane.cmd('send-keys','python scripts/sim_l1_receive.py --telstate {0} --h5file {1}'.format(opts.telstate, opts.h5file))
 	l1_pane.enter()
 
 	# wait a couple of seconds to start data flowing
