@@ -93,7 +93,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
-                buffer_size = self.accumulate(spead_stream, self.buffers[current_buffer])
+                max_index = self.accumulate(spead_stream, self.buffers[current_buffer])
+                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_index+1,))
 
                 # awaken pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].notify()
@@ -127,7 +128,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             """
             Send stop packed to force shut down of SPEAD receiver
             """
-            print 'sending stop packet'
+            self.accumulator_logger.info('sending stop packet')
             tx = spead.Transmitter(spead.TransportUDPtx(self.l0_endpoint.host,self.l0_endpoint.port))
             tx.end()
 
@@ -144,7 +145,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 current_buffer['weights'] = np.frombuffer(current_buffer['weights'], dtype=np.float32)
                 current_buffer['weights'].shape = self.buffer_shape
                 current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
-                current_buffer['track_start_indices'] = np.frombuffer(current_buffer['track_start_indices'], dtype=np.int32)
+                current_buffer['max_index'] = np.frombuffer(current_buffer['max_index'], dtype=np.int32)
 
         def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
@@ -173,7 +174,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             start_flag = True
             array_index = -1
-            track_start_indices = []
 
             prev_activity = 'none'
             prev_tags = 'none'
@@ -185,15 +185,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             obs_end_flag = True
 
             # receive SPEAD stream
-            #print 'Got heaps: ',
             for heap in spead.iterheaps(spead_stream):
                 ig.update(heap)
-                #print array_index,
                 array_index += 1
-
-                # get activity and target tag from TS
-                activity = self.telstate[activity_key]
-                target = self.telstate[target_key]
 
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
@@ -202,14 +196,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
-                    # set simulator offset time for aligning simulated data and sensors
-                    #   value set to offset betwen start_time and first setting of activity value to TS
-                    self.telstate.add('sim_sync_time',self.telstate.get_range(activity_key)[0][1]-start_time)
 
-                # accumulate list of track start time indices in the array
-                #   for use in the pipeline, to index each track easily
-                if 'track' in activity and not 'track' in prev_activity:
-                    track_start_indices.append(array_index)
+                # get activity and target tag from TS
+                data_ts = ig['timestamp'] + self.telstate.cbf_sync_time
+                activity = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0][0]
+                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -219,7 +210,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
-                data_buffer['times'][array_index] = ig['timestamp'] + self.telstate.cbf_sync_time + self.telstate.sim_sync_time
+                data_buffer['times'][array_index] = data_ts
 
                 # break if this scan is a slew that follows a track
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
@@ -250,16 +241,13 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             if obs_end_flag:
                 self.accumulator_logger.info('Observation ended')
                 self._obsend.set()
-                array_index += 1
 
-            track_start_indices.append(array_index)
-            track_start_indices.append(-1)
             if 'multiprocessing' in str(control_method):
                 # multiprocessing case
-                data_buffer['track_start_indices'][0:len(track_start_indices)] = track_start_indices
+                data_buffer['max_index'][0] = array_index
             else:
                 # threading case
-                data_buffer['track_start_indices'] = np.array(track_start_indices)
+                data_buffer['max_index'] = np.array(array_index)
 
             self.accumulator_logger.info('Accumulation ended')
 
@@ -343,7 +331,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self.data['weights'].shape = self.data_shape
 
             self.data['times'] = np.ctypeslib.as_array(self.data['times'])
-            self.data['track_start_indices'] = np.ctypeslib.as_array(self.data['track_start_indices'])
+            self.data['max_index'] = np.ctypeslib.as_array(self.data['max_index'])
 
         def run_pipeline(self):
             # run pipeline calibration
@@ -365,16 +353,14 @@ def data_to_SPEAD(data,tx):
     """
     Sends data to SPEAD stream
 
-    data:
-       list of: vis, flags, weights, times
+    data: data buffer dictionary, containing vis, flags, weights, times and max_index
+    tx : SPEAD transmitter
     """
-    track_starts = data['track_start_indices'][0:np.where(data['track_start_indices']==-1)[0][0]]
-    ti = track_starts[0]
-    tf = track_starts[-1]+1
-    print  '  -------- ', track_starts, '  -------- '
+    # highest index in the buffer that is filled with data
+    tif = data['max_index']
 
     # transmit data
-    for i in range(ti,tf): # time axis
+    for i in range(0,tif+1): # time axis
 
         tx_vis = data['vis'][i]
         tx_flags = data['flags'][i]
@@ -384,8 +370,6 @@ def data_to_SPEAD(data,tx):
 
         # transmit timestamps, vis, flags and weights
         transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
-        # delay so receiver isn't overwhelmed
-        #time.sleep(0.05)
 
 def end_transmit(spead_endpoint):
     """
