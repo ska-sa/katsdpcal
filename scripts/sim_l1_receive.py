@@ -58,7 +58,7 @@ def receive_l1(spead_stream, return_data=False):
         # print some values to see all is well
         print array_index, timestamp, vis.shape ,flags.shape, weights.shape,
         print np.round(timestamp-timestamp_prev,2)
-        timestamps_prev = timestamp
+        timestamp_prev = timestamp
         array_index += 1    
 
     if return_data: return data_times, data_vis, data_flags
@@ -93,7 +93,11 @@ if __name__ == '__main__':
 
         # check for missing timestamps
         if not np.all(f.timestamps[0:ti_max] == times):
-            raise ValueError('You are missing timestamps in the L1 array!')
+            if np.all(f.timestamps[0:ti_max-1] == times[0:-1]):
+                print 'SPEAD error: extra final L1 time stamp. Ignoring last time stamp.'
+                ti_max += -1
+            else:
+                raise ValueError('L1 array and h5 array have different timestamps!')
 
         corr_products = f.corr_products
         cal_bls_ordering = ts.cal_bls_ordering
@@ -101,7 +105,6 @@ if __name__ == '__main__':
 
         bchan = ts.cal_bchan
         echan = ts.cal_echan
-        print bchan, echan
 
         # pack data into h5 correlation product list
         #    by iterating through h5 correlation product list
