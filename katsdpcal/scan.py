@@ -17,10 +17,10 @@ class Scan(object):
         # get references to this time chunk of data
         # -- just using first polarisation for now
         # data format is:   (time x channels x pol x bl)
-        self.vis = data['vis'][ti0:ti1,:,0:2,:]
-        self.flags = data['flags'][ti0:ti1,:,0:2,:]
+        self.vis = data['vis'][ti0:ti1+1,:,0:2,:]
+        self.flags = data['flags'][ti0:ti1+1,:,0:2,:]
         self.weights = np.ones_like(self.flags,dtype=np.float)
-        self.times = data['times'][ti0:ti1]
+        self.times = data['times'][ti0:ti1+1]
 
         # intermediate product visibility - use sparingly!
         self.modvis = None

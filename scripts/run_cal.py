@@ -103,8 +103,7 @@ def create_buffer_arrays_multiprocessing(buffer_shape):
     data['flags'] = control_method.RawArray(c_ubyte, buffer_size)
     data['weights'] = control_method.RawArray(c_float, buffer_size)
     data['times'] = control_method.RawArray(c_double, array_length)
-    # assume max 1000 scans!
-    data['track_start_indices'] =  control_method.sharedctypes.RawArray(c_int, 1000)
+    data['max_index'] = control_method.sharedctypes.RawArray(c_int, 1)
     return data
 
 def create_buffer_arrays_threading(buffer_shape):
@@ -117,7 +116,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data['flags'] = np.empty(buffer_shape,dtype=np.uint8)
     data['weights'] = np.empty(buffer_shape,dtype=np.float64)
     data['times'] = np.empty(buffer_shape[0],dtype=np.float)
-    data['track_start_indices'] = []
+    data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
@@ -240,6 +239,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     logger.info('Pipeline tasks closed')
 
     # send L1 stop transmission
+    #   wait for a few secs before ending transmission
+    time.sleep(2.0)
     end_transmit(l1_endpoint)
     logger.info('L1 stream ended')
 
