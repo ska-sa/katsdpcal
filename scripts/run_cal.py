@@ -122,7 +122,7 @@ def create_buffer_arrays_threading(buffer_shape):
     return data
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
-           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7,
+           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
            mproc=True):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
@@ -150,6 +150,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
     l1_rate : float
         Rate for L1 stream transmission, default 5e7
+    full_l1 : bool
+        True to transmit all of the data to L1, False to only transmit target data.
     mproc: bool
         True for control via multiprocessing, False for control via threading
     """
@@ -174,7 +176,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         raise RuntimeError("No cbf_n_chans set.")
 
     # save L1 transmit preference to TS
-    ts.add('cal_full_l1', cal_full_l1, immutable=True)
+    ts.add('cal_full_l1', full_l1, immutable=True)
 
     npol = 4
     nant = len(antenna_mask)
@@ -268,4 +270,4 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, mproc=not(opts.threading))
+           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading))
