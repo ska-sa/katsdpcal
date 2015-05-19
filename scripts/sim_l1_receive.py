@@ -76,10 +76,13 @@ if __name__ == '__main__':
     # recieve stream and accumulate data into arrays
     return_data = True if opts.h5file else False
     l1_data = receive_l1(spead_stream, return_data=return_data)
-
+    # need some info from the telstate
+    ts = opts.telstate
     if opts.h5file:
         new_file = '{0}_L1.h5'.format(opts.h5file.split('.')[0],)
-        if os.path.isfile(new_file):
+        if not ts.cal_full_l1:
+            print 'Only target L1 stream transmitted. Not saving L1 data to file.'
+        elif os.path.isfile(new_file):
             print 'L1 file {0} already exists. Not saving L1 data to file.'.format(new_file,)
         else:
             shutil.copyfile(opts.h5file,new_file)
@@ -105,7 +108,6 @@ if __name__ == '__main__':
                     raise ValueError('L1 array and h5 array have different timestamps!')
 
             # get necessary info from telescope state
-            ts = opts.telstate
             corr_products = f.corr_products
             cal_bls_ordering = ts.cal_bls_ordering
             cal_pol_ordering = ts.cal_pol_ordering
