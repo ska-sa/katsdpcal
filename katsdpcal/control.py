@@ -93,8 +93,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
-                max_index = self.accumulate(spead_stream, self.buffers[current_buffer])
-                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_index+1,))
+                max_ind = self.accumulate(spead_stream, self.buffers[current_buffer])
+                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                 # awaken pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].notify()
@@ -335,41 +335,47 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
         def run_pipeline(self):
             # run pipeline calibration
-            calibrated_data = pipeline(self.data,self.telstate,task_name=self.name)
-            # if target data was calibated in the pipeline, send to L1 spead
-            if calibrated_data is not None:
-                self.pipeline_logger.info('Transmit L1 data')
-                data_to_SPEAD(self.data,self.tx)
-
+            pipeline(self.data,self.telstate,task_name=self.name)
+            # send data to L1 spead
+            self.pipeline_logger.info('Transmit L1 data')
+            self.data_to_SPEAD()
             self.pipeline_logger.info('End transmit of L1 data')
+
+	def data_to_SPEAD(self):
+	    """
+	    Sends data to SPEAD stream
+	    """
+	    # highest index in the buffer that is filled with data
+	    tif = self.data['max_index']
+
+	    # transmit data
+	    for i in range(0,tif+1): # time axis
+
+	        tx_vis = self.data['vis'][i]
+	        tx_flags = self.data['flags'][i]
+	        # for now, just transmit flags as placeholder for weights
+	        tx_weights = self.data['flags'][i]
+	        tx_time = self.data['times'][i]
+
+	        # transmit timestamps, vis, flags and weights
+	        ig = spead.ItemGroup()
+	        ig.add_item(name='timestamp', description='Timestamp',
+		        shape=[], fmt=spead.mkfmt(('f',64)),
+		        init_val=tx_time)
+	        ig.add_item(name='correlator_data', description='Full visibility array',
+		        init_val=tx_vis)
+	        ig.add_item(name='flags', description='Flag array',
+		        init_val=tx_flags)
+	        ig.add_item(name='weights', description='Weight array',
+		        init_val=tx_weights)
+
+	        self.tx.send_heap(ig.get_heap())
 
     return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
 
 # ---------------------------------------------------------------------------------------
-# SPEAD transmission
+# SPEAD helper functions
 # ---------------------------------------------------------------------------------------
-
-def data_to_SPEAD(data,tx):
-    """
-    Sends data to SPEAD stream
-
-    data: data buffer dictionary, containing vis, flags, weights, times and max_index
-    tx : SPEAD transmitter
-    """
-    # highest index in the buffer that is filled with data
-    tif = data['max_index']
-
-    # transmit data
-    for i in range(0,tif+1): # time axis
-
-        tx_vis = data['vis'][i]
-        tx_flags = data['flags'][i]
-        # for now, just transmit flags as placeholder for weights
-        tx_weights = data['flags'][i]
-        tx_time = data['times'][i]
-
-        # transmit timestamps, vis, flags and weights
-        transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
 
 def end_transmit(spead_endpoint):
     """
@@ -382,32 +388,5 @@ def end_transmit(spead_endpoint):
     tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
     tx.end()
 
-def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights):
-    """
-    Send spead packet containing time, visibility, flags and array state
 
-    Parameters
-    ----------
-    tx         : spead stream
-    tx_time    : timestamp, float
-    tx_vis     : visibilities, complex array
-    tx_flags   : flags, int array
-    tx_weights : weights, float array
-    """
-    ig = spead.ItemGroup()
-
-    ig.add_item(name='timestamp', description='Timestamp',
-        shape=[], fmt=spead.mkfmt(('f',64)),
-        init_val=tx_time)
-
-    ig.add_item(name='correlator_data', description='Full visibility array',
-        init_val=tx_vis)
-
-    ig.add_item(name='flags', description='Flag array',
-        init_val=tx_flags)
-
-    ig.add_item(name='weights', description='Weight array',
-        init_val=tx_weights)
-
-    tx.send_heap(ig.get_heap())
 
