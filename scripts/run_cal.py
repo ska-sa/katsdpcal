@@ -174,7 +174,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         raise RuntimeError("No cbf_n_chans set.")
 
     # save L1 transmit preference to TS
-    ts.add('cal_l1_rate', l1_rate, immutable=True) 
+    ts.add('cal_full_l1', cal_full_l1, immutable=True)
 
     npol = 4
     nant = len(antenna_mask)
