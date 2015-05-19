@@ -93,7 +93,7 @@ if __name__ == '__main__':
 	pipeline_pane.cmd('send-keys','cd {}'.format(KATCAL_DIR,))
 	pipeline_pane.enter()
 	pipeline_pane.cmd('send-keys','python scripts/run_cal.py --telstate {0} --buffer-maxsize {1} \
-		--l1-rate {2}'.format(opts.telstate, opts.buffer_maxsize, opts.l1_rate))
+		--l1-rate {2} --full-l1'.format(opts.telstate, opts.buffer_maxsize, opts.l1_rate))
 	pipeline_pane.enter()
 
 	# start L1 receiver in tmux pane
