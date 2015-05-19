@@ -259,7 +259,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate):
+def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, \
+        l1_rate,  telstate):
 
     class pipeline_control(control_task):
         """
@@ -275,6 +276,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self.telstate = telstate
             self.tx = spead.Transmitter(spead.TransportUDPtx(l1_endpoint.host,l1_endpoint.port,rate=l1_rate))
             self.data_shape = data_shape
+            self.full_l1 = telstate.cal_full_l1
 
             # set up logging adapter for the task
             self.pipeline_logger = TaskLoggingAdapter(logger, {'connid': self.name})
@@ -335,41 +337,51 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
         def run_pipeline(self):
             # run pipeline calibration
-            pipeline(self.data,self.telstate,task_name=self.name)
-            # send data to L1 spead
-            self.pipeline_logger.info('Transmit L1 data')
-            self.data_to_SPEAD()
-            self.pipeline_logger.info('End transmit of L1 data')
+            target_scans = pipeline(self.data,self.telstate,full_l1=self.full_l1,task_name=self.name)
+            # send data to L1 spead if necessary
+            if self.full_l1 or target_scans != ([],[]):
+                self.pipeline_logger.info('Transmit L1 data')
+                self.data_to_SPEAD(target_scans)
+                self.pipeline_logger.info('End transmit of L1 data')
 
-	def data_to_SPEAD(self):
-	    """
-	    Sends data to SPEAD stream
-	    """
-	    # highest index in the buffer that is filled with data
-	    tif = self.data['max_index']
+        def data_to_SPEAD(self, target_scans):
+            """
+            Sends data to SPEAD stream
 
-	    # transmit data
-	    for i in range(0,tif+1): # time axis
+            Inputs:
+            target_scans : start and stop index lists for target scans in the data buffer, lists
+            """
+            if self.full_l1:
+                # for streaming all of the data (not target only), 
+                # use the highest index in the buffer that is filled with data
+                target_starts = [0]
+                target_stops = self.data['max_index']
+            else: 
+                # if only transmitting target data, use target scan indices from the reduction
+                target_starts, target_stops = target_scans
 
-	        tx_vis = self.data['vis'][i]
-	        tx_flags = self.data['flags'][i]
-	        # for now, just transmit flags as placeholder for weights
-	        tx_weights = self.data['flags'][i]
-	        tx_time = self.data['times'][i]
+            # transmit data
+            for ti0, ti1 in zip(target_starts, target_stops):1
+                for i in range(ti0,ti1+1): # time axis
 
-	        # transmit timestamps, vis, flags and weights
-	        ig = spead.ItemGroup()
-	        ig.add_item(name='timestamp', description='Timestamp',
-		        shape=[], fmt=spead.mkfmt(('f',64)),
-		        init_val=tx_time)
-	        ig.add_item(name='correlator_data', description='Full visibility array',
-		        init_val=tx_vis)
-	        ig.add_item(name='flags', description='Flag array',
-		        init_val=tx_flags)
-	        ig.add_item(name='weights', description='Weight array',
-		        init_val=tx_weights)
+                    tx_vis = self.data['vis'][i]
+                    tx_flags = self.data['flags'][i]
+                    # for now, just transmit flags as placeholder for weights
+                    tx_weights = self.data['flags'][i]
+                    tx_time = self.data['times'][i]
 
-	        self.tx.send_heap(ig.get_heap())
+                    # transmit timestamps, vis, flags and weights
+                    ig = spead.ItemGroup()
+                    ig.add_item(name='timestamp', description='Timestamp',
+                        shape=[], fmt=spead.mkfmt(('f',64)),
+                        init_val=tx_time)
+                    ig.add_item(name='correlator_data', description='Full visibility array',
+                        init_val=tx_vis)
+                    ig.add_item(name='flags', description='Flag array',
+                        init_val=tx_flags)
+                    ig.add_item(name='weights', description='Weight array',
+                        init_val=tx_weights)
+                    self.tx.send_heap(ig.get_heap())
 
     return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
 
