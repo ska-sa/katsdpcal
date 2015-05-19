@@ -337,7 +337,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
         def run_pipeline(self):
             # run pipeline calibration
-            target_scans = pipeline(self.data,self.telstate,full_l1=self.full_l1,task_name=self.name)
+            target_scans = pipeline(self.data,self.telstate,task_name=self.name)
             # send data to L1 spead if necessary
             if self.full_l1 or target_scans != ([],[]):
                 self.pipeline_logger.info('Transmit L1 data')
