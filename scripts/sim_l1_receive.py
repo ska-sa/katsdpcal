@@ -88,7 +88,7 @@ if __name__ == '__main__':
             shutil.copyfile(opts.h5file,new_file)
 
             import katdal
-            f = katdal.open(new_file)
+            f = katdal.open(new_file,mode='r+')
 
             data_times, data_vis, data_flags = l1_data
 
