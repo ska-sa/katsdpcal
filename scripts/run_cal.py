@@ -134,6 +134,10 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     ======
     ts: TelescopeState
         The telescope state, default: 'localhost' database 0
+    cbf_n_chans: int
+        The number of channels in the data stream
+    antenna_mask: list of strings
+        List of antennas present in the data stream
     num_buffers: int
         The number of buffers to use- this will create a pipeline thread for each buffer
         and an extra accumulator thread to read the spead stream.
@@ -144,7 +148,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Endpoint to listen to for L0 stream, default: ':7200'
     l1_endpoint: endpoint
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
-    l1_rate : rate for L1 stream transmission, default 5e7
+    l1_rate : float
+        Rate for L1 stream transmission, default 5e7
     mproc: bool
         True for control via multiprocessing, False for control via threading
     """
@@ -167,6 +172,9 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         nchan = cbf_n_chans
     except:
         raise RuntimeError("No cbf_n_chans set.")
+
+    # save L1 transmit preference to TS
+    ts.add('cal_l1_rate', l1_rate, immutable=True) 
 
     npol = 4
     nant = len(antenna_mask)
@@ -194,18 +202,12 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     # Set up the accumulator
     accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
-
-    #accumulator = accumulator_control(multiprocessing.Process, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
-
     # Set up the pipelines (one per buffer)
-    #pipelines = [pipeline_control(buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, ts) for i in range(num_buffers)]
-
-    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
+    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
+        l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
 
     # Start the pipeline threads
     map(lambda x: x.start(), pipelines)
-    # might need delay here for pipeline threads to aquire conditions then wait?
-    #time.sleep(5.)
     # Start the accumulator thread
     accumulator.start()
 
@@ -261,9 +263,6 @@ if __name__ == '__main__':
     else:
         import threading as control_method
         from threading import Thread as control_task
-
-    # short weit to give me time to start up the simulated spead stream
-    # time.sleep(5.)
 
     run_threads(opts.telstate,
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
