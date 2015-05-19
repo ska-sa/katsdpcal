@@ -252,7 +252,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     # create pipeline report (very basic at the moment)
     make_cal_report(ts)
-    logger.info('Report compiled')
+    logger.info('Report compiled, in directory {0}'.format(ts.experiment_id,))
 
 if __name__ == '__main__':
 
