@@ -361,7 +361,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 target_starts, target_stops = target_scans
 
             # transmit data
-            for ti0, ti1 in zip(target_starts, target_stops):1
+            for ti0, ti1 in zip(target_starts, target_stops):
                 for i in range(ti0,ti1+1): # time axis
 
                     tx_vis = self.data['vis'][i]
