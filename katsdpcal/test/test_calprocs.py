@@ -42,10 +42,11 @@ class TestCalprocs(unittest.TestCase):
         vis_and_conj = np.hstack((vis, vis.conj())) 
         antlist1 = np.concatenate((list1, list2))
         antlist2 = np.concatenate((list2, list1))
+        bl_pair_list = [antlist1, antlist2]
 
         # solve for gains
         from katcal.calprocs import stefcal    
-        calc_gains = stefcal(vis_and_conj, nants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm=algorithm)
+        calc_gains = stefcal(vis_and_conj, nants, bl_pair_list, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm=algorithm)
         
         return gains, calc_gains
         
