@@ -1,3 +1,42 @@
+"""
+RFI flagging module for MeerKAT calibration pipeline
+====================================================
+
+RFI flagger routines for use in the MeerKAT calibration pipeline.
+"""
+
+#--------------------------------------------------------------------------------------------------
+#--- Below added by Laura
+#--------------------------------------------------------------------------------------------------
+
+import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+def no_transform(data):
+  return(data)
+
+def threshold_flagging(data,flags,threshold,transform=None):
+
+  if transform is None: transform = no_transform
+  # get flags in bool format to use as a mask
+  fg = flags.view(np.bool)
+
+  mean_data = np.average(transform(data[~fg]))
+  std_data = np.std(transform(data[~fg]))
+
+  print 'Mean v: ', mean_data
+  print 'Std v:  ', std_data
+
+  # flag based on the mean and stddev, unless there is no data in the block
+  if mean_data:  
+      flags[(transform(data) > mean_data+threshold*std_data)|(transform(data) < mean_data-threshold*std_data)] = 1
+
+#--------------------------------------------------------------------------------------------------
+#--- Below original module from Tom
+#--------------------------------------------------------------------------------------------------
+
 # Library to contain RFI flagging routines for the pipeline
 # and other 2-d RFI related functions.
 import katdal
