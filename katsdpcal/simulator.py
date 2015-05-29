@@ -57,6 +57,7 @@ class SimData(katdal.H5DataV2):
         ts.add('sdp_l0_int_time', self.dump_period)
         ts.add('cbf_n_ants', len(self.ants))
         ts.add('cbf_n_chans', ts.cal_echan-ts.cal_bchan)
+        ts.add('cbf_channel_freqs', self.channel_freqs[ts.cal_bchan:ts.cal_echan])
         ts.add('cbf_bls_ordering', self.corr_products)
         ts.add('cbf_sync_time', 0.0, immutable=True)
         antenna_mask = ','.join([ant.name for ant in self.ants])
