@@ -223,13 +223,16 @@ def make_cal_report(ts):
 
     if cal_product in ts.keys():
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
-        cal_rst.writeln('Delay calibration solutions')
+        cal_rst.writeln('Delay calibration solutions ([ns])')
         cal_rst.writeln()
 
         product = ts.get_range(cal_product,st=0,return_format='recarray')
         vals = product['value']
         # K shape is n_time, n_pol, n_ant
         times = product['time']
+
+        # convert delays to nano seconds
+        vals = 1e9*vals
 
         cal_rst.writeln('**POL 0**')
         write_table_timerow(cal_rst,antenna_mask,times,vals[:,0,:])
