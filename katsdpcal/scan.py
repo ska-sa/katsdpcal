@@ -12,7 +12,7 @@ from katcal.calprocs import CalSolution
 
 class Scan(object):
 
-    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup, target):
+    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup, target, chans=None):
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
@@ -27,7 +27,7 @@ class Scan(object):
         self.modvis = None
 
         self.nchan = self.vis.shape[1]
-        self.chans = range(self.nchan)
+        self.channel_freqs = range(self.nchan) if chans is None else list(chans)
         self.nant = nant
         # baseline number includes autocorrs
         self.nbl = self.nant*(self.nant+1)/2
@@ -36,9 +36,9 @@ class Scan(object):
         # scan meta-data
         self.dump_period = dump_period
         self.corrprod_lookup = bls_lookup
-        self.corr_antlists = self.get_antlists(self.corrprod_lookup)
+        self.corr_antlists = self.get_bl_ant_pairs(self.corrprod_lookup)
 
-    def get_antlists(self, corrprod_lookup):
+    def get_bl_ant_pairs(self, corrprod_lookup):
         """
         Get antenna lists in solver format, from corr_prod lookup
 
@@ -105,8 +105,7 @@ class Scan(object):
         ave_vis = calprocs.wavg(ave_vis,ave_flags,ave_weights,axis=1)
 
         # solve for gains G
-        antlist1, antlist2 = self.corr_antlists
-        g_soln = calprocs.g_fit_per_solint(ave_vis,dumps_per_solint,antlist1,antlist2,g0,REFANT)
+        g_soln = calprocs.g_fit(ave_vis,self.corr_antlists,g0,REFANT)
 
         return CalSolution('G', g_soln, ave_times)
 
@@ -130,8 +129,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
 
         # solve for delay K
-        antlist1, antlist2 = self.corr_antlists
-        k_soln = calprocs.k_fit(ave_vis,antlist1,antlist2,self.chans,k0,bp0,REFANT,chan_sample=chan_sample)
+        k_soln = calprocs.k_fit(ave_vis,self.corr_antlists,self.channel_freqs,k0,bp0,REFANT,chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 
@@ -156,7 +154,7 @@ class Scan(object):
 
         # solve for bandpass
         antlist1, antlist2 = self.corr_antlists
-        b_soln = calprocs.bp_fit(ave_vis,antlist1,antlist2,bp0,REFANT)
+        b_soln = calprocs.bp_fit(ave_vis,self.corr_antlists,bp0,REFANT)
 
         return CalSolution('B', b_soln, ave_time)
 
@@ -224,8 +222,8 @@ class Scan(object):
             # want shape (ntime, nchan, npol, nant)
             gain_shape = tuple(list(self.vis.shape[:-1]) + [self.nant])
             g_from_k = np.zeros(gain_shape,dtype=np.complex)
-            for c in self.chans:
-                g_from_k[:,c,:,:] = np.exp(1.0j*soln.values*c)
+            for ci, c in enumerate(self.channel_freqs):
+                g_from_k[:,ci,:,:] = np.exp(1.0j*soln.values*c)
             return self._apply(g_from_k,origvis=origvis,inplace=inplace)
         elif soln.soltype is 'B':
             return self._apply(soln.values,origvis=origvis,inplace=inplace)
@@ -260,6 +258,7 @@ class Scan(object):
         values = solns.values
         interp_solns = np.repeat(np.expand_dims(values,axis=0),len(self.times),axis=0)
         return CalSolution(solns.soltype, interp_solns, self.times)
+
 
 
 

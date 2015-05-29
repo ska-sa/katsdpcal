@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 #--- Solvers
 #--------------------------------------------------------------------------------------------------
 
-def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None,
+def stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=0, init_gain=None,
     model=None, algorithm='adi', conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
@@ -28,8 +28,8 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
         Complex cross-correlations between antennas A and B
     num_ants : int
         Number of antennas
-    antA, antB : numpy array of int, shape (N,)
-        Antenna indices associated with visibilities
+    bl_ant_pairs : numpy array of int, shape (2,N)
+        First and second antenna indices associated with visibilities
     num_iters : int, optional
         Number of iterations
     ref_ant : int, optional
@@ -50,15 +50,15 @@ def stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, in
 
     """
     if algorithm == 'adi':
-        return adi_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant,
+        return adi_stefcal(vis, num_ants, bl_ant_pairs, weights, num_iters, ref_ant,
                 init_gain, model, conv_thresh, verbose)
     elif algorithm == 'schwardt':
-        return schwardt_stefcal(vis, num_ants, antA, antB, weights, num_iters, ref_ant,
+        return schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights, num_iters, ref_ant,
                 init_gain, verbose)
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
 
-def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
+def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods:
@@ -69,8 +69,8 @@ def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=10
         Complex cross-correlations between antennas A and B
     num_ants    : int
         Number of antennas
-    antA, antB  : numpy array of int, shape (N,)
-        Antenna indices associated with visibilities
+    bl_ant_pairs : numpy array of int, shape (2,N)
+        First and second antenna indices associated with visibilities
     num_iters   : int, optional
         Number of iterations
     ref_ant     : int, optional
@@ -93,6 +93,7 @@ def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=10
     #   default is unity with zeros along the diagonals to ignore autocorr
     M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
 
+    antA, antB = bl_ant_pairs
     for i in range(num_iters):
         # iterate through antennas, solving for each gain
         for p in range(num_ants):
@@ -134,7 +135,7 @@ def adi_stefcal_nonparallel(vis, num_ants, antA, antB, weights=1.0, num_iters=10
 
     return g_curr
 
-def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
+def adi_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods:
@@ -147,8 +148,8 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
         baselines or antenna pairs on the last dimension
     num_ants : int
         Number of antennas
-    antA, antB : array of int, shape (N,)
-        Antenna indices associated with visibilities
+    bl_ant_pairs : numpy array of int, shape (2,N)
+        First and second antenna indices associated with visibilities
     num_iters   : int, optional
         Number of iterations
     ref_ant     : int, optional
@@ -176,6 +177,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
     #   default is unity with zeros along the diagonals to ignore autocorr
     M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
 
+    antA, antB = bl_ant_pairs
     for i in range(num_iters):
         # iterate through antennas, solving for each gain
         for p in range(num_ants):
@@ -220,7 +222,7 @@ def adi_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0
 
     return g_curr
 
-def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
+def adi_stefcal_acorr(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, model=None, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal, including fake autocorr data. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods:
@@ -232,8 +234,8 @@ def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref
         Complex cross-correlations between antennas A and B
     num_ants    : int
         Number of antennas
-    antA, antB  : numpy array of int, shape (N,)
-        Antenna indices associated with visibilities
+    bl_ant_pairs : numpy array of int, shape (2,N)
+        First and second antenna indices associated with visibilities
     num_iters   : int, optional
         Number of iterations
     ref_ant     : int, optional
@@ -262,6 +264,7 @@ def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref
     #   default is unity with zeros along the diagonals to ignore autocorr
     M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
 
+    antA, antB = bl_ant_pairs
     for i in range(num_iters):
         # iterate through antennas, solving for each gain
         for p in range(num_ants):
@@ -297,7 +300,7 @@ def adi_stefcal_acorr(vis, num_ants, antA, antB, weights=1.0, num_iters=100, ref
 
     return g_curr
 
-def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_ant=-1, init_gain=None, verbose=False):
+def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=10, ref_ant=-1, init_gain=None, verbose=False):
     """Solve for antenna gains using StefCal (array dot product version).
     The observed visibilities are provided in a NumPy array of any shape and
     dimension, as long as the last dimension represents baselines. The gains
@@ -317,8 +320,8 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
         baselines or antenna pairs on the last dimension
     num_ants : int
         Number of antennas
-    antA, antB : array of int, shape (N,)
-        Antenna indices associated with visibilities
+    bl_ant_pairs : numpy array of int, shape (2,N)
+        First and second antenna indices associated with visibilities
     weights : float or array of float, shape (M, ..., N), optional
         Visibility weights (positive real numbers)
     num_iters : int, optional
@@ -340,6 +343,7 @@ def schwardt_stefcal(vis, num_ants, antA, antB, weights=1.0, num_iters=10, ref_a
     iterations (10 to 30).
     """
     # ignore autocorr data
+    antA, antB = bl_ant_pairs
     xcorr = antA!=antB
     vis = vis[...,xcorr]
     antA_new = antA[xcorr]
@@ -415,9 +419,9 @@ def xcbl_from_ants(a):
     """
     return a*(a-1)/2
 
-def get_solver_antlists(antlist,corr_products):
+def get_solver_bl_ant_pairs(antlist,corr_products):
     """
-    Returns antenna iiindex lists in the correlation product order,
+    Returns antenna index lists in the correlation product order,
     in the format required by the solvers
     """
     antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
@@ -426,53 +430,20 @@ def get_solver_antlists(antlist,corr_products):
     antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
     return antlist1, antlist2
 
-def g_fit(data,antlist1,antlist2,g0=None,refant=0,algorithm='adi'):
-    """
-    Fit gains to visibility data.
-
-    Parameters
-    ----------
-    data     : array of complex, shape(baselines)
-    g0       : array of complex, shape(num_ants) or None
-    antlist1 : antenna mapping, for first antenna in bl pair
-    antlist2 : antenna mapping, for second antenna in bl pair
-    refant   : reference antenna
-
-    Returns
-    -------
-    gainsoln : Gain solutions, shape(num_ants)
-    """
-    num_ants = int(ants_from_allbl(data.shape[-1]))
-
-    # -----------------------------------------------------
-    # initialise values for solver
-    gainsoln = np.empty(num_ants,dtype=np.complex) # Make empty array to fill bandpass into
-
-    # -----------------------------------------------------
-    # solve for the gains
-
-    # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    gainsoln = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
-
-    return gainsoln
-
-def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,algorithm='adi'):
+def g_fit(data,bl_ant_pairs,g0=None,refant=0,algorithm='adi'):
     """
     Fit complex gains to visibility data.
 
     Parameters
     ----------
-    data     : visibility data, array of complex, shape(num_sol, num_chans, baseline)
-    dumps_per_solint : number of dumps to average for a solution, integer
-    g0       : array of complex, shape(num_ants) or None
-    antlist1 : antenna mapping, for first antenna in bl pair
-    antlist2 : antenna mapping, for second antenna in bl pair
-    refant   : reference antenna
+    data : visibility data, array of complex, shape(num_sol, num_chans, baseline)
+    g0 : array of complex, shape(num_ants) or None
+    bl_ant_pairs : antenna mappings, for first then second antennas in bl pair
+    refant : reference antenna
 
     Returns
     -------
-    g_array  : Array of gain solutions, shape(num_sol, num_ants)
+    g_array : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_sol = data.shape[0]
     num_ants = ants_from_allbl(data.shape[-1])
@@ -480,19 +451,18 @@ def g_fit_per_solint(data,dumps_per_solint,antlist1,antlist2,g0=None,refant=0,al
     # ------------
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
+    return stefcal(vis_and_conj, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
 
-def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
+def bp_fit(data,bl_ant_pairs,bp0=None,refant=0,algorithm='adi'):
     """
     Fit bandpass to visibility data.
 
     Parameters
     ----------
-    data     : array of complex, shape(num_chans, baselines)
-    bp0      : array of complex, shape(num_chans, num_ants) or None
-    antlist1 : antenna mapping, for first antenna in bl pair
-    antlist2 : antenna mapping, for second antenna in bl pair
-    refant   : reference antenna
+    data : array of complex, shape(num_chans, baselines)
+    bp0 : array of complex, shape(num_chans, num_ants) or None
+    bl_ant_pairs : antenna mappings, for first then second antennas in bl pair
+    refant : reference antenna
 
     Returns
     -------
@@ -510,20 +480,19 @@ def bp_fit(data,antlist1,antlist2,bp0=None,refant=0,algorithm='adi'):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    return stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)
+    return stefcal(vis_and_conj, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, algorithm=algorithm)
 
-def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
+def k_fit(data,bl_ant_pairs,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
     """
     Fit bandpass to visibility data.
 
     Parameters
     ----------
-    data     : array of complex, shape(num_chans, num_pols, baseline)
-    antlist1 : antenna mapping, for first antenna in bl pair
-    antlist2 : antenna mapping, for second antenna in bl pair
-    k0       : array of complex, shape(num_chans, num_pols, num_ants) or None
-    bp0      : array of complex, shape(num_chans, num_pols, num_ants) or None
-    refant   : reference antenna
+    data : array of complex, shape(num_chans, num_pols, baseline)
+    bl_ant_pairs : antenna mappings, for first then second antennas in bl pair
+    k0 : array of complex, shape(num_chans, num_pols, num_ants) or None
+    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
+    refant : reference antenna
 
     Returns
     -------
@@ -547,7 +516,7 @@ def k_fit(data,antlist1,antlist2,chans=None,k0=None,bp0=None,refant=0,chan_sampl
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    bpass = stefcal(vis_and_conj, num_ants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, algorithm=algorithm)
+    bpass = stefcal(vis_and_conj, num_ants, bl_ant_pairs, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, algorithm=algorithm)
 
     # -----------------------------------------------------
     # find bandpass phase slopes (delays)
@@ -839,5 +808,3 @@ class CalSolution(object):
         self.values = solvalues
         self.times = soltimes
         self.ts_solname =  'cal_product_{0}'.format(soltype,)
-
-
