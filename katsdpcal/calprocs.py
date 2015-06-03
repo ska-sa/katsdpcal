@@ -51,7 +51,7 @@ def stefcal(vis, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=
         Complex cross-correlations between antennas A and B
     num_ants : int
         Number of antennas
-    corrprod_lookup : numpy array of int, shape (2,N)
+    corrprod_lookup : numpy array of int, array of shape (2,N)
         First and second antenna indices associated with visibilities
     num_iters : int, optional
         Number of iterations
