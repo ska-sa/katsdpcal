@@ -11,14 +11,73 @@ from katcal.calprocs import CalSolution
 #--------------------------------------------------------------------------------------------------
 
 class Scan(object):
+    """
+    Single scan of data with auxillary information.
 
-    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup, target, chans=None):
+    Parameters
+    ----------
+    data : dictionary
+        Buffer of correlator data. Contains arrays of visibility, flag, weight and time.
+    ti0, ti1: int
+        Start and stop indices of the scan in the buffer arrays.
+    dump_period : float
+        Dump period of correlator data.
+    nant : int
+        Number of antennas in the array.
+    bls_lookup : list of int, shape (2, number of baselines)
+        List of antenna pairs for each baseline.
+    target : string
+        Name of target observed in the scan.
+    chans : array of float
+        Array of channel frequencies.
+    corr : string, optional
+        String to select correlation product, 'xc' for cross-correlations.
+
+    Attributes
+    ----------
+    dump_period : float
+        Dump period of correlator data.
+    bl_mask : array of bool
+        General mask for selecting usbset of the correlation products.
+    corrprod_lookup : list of int, shape (number_of_baselines, 2)
+        List of antenna pairs for each baseline.
+    vis : array of float, complex64 (ntime, nchan, npol, nbl)
+        Visibility data.
+    flags : array of uint8, shape (ntime, nchan, npol, nbl)
+        Flag data.
+    weights : array of float64, shape (ntime, nchan, npol, nbl)
+        Weight data.
+    times : array of float, shape (ntime, nchan, npol, nbl)
+        Times.
+    target : string
+        Name of target obsrved in the scan.
+    modvis : array of float, complex64 (ntime, nchan, npol, nbl)
+        Intermediate visibility product.
+    nchan : int
+        Number of frequency channels in the data.
+    channel_freqs : list of float
+        List of frequencies corresponding to channels (or channel indices, in the absence of frequencies)
+    nant : int
+        Number of antennas in the data.
+    npol : int
+        Number of polarisations in the data.
+
+    """
+
+    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup, target, chans=None, corr='xc'):
+
+        # cross-correlation mask. Must be np array so it can be used for indexing
+        # if scan has explicitly been set up as a cross-correlation scan, seelct XC data only
+        xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
+        self.bl_mask = xc_mask if corr is 'xc' else slice(None)
+        self.corrprod_lookup = bls_lookup[self.bl_mask]
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
         # data format is:   (time x channels x pol x bl)
-        self.vis = data['vis'][ti0:ti1+1,:,0:2,:]
-        self.flags = data['flags'][ti0:ti1+1,:,0:2,:]
+        #self._vis = data['vis'][ti0:ti1+1,:,0:2,:]
+        self.vis = data['vis'][ti0:ti1+1,:,0:2,self.bl_mask]
+        self.flags = data['flags'][ti0:ti1+1,:,0:2,self.bl_mask]
         self.weights = np.ones_like(self.flags,dtype=np.float)
         self.times = data['times'][ti0:ti1+1]
         self.target = target
@@ -26,40 +85,12 @@ class Scan(object):
         # intermediate product visibility - use sparingly!
         self.modvis = None
 
+        # scan meta-data
+        self.dump_period = dump_period
         self.nchan = self.vis.shape[1]
         self.channel_freqs = range(self.nchan) if chans is None else list(chans)
         self.nant = nant
-        # baseline number includes autocorrs
-        self.nbl = self.nant*(self.nant+1)/2
         self.npol = 4
-
-        # scan meta-data
-        self.dump_period = dump_period
-        self.corrprod_lookup = bls_lookup
-        self.corr_antlists = self.get_bl_ant_pairs(self.corrprod_lookup)
-
-    def get_bl_ant_pairs(self, corrprod_lookup):
-        """
-        Get antenna lists in solver format, from corr_prod lookup
-
-        Inputs:
-        -------
-        corrprod_lookup : lookup table of antenna indices for each baseline, matching data format, shape(nant,2)
-
-        Returns:
-        --------
-        antlist 1, antlist 2 : lists of antennas matching the correlation_product lookup table,
-            appended with their conjugates (format required by stefcal)
-        """
-
-        # NOTE: no longer need hh and vv masks as we re-ordered the data to be ntime x nchan x nbl x npol
-
-        # get antenna number lists for stefcal - need vis then vis.conj (assume constant over an observation)
-        # assume same for hh and vv
-        antlist1 = np.concatenate((corrprod_lookup[:,0], corrprod_lookup[:,1]))
-        antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
-
-        return antlist1, antlist2
 
     def solint_from_nominal(self, input_solint):
         """
@@ -99,13 +130,14 @@ class Scan(object):
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
 
         # first averge in time over solution interval
+
         ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.modvis,self.flags,self.weights,
                 dumps_per_solint,axis=0,times=self.times)
         # second average over all channels
         ave_vis = calprocs.wavg(ave_vis,ave_flags,ave_weights,axis=1)
 
         # solve for gains G
-        g_soln = calprocs.g_fit(ave_vis,self.corr_antlists,g0,REFANT)
+        g_soln = calprocs.g_fit(ave_vis,self.corrprod_lookup,g0,REFANT)
 
         return CalSolution('G', g_soln, ave_times)
 
@@ -129,7 +161,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
 
         # solve for delay K
-        k_soln = calprocs.k_fit(ave_vis,self.corr_antlists,self.channel_freqs,k0,bp0,REFANT,chan_sample=chan_sample)
+        k_soln = calprocs.k_fit(ave_vis,self.corrprod_lookup,self.channel_freqs,k0,bp0,REFANT,chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 
@@ -153,8 +185,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
 
         # solve for bandpass
-        antlist1, antlist2 = self.corr_antlists
-        b_soln = calprocs.bp_fit(ave_vis,self.corr_antlists,bp0,REFANT)
+        b_soln = calprocs.bp_fit(ave_vis,self.corrprod_lookup,bp0,REFANT)
 
         return CalSolution('B', b_soln, ave_time)
 
