@@ -13,7 +13,7 @@ from katcal.simulator import SimData
 from katcal import report
 from katcal.scan import Scan
 
-from rfi import threshold_flagging 
+from rfi import threshold_avg_flagging
 
 from katcal.calprocs import CalSolution
 
@@ -31,28 +31,11 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
 
-def rfi(s):
+def rfi(s,thresholds,av_blocks):
     """
     Place holder for RFI detection algorithms to come.
     """
-    threshold_flagging(s.vis,s.flags,2.5,transform=np.abs)
-    # average in blocks
-    sx, sy = s.vis.shape[0:2]
-    XBOX = 3
-    YBOX = 5
-    data_av = np.add.reduceat(s.vis*~s.flags.view(np.bool),range(0,sx,XBOX),axis=0)
-    av_flags = np.add.reduceat(s.flags,range(0,sx,XBOX),axis=0,dtype=s.flags.dtype)
-    data_av = np.add.reduceat(data_av*~av_flags.view(np.bool),range(0,sy,YBOX),axis=1)
-    av_flags = np.add.reduceat(av_flags,range(0,sy,YBOX),axis=1,dtype=av_flags.dtype)
-
-    # threshold averaged data
-    THRESHOLD = 4.0
-    print '*', av_flags.shape, av_flags.dtype, data_av.shape, data_av.dtype
-    threshold_flagging(data_av,av_flags,THRESHOLD,transform=np.abs)
-
-    # spread flags back out to original size
-    flags_spread = av_flags.repeat(XBOX,axis=0)[0:sx,:]
-    #s.flags = flags_spread.repeat(YBOX,axis=1)[:,0:sy]
+    threshold_avg_flagging(s.vis,s.flags,thresholds,blocks=av_blocks,transform=np.abs)
 
 def get_tracks(data, ts):
     """
@@ -226,9 +209,9 @@ def pipeline(data, ts, task_name='pipeline'):
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
         total_size = np.multiply.reduce(s.flags.shape)/100.
-        pipeline_logger.info('  Start flags: {0}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
-        rfi(s)
-        pipeline_logger.info('  New flags:   {0}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
+        pipeline_logger.info('  Start flags: {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
+        rfi(s,[3.0,3.0,2.0,1.6],[[3,1],[3,5],[3,8]])
+        pipeline_logger.info('  New flags:   {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
 
         run_t0 = time()
         # perform calibration as appropriate, from scan intent tags
