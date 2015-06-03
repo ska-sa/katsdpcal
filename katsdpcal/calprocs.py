@@ -33,6 +33,7 @@ def get_bl_ant_pairs(corrprod_lookup):
 
      # get antenna number lists for stefcal - need vis then vis.conj (assume constant over an observation)
     # assume same for hh and vv
+    print corrprod_lookup
     antlist1 = np.concatenate((corrprod_lookup[:,0], corrprod_lookup[:,1]))
     antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
 
@@ -467,7 +468,7 @@ def g_fit(data,corrprod_lookup,g0=None,refant=0,algorithm='adi'):
     # ------------
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    return stefcal(vis_and_conj, num_ants, corrprod_lookups, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
+    return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=g0, algorithm=algorithm)
 
 def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi'):
     """
