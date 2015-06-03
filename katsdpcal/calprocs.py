@@ -21,7 +21,7 @@ def get_bl_ant_pairs(corrprod_lookup):
 
     Inputs:
     -------
-    corrprod_lookup : lookup table of antenna indices for each baseline, list shape(nant,2)
+    corrprod_lookup : lookup table of antenna indices for each baseline, array shape(nant,2)
 
     Returns:
     --------
@@ -33,7 +33,6 @@ def get_bl_ant_pairs(corrprod_lookup):
 
      # get antenna number lists for stefcal - need vis then vis.conj (assume constant over an observation)
     # assume same for hh and vv
-    print corrprod_lookup
     antlist1 = np.concatenate((corrprod_lookup[:,0], corrprod_lookup[:,1]))
     antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
 
