@@ -446,17 +446,6 @@ def xcbl_from_ants(a):
     """
     return a*(a-1)/2
 
-#def get_solver_bl_ant_pairs(antlist,corr_products):
-#    """
-#    Returns antenna index lists in the correlation product order,
-#    in the format required by the solvers
-#    """
-#    antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
-#    corrprod_lookup = np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in corr_products])
-#    antlist1 = np.concatenate((corrprod_lookup[:,0], corrprod_lookup[:,1]))
-#    antlist2 = np.concatenate((corrprod_lookup[:,1], corrprod_lookup[:,0]))
-#    return antlist1, antlist2
-
 def g_fit(data,corrprod_lookup,g0=None,refant=0,algorithm='adi'):
     """
     Fit complex gains to visibility data.
