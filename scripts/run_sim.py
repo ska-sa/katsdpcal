@@ -41,7 +41,7 @@ def parse_args():
     return parser.parse_args()
 
 def create_pane(sname,tmserver,keep_session=False):
-	"""
+    """
     Create tmux session and return pane object, for single window single pane
 
     Inputs
@@ -51,56 +51,61 @@ def create_pane(sname,tmserver,keep_session=False):
     Returns
     -------
     tmux pane object
-	"""
-	# kill session if it already exists, unless we are keeping pre-existing sessions
-	if not keep_session:
-		try:
-			tmserver.kill_session(sname)
-			print 'killed session {},'.format(sname,),
-		except tmuxp.exc.TmuxpException:
-			print 'session {} did not exist,'.format(sname,),
-	# start new session
-	try:
-		tmserver.new_session(sname)
-		print 'created session {}'.format(sname,)
-	except tmuxp.exc.TmuxSessionExists:
-		print 'session {} already exists'.format(sname,)		
-	# get pane
-	session = tmserver.findWhere({"session_name":sname})
-	return session.windows[0].panes[0]
+    """
+    # kill session if it already exists, unless we are keeping pre-existing sessions
+    if not keep_session:
+        try:
+            tmserver.kill_session(sname)
+            print 'killed session {},'.format(sname,),
+        except tmuxp.exc.TmuxpException:
+            print 'session {} did not exist,'.format(sname,),
+    # start new session
+    try:
+        tmserver.new_session(sname)
+        print 'created session {}'.format(sname,)
+    except tmuxp.exc.TmuxSessionExists:
+        print 'session {} already exists'.format(sname,)		
+    # get pane
+    session = tmserver.findWhere({"session_name":sname})
+    return session.windows[0].panes[0]
 
 if __name__ == '__main__':
-	opts = parse_args()
+    opts = parse_args()
 
-	# create tmux server
-	tmserver = tmuxp.Server()
+    #Get full path to h5 file
+    #Workaround for issue in tmux sessions where relative paths
+    #are not parsed correctly by h5py.File
+    h5file_fullpath=os.path.abspath(opts.h5file)
 
-	# start redis-server in tmux pane
-	redis_pane = create_pane('redis',tmserver,keep_session=opts.keep_sessions)
-	redis_pane.cmd('send-keys','redis-server')
-	redis_pane.enter()
+    # create tmux server
+    tmserver = tmuxp.Server()
 
-	# set up TS in tmux pane
-	sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-	sim_ts_pane.cmd('send-keys','sim_h5_ts.py --telstate {0} --h5file {1}'.format(opts.telstate, opts.h5file))
-	sim_ts_pane.enter()
+    # start redis-server in tmux pane
+    redis_pane = create_pane('redis',tmserver,keep_session=opts.keep_sessions)
+    redis_pane.cmd('send-keys','redis-server')
+    redis_pane.enter()
 
-	# start pipeline running in tmux pane
-	pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
-	pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-		--l1-rate {2} --full-l1'.format(opts.telstate, opts.buffer_maxsize, opts.l1_rate))
-	pipeline_pane.enter()
+    # set up TS in tmux pane
+    sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
+    sim_ts_pane.cmd('send-keys','sim_h5_ts.py --telstate {0} --h5file {1}'.format(opts.telstate, h5file_fullpath))
+    sim_ts_pane.enter()
 
-	# start L1 receiver in tmux pane
-	l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-	l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --h5file {1}'.format(opts.telstate, opts.h5file))
-	l1_pane.enter()
+    # start pipeline running in tmux pane
+    pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
+    pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
+        --l1-rate {2} --full-l1'.format(opts.telstate, opts.buffer_maxsize, opts.l1_rate))
+    pipeline_pane.enter()
 
-	# wait a couple of seconds to start data flowing
-	time.sleep(2.0)
+    # start L1 receiver in tmux pane
+    l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
+    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --h5file {1}'.format(opts.telstate, h5file_fullpath))
+    l1_pane.enter()
 
-	# start data flow in tmux pane
-	sim_data_pane = create_pane('sim_data',tmserver,keep_session=opts.keep_sessions)
-	sim_data_pane.cmd('send-keys','sim_h5_stream.py --telstate {0} --h5file {1} --l0-rate {2} \
-          --max-scans {3}'.format(opts.telstate, opts.h5file, opts.l0_rate, opts.max_scans))
-	sim_data_pane.enter()
+    # wait a couple of seconds to start data flowing
+    time.sleep(2.0)
+
+    # start data flow in tmux pane
+    sim_data_pane = create_pane('sim_data',tmserver,keep_session=opts.keep_sessions)
+    sim_data_pane.cmd('send-keys','sim_h5_stream.py --telstate {0} --h5file {1} --l0-rate {2} \
+        --max-scans {3}'.format(opts.telstate, opts.h5file, opts.l0_rate, opts.max_scans))
+    sim_data_pane.enter()
