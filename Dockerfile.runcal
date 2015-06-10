@@ -29,14 +29,14 @@ RUN pip install --no-deps \
     git+ssh://git@github.com/ska-sa/PySPEAD
 
 # Install the current package
-COPY . /tmp/install/katcal
-WORKDIR /tmp/install/katcal
+COPY . /tmp/install/katsdpcal
+WORKDIR /tmp/install/katsdpcal
 RUN python ./setup.py clean && python ./setup.py install
 
 # Run as non-root user
-RUN adduser --system katcal
-WORKDIR /home/katcal
-USER katcal
+RUN adduser --system katsdpcal
+WORKDIR /home/katsdpcal
+USER katsdpcal
 
 # expose L1 spead port
 EXPOSE 7202

@@ -4,14 +4,14 @@ Preliminary calibration node code.
 
 ## Dependencies
 
-For katcal:
+For katsdpcal:
 
 * redis (2.8.19+)
 * PySPEAD
 * katsdptelstate
 * rst2pdf
 
-For katcal simulator:
+For katsdpcal simulator:
 
 * katdal
 * tmux
@@ -45,7 +45,7 @@ Note: The recommended SPEAD rates for laptops are L0: 0.2e7; L1: 1.2e7; And for 
  
 ### Shortcut simulator
 
- > run_katcal_sim.py --telstate 127.0.0.1:6379 --h5file \<h5file.h5\> --l0-rate 0.2e7 --l1-rate 1.2e7 --max-scans=7 --keep-sessions
+ > run_katsdpcal_sim.py --telstate 127.0.0.1:6379 --h5file \<h5file.h5\> --l0-rate 0.2e7 --l1-rate 1.2e7 --max-scans=7 --keep-sessions
  
 The shortcut simulator runs each of the five commands above in separate tmux sessions, named redis, sim_ts, l1_receiver, pipeline and sim_data respectively.
  
