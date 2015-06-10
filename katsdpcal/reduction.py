@@ -15,7 +15,7 @@ from katsdpcal.scan import Scan
 
 from rfi import threshold_avg_flagging
 
-from katcal.calprocs import CalSolution
+from katsdpcal.calprocs import CalSolution
 
 from time import time
 
