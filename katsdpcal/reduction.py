@@ -135,8 +135,8 @@ def pipeline(data, ts, task_name='pipeline'):
     # at the moment this is re-made every scan! fix later!
     timing_file = 'timing.txt'
     #print timing_file
-    if os.path.isfile(timing_file): os.remove(timing_file)
-    timing_file = open("timing.txt", "w")
+    #if os.path.isfile(timing_file): os.remove(timing_file)
+    #timing_file = open("timing.txt", "w")
 
     # ----------------------------------------------------------
     # extract some some commonly used constants from the TS
