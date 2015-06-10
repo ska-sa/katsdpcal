@@ -67,7 +67,7 @@ def receive_l1(spead_stream, return_data=False):
                 
 if __name__ == '__main__':
     """
-    Recieved a the L1 output stream and print some details to confirm all is going well
+    Recieve an L1 output stream and print some details to confirm all is going well
     Optionally write the L1 data back to the h5 file
     """
     opts = parse_opts() 
