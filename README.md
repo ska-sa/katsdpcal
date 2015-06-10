@@ -1,4 +1,4 @@
-# katsdpresearch: katcal
+# katsdpresearch: katsdpcal
 
 Preliminary calibration node code.
 
