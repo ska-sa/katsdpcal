@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 setup (
-    name = "katcal",
+    name = "katsdpcal",
     version = "trunk",
     description = "MeerKAT calibration pipeline",
     author = "Laura Richter",
@@ -11,7 +11,7 @@ setup (
     scripts = [
         "scripts/reduction_script.py",
 	"scripts/run_cal.py",	
-        "scripts/run_sim.py",
+        "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
         "scripts/sim_h5_ts.py",
         "scripts/sim_h5_stream.py"

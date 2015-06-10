@@ -7,11 +7,11 @@ import copy
 import pickle
 import os
 
-from katcal import plotting
-from katcal import calprocs
-from katcal.simulator import SimData
-from katcal import report
-from katcal.scan import Scan
+from katsdpcal import plotting
+from katsdpcal import calprocs
+from katsdpcal.simulator import SimData
+from katsdpcal import report
+from katsdpcal.scan import Scan
 
 from rfi import threshold_avg_flagging
 
@@ -136,8 +136,8 @@ def pipeline(data, ts, task_name='pipeline'):
     # at the moment this is re-made every scan! fix later!
     timing_file = 'timing.txt'
     #print timing_file
-    if os.path.isfile(timing_file): os.remove(timing_file)
-    timing_file = open("timing.txt", "w")
+    #if os.path.isfile(timing_file): os.remove(timing_file)
+    #timing_file = open("timing.txt", "w")
 
     # ----------------------------------------------------------
     # extract some some commonly used constants from the TS
@@ -234,7 +234,7 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
             # ---------------------------------------
-            timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('bpcal' in k for k in taglist):
@@ -261,7 +261,7 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
 
             # ---------------------------------------
-            timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('gaincal' in k for k in taglist):
@@ -285,7 +285,7 @@ def pipeline(data, ts, task_name='pipeline'):
                 ts.add(g_soln.ts_solname,v,ts=t)
 
             # ---------------------------------------
-            timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('target' in k for k in taglist):

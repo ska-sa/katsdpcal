@@ -8,12 +8,12 @@ import copy
 import pickle
 import os
 
-from katcal import plotting
-from katcal import calprocs
-from katcal.calsolution import CalSolution
-from katcal import parameters
-from katcal.simulator import SimData
-from katcal import report
+from katsdpcal import plotting
+from katsdpcal import calprocs
+from katsdpcal.calsolution import CalSolution
+from katsdpcal import parameters
+from katsdpcal.simulator import SimData
+from katsdpcal import report
 
 from time import time
 

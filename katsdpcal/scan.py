@@ -3,8 +3,8 @@
 import numpy as np
 import copy
 
-from katcal import calprocs
-from katcal.calprocs import CalSolution
+from katsdpcal import calprocs
+from katsdpcal.calprocs import CalSolution
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  Scan

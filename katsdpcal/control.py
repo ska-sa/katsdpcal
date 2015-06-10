@@ -1,8 +1,8 @@
 import spead64_48 as spead
 import time
 
-from katcal.reduction import pipeline
-from katcal import calprocs
+from katsdpcal.reduction import pipeline
+from katsdpcal import calprocs
 from katsdptelstate.telescope_state import TelescopeState
 
 import socket

@@ -3,20 +3,19 @@ import numpy as np
 import time
 import os
 
-from katcal.simulator import SimData
-from katcal import parameters
+from katsdpcal.simulator import SimData
+from katsdpcal import parameters
 
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
-from katcal.control import init_accumulator_control, init_pipeline_control
-from katcal.control import end_transmit
+from katsdpcal.control import init_accumulator_control, init_pipeline_control
+from katsdpcal.control import end_transmit
 
-from katcal.report import make_cal_report
+from katsdpcal.report import make_cal_report
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def print_dict(dictionary, ident = '', braces=1):
     """ Recursively prints nested dictionaries."""
@@ -51,8 +50,40 @@ def parse_opts():
     parser.set_defaults(full_l1=False)
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
+    parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
+    parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
+
+def setup_logger(log_path):
+    """
+    Set up the pipeline logger.
+    The logger writes to a pipeline.log file and to stdout.
+
+    Inputs
+    ======
+    log_path : str
+        path in which log file will be written
+    """
+    if not log_path: log_path = '.'
+    log_path = os.path.abspath(log_path)
+
+    # logging to file
+    logging.basicConfig(filename='{0}/pipeline.log'.format(log_path,),
+                        format='%(asctime)s %(name)-24s %(levelname)-8s %(message)s',
+                        datefmt='%d-%m-%y %H:%M',)
+    logger.setLevel(logging.INFO)
+
+    # logging to stdout
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # set format for console use
+    formatter = logging.Formatter('%(asctime)s %(name)-24s %(levelname)-8s %(message)s')
+    formatter.datefmt='%d-%m %H:%M'
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
 
 def all_alive(process_list):
     """
@@ -123,7 +154,7 @@ def create_buffer_arrays_threading(buffer_shape):
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
-           mproc=True):
+           mproc=True,report_path=''):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -154,6 +185,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         True to transmit all of the data to L1, False to only transmit target data.
     mproc: bool
         True for control via multiprocessing, False for control via threading
+    report_path : string
+        Path under which to save pipeline report
     """
 
     # debug print outs
@@ -251,13 +284,17 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     logger.info('L1 stream ended')
 
     # create pipeline report (very basic at the moment)
-    make_cal_report(ts)
-    logger.info('Report compiled, in directory {0}'.format(ts.experiment_id,))
+    make_cal_report(ts,report_path)
+    logger.info('Report compiled, in directory {0}/{1}'.format(report_path,ts.experiment_id))
 
 if __name__ == '__main__':
 
     opts = parse_opts()
 
+    # set up logging
+    setup_logger(opts.log_path)
+
+    # threading or multiprocessing imports
     if opts.threading is False:
         import multiprocessing as control_method
         from multiprocessing import Process as control_task
@@ -270,4 +307,5 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading))
+           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
+           report_path=opts.report_path)
