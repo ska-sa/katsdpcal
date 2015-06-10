@@ -29,7 +29,7 @@ from argparse import ArgumentParser
 import os.path
 
 def parse_args():
-    parser = ArgumentParser(description = 'Run simulated katcal from h5 file')
+    parser = ArgumentParser(description = 'Run simulated katsdpcal from h5 file')
     parser.add_argument('--keep-sessions', action='store_true', help='Keep any pre-existing tmux sessions. Note: Only use this if pipeline not currently running.')
     parser.set_defaults(keep_sessions=False)
     parser.add_argument('--telstate', type=str, default='127.0.0.1:6379', help='Telescope state endpoint. Default "127.0.0.1:6379"')

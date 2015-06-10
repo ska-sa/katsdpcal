@@ -3,16 +3,16 @@ import numpy as np
 import time
 import os
 
-from katcal.simulator import SimData
-from katcal import parameters
+from katsdpcal.simulator import SimData
+from katsdpcal import parameters
 
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
-from katcal.control import init_accumulator_control, init_pipeline_control
-from katcal.control import end_transmit
+from katsdpcal.control import init_accumulator_control, init_pipeline_control
+from katsdpcal.control import end_transmit
 
-from katcal.report import make_cal_report
+from katsdpcal.report import make_cal_report
 
 import logging
 logger = logging.getLogger(__name__)

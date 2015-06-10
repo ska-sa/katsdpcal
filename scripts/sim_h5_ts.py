@@ -3,8 +3,8 @@
 # H5 file to use for simulation
 #   simulation of data and Teselcope Model (TM)
 
-from katcal import parameters
-from katcal.simulator import SimData
+from katsdpcal import parameters
+from katsdpcal.simulator import SimData
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
