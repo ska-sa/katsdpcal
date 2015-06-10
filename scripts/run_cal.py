@@ -51,6 +51,7 @@ def parse_opts():
     parser.set_defaults(full_l1=False)
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
+    parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -123,7 +124,7 @@ def create_buffer_arrays_threading(buffer_shape):
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
-           mproc=True):
+           mproc=True,report_path=''):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -154,6 +155,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         True to transmit all of the data to L1, False to only transmit target data.
     mproc: bool
         True for control via multiprocessing, False for control via threading
+    report_path : string
+        Path under which to save pipeline report
     """
 
     # debug print outs
@@ -251,8 +254,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     logger.info('L1 stream ended')
 
     # create pipeline report (very basic at the moment)
-    make_cal_report(ts)
-    logger.info('Report compiled, in directory {0}'.format(ts.experiment_id,))
+    make_cal_report(ts,report_path)
+    logger.info('Report compiled, in directory {0}/{1}'.format(report_path,ts.experiment_id))
 
 if __name__ == '__main__':
 
@@ -270,4 +273,5 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading))
+           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
+           report_path=opts.report_path)

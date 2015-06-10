@@ -160,7 +160,7 @@ def write_table_timecol(report,antennas,time,data):
     report.writeln(col_header*n_entries)
     report.writeln()
 
-def make_cal_report(ts): 
+def make_cal_report(ts,report_path): 
     """
     Creates pdf calibration pipeline report (from RST source),
     using data from the Telescope State 
@@ -176,14 +176,16 @@ def make_cal_report(ts):
         project_name = 'unknown_project'
 
     # make calibration report directory and move into it
+    if not report_path: report_path = '.'
+    report_path = os.path.abspath(report_path)
+    project_dir = '{0}/{1}'.format(report_path,project_name)
     try:
-        os.mkdir(project_name)
+        os.mkdir(project_dir)
     except OSError:
-        shutil.rmtree(project_name)
-        os.mkdir(project_name)
+        shutil.rmtree(project_dir)
+        os.mkdir(project_dir)
 
-    os.chdir(project_name)
-    project_dir = os.getcwd()
+    os.chdir(project_dir)
     
     # make source directory and move into is
     os.mkdir('calreport_source')
