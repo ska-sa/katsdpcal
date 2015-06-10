@@ -44,7 +44,7 @@ class TestCalprocs(unittest.TestCase):
         antlist2 = np.concatenate((list2, list1))
 
         # solve for gains
-        from katcal.calprocs import stefcal    
+        from katsdpcal.calprocs import stefcal    
         calc_gains = stefcal(vis_and_conj, nants, antlist1, antlist2, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm=algorithm)
         
         return gains, calc_gains

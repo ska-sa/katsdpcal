@@ -7,13 +7,13 @@ import copy
 import pickle
 import os
 
-from katcal import plotting
-from katcal import calprocs
-from katcal.simulator import SimData
-from katcal import report
-from katcal.scan import Scan
+from katsdpcal import plotting
+from katsdpcal import calprocs
+from katsdpcal.simulator import SimData
+from katsdpcal import report
+from katsdpcal.scan import Scan
 
-from katcal.calprocs import CalSolution
+from katsdpcal.calprocs import CalSolution
 
 from time import time
 
