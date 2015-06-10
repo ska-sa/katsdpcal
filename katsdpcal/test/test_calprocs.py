@@ -43,7 +43,7 @@ class TestCalprocs(unittest.TestCase):
         bl_pair_list = np.column_stack([list1, list2])
 
         # solve for gains
-        from katcal.calprocs import stefcal    
+        from katsdpcal.calprocs import stefcal    
         calc_gains = stefcal(vis_and_conj, nants, bl_pair_list, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm=algorithm)
         
         return gains, calc_gains
