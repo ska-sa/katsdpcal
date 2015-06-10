@@ -6,8 +6,6 @@ Preliminary calibration node code.
 
 For katcal:
 
-* tmux
-* tmuxp (0.8.1+)
 * redis (2.8.19+)
 * PySPEAD
 * katsdptelstate
@@ -16,6 +14,8 @@ For katcal:
 For katcal simulator:
 
 * katdal
+* tmux
+* tmuxp (0.8.1+)
 
 ## Simulator
 
