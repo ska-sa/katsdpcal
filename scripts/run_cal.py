@@ -16,7 +16,6 @@ from katcal.report import make_cal_report
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def print_dict(dictionary, ident = '', braces=1):
     """ Recursively prints nested dictionaries."""
@@ -52,8 +51,39 @@ def parse_opts():
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
+    parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
+
+def setup_logger(log_path):
+    """
+    Set up the pipeline logger.
+    The logger writes to a pipeline.log file and to stdout.
+
+    Inputs
+    ======
+    log_path : str
+        path in which log file will be written
+    """
+    if not log_path: log_path = '.'
+    log_path = os.path.abspath(log_path)
+
+    # logging to file
+    logging.basicConfig(filename='{0}/pipeline.log'.format(log_path,),
+                        format='%(asctime)s %(name)-24s %(levelname)-8s %(message)s',
+                        datefmt='%d-%m-%y %H:%M',)
+    logger.setLevel(logging.INFO)
+
+    # logging to stdout
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # set format for console use
+    formatter = logging.Formatter('%(asctime)s %(name)-24s %(levelname)-8s %(message)s')
+    formatter.datefmt='%d-%m %H:%M'
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
 
 def all_alive(process_list):
     """
@@ -261,6 +291,10 @@ if __name__ == '__main__':
 
     opts = parse_opts()
 
+    # set up logging
+    setup_logger(opts.log_path)
+
+    # threading or multiprocessing imports
     if opts.threading is False:
         import multiprocessing as control_method
         from multiprocessing import Process as control_task

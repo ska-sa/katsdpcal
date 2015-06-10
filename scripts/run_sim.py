@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 1.2e7. Default: 5e7')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
+    parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     return parser.parse_args()
 
 def create_pane(sname,tmserver,keep_session=False):
@@ -94,7 +95,8 @@ if __name__ == '__main__':
     # start pipeline running in tmux pane
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-        --l1-rate {2} --full-l1 --report-path {3}'.format(opts.telstate, opts.buffer_maxsize, opts.l1_rate, opts.report_path))
+        --l1-rate {2} --full-l1 --report-path {3} --log-path {4}'.format(opts.telstate, opts.buffer_maxsize, 
+        opts.l1_rate, opts.report_path, opts.log_path))
     pipeline_pane.enter()
 
     # start L1 receiver in tmux pane

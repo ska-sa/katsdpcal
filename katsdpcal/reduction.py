@@ -230,7 +230,7 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
             # ---------------------------------------
-            timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('bpcal' in k for k in taglist):
@@ -257,7 +257,7 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
 
             # ---------------------------------------
-            timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('gaincal' in k for k in taglist):
@@ -281,7 +281,7 @@ def pipeline(data, ts, task_name='pipeline'):
                 ts.add(g_soln.ts_solname,v,ts=t)
 
             # ---------------------------------------
-            timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
+            #timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
         if any('target' in k for k in taglist):
