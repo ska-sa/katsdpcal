@@ -81,7 +81,8 @@ def get_tracks(data, ts):
             stop_indx.append(nearest_time_indx-1)
 
     # remove first slew time from stop indices
-    if stop_indx[0] == -1: stop_indx = stop_indx[1:]
+    if len(stop_indx) > 0:
+        if stop_indx[0] == -1: stop_indx = stop_indx[1:]
     # add max index in buffer to stop indices of necessary
     if len(stop_indx) < len(start_indx): stop_indx.append(max_ind)
 
@@ -189,7 +190,7 @@ def pipeline(data, ts, task_name='pipeline'):
     #    for application to the target scan
     track_starts, track_stops = get_tracks(data,ts)
 
-    target_starts, target_stops = [], []
+    target_slices = []
 
     for ti0, ti1 in reversed(zip(track_starts, track_stops)):
         # start time, end time
@@ -314,14 +315,13 @@ def pipeline(data, ts, task_name='pipeline'):
                 s.apply(soln, inplace=True)
 
             # accumulate list of target scans to be streamed to L1
-            target_starts.append(ti0)
-            target_stops.append(ti1)
+            target_slices.append(slice(ti0,ti1))
 
             # flag calibrated target
             pipeline_logger.info('Flagging calibrated target')
             rfi(s,[3.0,3.0,2.0],[[3,1],[5,8]],pipeline_logger)
        
-    return target_starts, target_stops
+    return target_slices
 
 
 

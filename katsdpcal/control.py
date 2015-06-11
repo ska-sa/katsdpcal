@@ -337,50 +337,48 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
         def run_pipeline(self):
             # run pipeline calibration
-            target_scans = pipeline(self.data,self.telstate,task_name=self.name)
+            target_slices = pipeline(self.data,self.telstate,task_name=self.name)
             # send data to L1 spead if necessary
-            if self.full_l1 or target_scans != ([],[]):
+            if self.full_l1 or target_scans != []:
                 self.pipeline_logger.info('Transmit L1 data')
-                self.data_to_SPEAD(target_scans)
+                self.data_to_SPEAD(target_slices)
                 self.pipeline_logger.info('End transmit of L1 data')
 
-        def data_to_SPEAD(self, target_scans):
+        def data_to_SPEAD(self, target_slices):
             """
             Sends data to SPEAD stream
 
             Inputs:
-            target_scans : start and stop index lists for target scans in the data buffer, lists
+            target_slices : list of slices
+                slices for target scans in the data buffer
             """
             if self.full_l1:
                 # for streaming all of the data (not target only), 
                 # use the highest index in the buffer that is filled with data
-                target_starts = [0]
-                target_stops = self.data['max_index']
-            else: 
-                # if only transmitting target data, use target scan indices from the reduction
-                target_starts, target_stops = target_scans
+                target_slices = [slice(0,self.data['max_index'])]
 
             # transmit data
-            for ti0, ti1 in zip(target_starts, target_stops):
-                for i in range(ti0,ti1+1): # time axis
+            for data_slice in target_slices:
+                # get data for this scan, from the slice
+                scan_vis = self.data['vis'][data_slice]
+                scan_flags = self.data['flags'][data_slice]
+                # for now, just transmit flags as placeholder for weights
+                scan_weights = self.data['flags'][data_slice]
+                scan_times = self.data['times'][data_slice]
 
-                    tx_vis = self.data['vis'][i]
-                    tx_flags = self.data['flags'][i]
-                    # for now, just transmit flags as placeholder for weights
-                    tx_weights = self.data['flags'][i]
-                    tx_time = self.data['times'][i]
-
+                # transmit data timestamp by timestamp
+                for i in range(len(scan_times)): # time axis
                     # transmit timestamps, vis, flags and weights
                     ig = spead.ItemGroup()
                     ig.add_item(name='timestamp', description='Timestamp',
                         shape=[], fmt=spead.mkfmt(('f',64)),
-                        init_val=tx_time)
+                        init_val=scan_times[i])
                     ig.add_item(name='correlator_data', description='Full visibility array',
-                        init_val=tx_vis)
+                        init_val=scan_vis[i])
                     ig.add_item(name='flags', description='Flag array',
-                        init_val=tx_flags)
+                        init_val=scan_flags[i])
                     ig.add_item(name='weights', description='Weight array',
-                        init_val=tx_weights)
+                        init_val=scan_weights[i])
                     self.tx.send_heap(ig.get_heap())
 
     return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
