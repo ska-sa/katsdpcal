@@ -31,11 +31,26 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
 
-def rfi(s,thresholds,av_blocks):
+def rfi(s,thresholds,av_blocks,pipeline_logger):
     """
     Place holder for RFI detection algorithms to come.
+
+    Inputs:
+    -------
+    s : Scan
+        Scan to flag
+    thresholds : list of float, shape(N)
+        Tresholds to use for tN iterations of flagging
+    av_blocks : list of int, shape(N-1, 2)
+        List of block sizes to average over from the second iteration, in the
+        form [time_block, channel_block]
+    pipeline_logger : logger
+        logger 
     """
+    total_size = np.multiply.reduce(s.flags.shape)/100.
+    pipeline_logger.info('  Start flags: {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
     threshold_avg_flagging(s.vis,s.flags,thresholds,blocks=av_blocks,transform=np.abs)
+    pipeline_logger.info('  New flags:   {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
 
 def get_tracks(data, ts):
     """
@@ -208,13 +223,12 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
-        total_size = np.multiply.reduce(s.flags.shape)/100.
-        pipeline_logger.info('  Start flags: {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
-        rfi(s,[3.0,3.0,2.0,1.6],[[3,1],[3,5],[3,8]])
-        pipeline_logger.info('  New flags:   {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
+        rfi(s,[3.0,3.0,2.0,1.6],[[3,1],[3,5],[3,8]],pipeline_logger)
 
         run_t0 = time()
-        # perform calibration as appropriate, from scan intent tags
+
+        # perform calibration as appropriate, from scan intent tags:
+        # DELAY
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------
             # preliminary G solution
@@ -237,6 +251,7 @@ def pipeline(data, ts, task_name='pipeline'):
             #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
+        # BANDPASS
         if any('bpcal' in k for k in taglist):
             # ---------------------------------------
             # get K solutions to apply and interpolate it to scan timestamps
@@ -264,6 +279,7 @@ def pipeline(data, ts, task_name='pipeline'):
             #timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
+        # GAIN
         if any('gaincal' in k for k in taglist):
             # ---------------------------------------
             # get K and B solutions to apply and interpolate them to scan timestamps
@@ -288,6 +304,7 @@ def pipeline(data, ts, task_name='pipeline'):
             #timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
             run_t0 = time()
 
+        # TARGET
         if any('target' in k for k in taglist):
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
@@ -299,7 +316,11 @@ def pipeline(data, ts, task_name='pipeline'):
             # accumulate list of target scans to be streamed to L1
             target_starts.append(ti0)
             target_stops.append(ti1)
-        
+
+            # flag calibrated target
+            pipeline_logger.info('Flagging calibrated target')
+            rfi(s,[3.0,3.0,2.0],[[3,1],[5,8]],pipeline_logger)
+       
     return target_starts, target_stops
 
 
