@@ -18,8 +18,8 @@ class Scan(object):
     ----------
     data : dictionary
         Buffer of correlator data. Contains arrays of visibility, flag, weight and time.
-    ti0, ti1: int
-        Start and stop indices of the scan in the buffer arrays.
+    time_slice: slice
+        Time slice of the scan in the buffer arrays.
     dump_period : float
         Dump period of correlator data.
     nant : int
@@ -64,7 +64,7 @@ class Scan(object):
 
     """
 
-    def __init__(self, data, ti0, ti1, dump_period, nant, bls_lookup, target, chans=None, corr='xc'):
+    def __init__(self, data, time_slice, dump_period, nant, bls_lookup, target, chans=None, corr='xc'):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
         # if scan has explicitly been set up as a cross-correlation scan, seelct XC data only
@@ -75,11 +75,10 @@ class Scan(object):
         # get references to this time chunk of data
         # -- just using first polarisation for now
         # data format is:   (time x channels x pol x bl)
-        #self._vis = data['vis'][ti0:ti1+1,:,0:2,:]
-        self.vis = data['vis'][ti0:ti1+1,:,0:2,self.bl_mask]
-        self.flags = data['flags'][ti0:ti1+1,:,0:2,self.bl_mask]
+        self.vis = data['vis'][time_slice,:,0:2,self.bl_mask]
+        self.flags = data['flags'][time_slice,:,0:2,self.bl_mask]
         self.weights = np.ones_like(self.flags,dtype=np.float)
-        self.times = data['times'][ti0:ti1+1]
+        self.times = data['times'][time_slice]
         self.target = target
 
         # intermediate product visibility - use sparingly!

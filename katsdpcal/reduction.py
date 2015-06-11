@@ -63,9 +63,7 @@ def get_tracks(data, ts):
 
     Returns:
     --------
-    start_indx : start indices of each track scan
-    stop_indx : stop indices of each track scan
-
+    list of slices for each track in the buffer
     """
     max_ind = data['max_index'][0]
 
@@ -86,7 +84,7 @@ def get_tracks(data, ts):
     # add max index in buffer to stop indices of necessary
     if len(stop_indx) < len(start_indx): stop_indx.append(max_ind)
 
-    return start_indx, stop_indx
+    return [slice(start, stop+1) for start, stop in zip(start_indx, stop_indx)]
 
 def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
     """
@@ -139,8 +137,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
     Returns:
     --------
-    target_starts: start indices for target scans in the data buffer, list
-    target_stops: stop indices for target scans in the buffer, list
+    list of slices for each target track in the buffer
     """
 
     # ----------------------------------------------------------
@@ -188,14 +185,13 @@ def pipeline(data, ts, task_name='pipeline'):
     #    iterate backwards in time through the scans,
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
     #    for application to the target scan
-    track_starts, track_stops = get_tracks(data,ts)
-
+    track_slices = get_tracks(data,ts)
     target_slices = []
 
-    for ti0, ti1 in reversed(zip(track_starts, track_stops)):
+    for scan_slice  in reversed(track_slices):
         # start time, end time
-        t0 = data['times'][ti0]
-        t1 = data['times'][ti1]
+        t0 = data['times'][scan_slice.start]
+        t1 = data['times'][scan_slice.stop-1]
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
@@ -220,7 +216,7 @@ def pipeline(data, ts, task_name='pipeline'):
         if not target in target_list: ts.add('cal_info_sources',target)
 
         # set up scan
-        s = Scan(data, ti0, ti1, dump_period, n_ants, ts.cal_bls_lookup, target_name, chans=ts.cbf_channel_freqs)
+        s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target_name, chans=ts.cbf_channel_freqs)
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')
@@ -290,7 +286,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # G solution
             pipeline_logger.info('Solving for G on gain calibrator {0}'.format(target.split(',')[0],))
             # set up solution interval: just solve for two intervals per G scan (ignore ts g_solint for now)
-            dumps_per_solint = np.ceil((ti1-ti0)/2.0)
+            dumps_per_solint = np.ceil((scan_slice.stop-scan_slice.start-1)/2.0)
             g_solint = dumps_per_solint*dump_period
             g_soln = s.g_sol(g_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
 
@@ -315,12 +311,12 @@ def pipeline(data, ts, task_name='pipeline'):
                 s.apply(soln, inplace=True)
 
             # accumulate list of target scans to be streamed to L1
-            target_slices.append(slice(ti0,ti1))
+            target_slices.append(scan_slice)
 
             # flag calibrated target
             pipeline_logger.info('Flagging calibrated target')
             rfi(s,[3.0,3.0,2.0],[[3,1],[5,8]],pipeline_logger)
-       
+
     return target_slices
 
 

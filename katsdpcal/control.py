@@ -355,7 +355,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             if self.full_l1:
                 # for streaming all of the data (not target only), 
                 # use the highest index in the buffer that is filled with data
-                target_slices = [slice(0,self.data['max_index'])]
+                target_slices = [slice(0,self.data['max_index']+1)]
 
             # transmit data
             for data_slice in target_slices:
