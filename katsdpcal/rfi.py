@@ -10,28 +10,63 @@ RFI flagger routines for use in the MeerKAT calibration pipeline.
 #--------------------------------------------------------------------------------------------------
 
 import numpy as np
-import logging
 
+import logging
 logger = logging.getLogger(__name__)
 
 def no_transform(data):
   return(data)
 
 def threshold_flagging(data,flags,threshold,transform=None):
-  if transform is None: transform = no_transform
-  # get flags in bool format to use as a mask
-  fg = flags.view(np.bool)
+    """
+    Flags data that falls above a specified threshold
 
-  mean_data = np.average(transform(data[~fg]))
-  std_data = np.std(transform(data[~fg]))
+    Inputs
+    ------
+    data : array of numeric
+        Visibility data on which to base the flags
+    flags : array of boolean or uint8 same shape as data
+        Flags for bad data points
+    threshold : float
+        Treshold to use for flagging
+    transform : function
+        Transform to apply to the data before thresholding. 
+        For example, a function that takes the absolute value, numpy.abs 
+    """
 
-  # flag based on the mean and stddev, unless there is no data in the block
-  if mean_data:  
-      # this is not efficient - calculates the abs offset even for masked values
-      # fix later
-      flags[np.abs(transform(data)-mean_data)>threshold*std_data] = 1.0
+    if transform is None: transform = no_transform
+    # get flags in bool format to use as a mask
+    fg = flags.view(np.bool)
+
+    mean_data = np.average(transform(data[~fg]))
+    std_data = np.std(transform(data[~fg]))
+
+    # flag based on the mean and stddev, unless there is no data in the block
+    if mean_data:  
+        # this is not efficient - calculates the abs offset even for masked values
+        # fix later
+        flags[np.abs(transform(data)-mean_data)>threshold*std_data] = 1.0
 
 def threshold_avg_flagging(data,flags,thresholds,blocks=None,transform=None):
+    """
+    Flags data that falls above a specified threshold, iteratively averaging in
+    larger time-channel blocks
+
+    Inputs
+    ------
+    data : array of numeric
+        Visibility data on which to base the flags
+    flags : array of boolean or uint8 same shape as data
+        Flags for bad data points
+    thresholds : list of float, shape(N)
+        Tresholds to use for tN iterations of flagging
+    blocks : list of int, shape(N-1, 2)
+        List of block sizes to average over from the second iteration, in the
+        form [time_block, channel_block]
+    transform : function
+        Transform to apply to the data before thresholding. 
+        For example, a function that takes the absolute value, numpy.abs 
+    """
 
     thresholds = np.atleast_1d(thresholds)
     blocks = np.atleast_2d(blocks)
