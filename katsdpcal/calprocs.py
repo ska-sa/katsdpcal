@@ -554,7 +554,7 @@ def wavg(data,flags,weights,times=False,axis=0):
     Parameters
     ----------
     data    : array of complex
-    flags   :u array of int8 or boolean
+    flags   : array of uint8 or boolean
     weights : array of floats
     times   : array of times. If times are given, average times are returned
     axis    : axis to average over
