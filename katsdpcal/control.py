@@ -181,6 +181,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # get names of activity and target TS keys, using TS reference antenna
             target_key = '{0}_target'.format(self.telstate.cal_refant,)
             activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
+            # sync time provided by the cbf
+            cbf_sync_time = self.telstate.cbf_sync_time if self.telstate.has_key('cbf_sync_time') else 0.0
 
             obs_end_flag = True
 
@@ -191,14 +193,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
-                    start_time = ig['timestamp'] + self.telstate.cbf_sync_time
+                    start_time = ig['timestamp'] + cbf_sync_time
                     start_flag = False
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
 
                 # get activity and target tag from TS
-                data_ts = ig['timestamp'] + self.telstate.cbf_sync_time
+                data_ts = ig['timestamp'] + cbf_sync_time
                 activity = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0][0]
                 target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
 
@@ -222,7 +224,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
-                duration = (ig['timestamp']+ self.telstate.cbf_sync_time)-start_time
+                duration = (ig['timestamp']+ cbf_sync_time)-start_time
                 if duration>2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
                     obs_end_flag = False
