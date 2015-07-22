@@ -115,7 +115,7 @@ def write_table_timerow(report,antennas,time,data):
 
     # add each time row to the table
     for t, d in zip(time,data):
-        data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
+        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in d])
         report.write("{:.4e}".format(t,).ljust(col_width+1))
         report.writeln(data_string)  
 
@@ -152,7 +152,7 @@ def write_table_timecol(report,antennas,time,data):
     # add each antenna row to the table
     antlist = antennas.split(',')
     for a, d in zip(antlist,data.T):
-        data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
+        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in d])
         report.write(a.ljust(col_width+1))
         report.writeln(data_string)  
 
