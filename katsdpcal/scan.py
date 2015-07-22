@@ -253,7 +253,7 @@ class Scan(object):
             gain_shape = tuple(list(self.vis.shape[:-1]) + [self.nant])
             g_from_k = np.zeros(gain_shape,dtype=np.complex)
             for ci, c in enumerate(self.channel_freqs):
-                g_from_k[:,ci,:,:] = np.exp(1.0j*soln.values*c)
+                g_from_k[:,ci,:,:] = np.exp(1.0j*2.*np.pi*soln.values*c)
             return self._apply(g_from_k,origvis=origvis,inplace=inplace)
         elif soln.soltype is 'B':
             return self._apply(soln.values,origvis=origvis,inplace=inplace)
