@@ -419,7 +419,7 @@ def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=10, ref
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
     for i,c in enumerate(chans):
-        g_array[:,:,i] = np.exp(1.0j*K*c)
+        g_array[:,:,i] = np.exp(1.0j*2.*np.pi*K*c)
     return g_array
 
 def nanAve(x,axis=0):
@@ -512,7 +512,7 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
 
     Returns
     -------
-    ksoln : Bandpass, shape(num_chans, num_ants)
+    ksoln : delay, shape(2, num_ants)
     """
 
     num_ants = ants_from_bllist(corrprod_lookup)
@@ -542,7 +542,7 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
             # unwrap angles before fitting for slope
             bp_phase = np.unwrap(np.angle(bp[p]))
             A = np.array([ chans, np.ones(len(chans))])
-            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
+            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
     return kdelay
 
