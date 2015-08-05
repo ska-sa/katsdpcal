@@ -546,17 +546,16 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
 
     return kdelay
 
-def kcross_fit(data,flags,chans=None,chan_ave=None):
+def kcross_fit(data,flags,chans=None,chan_ave=1):
     """
     Fit delay (phase slope across frequency) offset to visibility data.
 
     Parameters
     ----------
     data : array of complex, shape(num_chans, num_pols, baseline)
-    corrprod_lookup : antenna mappings, for first then second antennas in bl pair
-    k0 : array of complex, shape(num_chans, num_pols, num_ants) or None
-    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
-    refant : reference antenna
+    flags : array of bool or uint8, shape(num_chans, num_pols, baseline)
+    chans : list or array of channel frequencies, shape(num_chans), optional
+    chan_ave : number of channels to average together before fit, int, optional
 
     Returns
     -------
@@ -567,14 +566,14 @@ def kcross_fit(data,flags,chans=None,chan_ave=None):
     	chans = np.arange(data.shape[0])
     else:
     	chans = np.array(chans)
-    nchans = len(chans)
-    chan_increment = chans[1]-chans[0]
 
-    chan_ave = 1
-
+    # average channels as specified
     ave_crosshand = np.average((data[:,0,:]*~flags[:,0,:]+np.conjugate(data[:,1,:]*~flags[:,1,:]))/2.,axis=-1)
     ave_crosshand = np.add.reduceat(ave_crosshand,range(0,len(ave_crosshand),chan_ave))/chan_ave
     ave_chans = np.add.reduceat(chans,range(0,len(chans),chan_ave))/chan_ave
+
+    nchans = len(ave_chans)
+    chan_increment = ave_chans[1]-ave_chans[0]
 
     # FT the visibilities to get course estimate of kcross
     #   with noisy data, this is more robust than unwrapping the phase
@@ -591,7 +590,7 @@ def kcross_fit(data,flags,chans=None,chan_ave=None):
     coarse_kcross = k_arg/(chan_increment*nchans)
 
     # correst data with course kcross to solve for residual delta kcross
-    corrected_crosshand = ave_crosshand*np.exp(-1.0j*2.*np.pi*coarse_kcross*chans)
+    corrected_crosshand = ave_crosshand*np.exp(-1.0j*2.*np.pi*coarse_kcross*ave_chans)
     # solve for residual kcross through linear phase fit
     crossphase = np.angle(corrected_crosshand)
     # remove any offset from zero
