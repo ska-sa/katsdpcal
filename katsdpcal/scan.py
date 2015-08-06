@@ -98,13 +98,14 @@ class Scan(object):
 
     def solint_from_nominal(self, input_solint):
         """
-        determine appropriaye solution interval given nominal solution interval
+        Determine appropriate solution interval given nominal solution interval
 
         Inputs:
         ------
         input_solint : nominal solution interval
 
-        Returns:
+        Returns
+        -------
         solint : calculated optimal solution interval
         dumps_per_solint : number of dumps per solution interval
         """
@@ -116,10 +117,18 @@ class Scan(object):
 
     def g_sol(self,input_solint,g0,REFANT,pre_apply=[]):
         """
-        Solve for Gain
+        Solve for gain
 
-        Returns:
-           CalSolution with soltype 'G'. Solution values have shape (time, pol, nant)
+        Parameters
+        ----------
+        input_solint : nominal solution interval to use for the fit
+        g0 : initial estimate of gains for solver, shape (time, pol, nant)
+        REFANT : reference antenna, int
+        pre_apply : calibration solutions to apply, list of CalSolutions, optional
+
+        Returns
+        -------
+        Gain CalSolution with soltype 'G', shape (time, pol, nant)
         """
 
         if len(pre_apply) > 0:
@@ -149,8 +158,14 @@ class Scan(object):
         """
         Solve for cross hand delay offset
 
-        Returns:
-           CalSolution with soltype 'KCROSS'. Solution values have shape (nant)
+        Parameters
+        ----------
+        chan_ave : channels to average together prior during fit
+        pre_apply : calibration solutions to apply, list of CalSolutions, optional
+
+        Returns
+        -------
+        Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape (nant)
         """
 
         if len(pre_apply) > 0:
@@ -172,10 +187,19 @@ class Scan(object):
 
     def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
         """
-        Solve for Delay
+        Solve for delay
 
-        Returns:
-           CalSolution with soltype 'K'. Solution values have shape (2, nant)
+        Parameters
+        ----------
+        chan_sample : channel sampling to use in delay fit
+        k0 : initial estimate of delay, float
+        bp0 : initial estimate of bandpass for solver, shape (chan, pol, nant)
+        REFANT : reference antenna, int
+        pre_apply : calibration solutions to apply, list of CalSolutions, optional
+
+        Returns
+        -------
+        Delay CalSolution with soltype 'K', shape (2, nant)
         """
 
         if len(pre_apply) > 0:
@@ -196,10 +220,17 @@ class Scan(object):
 
     def b_sol(self,bp0,REFANT,pre_apply=[]):
         """
-        Solve for Bandpass
+        Solve for bandpass
 
-        Returns:
-           CalSolution with soltype 'B'. Solution values have shape (chan, pol, nant)
+        Parameters
+        ----------
+        bp0 : initial estimate of bandpass for solver, shape (chan, pol, nant)
+        REFANT : reference antenna, int
+        pre_apply : calibration solutions to apply, list of CalSolutions, optional
+
+        Returns
+        -------
+        Bandpass CalSolution with soltype 'B', shape (chan, pol, nant)
         """
 
         if len(pre_apply) > 0:
@@ -226,8 +257,8 @@ class Scan(object):
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
 
-        Inputs:
-        ------
+        Parameters
+        ----------
         solval : multiplicative solution values to be applied to visibility data
         """
 
@@ -243,8 +274,8 @@ class Scan(object):
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
 
-        Inputs:
-        ------
+        Parameters
+        ----------
         solval : multiplicative solution values to be applied to visibility data
                  ndarray, shape (time, chan, pol, ant) where time and chan are optional
         """
@@ -264,8 +295,8 @@ class Scan(object):
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
 
-        Inputs:
-        ------
+        Parameters
+        ----------
         solval : multiplicative solution values to be applied to visibility data
         """
 
