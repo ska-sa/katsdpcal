@@ -22,7 +22,7 @@ from random import random
 class SimData(katdal.H5DataV2):
     
     def __init__(self, h5filename, refant=''):
-        H5DataV2.__init__(self, h5filename, refant)
+        H5DataV2.__init__(self, h5filename)
         # need reference antenna for simulating activity and target sensors
         self.refant = refant
    
