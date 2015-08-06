@@ -21,7 +21,7 @@ print "Use parameters from parameter file to initialise TS."
 parameters.init_ts(ts)
 
 print "Open H5 file using appropriate reference antenna for sensor reference."
-simdata = SimData(opts.h5file,ts.cal_refant)
+simdata = SimData(opts.h5file)
 
 print "Add and override TS data from simulator."
 simdata.setup_ts(ts)
