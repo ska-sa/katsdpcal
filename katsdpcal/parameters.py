@@ -2,13 +2,17 @@
 
 def set_params():
     parms = {}
+
+    # reference antenna parameters
+    parms['cal_refant'] = 'ant1' # preferref refant
+    # preferred order for choosing refant
+    parms['cal_preferred_refants'] = ['ant1','ant2','ant3','ant4','ant5','ant6','ant7']
    
     # general data parameters
     #parms['cal_per_scan_plots'] = False
     #parms['cal_closing_plots'] = True
     parms['cal_bchan'] = 200
     parms['cal_echan'] = 800
-    parms['cal_refant'] = 'ant1'
    
     # delay calibration
     #parms['cal_K'] = []
