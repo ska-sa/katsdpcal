@@ -15,6 +15,7 @@ def set_params():
     #parms['cal_K_std'] = []
     parms['cal_k_solint'] = 10.0 # nominal pre-k g solution interval, seconds
     parms['cal_k_chan_sample'] = 10 # sample every 10th channel for pre-K BP soln
+    parms['cal_kcross_chanave'] = 1 # number of channels to average together to kcross solution
    
     # bandpass calibration
     #parms['cal_BP'] = []
