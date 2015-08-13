@@ -129,7 +129,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             Send stop packed to force shut down of SPEAD receiver
             """
             self.accumulator_logger.info('sending stop packet')
-            tx = spead.Transmitter(spead.TransportUDPtx(self.l0_endpoint.host,self.l0_endpoint.port))
+            # send the stop only to the local receiver
+            tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1',self.l0_endpoint.port))
             tx.end()
 
         def buffers_to_numpy(self):
