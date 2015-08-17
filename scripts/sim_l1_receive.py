@@ -14,7 +14,7 @@ def parse_opts():
     parser = ArgumentParser(description = 'Simulate receiver for L1 data stream')    
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_list_parser(7202, single_port=True), default=':7202', 
             help='endpoints to listen for L1 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
-    parser.add_argument('--h5file', type=str, help='H5 data to write data to')
+    parser.add_argument('--file', type=str, help='File for simulated data (H5 or MS)')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -74,18 +74,18 @@ if __name__ == '__main__':
     # Initialise spead receiver
     spead_stream = spead.TransportUDPrx(opts.l1_spectral_spead[0].port)
     # recieve stream and accumulate data into arrays
-    return_data = True if opts.h5file else False
+    return_data = True if opts.file else False
     l1_data = receive_l1(spead_stream, return_data=return_data)
     # need some info from the telstate
     ts = opts.telstate
-    if opts.h5file:
-        new_file = '{0}_L1.h5'.format(opts.h5file.split('.')[0],)
+    if opts.file:
+        new_file = '{0}_L1.h5'.format(opts.file.split('.')[0],)
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
         else:
             if os.path.isfile(new_file):
                 print 'WARNING: L1 file {0} already exists. Over writing it.'.format(new_file,)
-            shutil.copyfile(opts.h5file,new_file)
+            shutil.copyfile(opts.file,new_file)
 
             import katdal
             f = katdal.open(new_file,mode='r+')
