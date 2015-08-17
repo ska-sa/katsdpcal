@@ -9,7 +9,6 @@ import os
 
 from katsdpcal import plotting
 from katsdpcal import calprocs
-from katsdpcal.simulator import SimData
 from katsdpcal import report
 from katsdpcal.scan import Scan
 
