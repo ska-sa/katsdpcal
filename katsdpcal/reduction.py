@@ -64,16 +64,19 @@ def get_tracks(data, ts):
     --------
     list of slices for each track in the buffer
     """
-    max_ind = data['max_index'][0]
+    max_indx = data['max_index'][0]
 
     activity_key = '{0}_activity'.format(ts.cal_refant,)
-    activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_ind],include_previous=True)
+    activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_indx],include_previous=True)
 
     start_indx, stop_indx = [], []
+    prev_state = ''
     for state, time in activity:
-        nearest_time_indx = np.abs(time - data['times'][0:max_ind+1]).argmin()
+        nearest_time_indx = np.abs(time - data['times'][0:max_indx+1]).argmin()
         if 'track' in state:
             start_indx.append(nearest_time_indx)
+            if 'track' in prev_state:
+                stop_indx.append(nearest_time_indx-1)
         elif 'slew' in state:
             stop_indx.append(nearest_time_indx-1)
 
@@ -81,7 +84,7 @@ def get_tracks(data, ts):
     if len(stop_indx) > 0:
         if stop_indx[0] == -1: stop_indx = stop_indx[1:]
     # add max index in buffer to stop indices of necessary
-    if len(stop_indx) < len(start_indx): stop_indx.append(max_ind)
+    if len(stop_indx) < len(start_indx): stop_indx.append(max_indx)
 
     return [slice(start, stop+1) for start, stop in zip(start_indx, stop_indx)]
 
@@ -191,6 +194,10 @@ def pipeline(data, ts, task_name='pipeline'):
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
+
+        # if we only have one timestamp in the scan, ignore it
+        #  (this happens when there is no slew between tracks so we catch the first dump of the next track)
+        if ti0 == ti1: continue
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
