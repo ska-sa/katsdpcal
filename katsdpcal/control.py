@@ -181,6 +181,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             array_index = -1
 
             prev_activity = 'none'
+            prev_activity_time = 0.
             prev_tags = 'none'
 
             # get names of activity and target TS keys, using TS reference antenna
@@ -196,18 +197,21 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 ig.update(heap)
                 array_index += 1
 
+                # get activity and target tag from TS
+                data_ts = ig['timestamp'] + cbf_sync_time
+                activity_full = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0]
+                activity, activity_time = activity_full
+                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
+
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
-                    start_time = ig['timestamp'] + cbf_sync_time
+                    start_time = data_ts
                     start_flag = False
+
+                    prev_activity_time = activity_time
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
-
-                # get activity and target tag from TS
-                data_ts = ig['timestamp'] + cbf_sync_time
-                activity = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0][0]
-                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -219,10 +223,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
 
-                # break if this scan is a slew that follows a track
+                # break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
+                if activity_time != prev_activity_time and 'slew' not in prev_activity and 'target' not in prev_tags:
                     self.accumulator_logger.info('Accumulate break due to transition')
                     obs_end_flag = False
                     break
@@ -241,6 +245,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     break
 
                 prev_activity = activity
+                prev_activity_time = activity_time
                 # extract tags from target description string
                 prev_tags = target.split(',')[1]
 
