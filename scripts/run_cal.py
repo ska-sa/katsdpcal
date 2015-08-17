@@ -2,6 +2,8 @@
 import numpy as np
 import time
 import os
+import signal
+import manhole
 
 from katsdpcal.simulator import SimData
 from katsdpcal import parameters
@@ -241,6 +243,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
         l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
 
+    manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines)
+     # allow remote debug connections and expose telescope state, accumulator and pipelines
     # Start the pipeline threads
     map(lambda x: x.start(), pipelines)
     # Start the accumulator thread
@@ -302,6 +306,17 @@ if __name__ == '__main__':
     else:
         import threading as control_method
         from threading import Thread as control_task
+
+    def graceful_exit(_signo=None, _stack_frame=None):
+        logger.info("Exiting time_plot on SIGTERM")
+        os.kill(os.getpid(), signal.SIGINT)
+         # rely on the interrupt handler within run_threads
+         # to peform graceful shutdown. this preserves the command
+         # line Ctrl-C shutdown.
+
+    signal.signal(signal.SIGTERM, graceful_exit)
+     # mostly needed for Docker use since this process runs as PID 1
+     # and does not get passed sigterm unless it has a custom listener
 
     run_threads(opts.telstate,
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
