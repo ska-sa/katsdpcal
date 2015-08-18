@@ -243,7 +243,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
         l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
 
-    manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines)
+    manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines})
      # allow remote debug connections and expose telescope state, accumulator and pipelines
     # Start the pipeline threads
     map(lambda x: x.start(), pipelines)
