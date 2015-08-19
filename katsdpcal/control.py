@@ -254,7 +254,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 data_buffer['max_index'][0] = array_index
             else:
                 # threading case
-                data_buffer['max_index'] = np.array(array_index)
+                data_buffer['max_index'] = np.atleast_1d(np.array(array_index))
 
             self.accumulator_logger.info('Accumulation ended')
 
