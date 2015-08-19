@@ -256,7 +256,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     def force_shutdown():
         # forces pipeline threads to shut down
-        forced_shutdown = True
         accumulator.stop()
         accumulator.join()
         # pipeline needs to be terminated, rather than stopped,
@@ -266,11 +265,14 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     def force_hard_shutdown():
         # forces pipeline threads to shut down
         #  - faster but dirtier than force_shutdown()
-        forced_shutdown = True
         accumulator.terminate()
         # terminating accumulator leaves hanging wait in pipeline
         # - aggressive kill needed for running pipeline
         map(lambda x: os.kill(x.pid, signal.SIGKILL), pipelines)
+
+    def kill_shutdown():
+        # brutal kill (for threading)
+        os.kill(os.getpid(), signal.SIGKILL)
 
     try:
         # run tasks until the observation has ended
@@ -278,7 +280,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             time.sleep(0.1)
     except (KeyboardInterrupt, SystemExit):
         logger.info('Received interrupt! Quitting threads.')
-        force_shutdown()
+        force_shutdown() if mproc else kill_shutdown()
         forced_shutdown = True
     except:
         logger.error('Unknown error. ')
