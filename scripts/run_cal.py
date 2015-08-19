@@ -278,7 +278,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             time.sleep(0.1)
     except (KeyboardInterrupt, SystemExit):
         logger.info('Received interrupt! Quitting threads.')
-        force_hard_shutdown()
+        force_shutdown()
         forced_shutdown = True
     except:
         logger.error('Unknown error. ')
