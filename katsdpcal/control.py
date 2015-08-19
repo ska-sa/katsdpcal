@@ -93,6 +93,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
+                self.accumulator_logger.info('accumulating data into buffer %d...' %(current_buffer,))
                 max_ind = self.accumulate(spead_stream, self.buffers[current_buffer])
                 self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
@@ -103,20 +104,23 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 self.scan_accumulator_conditions[current_buffer].release()
                 self.accumulator_logger.info('scan_accumulator_condition %d released by %s' %(current_buffer, self.name,))
 
-                time.sleep(0.5)
+                time.sleep(0.2)
 
-        def stop(self):
-            # set stop event
-            self._stop.set()
-            # stop SPEAD stream receival manually if the observation is still running
-            if not self.obs_finished(): self.capture_stop()
-
+        def stop_release(self):
+            # stop accumulator
+            self.stop()
             # close off scan_accumulator_conditions
             #  - necessary for closing pipeline task which may be waiting on condition
             for scan_accumulator in self.scan_accumulator_conditions:
                 scan_accumulator.acquire()
                 scan_accumulator.notify()
                 scan_accumulator.release()
+
+        def stop(self):
+            # set stop event
+            self._stop.set()
+            # stop SPEAD stream receival manually if the observation is still running
+            if not self.obs_finished(): self.capture_stop()
 
         def obs_finished(self):
             return self._obsend.is_set()
@@ -311,9 +315,9 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                     # run the pipeline
                     self.run_pipeline()
 
-                    # release condition after pipeline run finished
-                    self.scan_accumulator_condition.release()
-                    self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
+                # release condition after pipeline run finished
+                self.scan_accumulator_condition.release()
+                self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
 
         def stop(self):
             self._stop.set()
