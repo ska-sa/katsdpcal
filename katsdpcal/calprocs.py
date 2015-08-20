@@ -516,6 +516,7 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
     """
 
     num_ants = ants_from_bllist(corrprod_lookup)
+    num_pol = data.shape[-2] if len(data.shape)>2 else 1
 
     # -----------------------------------------------------
     # if channel sampling is specified, thin down the data and channel list
@@ -524,7 +525,7 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
 
     # -----------------------------------------------------
     # initialise values for solver
-    kdelay = np.empty([2,num_ants],dtype=np.complex) # Make empty array to fill delay into
+    kdelay = np.empty([num_pol,num_ants],dtype=np.complex) # Make empty array to fill delay into
     if not(np.any(chans)): chans = np.arange(data.shape[0])
 
     # -----------------------------------------------------
@@ -538,13 +539,13 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
     # find bandpass phase slopes (delays)
     for i,bp in enumerate(bpass.T):
         # polarisation
-        for p in range(2):
+        for p in range(num_pol):
             # unwrap angles before fitting for slope
-            bp_phase = np.unwrap(np.angle(bp[p]))
+            bp_phase = np.unwrap(np.angle(np.atleast_2d(bp)[p]))
             A = np.array([ chans, np.ones(len(chans))])
             kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
 
-    return kdelay
+    return np.squeeze(kdelay)
 
 def wavg(data,flags,weights,times=False,axis=0):
     """
