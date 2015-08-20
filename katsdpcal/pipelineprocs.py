@@ -11,7 +11,9 @@ import numpy as np
 
 def init_ts(ts, param_dict, clear=False):
     """
-    Initialises the telescope state from parameter dictionary
+    Initialises the telescope state from parameter dictionary.
+    Parameters from the parameter dictionary are only added to the TS the
+    the parameter is not already in the TS.
 
     Inputs
     ======
