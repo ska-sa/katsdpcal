@@ -5,16 +5,16 @@ import os
 import signal
 import manhole
 
-from katsdpcal.simulator import SimData
-from katsdpcal import parameters
-
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
 from katsdpcal.control import init_accumulator_control, init_pipeline_control
 from katsdpcal.control import end_transmit
-
 from katsdpcal.report import make_cal_report
+from katsdpcal.pipelineprocs import ts_from_file, setup_ts
+
+from pkg_resources import resource_filename
+conf_dir = resource_filename(__name__, 'conf')
 
 import logging
 logger = logging.getLogger(__name__)
@@ -210,17 +210,12 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     except:
         raise RuntimeError("No cbf_n_chans set.")
 
+    # initialise TS from default parameter file
+    ts_from_file(ts,os.path.join(conf_dir,'pipeline_parameters_kat7.txt'))
+    # set up TS for pipeline use
+    setup_ts(ts)
     # save L1 transmit preference to TS
     ts.add('cal_full_l1', full_l1, immutable=True)
-
-    # ensure reference antenna is present in the dataset
-    #   if reference antenna is not present,
-    #   iterate through preferred antenna list of find next best option
-    if ts.cal_refant not in antenna_mask:
-        for ant in ts.cal_preferred_refants:
-            if ant in antenna_mask:
-                ts.cal_refant = ant
-                break
 
     npol = 4
     nant = len(antenna_mask)
