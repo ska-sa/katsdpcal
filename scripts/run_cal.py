@@ -211,6 +211,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         raise RuntimeError("No cbf_n_chans set.")
 
     # initialise TS from default parameter file
+    #   defaults are used only for parameters missing from the TS
     ts_from_file(ts,os.path.join(conf_dir,'pipeline_parameters_kat7.txt'))
     # set up TS for pipeline use
     setup_ts(ts)

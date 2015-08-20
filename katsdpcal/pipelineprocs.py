@@ -27,7 +27,9 @@ def init_ts(ts, param_dict, clear=False):
 	    except AttributeError:
 	        # the Telescope State is empty
 	        pass
+
     # populate ts with parameters 
+    #   parameter only added if it is missing from the TS
     for key in param_dict.keys(): 
     	if key not in ts: ts.add(key, param_dict[key], immutable=True)
 
