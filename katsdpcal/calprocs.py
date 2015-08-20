@@ -419,7 +419,7 @@ def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, num_iters=10, ref
 def g_from_K(chans,K):
     g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
     for i,c in enumerate(chans):
-        g_array[:,:,i] = np.exp(1.0j*K*c)
+        g_array[:,:,i] = np.exp(1.0j*2.*np.pi*K*c)
     return g_array
 
 def nanAve(x,axis=0):
@@ -500,7 +500,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi'):
 
 def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
     """
-    Fit bandpass to visibility data.
+    Fit delay (phase slope across frequency) to visibility data.
 
     Parameters
     ----------
@@ -512,7 +512,7 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
 
     Returns
     -------
-    ksoln : Bandpass, shape(num_chans, num_ants)
+    ksoln : delay, shape(num_pols, num_ants)
     """
 
     num_ants = ants_from_bllist(corrprod_lookup)
@@ -543,9 +543,65 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
             # unwrap angles before fitting for slope
             bp_phase = np.unwrap(np.angle(np.atleast_2d(bp)[p]))
             A = np.array([ chans, np.ones(len(chans))])
-            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]
+            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
     return np.squeeze(kdelay)
+
+def kcross_fit(data,flags,chans=None,chan_ave=1):
+    """
+    Fit delay (phase slope across frequency) offset to visibility data.
+
+    Parameters
+    ----------
+    data : array of complex, shape(num_chans, num_pols, baseline)
+    flags : array of bool or uint8, shape(num_chans, num_pols, baseline)
+    chans : list or array of channel frequencies, shape(num_chans), optional
+    chan_ave : number of channels to average together before fit, int, optional
+
+    Returns
+    -------
+    kcrosssoln : delay, float
+    """
+
+    if not(np.any(chans)):
+    	chans = np.arange(data.shape[0])
+    else:
+    	chans = np.array(chans)
+
+    # average channels as specified
+    ave_crosshand = np.average((data[:,0,:]*~flags[:,0,:]+np.conjugate(data[:,1,:]*~flags[:,1,:]))/2.,axis=-1)
+    ave_crosshand = np.add.reduceat(ave_crosshand,range(0,len(ave_crosshand),chan_ave))/chan_ave
+    ave_chans = np.add.reduceat(chans,range(0,len(chans),chan_ave))/chan_ave
+
+    nchans = len(ave_chans)
+    chan_increment = ave_chans[1]-ave_chans[0]
+
+    # FT the visibilities to get course estimate of kcross
+    #   with noisy data, this is more robust than unwrapping the phase
+    ft_vis = np.fft.fft(ave_crosshand)
+
+    # get index of FT maximum
+    k_arg = np.argmax(ft_vis)
+    if nchans%2 == 0:
+        if k_arg > ((nchans/2) - 1): k_arg = k_arg - nchans
+    else:
+	    if k_arg > ((nchans-1)/2): k_arg = k_arg - nchans
+
+    # calculate kcross from FT sample frequencies
+    coarse_kcross = k_arg/(chan_increment*nchans)
+
+    # correst data with course kcross to solve for residual delta kcross
+    corrected_crosshand = ave_crosshand*np.exp(-1.0j*2.*np.pi*coarse_kcross*ave_chans)
+    # solve for residual kcross through linear phase fit
+    crossphase = np.angle(corrected_crosshand)
+    # remove any offset from zero
+    crossphase -= np.median(crossphase)
+    # linear fit
+    A = np.array([ave_chans, np.ones(len(ave_chans))])
+    delta_kcross = np.linalg.lstsq(A.T,crossphase)[0][0]/(2.*np.pi)
+
+    # total kcross
+    return coarse_kcross + delta_kcross
 
 def wavg(data,flags,weights,times=False,axis=0):
     """

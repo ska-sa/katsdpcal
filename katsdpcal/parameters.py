@@ -2,19 +2,24 @@
 
 def set_params():
     parms = {}
+
+    # reference antenna parameters
+    parms['cal_refant'] = 'ant1' # preferref refant
+    # preferred order for choosing refant
+    parms['cal_preferred_refants'] = ['ant1','ant2','ant3','ant4','ant5','ant6','ant7']
    
     # general data parameters
     #parms['cal_per_scan_plots'] = False
     #parms['cal_closing_plots'] = True
     parms['cal_bchan'] = 200
     parms['cal_echan'] = 800
-    parms['cal_refant'] = 'ant1'
    
     # delay calibration
     #parms['cal_K'] = []
     #parms['cal_K_std'] = []
     parms['cal_k_solint'] = 10.0 # nominal pre-k g solution interval, seconds
     parms['cal_k_chan_sample'] = 10 # sample every 10th channel for pre-K BP soln
+    parms['cal_kcross_chanave'] = 1 # number of channels to average together to kcross solution
    
     # bandpass calibration
     #parms['cal_BP'] = []

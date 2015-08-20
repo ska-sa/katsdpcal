@@ -87,20 +87,19 @@ def write_summary(report,ts):
 
     report.writeln()    
 
-def write_table_timerow(report,antennas,time,data):
+def write_table_timerow(report,colnames,time,data):
     """
     Write RST style table to report, rows: time, columns: antenna
 
     Parameters
     ----------
     report   : report file to write to
-    antennas : list of antenna names, comma separated string
+    colnames : list of column names, comma separated string
     time     : list of times (equates to number of rows in the table)
-    data     : table data, shape (time, antenna)
+    data     : table data, shape (time, columns)
     """
-
     # create table header
-    header = antennas.split(',')
+    header = colnames.split(',')
     header.insert(0,'time')
 
     n_entries = len(header)
@@ -115,7 +114,7 @@ def write_table_timerow(report,antennas,time,data):
 
     # add each time row to the table
     for t, d in zip(time,data):
-        data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
+        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
         report.write("{:.4e}".format(t,).ljust(col_width+1))
         report.writeln(data_string)  
 
@@ -152,7 +151,7 @@ def write_table_timecol(report,antennas,time,data):
     # add each antenna row to the table
     antlist = antennas.split(',')
     for a, d in zip(antlist,data.T):
-        data_string = " ".join(["{:.4e}".format(abs(di),).ljust(col_width) for di in d])
+        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in d])
         report.write(a.ljust(col_width+1))
         report.writeln(data_string)  
 
@@ -217,7 +216,6 @@ def make_cal_report(ts,report_path):
     # add cal products to report
     antenna_mask = ts.antenna_mask
 
-
     # ---------------------------------
     # delay
     cal = 'K'
@@ -240,6 +238,27 @@ def make_cal_report(ts,report_path):
         write_table_timerow(cal_rst,antenna_mask,times,vals[:,0,:])
         cal_rst.writeln('**POL 1**')
         write_table_timerow(cal_rst,antenna_mask,times,vals[:,1,:])
+
+    # ---------------------------------
+    # cross pol delay
+    cal = 'KCROSS'
+    cal_product = 'cal_product_'+cal
+
+    if cal_product in ts.keys():
+        cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
+        cal_rst.writeln('Cross polarisation delay calibration solutions ([ns])')
+        cal_rst.writeln()
+
+        product = ts.get_range(cal_product,st=0,return_format='recarray')
+        vals = product['value']
+        # K shape is n_time, n_pol, n_ant
+        times = product['time']
+
+        # convert delays to nano seconds
+        vals = 1e9*vals
+
+        cal_rst.writeln('**POL 0**')
+        write_table_timerow(cal_rst,'KCROSS',times,vals)
 
     # ---------------------------------
     # bandpass

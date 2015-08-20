@@ -21,10 +21,9 @@ from random import random
 
 class SimData(katdal.H5DataV2):
     
-    def __init__(self, h5filename, refant=''):
-        H5DataV2.__init__(self, h5filename, refant)
+    def __init__(self, h5filename):
+        H5DataV2.__init__(self, h5filename)
         # need reference antenna for simulating activity and target sensors
-        self.refant = refant
    
     def write_h5(self,data,corrprod_mask,tsask=None,cmask=None):
         """
@@ -94,8 +93,9 @@ class SimData(katdal.H5DataV2):
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
-            ts.add('{0}_target'.format(self.refant,),target.description,ts=self.timestamps[0]-random()*0.1)
-            ts.add('{0}_activity'.format(self.refant,),scan_state,ts=self.timestamps[0]-random()*0.1)
+            for ant in self.ants:
+                ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
+                ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
             print 'Scan', scan_ind+1, '/', num_scans, ' -- ', 
             n_ts = len(self.timestamps)
             print 'timestamps:', n_ts, ' -- ',

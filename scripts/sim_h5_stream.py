@@ -22,7 +22,7 @@ opts = parse_opts()
 print "Use TS set up by sim_h5_ts.py and run_cal.py scripts."
 ts = opts.telstate
 
-simdata = SimData(opts.h5file,ts.cal_refant)
+simdata = SimData(opts.h5file)
 
 print "Selecting data to transmit. Slice using ts values."
 simdata.select(channels=slice(ts.cal_bchan,ts.cal_echan))
