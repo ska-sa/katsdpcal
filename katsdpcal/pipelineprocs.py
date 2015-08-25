@@ -9,6 +9,20 @@ import numpy as np
 #--- Telescope State interactions
 #--------------------------------------------------------------------------------------------------
 
+def clear_ts(ts):
+    """
+    Clear the TS.
+
+    Inputs
+    ======
+    ts: Telescope State
+    """
+    try:
+        for key in ts.keys(): ts.delete(key)
+    except AttributeError:
+        # the Telescope State is empty
+        pass
+
 def init_ts(ts, param_dict, clear=False):
     """
     Initialises the telescope state from parameter dictionary.
@@ -24,11 +38,7 @@ def init_ts(ts, param_dict, clear=False):
 
     if clear:
 	    # start with empty Telescope State
-	    try:
-	        for key in ts.keys(): ts.delete(key)
-	    except AttributeError:
-	        # the Telescope State is empty
-	        pass
+	    clear_ts(ts)
 
     # populate ts with parameters 
     #   parameter only added if it is missing from the TS
@@ -66,7 +76,7 @@ def ts_from_file(ts, filename):
 				# keep as string, strip whitespace
 				param_value = value.strip()
 
-		param_dict[key] = param_value
+		param_dict[key.strip()] = param_value
 
 	init_ts(ts, param_dict)
 
