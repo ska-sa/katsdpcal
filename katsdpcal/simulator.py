@@ -19,7 +19,7 @@ from pyrap.tables import table
 #--- simdata classes
 #--------------------------------------------------------------------------------------------------
 
-def init_simdata(file_name,refant=None):
+def init_simdata(file_name):
 
     try:
         # Is it a katdal H5 file?
@@ -38,10 +38,10 @@ def init_simdata(file_name,refant=None):
     #----------------------------------------------------------------------------------------------
     class SimData(data_class):
         
-        def __init__(self, file_name, refant=None):
-            data_class.__init__(self,file_name,refant=refant)
+        def __init__(self, file_name):
+            data_class.__init__(self,file_name)
        
-        def write(self,data,corrprod_mask,tsask=None,cmask=None):
+        def write(self,data,corrprod_mask,tmask=None,cmask=None):
             """
             Writes data into MS file
        
@@ -49,7 +49,7 @@ def init_simdata(file_name,refant=None):
             ----------
             data          : data to write into the file
             corrprod_mask : correlation product mask showing where to write the data
-            tsask         : time mask for timestamps to write
+            tmask         : time mask for timestamps to write
             cmask         : channel mask for channels to write
             """
             
@@ -69,6 +69,7 @@ def init_simdata(file_name,refant=None):
             parameter_dict = self.get_params()
             # get extra parameters from TS (set at run time)
             parameter_dict['cbf_n_chans'] = ts.cal_echan-ts.cal_bchan
+            parameter_dict['cbf_channel_freqs'] = self.channel_freqs[ts.cal_bchan:ts.cal_echan]
             # check that the minimum necessary prameters are set
             min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'experiment_id', 'experiment_id']
             for key in min_keys: 
@@ -106,7 +107,12 @@ def init_simdata(file_name,refant=None):
                 print '**'
     #---------------------------------------------------------------------------------------------
 
-    return SimData(file_name,refant)
+    return SimData(file_name)
+
+#--------------------------------------------------------------------------------------------------
+#--- SimDataMS class
+#---   simulates pipeline data from MS
+#--------------------------------------------------------------------------------------------------
 
 class SimDataMS(table):
     
@@ -120,7 +126,7 @@ class SimDataMS(table):
                               'CALIBRATE_POLARIZATION':'polcal',
                               'TARGET':'target'}
 
-    def write(self,data,corrprod_mask,tsask=None,cmask=None):
+    def write(self,data,corrprod_mask,tmask=None,cmask=None):
         """
         Writes data into MS file
    
@@ -128,7 +134,7 @@ class SimDataMS(table):
         ----------
         data          : data to write into the file
         corrprod_mask : correlation product mask showing where to write the data
-        tsask         : time mask for timestamps to write
+        tmask         : time mask for timestamps to write
         cmask         : channel mask for channels to write
         """
         
@@ -136,7 +142,7 @@ class SimDataMS(table):
    
     def get_params(self):
         """
-        Add key value pairs from h5 file to to parameter dictionary
+        Add key value pairs from file to to parameter dictionary
    
         Parameters
         ----------
@@ -260,14 +266,17 @@ class SimDataMS(table):
                 
         end_transmit(tx) 
 
+#--------------------------------------------------------------------------------------------------
+#--- SimDataH5 class
+#---   simulates pipeline data from H5 file
+#--------------------------------------------------------------------------------------------------
+
 class SimDataH5(katdal.H5DataV2):
     
-    def __init__(self, file_name, refant=''):
-        H5DataV2.__init__(self, file_name, refant)
-        # need reference antenna for simulating activity and target sensor
-        self.refant = refant
+    def __init__(self, file_name):
+        H5DataV2.__init__(self, file_name)
    
-    def write(self,data,corrprod_mask,tsask=None,cmask=None):
+    def write(self,data,corrprod_mask,tmask=None,cmask=None):
         """
         Writes data into h5 file
    
@@ -275,11 +284,11 @@ class SimDataH5(katdal.H5DataV2):
         ----------
         data          : data to write into the file
         corrprod_mask : correlation product mask showing where to write the data
-        tsask         : time mask for timestamps to write
+        tmask         : time mask for timestamps to write
         cmask         : channel mask for channels to write
         """
         
-        data_indices = np.squeeze(np.where(tsask)) if np.any(tsask) else np.squeeze(np.where(self._time_keep))
+        data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(self._time_keep))
         ti, tf = min(data_indices), max(data_indices)+1 
         data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(self._freq_keep))
         ci, cf = min(data_indices), max(data_indices)+1    
@@ -298,9 +307,9 @@ class SimDataH5(katdal.H5DataV2):
         param_dict = {}
 
         param_dict['sdp_l0_int_time'] = self.dump_period
+        param_dict['cbf_n_ants'] = len(self.ants)
         param_dict['cbf_bls_ordering'] = self.corr_products
         param_dict['cbf_sync_time'] = 0.0
-        param_dict['cbf_n_ants'] = len(self.ants)
         antenna_mask = ','.join([ant.name for ant in self.ants])
         param_dict['antenna_mask'] = antenna_mask
         param_dict['experiment_id'] = self.experiment_id
@@ -334,14 +343,15 @@ class SimDataH5(katdal.H5DataV2):
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
-            ts.add('{0}_target'.format(self.refant,),target.description,ts=self.timestamps[0]-random()*0.1)
-            ts.add('{0}_activity'.format(self.refant,),scan_state,ts=self.timestamps[0]-random()*0.1)
+            for ant in self.ants:
+                ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
+                ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
             print 'Scan', scan_ind+1, '/', num_scans, ' -- ', 
             n_ts = len(self.timestamps)
             print 'timestamps:', n_ts, ' -- ',
             print scan_state, target.description
 
-            # keep track 0f number of timestamps
+            # keep track of number of timestamps
             total_ts += n_ts
             if scan_state == 'track': track_ts += n_ts
             if scan_state == 'slew': slew_ts += n_ts
@@ -370,6 +380,8 @@ class SimDataH5(katdal.H5DataV2):
         print 'Total timestamps:', total_ts
                 
         end_transmit(tx)
+
+#--------------------------------------------------------------------------------------------------
                     
 def end_transmit(tx):
     """
