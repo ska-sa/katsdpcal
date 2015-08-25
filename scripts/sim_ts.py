@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # ----------------------------------------------------------
-# H5 file to use for simulation
-#   simulation of data and Teselcope Model (TM)
+# Simulate the Telescope State from a file
 
 from katsdpcal import pipelineprocs, conf_dir, param_file
 from katsdpcal.simulator import SimData
@@ -22,8 +21,8 @@ print "Use parameters from parameter file to initialise TS."
 pipelineprocs.clear_ts(ts)
 pipelineprocs.ts_from_file(ts, opts.parameters)
 
-print "Open H5 file using appropriate reference antenna for sensor reference."
-simdata = SimData(opts.h5file)
+print "Open file"
+simdata = init_simdata(opts.file)
 
 print "Add to and override TS data from simulator."
 simdata.setup_ts(ts)
