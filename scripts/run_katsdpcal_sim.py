@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 1.2e7. Default: 5e7')
+    parser.add_argument('--parameters', type=str, default='""', help='Default pipeline parameter file (will be over written by TelescopeState. [default: ""]')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     return parser.parse_args()
@@ -88,15 +89,19 @@ if __name__ == '__main__':
     redis_pane.enter()
 
     # set up TS in tmux pane
+    #  we use the parameter file to initialise  the telescope state for the simulator
+    #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
+    #  for parameter missing from the TS)
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys','sim_h5_ts.py --telstate {0} --h5file {1}'.format(opts.telstate, h5file_fullpath))
+    sim_ts_pane.cmd('send-keys','sim_h5_ts.py --telstate {0} --h5file {1} --parameters {2} '.format(opts.telstate,
+        h5file_fullpath, opts.parameters))
     sim_ts_pane.enter()
 
     # start pipeline running in tmux pane
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-        --l1-rate {2} --full-l1 --report-path {3} --log-path {4}'.format(opts.telstate, opts.buffer_maxsize, 
-        opts.l1_rate, opts.report_path, opts.log_path))
+        --l1-rate {2} --full-l1 --parameters {3} --report-path {4} --log-path {5}'.format(opts.telstate, opts.buffer_maxsize,
+        opts.l1_rate, opts.parameters, opts.report_path, opts.log_path))
     pipeline_pane.enter()
 
     # start L1 receiver in tmux pane
