@@ -13,8 +13,7 @@ from katsdpcal.control import end_transmit
 from katsdpcal.report import make_cal_report
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
-from pkg_resources import resource_filename
-conf_dir = resource_filename(__name__, 'conf')
+from katsdpcal import conf_dir, param_file
 
 import logging
 logger = logging.getLogger(__name__)
@@ -52,6 +51,7 @@ def parse_opts():
     parser.set_defaults(full_l1=False)
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
+    parser.add_argument('--parameters', type=str, default=os.path.join(conf_dir,param_file), help='Default pipeline parameter file (will be over written by TelescopeState. [default: {0}]'.format(param_file,))
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
@@ -156,7 +156,7 @@ def create_buffer_arrays_threading(buffer_shape):
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
-           mproc=True,report_path=''):
+           mproc=True, param_file='', report_path=''):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -187,6 +187,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         True to transmit all of the data to L1, False to only transmit target data.
     mproc: bool
         True for control via multiprocessing, False for control via threading
+    param_file : string
+        File of default pipeline parameters
     report_path : string
         Path under which to save pipeline report
     """
@@ -212,7 +214,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
-    ts_from_file(ts,os.path.join(conf_dir,'pipeline_parameters_kat7.txt'))
+    if param_file: 
+        ts_from_file(ts,param_file)
     # set up TS for pipeline use
     setup_ts(ts)
     # save L1 transmit preference to TS
@@ -350,4 +353,4 @@ if __name__ == '__main__':
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
-           report_path=opts.report_path)
+           param_file=opts.parameters, report_path=opts.report_path)
