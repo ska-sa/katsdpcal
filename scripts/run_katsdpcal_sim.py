@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--keep-sessions', action='store_true', help='Keep any pre-existing tmux sessions. Note: Only use this if pipeline not currently running.')
     parser.set_defaults(keep_sessions=False)
     parser.add_argument('--telstate', type=str, default='127.0.0.1:6379', help='Telescope state endpoint. Default "127.0.0.1:6379"')
-    parser.add_argument('--h5file', type=str, help='H5 file for simulated data')
+    parser.add_argument('--file', type=str, default='~/data/1427381884.h5', help='H5 file for simulated data')
     parser.add_argument('--buffer-maxsize', type=float, default=1e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
@@ -94,9 +94,11 @@ if __name__ == '__main__':
     #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
     #  for parameter missing from the TS)
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys','sim_h5_ts.py --telstate {0} --h5file {1} --parameters {2} '.format(opts.telstate,
-        h5file_fullpath, opts.parameters))
+    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1}'.format(opts.telstate, opts.file))
     sim_ts_pane.enter()
+
+    # wait a second for TS to be set up
+    time.sleep(1.0)
 
     # start pipeline running in tmux pane
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
@@ -107,7 +109,7 @@ if __name__ == '__main__':
 
     # start L1 receiver in tmux pane
     l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --h5file {1}'.format(opts.telstate, h5file_fullpath))
+    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1}'.format(opts.telstate, opts.file))
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
@@ -115,6 +117,6 @@ if __name__ == '__main__':
 
     # start data flow in tmux pane
     sim_data_pane = create_pane('sim_data',tmserver,keep_session=opts.keep_sessions)
-    sim_data_pane.cmd('send-keys','sim_h5_stream.py --telstate {0} --h5file {1} --l0-rate {2} \
-        --max-scans {3}'.format(opts.telstate, opts.h5file, opts.l0_rate, opts.max_scans))
+    sim_data_pane.cmd('send-keys','sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} \
+        --max-scans {3}'.format(opts.telstate, opts.file, opts.l0_rate, opts.max_scans))
     sim_data_pane.enter()
