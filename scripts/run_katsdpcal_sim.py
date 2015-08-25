@@ -27,6 +27,7 @@ import tmuxp
 import time
 from argparse import ArgumentParser
 import os.path
+from katsdpcal import conf_dir, param_file
 
 def parse_args():
     parser = ArgumentParser(description = 'Run simulated katsdpcal from h5 file')
@@ -38,7 +39,7 @@ def parse_args():
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 1.2e7. Default: 5e7')
-    parser.add_argument('--parameters', type=str, default='""', help='Default pipeline parameter file (will be over written by TelescopeState. [default: ""]')
+    parser.add_argument('--parameters', type=str, default=os.path.join(conf_dir,param_file), help='Default pipeline parameter file (will be over written by TelescopeState. [default: {0}]'.format(param_file,))
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     return parser.parse_args()
