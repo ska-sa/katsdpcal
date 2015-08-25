@@ -3,7 +3,7 @@
 # Simulate the Telescope State from a file
 
 from katsdpcal import pipelineprocs, conf_dir, param_file
-from katsdpcal.simulator import SimData
+from katcal.simulator import init_simdata
 from katsdptelstate import ArgumentParser
 import os
 
