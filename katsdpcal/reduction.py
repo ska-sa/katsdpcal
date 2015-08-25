@@ -194,10 +194,11 @@ def pipeline(data, ts, task_name='pipeline'):
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
+        print 'scan slice: ', scan_slice, t0, t1
 
         # if we only have one timestamp in the scan, ignore it
         #  (this happens when there is no slew between tracks so we catch the first dump of the next track)
-        if ti0 == ti1: continue
+        if (scan_slice.stop - scan_slice.start) == 1: continue
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
