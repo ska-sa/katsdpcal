@@ -30,11 +30,11 @@ import os.path
 from katsdpcal import conf_dir, param_file
 
 def parse_args():
-    parser = ArgumentParser(description = 'Run simulated katsdpcal from h5 file')
+    parser = ArgumentParser(description = 'Run simulated katsdpcal from h5 or MS file')
     parser.add_argument('--keep-sessions', action='store_true', help='Keep any pre-existing tmux sessions. Note: Only use this if pipeline not currently running.')
     parser.set_defaults(keep_sessions=False)
     parser.add_argument('--telstate', type=str, default='127.0.0.1:6379', help='Telescope state endpoint. Default "127.0.0.1:6379"')
-    parser.add_argument('--file', type=str, default='~/data/1427381884.h5', help='H5 file for simulated data')
+    parser.add_argument('--file', type=str, help='H5 or MS file for simulated data')
     parser.add_argument('--buffer-maxsize', type=float, default=1e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
@@ -76,10 +76,10 @@ def create_pane(sname,tmserver,keep_session=False):
 if __name__ == '__main__':
     opts = parse_args()
 
-    #Get full path to h5 file
-    #Workaround for issue in tmux sessions where relative paths
-    #are not parsed correctly by h5py.File
-    h5file_fullpath=os.path.abspath(opts.h5file)
+    # Get full path to h5 file
+    #   Workaround for issue in tmux sessions where relative paths
+    #   are not parsed correctly by h5py.File
+    file_fullpath=os.path.abspath(opts.file)
 
     # create tmux server
     tmserver = tmuxp.Server()
