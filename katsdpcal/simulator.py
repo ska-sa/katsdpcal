@@ -20,30 +20,44 @@ from pyrap.tables import table
 #--------------------------------------------------------------------------------------------------
 
 def init_simdata(file_name):
+    """
+    Initialise simulated data class, using either h5 or MS files for simulation.
+
+    Parameters
+    ----------
+    file_name : name of data file to use for simulation, strong
+    """
 
     try:
         # Is it a katdal H5 file?
         katdal.open(file_name)
         data_class = SimDataH5
+        print 'Simulating from H5 file.'
     except IOError:
         try:
             # Not an H5 file. Is it an MS?
             table(file_name)
             data_class = SimDataMS
+            print 'Simulating from MS file.'
         except RuntimeError:
             # not an MS file either
-            print 'File does not exist, or is not of compatible format! (Must be H5 or MS)'
+            print 'File does not exist, or is not of compatible format! (Must be H5 or MS.)'
             return
 
     #----------------------------------------------------------------------------------------------
     class SimData(data_class):
+        """
+        Simulated data class.
+        Uses file to simulate MeerKAT pipeline data SPEAD stream and Telescope State.
+        Subclasses either SimDataH5 or SimDataMS, depending on whether an H5 or MS file is used for simulation.
+        """
         
         def __init__(self, file_name):
             data_class.__init__(self,file_name)
        
         def write(self,data,corrprod_mask,tmask=None,cmask=None):
             """
-            Writes data into MS file
+            Writes data into file
        
             Parameters
             ----------
@@ -57,7 +71,7 @@ def init_simdata(file_name):
        
         def setup_ts(self,ts):
             """
-            Add key value pairs from MS file to to Telescope State
+            Add key value pairs from file to to Telescope State
        
             Parameters
             ----------
@@ -67,9 +81,9 @@ def init_simdata(file_name):
 
             # get parameters from data file
             parameter_dict = self.get_params()
-            # get extra parameters from TS (set at run time)
+            # get/edit extra parameters from TS (set at run time)
             parameter_dict['cbf_n_chans'] = ts.cal_echan-ts.cal_bchan
-            parameter_dict['cbf_channel_freqs'] = self.channel_freqs[ts.cal_bchan:ts.cal_echan]
+            parameter_dict['cbf_channel_freqs'] = parameter_dict['cbf_channel_freqs'][ts.cal_bchan:ts.cal_echan]
             # check that the minimum necessary prameters are set
             min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'experiment_id', 'experiment_id']
             for key in min_keys: 
@@ -79,34 +93,31 @@ def init_simdata(file_name):
                 print param, parameter_dict[param]
                 ts.add(param, parameter_dict[param])
             
-        def XXdatatoSPEAD(self,ts,l0_endpoint,spead_rate=1e9,max_scans=None):
+        def datatoSPEAD(self,ts,l0_endpoint,spead_rate=1e9,max_scans=None):
             """
-            Iterates through H5 file and transmits data as a spead stream.
+            Iterates through H5 file and transmits data as a SPEAD stream.
             
             Parameters
             ----------
-            ts   : Telescope State 
-            port : port to send spead tream to
-            
+            ts         : Telescope State
+            l0_endoint : Endpoint for SPEAD stream
+            spead_rate : SPEAD data transmission rate
+            max_scans  : Maximum number of scans to transmit
             """
-            
             print 'TX: Initializing...'
             # rate limit transmission to work on Laura's laptop
             tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
 
-            num_scans = len(self.scan_indices)
             # if the maximum number of scans to transmit has not been specified, set to total number of scans
-            if max_scans is None: 
-                max_scans = num_scans
-            else:
-                num_scans = max_scans
+            if max_scans is None or max_scans > self.num_scans:
+                max_scans = self.num_scans
 
-            time_ordered_table = t.sort('TIME')
-            
-            for ts in time_ordered_table.iter('TIME'):
-                print '**'
+            # transmit data timestamp by timestamp and update telescope state
+            self.tx_data(ts,tx,max_scans)
+            # end SPEAD transmission
+            end_transmit(tx)
+
     #---------------------------------------------------------------------------------------------
-
     return SimData(file_name)
 
 #--------------------------------------------------------------------------------------------------
@@ -115,20 +126,40 @@ def init_simdata(file_name):
 #--------------------------------------------------------------------------------------------------
 
 class SimDataMS(table):
+    """
+    Simulated data class.
+    Uses MS file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
+    subclassing pyrap table.
+
+    Parameters
+    ----------
+    file_name : Name of MS file, string
+
+    Attributes
+    ----------
+    file_name     : Name of MS file, string
+    data_mask     : Mask for selecting data, numpy array
+    intent_to_tag : Dictionary of mappings from MS intents to scan intent tags
+    num_scans     : Total number of scans in the MS data set
+
+    Note
+    ----
+    MS files for the simulator currently need to be full polarisation and full correlation (including auto-corrs)
+    """
     
-    def __init__(self, file_name, refant):
+    def __init__(self, file_name):
         table.__init__(self, file_name)
         self.data_mask = None
         self.file_name = file_name
-        self.refant = refant
         self.intent_to_tag = {'CALIBRATE_PHASE,CALIBRATE_AMPLI':'gaincal', 
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY':'bpcal',
                               'CALIBRATE_POLARIZATION':'polcal',
                               'TARGET':'target'}
+        self.num_scans = max(self.getcol('SCAN_NUMBER'))
 
     def write(self,data,corrprod_mask,tmask=None,cmask=None):
         """
-        Writes data into MS file
+        Writes data into MS file.
    
         Parameters
         ----------
@@ -142,15 +173,15 @@ class SimDataMS(table):
    
     def get_params(self):
         """
-        Add key value pairs from file to to parameter dictionary
+        Add key value pairs from h5 file to to parameter dictionary.
    
-        Parameters
-        ----------
-        ts : TelescopeState
-        """   
-
+        Returns
+        -------
+        param_dict : dictionary of observations parameters
+        """
         param_dict = {}
 
+        param_dict['cbf_channel_freqs'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
         antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
         param_dict['antenna_mask'] = ','.join([ant for ant in antlist])
@@ -177,47 +208,39 @@ class SimDataMS(table):
         # need pol here too!!
         param_dict['cbf_bls_ordering'] = corr_prods_pol
         param_dict['cbf_sync_time'] = 0.0
-        param_dict['experiment_id'] = self.file_name.split('.')[0]
+        param_dict['experiment_id'] = self.file_name.split('.')[0].split('/')[-1]
         param_dict['config'] = {'MS_simulator':True}
 
         return param_dict
 
     def select(self,**kwargs):
-
+        """
+        Allows MS simulator to emulate katdal style data selection.
+        Currently only selects on channel.
+        """
         chan_slice = None if not kwargs.has_key('channels') else kwargs['channels']
         self.data_mask = np.s_[:,chan_slice,...]
         
-    def datatoSPEAD(self,ts,l0_endpoint,spead_rate=1e9,max_scans=None):
+    def tx_data(self,ts,tx,max_scans):
         """
-        Iterates through H5 file and transmits data as a spead stream.
+        Iterates through H5 file and transmits data as a spead stream,
+        also updating the telescope state accordingly.
         
         Parameters
         ----------
-        ts   : Telescope State 
-        port : port to send spead tream to
-        
+        ts        : Telescope State
+        tx        : SPEAD transmitter
+        max_scans : Maximum number of scans to transmit
         """
-        
-        print 'TX: Initializing...'
-        # rate limit transmission to work on Laura's laptop
-        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
-
-        num_scans = max(self.getcol('SCAN_NUMBER'))
-        # if the maximum number of scans to transmit has not been specified, set to total number of scans
-        if max_scans is None: 
-            max_scans = num_scans
-        else:
-            num_scans = max_scans
+        total_ts, track_ts, slew_ts = 0, 0, 0
 
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         field_names = table(self.getkeyword('FIELD')).getcol('NAME')
         npols = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')
         intents = table(self.getkeyword('STATE')).getcol('OBS_MODE')
-
-        total_ts, track_ts, slew_ts = 0, 0, 0
+        antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
 
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
-             
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
@@ -234,9 +257,10 @@ class SimDataMS(table):
             # MS files only have tracks (?)
             scan_state = 'track'
 
-            ts.add('{0}_target'.format(self.refant,),target_desc,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
-            ts.add('{0}_activity'.format(self.refant,),scan_state,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
-            print 'Scan', scan_ind+1, '/', num_scans, ' -- ', 
+            for ant in antlist:
+                ts.add('{0}_target'.format(ant,),target_desc,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
+                ts.add('{0}_activity'.format(ant,),scan_state,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
+            print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(tscan.select('unique TIME'))
             print 'timestamps:', n_ts, ' -- ',
             print scan_state, target_desc
@@ -263,8 +287,6 @@ class SimDataMS(table):
         print 'Track timestamps:', track_ts
         print 'Slew timestamps: ', slew_ts
         print 'Total timestamps:', total_ts
-                
-        end_transmit(tx) 
 
 #--------------------------------------------------------------------------------------------------
 #--- SimDataH5 class
@@ -272,13 +294,27 @@ class SimDataMS(table):
 #--------------------------------------------------------------------------------------------------
 
 class SimDataH5(katdal.H5DataV2):
+    """
+    Simulated data class.
+    Uses H5 file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
+    subclassing katdal H5DataV2.
+
+    Parameters
+    ----------
+    file_name : Name of MS file, string
+
+    Attributes
+    ----------
+    num_scans     : Total number of scans in the MS data set
+    """
     
     def __init__(self, file_name):
         H5DataV2.__init__(self, file_name)
+        self.num_scans = len(self.scan_indices)
    
     def write(self,data,corrprod_mask,tmask=None,cmask=None):
         """
-        Writes data into h5 file
+        Writes data into h5 file.
    
         Parameters
         ----------
@@ -297,15 +333,15 @@ class SimDataH5(katdal.H5DataV2):
    
     def get_params(self):
         """
-        Add key value pairs from h5 file to to parameter dictionary
+        Add key value pairs from h5 file to to parameter dictionary.
    
-        Parameters
-        ----------
-        ts : TelescopeState
-        """   
-
+        Returns
+        -------
+        param_dict : dictionary of observations parameters
+        """
         param_dict = {}
 
+        param_dict['cbf_channel_freqs'] = self.channel_freqs
         param_dict['sdp_l0_int_time'] = self.dump_period
         param_dict['cbf_n_ants'] = len(self.ants)
         param_dict['cbf_bls_ordering'] = self.corr_products
@@ -317,28 +353,19 @@ class SimDataH5(katdal.H5DataV2):
 
         return param_dict
         
-    def datatoSPEAD(self,ts,l0_endpoint,spead_rate=1e9,max_scans=None):
+    def tx_data(self,ts,tx,max_scans):
         """
-        Iterates through H5 file and transmits data as a spead stream.
+        Iterates through H5 file and transmits data as a spead stream,
+        also updating the telescope state accordingly.
         
         Parameters
         ----------
-        ts   : Telescope State 
-        port : port to send spead tream to
+        ts        : Telescope State
+        tx        : SPEAD transmitter
+        max_scans : Maximum number of scans to transmit
         """
-        print 'TX: Initializing...'
-        # rate limit transmission to work on Laura's laptop
-        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
-
-        num_scans = len(self.scan_indices)
-        # if the maximum number of scans to transmit has not been specified, set to total number of scans
-        if max_scans is None: 
-            max_scans = num_scans
-        else:
-            num_scans = max_scans
-
         total_ts, track_ts, slew_ts = 0, 0, 0
-        
+
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
@@ -346,7 +373,7 @@ class SimDataH5(katdal.H5DataV2):
             for ant in self.ants:
                 ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
                 ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
-            print 'Scan', scan_ind+1, '/', num_scans, ' -- ', 
+            print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(self.timestamps)
             print 'timestamps:', n_ts, ' -- ',
             print scan_state, target.description
@@ -378,8 +405,6 @@ class SimDataH5(katdal.H5DataV2):
         print 'Track timestamps:', track_ts
         print 'Slew timestamps: ', slew_ts
         print 'Total timestamps:', total_ts
-                
-        end_transmit(tx)
 
 #--------------------------------------------------------------------------------------------------
                     
