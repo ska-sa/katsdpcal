@@ -32,15 +32,14 @@ def init_simdata(file_name, **kwargs):
 
     try:
         # Is it a katdal H5 file?
-        katdal.open(file_name)
+        mode = kwargs['mode'] if 'mode' in kwargs else 'r'
+        katdal.open(file_name, mode=mode)
         data_class = SimDataH5
-        print 'Simulating from H5 file.'
     except IOError:
         try:
             # Not an H5 file. Is it an MS?
             table(file_name)
             data_class = SimDataMS
-            print 'Simulating from MS file.'
         except RuntimeError:
             # not an MS file either
             print 'File does not exist, or is not of compatible format! (Must be H5 or MS.)'
@@ -57,7 +56,7 @@ def init_simdata(file_name, **kwargs):
         def __init__(self, file_name, **kwargs):
             data_class.__init__(self, file_name, **kwargs)
        
-        def write(self,data,corrprod_mask,tmask=None,cmask=None):
+        def write(self,ts,data):
             """
             Writes data into file
        
@@ -69,7 +68,7 @@ def init_simdata(file_name, **kwargs):
             cmask         : channel mask for channels to write
             """
             
-            super(SimData, self).write(data,corrprod_mask,tmask,cmask)
+            super(SimData, self).write(ts,data)
        
         def setup_ts(self,ts):
             """
@@ -143,6 +142,7 @@ class SimDataMS(table):
     data_mask     : Mask for selecting data, numpy array
     intent_to_tag : Dictionary of mappings from MS intents to scan intent tags
     num_scans     : Total number of scans in the MS data set
+    corr_prods    : Correlation product mapping
 
     Note
     ----
@@ -192,7 +192,7 @@ class SimDataMS(table):
         time = self.getcol('TIME')
         a1 = self.getcol('ANTENNA1')[time==time[0]]
         a2 = self.getcol('ANTENNA2')[time==time[0]]
-        corr_prods = np.array([[antlist[a1i],antlist[a2i]] for a1i,a2i in zip(a1,a2)])
+        corr_prods_nopol = np.array([[antlist[a1i],antlist[a2i]] for a1i,a2i in zip(a1,a2)])
 
         npols = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')
         if npols == 4: 
@@ -204,11 +204,10 @@ class SimDataMS(table):
         else:
             raise ValueError('Weird polarisation setup!')
 
-        corr_prods_pol = np.array([[c1+p1,c2+p2] for c1,c2 in corr_prods for p1,p2 in pol_order])
+        corr_prods = np.array([[c1+p1,c2+p2] for c1,c2 in corr_prods_nopol for p1,p2 in pol_order])
 
-        print corr_prods_pol
         # need pol here too!!
-        param_dict['cbf_bls_ordering'] = corr_prods_pol
+        param_dict['cbf_bls_ordering'] = corr_prods
         param_dict['cbf_sync_time'] = 0.0
         param_dict['experiment_id'] = self.file_name.split('.')[0].split('/')[-1]
         param_dict['config'] = {'MS_simulator':True}
@@ -315,7 +314,7 @@ class SimDataH5(katdal.H5DataV2):
         H5DataV2.__init__(self, file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
    
-    def write(self,data,corrprod_mask,tmask=None,cmask=None):
+    def write(self,ts,data):
         """
         Writes data into h5 file.
    
@@ -326,13 +325,41 @@ class SimDataH5(katdal.H5DataV2):
         tmask         : time mask for timestamps to write
         cmask         : channel mask for channels to write
         """
-        
-        data_indices = np.squeeze(np.where(tmask)) if np.any(tmask) else np.squeeze(np.where(self._time_keep))
-        ti, tf = min(data_indices), max(data_indices)+1 
-        data_indices = np.squeeze(np.where(cmask)) if np.any(cmask) else np.squeeze(np.where(self._freq_keep))
-        ci, cf = min(data_indices), max(data_indices)+1    
-        self._vis[ti:tf,ci:cf,corrprod_mask,0] = data.real
-        self._vis[ti:tf,ci:cf,corrprod_mask,1] = data.imag
+        data_times, data_vis, data_flags = data
+
+        vis = np.array(data_vis)
+        times = np.array(data_times)
+        flags = np.array(data_flags)
+        # number of timestamps in collected data
+        ti_max = len(data_times)
+
+        # check for missing timestamps
+        if not np.all(self.timestamps[0:ti_max] == times):
+            if np.all(self.timestamps[0:ti_max-1] == times[0:-1]):
+                print 'SPEAD error: extra final L1 time stamp. Ignoring last time stamp.'
+                ti_max += -1
+            else:
+                raise ValueError('L1 array and h5 array have different timestamps!')
+
+        cal_bls_ordering = ts.cal_bls_ordering
+        cal_pol_ordering = ts.cal_pol_ordering
+        bchan = ts.cal_bchan
+        echan = ts.cal_echan
+
+        # pack data into h5 correlation product list
+        #    by iterating through h5 correlation product list
+        for i, [ant1, ant2] in enumerate(self.corr_products):
+
+            # find index of this pair in the cal product array
+            antpair = [ant1[:-1],ant2[:-1]]
+            cal_indx = cal_bls_ordering.index(antpair)
+            # find index of this element in the pol dimension
+            polpair = [ant1[-1],ant2[-1]]
+            pol_indx = cal_pol_ordering.index(polpair)
+
+            # vis shape is (ntimes, nchan, ncorrprod) for real and imag
+            self._vis[0:ti_max,bchan:echan,i,0] = vis[0:ti_max,:,pol_indx,cal_indx].real
+            self._vis[0:ti_max,bchan:echan,i,1] = vis[0:ti_max,:,pol_indx,cal_indx].imag
    
     def get_params(self):
         """
