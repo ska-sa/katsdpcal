@@ -19,7 +19,7 @@ from pyrap.tables import table
 #--- simdata classes
 #--------------------------------------------------------------------------------------------------
 
-def init_simdata(file_name):
+def init_simdata(file_name, **kwargs):
     """
     Initialise simulated data class, using either h5 or MS files for simulation.
 
@@ -27,6 +27,8 @@ def init_simdata(file_name):
     ----------
     file_name : name of data file to use for simulation, strong
     """
+
+    print file_name, kwargs
 
     try:
         # Is it a katdal H5 file?
@@ -52,8 +54,8 @@ def init_simdata(file_name):
         Subclasses either SimDataH5 or SimDataMS, depending on whether an H5 or MS file is used for simulation.
         """
         
-        def __init__(self, file_name):
-            data_class.__init__(self,file_name)
+        def __init__(self, file_name, **kwargs):
+            data_class.__init__(self, file_name, **kwargs)
        
         def write(self,data,corrprod_mask,tmask=None,cmask=None):
             """
@@ -67,7 +69,7 @@ def init_simdata(file_name):
             cmask         : channel mask for channels to write
             """
             
-            print '*'
+            super(SimData, self).write(data,corrprod_mask,tmask,cmask)
        
         def setup_ts(self,ts):
             """
@@ -118,7 +120,7 @@ def init_simdata(file_name):
             end_transmit(tx)
 
     #---------------------------------------------------------------------------------------------
-    return SimData(file_name)
+    return SimData(file_name, **kwargs)
 
 #--------------------------------------------------------------------------------------------------
 #--- SimDataMS class
@@ -147,7 +149,7 @@ class SimDataMS(table):
     MS files for the simulator currently need to be full polarisation and full correlation (including auto-corrs)
     """
     
-    def __init__(self, file_name):
+    def __init__(self, file_name, **kwargs):
         table.__init__(self, file_name)
         self.data_mask = None
         self.file_name = file_name
@@ -308,8 +310,9 @@ class SimDataH5(katdal.H5DataV2):
     num_scans     : Total number of scans in the MS data set
     """
     
-    def __init__(self, file_name):
-        H5DataV2.__init__(self, file_name)
+    def __init__(self, file_name, **kwargs):
+        mode = kwargs['mode'] if 'mode' in kwargs else 'r'
+        H5DataV2.__init__(self, file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
    
     def write(self,data,corrprod_mask,tmask=None,cmask=None):

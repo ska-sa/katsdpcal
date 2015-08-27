@@ -18,9 +18,9 @@ def parse_opts():
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-def receive_l1(spead_stream, return_data=False):
+def accumulate_l1(spead_stream, return_data=False):
     """
-    Read L1 data from spead stream
+    Read L1 data from spead stream and accumulate it into a list
 
     Inputs:
     -------
@@ -75,9 +75,14 @@ if __name__ == '__main__':
     spead_stream = spead.TransportUDPrx(opts.l1_spectral_spead[0].port)
     # recieve stream and accumulate data into arrays
     return_data = True if opts.file else False
-    l1_data = receive_l1(spead_stream, return_data=return_data)
-    # need some info from the telstate
-    ts = opts.telstate
+    l1_data = accumulate_l1(spead_stream, return_data=return_data)
+
+
+
+
+
+
+
     if opts.file:
         new_file = '{0}_L1.h5'.format(opts.file.split('.')[0],)
         if not ts.cal_full_l1:
@@ -87,13 +92,35 @@ if __name__ == '__main__':
                 print 'WARNING: L1 file {0} already exists. Over writing it.'.format(new_file,)
             shutil.copyfile(opts.file,new_file)
 
+            # set up file to write the data into
+            data = init_simdata(new_file,mode='r+')
+            print '************'
+
+            # need some info from the telstate
+            ts = opts.telstate
+            # get necessary info from telescope state
+            corr_products = f.corr_products
+            bchan = ts.cal_bchan
+            echan = ts.cal_echan
+            chan_slice = slice(bchan, echan,1)
+
+            data_times, data_vis, data_flags = l1_data
+            # number of timestamps in collected data
+            ti_max = len(data_times)
+
+            t_slice = slice(0,ti_max,1)
+
+            data.write(data,corr_products,tmask=t_slice,cmask=chan_slice)
+
+            pri
+            #break
+
             import katdal
             f = katdal.open(new_file,mode='r+')
 
-            data_times, data_vis, data_flags = l1_data
 
-            # number of timestamps in collected data
-            ti_max = len(data_times)
+
+
 
             vis = np.array(data_vis)
             times = np.array(data_times)
@@ -107,8 +134,7 @@ if __name__ == '__main__':
                 else:
                     raise ValueError('L1 array and h5 array have different timestamps!')
 
-            # get necessary info from telescope state
-            corr_products = f.corr_products
+
             cal_bls_ordering = ts.cal_bls_ordering
             cal_pol_ordering = ts.cal_pol_ordering
             bchan = ts.cal_bchan
