@@ -5,6 +5,7 @@
 import spead64_48 as spead
 
 from katsdptelstate import endpoint, ArgumentParser
+from katsdpcal.simulator import init_simdata
 
 import numpy as np
 import shutil
@@ -77,14 +78,13 @@ if __name__ == '__main__':
     return_data = True if opts.file else False
     l1_data = accumulate_l1(spead_stream, return_data=return_data)
 
-
-
-
-
-
-
+    # if specified, write the output back to the file
     if opts.file:
         new_file = '{0}_L1.h5'.format(opts.file.split('.')[0],)
+
+        # need some info from the telstate
+        ts = opts.telstate
+
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
         else:
@@ -93,66 +93,7 @@ if __name__ == '__main__':
             shutil.copyfile(opts.file,new_file)
 
             # set up file to write the data into
-            data = init_simdata(new_file,mode='r+')
-            print '************'
+            datafile = init_simdata(new_file,mode='r+')
 
-            # need some info from the telstate
-            ts = opts.telstate
-            # get necessary info from telescope state
-            corr_products = f.corr_products
-            bchan = ts.cal_bchan
-            echan = ts.cal_echan
-            chan_slice = slice(bchan, echan,1)
-
-            data_times, data_vis, data_flags = l1_data
-            # number of timestamps in collected data
-            ti_max = len(data_times)
-
-            t_slice = slice(0,ti_max,1)
-
-            data.write(data,corr_products,tmask=t_slice,cmask=chan_slice)
-
-            pri
-            #break
-
-            import katdal
-            f = katdal.open(new_file,mode='r+')
-
-
-
-
-
-            vis = np.array(data_vis)
-            times = np.array(data_times)
-            flags = np.array(data_flags)
-
-            # check for missing timestamps
-            if not np.all(f.timestamps[0:ti_max] == times):
-                if np.all(f.timestamps[0:ti_max-1] == times[0:-1]):
-                    print 'SPEAD error: extra final L1 time stamp. Ignoring last time stamp.'
-                    ti_max += -1
-                else:
-                    raise ValueError('L1 array and h5 array have different timestamps!')
-
-
-            cal_bls_ordering = ts.cal_bls_ordering
-            cal_pol_ordering = ts.cal_pol_ordering
-            bchan = ts.cal_bchan
-            echan = ts.cal_echan
-
-            # pack data into h5 correlation product list
-            #    by iterating through h5 correlation product list
             print 'Writing data to h5 file {0}'.format(new_file)
-            for i, [ant1, ant2] in enumerate(corr_products):
-
-                # find index of this pair in the cal product array
-                antpair = [ant1[:-1],ant2[:-1]]
-                cal_indx = cal_bls_ordering.index(antpair)
-                # find index of this element in the pol dimension
-                polpair = [ant1[-1],ant2[-1]]
-                pol_indx = cal_pol_ordering.index(polpair)
-
-                # vis shape is (ntimes, nchan, ncorrprod) for real and imag
-                f._vis[0:ti_max,bchan:echan,i,0] = vis[0:ti_max,:,pol_indx,cal_indx].real
-                f._vis[0:ti_max,bchan:echan,i,1] = vis[0:ti_max,:,pol_indx,cal_indx].imag
-
+            datafile.write(ts,l1_data)
