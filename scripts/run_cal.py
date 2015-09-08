@@ -193,13 +193,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Path under which to save pipeline report
     """
 
-    # debug print outs
-    print '\nTelescope state: '
-    for k in ts.keys(): print k
-    print '\nTelescope state config graph: '
-    print_dict(ts.config)
-    print
-
     # extract data shape parameters from TS
     #  antenna_mask and cbf_n_chans come from MC config if present, else try the TS 
     try:
@@ -220,6 +213,13 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     setup_ts(ts)
     # save L1 transmit preference to TS
     ts.add('cal_full_l1', full_l1, immutable=True)
+
+    # debug print outs
+    print '\nTelescope state: '
+    for k in ts.keys(): print k
+    print '\nTelescope state config graph: '
+    print_dict(ts.config)
+    print
 
     npol = 4
     nant = len(antenna_mask)
