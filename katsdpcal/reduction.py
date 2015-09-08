@@ -79,6 +79,7 @@ def get_tracks(data, ts):
                 stop_indx.append(nearest_time_indx-1)
         elif 'slew' in state:
             stop_indx.append(nearest_time_indx-1)
+        prev_state = state
 
     # remove first slew time from stop indices
     if len(stop_indx) > 0:
@@ -190,7 +191,7 @@ def pipeline(data, ts, task_name='pipeline'):
     track_slices = get_tracks(data,ts)
     target_slices = []
 
-    for scan_slice  in reversed(track_slices):
+    for scan_slice in reversed(track_slices):
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
