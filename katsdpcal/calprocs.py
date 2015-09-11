@@ -813,7 +813,7 @@ def get_pol_bls(bls_ordering,pol):
             pol_bls_ordering[nbl*i+b] = bls[0]+p[0], bls[1]+p[1]
     return pol_bls_ordering
 
-def get_reordering(antlist,bls_ordering):
+def get_reordering(antlist,bls_ordering,output_order_bls=None,output_order_pol=None):
     """
     Determine reordering necessary to change given bls_ordering into desired ordering
 
@@ -821,6 +821,8 @@ def get_reordering(antlist,bls_ordering):
     -------
     antlist : list of antennas, string shape(nants), or string of csv antenna names
     bls_ordering : list of correlation products, string shape(nbl,2)
+    output_order_bls : desired baseline output order, string shape(nbl,2), optional
+    output_order_pol : desired polarisation output order, string shape(npolcorr,2), optional
 
     Returns:
     --------
@@ -843,13 +845,18 @@ def get_reordering(antlist,bls_ordering):
     for b in bls_ordering_nopol:
         if not b in unique_bls: unique_bls.append(b)
 
-    # re-order into XC then AC
-    bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
-    bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
-
-    #   add polarisation indices
-    pol_order = [['h','h'],['v','v'],['h','v'],['v','h']]
-    bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
+    # determine output ordering:
+    # default polarisation ordering
+    pol_order = [['h','h'],['v','v'],['h','v'],['v','h']] if output_order_pol==None else output_order_pol
+    if output_order_bls == None:
+        # default output order is XC then AC
+        bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
+        # add AC to bls list
+        bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
+        bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
+    else:
+        bls_pol_wanted = get_pol_bls(output_order_bls,pol_order)
+    # note: bls_pol_wanted must be an np array for list equivalence below
 
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
@@ -858,6 +865,54 @@ def get_reordering(antlist,bls_ordering):
     #print bls_ordering[ordering]
     #print bls_ordering[ordering].reshape([4,nbl,2])
     return ordering, bls_wanted, pol_order
+
+def get_reordering_nopol(antlist,bls_ordering,output_order_bls=None):
+    """
+    Determine reordering necessary to change given bls_ordering into desired ordering
+
+    Inputs:
+    -------
+    antlist : list of antennas, string shape(nants), or string of csv antenna names
+    bls_ordering : list of correlation products, string shape(nbl,2)
+    output_order_bls : desired baseline output order, string shape(nbl,2), optional
+
+    Returns:
+    --------
+    ordering : ordering array necessary to change given bls_ordering into desired ordering, numpy array shape(nbl*4, 2)
+    bls_wanted : ordering of baselines, without polarisation, list shape(nbl, 2)
+
+    """
+    # convert antlist to list, if it is a csv string
+    if isinstance(antlist,str): antlist = antlist.split(',')
+    nants = len(antlist)
+    nbl = nants*(nants+1)/2
+    # convert bls_ordering to a list, if it is not a list (e.g. np.ndarray)
+    if not isinstance(bls_ordering,list): bls_ordering = bls_ordering.tolist()
+
+    # find unique elements
+    unique_bls = []
+    for b in bls_ordering:
+        if not b in unique_bls: unique_bls.append(b)
+
+    # defermine output ordering:
+    if output_order_bls == None:
+        # default output order is XC then AC
+        bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
+        # add AC to bls list
+        bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
+    else:
+        # convert to list in case it is not a list
+        bls_wanted = output_order_bls
+    # note: bls_wanted must be an np array for list equivalence below
+    bls_wanted = np.array(bls_wanted)
+
+    # find ordering necessary to change given bls_ordering into desired ordering
+    # note: ordering must be a numpy array to be used for indexing later
+    ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_wanted])
+    # how to use this:
+    #print bls_ordering[ordering]
+    #print bls_ordering[ordering].reshape([4,nbl,2])
+    return ordering, bls_wanted
 
 def get_bls_lookup(antlist,bls_ordering):
     """
