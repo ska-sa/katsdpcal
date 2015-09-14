@@ -5,7 +5,7 @@
 import spead64_48 as spead
 
 from katsdptelstate import endpoint, ArgumentParser
-from katsdpcal.simulator import init_simdata
+from katsdpcal.simulator import init_simdata, get_file_format
 
 import numpy as np
 import shutil
@@ -80,7 +80,10 @@ if __name__ == '__main__':
 
     # if specified, write the output back to the file
     if opts.file:
-        new_file = '{0}_L1.h5'.format(opts.file.split('.')[0],)
+        file_base = opts.file.split('.')[0:-1]
+        file_base = '.'.join(file_base)
+        file_type = opts.file.split('.')[-1]
+        new_file = '{0}_L1.{1}'.format(file_base,file_type)
 
         # need some info from the telstate
         ts = opts.telstate
@@ -88,12 +91,13 @@ if __name__ == '__main__':
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
         else:
-            if os.path.isfile(new_file):
-                print 'WARNING: L1 file {0} already exists. Over writing it.'.format(new_file,)
-            shutil.copyfile(opts.file,new_file)
+            if os.path.isfile(new_file) or os.path.isdir(new_file):
+                print 'WARNING: L1 data file {0} already exists. Over writing it.'.format(new_file,)
+                shutil.rmtree(new_file)
+            shutil.copytree(opts.file,new_file)
 
             # set up file to write the data into
             datafile = init_simdata(new_file,mode='r+')
 
-            print 'Writing data to h5 file {0}'.format(new_file)
+            print 'Writing data to {0} file {1}'.format(file_type, new_file)
             datafile.write(ts,l1_data)
