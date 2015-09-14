@@ -6,7 +6,8 @@ for testing of the MeerKAT pipeline.
 """
 
 import katdal
-from katdal import H5DataV2
+from calprocs import get_reordering_nopol
+
 import pickle
 import os
 import numpy as np
@@ -79,8 +80,6 @@ def init_simdata(file_name, **kwargs):
             flags = np.array(data_flags)
             # number of timestamps in collected data
             ti_max = len(data_times)
-
-            print 'ts: ', self.timestamps
 
             # check for missing timestamps
             if not np.all(self.timestamps[0:ti_max] == times):
@@ -200,9 +199,7 @@ class SimDataMS(table):
    
         ------------
         """
-        ordermask, desired = calprocs.get_reordering_nopol(self.ants,self.bls_ordering,output_order_bls=cal_bls_ordering)
-        print ordermask, desired
-
+        ordermask, desired = get_reordering_nopol(self.ants,cal_bls_ordering,output_order_bls=self.bls_ordering)
 
         pol_num = {'h': 0, 'v': 1}
         pol_types = {'hh': 9, 'vv': 12, 'hv': 10, 'vh': 11}
@@ -212,17 +209,15 @@ class SimDataMS(table):
         poltable.putcol('CORR_TYPE',pol_type_array)
         poltable.putcol('CORR_PRODUCT',pol_index_array)
 
-
         ms_sorted = self.sort('TIME')
         # write data timestamp by timestamp
-        print 'ti_max: ', ti_max
         corrprod_indices = np.array([[self.ants.index(a1), self.ants.index(a2)] for a1, a2 in cal_bls_ordering])
 
         data = None
         for ti, ms_time in enumerate(ms_sorted.iter('TIME')):
             if data == None: 
                 data = np.zeros_like(ms_time.getcol('DATA'))
-            data[ordermask,bchan:echan,:] = np.rollaxis(1000.*vis[ti],-1,0)
+            data[:,bchan:echan,:] = np.rollaxis(vis[ti],-1,0)[ordermask,...]
             ms_time.putcol('DATA',data)
             # break when we have reached the max timestamp index in the vis data
             if ti == ti_max-1: break
