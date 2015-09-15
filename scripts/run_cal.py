@@ -195,16 +195,15 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     print 'opt params: ', antenna_mask, cbf_n_chans
 
-    # extract data shape parameters from TS
-    #  antenna_mask and cbf_n_chans come from MC config if present, else try the TS 
-    try:
-        if antenna_mask is None: antenna_mask = ts.antenna_mask.split(',')
-    except:
+    # extract data shape parameters 
+    #   argument parser traversed TS config to find these
+    if antenna_mask != None:
+        ts.antenna_mask = antenna_mask
+    else:
         raise RuntimeError("No antenna_mask set.")
-    try:
-        if cbf_n_chans is None: cbf_n_chans = ts.cbf_n_chans
-        nchan = cbf_n_chans
-    except:
+    if cbf_n_chans != None: 
+        ts.cbf_n_chans = cbf_n_chans
+    else:
         raise RuntimeError("No cbf_n_chans set.")
 
     # initialise TS from default parameter file
@@ -236,12 +235,12 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     # plus minimal extra for scan transition indices
     scale_factor = 8. + 1. + 1.  # vis + flags + weights
     time_factor = 8.
-    array_length = buffer_maxsize/((scale_factor*nchan*npol*nbl) + time_factor)
+    array_length = buffer_maxsize/((scale_factor*cbf_n_chans*npol*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
 
     # Set up empty buffers
-    buffer_shape = [array_length,nchan,npol,nbl]
+    buffer_shape = [array_length,cbf_n_chans,npol,nbl]
     buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
     # set up conditions for the buffers
