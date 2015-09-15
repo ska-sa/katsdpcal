@@ -193,6 +193,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Path under which to save pipeline report
     """
 
+    print 'opt params: ', antenna_mask, cbf_n_chans
+
     # extract data shape parameters from TS
     #  antenna_mask and cbf_n_chans come from MC config if present, else try the TS 
     try:
