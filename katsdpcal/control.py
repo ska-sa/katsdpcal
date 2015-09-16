@@ -1,4 +1,4 @@
-import spead64_48 as spead
+import spead2
 import time
 
 from katsdpcal.reduction import pipeline
@@ -28,7 +28,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
     class accumulator_control(control_task):
         """
-        Task (Process or Thread) which accumutates data from spead into numpy arrays
+        Task (Process or Thread) which accumutates data from SPEAD into numpy arrays
         """
 
         def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate):
@@ -61,12 +61,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # set up logging adapter for the task
             self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
 
-        def run(self):
-            """
-             Task (Process or Thread) run method. Append random vis to the vis list
-            at random time.
-            """
-            # Initialise SPEAD stream
+            # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -74,8 +69,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             if self.l0_endpoint.multicast_subscribe(sock):
                 self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
 
-            spead_stream = spead.TransportUDPrx(self.l0_endpoint.port)
+            self.rx  = spead2.recv.Stream(spead2.ThreadPool(4), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            self.rx.add_udp_reader(self.l0_endpoint.port)
 
+        def run(self):
+            """
+             Task (Process or Thread) run method. Append random vis to the vis list
+            at random time.
+            """
             # if we are usig multiprocessing, view ctypes array in numpy format
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
 
@@ -94,7 +95,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
                 self.accumulator_logger.info('accumulating data into buffer %d...' %(current_buffer,))
-                max_ind = self.accumulate(spead_stream, self.buffers[current_buffer])
+                max_ind = self.accumulate(current_buffer)
                 self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                 # awaken pipeline task that was waiting for condition lock
@@ -132,10 +133,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             """
             Send stop packed to force shut down of SPEAD receiver
             """
-            self.accumulator_logger.info('sending stop packet')
-            # send the stop only to the local receiver
-            tx = spead.Transmitter(spead.TransportUDPtx('127.0.0.1',self.l0_endpoint.port))
-            tx.end()
+            self.accumulator_logger.info('stop SPEAD receiver')
+            self.rx.stop()
 
         def buffers_to_numpy(self):
             """
@@ -162,7 +161,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.telstate.add('cal_pol_ordering',pol_order)
             self.telstate.add('cal_bls_lookup',bls_lookup)
 
-        def accumulate(self, spead_stream, data_buffer):
+        def accumulate(self, buffer_index):
             """
             Accumulates spead data into arrays
                till **TBD** metadata indicates scan has stopped, or
@@ -175,13 +174,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                timestamp
             """
 
-            ig = spead.ItemGroup()
-
             start_flag = True
             array_index = -1
 
             prev_activity = 'none'
             prev_tags = 'none'
+
+            # set data buffer for writing
+            data_buffer = self.buffers[buffer_index]
 
             # get names of activity and target TS keys, using TS reference antenna
             target_key = '{0}_target'.format(self.telstate.cal_refant,)
@@ -192,7 +192,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             obs_end_flag = True
 
             # receive SPEAD stream
-            for heap in spead.iterheaps(spead_stream):
+            ig = spead2.ItemGroup()
+            for heap in self.rx:
                 ig.update(heap)
                 array_index += 1
 
@@ -212,7 +213,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
-                # if we are not receiving weights in the spead stream, fake them
+                # if we are not receiving weights in the SPEAD stream, fake them
                 if 'weights' in ig.keys():
                     data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
