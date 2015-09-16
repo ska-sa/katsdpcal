@@ -404,7 +404,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 # SPEAD helper functions
 # ---------------------------------------------------------------------------------------
 
-def end_transmitXXXX(spead_endpoint):
+def end_transmit(spead_endpoint):
     """
     Send stop packet to spead stream tx
 
@@ -412,8 +412,14 @@ def end_transmitXXXX(spead_endpoint):
     ----------
     spead_endpoint : endpoint to transmit to
     """
-    tx = spead.Transmitter(spead.TransportUDPtx(spead_endpoint.host,spead_endpoint.port))
-    tx.end()
+    config = spead2.send.StreamConfig(max_packet_size=9172)
+    tx = spead2.send.UdpStream(spead2.ThreadPool(),spead_endpoint.host,spead_endpoint.port,config)
+
+    flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    heap = spead2.Heap(flavour)
+    heap.add_end()
+
+    tx.send_heap(heap)
 
 
 

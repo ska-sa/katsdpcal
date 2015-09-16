@@ -141,15 +141,6 @@ class SimData(katdal.H5DataV2):
         print 'Slew timestamps: ', slew_ts
         print 'Total timestamps:', total_ts
                 
-        end_transmit(tx)
-                    
-def end_transmit(tx):
-    """
-    Send stop packet to spead stream tx
-    
-    Parameters
-    ----------
-    tx       : spead stream
-    """
-    tx.end()
+        # end transmission
+        tx.end()
     
