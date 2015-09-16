@@ -11,7 +11,7 @@ from katdal import H5DataV2
 import pickle
 import os
 import numpy as np
-import spead64_48 as spead
+import spead2
 import time
 from random import random
 
@@ -78,7 +78,8 @@ class SimData(katdal.H5DataV2):
         
         print 'TX: Initializing...'
         # rate limit transmission to work on Laura's laptop
-        tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
+        config = spead2.send.StreamConfig(max_packet_size=9172, rate=spead_rate)
+        tx = spead2.send.UdpStream(spead2.ThreadPool(),l0_endpoint.host,l0_endpoint.port,config)
 
         num_scans = len(self.scan_indices)
         # if the maximum number of scans to transmit has not been specified, set to total number of scans
@@ -111,16 +112,27 @@ class SimData(katdal.H5DataV2):
             scan_flags = self.flags()[:]
             scan_weights = self.weights()[:]
 
-            # transmit data
+            # set up ig items, if they have not been set up yet
+            if 'correlator_data' not in ig:
+                # set up item group with items
+                ig.add_item(id=None, name='correlator_data', description="Visibilities",
+                     shape=scan_data[0].shape, dtype=scan_vis.dtype)
+                ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                     shape=scan_flags[0].shape, dtype=scan_flags.dtype)
+                # for now, just transmit flags as placeholder for weights
+                ig.add_item(id=None, name='weights', description="Weights for visibilities",
+                     shape=scan_flags[0].shape, dtype=scan_weights.dtype)
+                ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                     shape=(), dtype=None, format=[('f', 64)])
+
+            # transmit data timestamp by timestamp
             for i in range(scan_data.shape[0]): # time axis
-
-                tx_time = self.timestamps[i] # time
-                tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
-                tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
-                tx_weights = scan_weights[i,:,:]
-
-                # transmit timestamps, vis, flags, weights
-                transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
+                # transmit timestamps, vis, flags and weights
+                ig['correlator_data'].value = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
+                ig['flags'].value = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
+                ig['weights'].value = scan_weights[i,:,:]
+                ig['timestamp'].value = self.timestamps[i] # time
+                tx.send_heap(ig.get_heap())
 
             if scan_ind+1 == max_scans:
                 break
@@ -140,33 +152,4 @@ def end_transmit(tx):
     tx       : spead stream
     """
     tx.end()
-    
-def transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights):
-    """
-    Send spead packet containing time, visibility, flags and array state
-    
-    Parameters
-    ----------
-    tx         : spead stream
-    tx_time    : timestamp, float
-    tx_vis     : visibilities, complex array 
-    tx_flags   : flags, int array
-    tx_weights : weights, float array
-    """
-    ig = spead.ItemGroup()
-
-    ig.add_item(name='timestamp', description='Timestamp',
-        shape=[], fmt=spead.mkfmt(('f',64)),
-        init_val=tx_time)
-
-    ig.add_item(name='correlator_data', description='Full visibility array',
-        init_val=tx_vis)
-
-    ig.add_item(name='flags', description='Flag array',
-        init_val=tx_flags)
-        
-    ig.add_item(name='weights', description='Weight array',
-        init_val=tx_weights)
-
-    tx.send_heap(ig.get_heap())
     
