@@ -200,6 +200,9 @@ class SimDataMS(table):
         ------------
         """
         ordermask, desired = get_reordering_nopol(self.ants,cal_bls_ordering,output_order_bls=self.bls_ordering)
+        print cal_bls_ordering,self.bls_ordering
+        print ordermask, desired
+
 
         pol_num = {'h': 0, 'v': 1}
         pol_types = {'hh': 9, 'vv': 12, 'hv': 10, 'vh': 11}
@@ -217,7 +220,12 @@ class SimDataMS(table):
         for ti, ms_time in enumerate(ms_sorted.iter('TIME')):
             if data == None: 
                 data = np.zeros_like(ms_time.getcol('DATA'))
-            data[:,bchan:echan,:] = np.rollaxis(vis[ti],-1,0)[ordermask,...]
+            #print '**', data.shape, vis[ti].shape
+            #print ordermask
+            #print vis[ti][...,ordermask].shape
+            #print np.rollaxis(vis[ti][...,ordermask],-1,0).shape
+            #print
+            data[:,bchan:echan,:] = np.rollaxis(vis[ti][...,ordermask],-1,0)
             ms_time.putcol('DATA',data)
             # break when we have reached the max timestamp index in the vis data
             if ti == ti_max-1: break

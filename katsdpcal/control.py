@@ -157,6 +157,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
             # determine lookup list for baselines
             bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)
+            print '>>>>>>', self.ordering, bls_order, pol_order
+            print '$$$$$$$',
+            for i, j in enumerate(self.telstate.cbf_bls_ordering):
+                print i, j, ' - ',
+            print
             # save these to the TS for use in the pipeline/elsewhere
             self.telstate.add('cal_bls_ordering',bls_order)
             self.telstate.add('cal_pol_ordering',pol_order)
