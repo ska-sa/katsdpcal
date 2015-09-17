@@ -199,11 +199,11 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     #   argument parser traversed TS config to find these
     if antenna_mask != None:
         ts.antenna_mask = antenna_mask
-    else:
+    elif 'antenna_mask' not in ts:
         raise RuntimeError("No antenna_mask set.")
-    if cbf_n_chans != None: 
+    if cbf_n_chans != None:
         ts.cbf_n_chans = cbf_n_chans
-    else:
+    elif 'cbf_n_chans' not in ts: 
         raise RuntimeError("No cbf_n_chans set.")
 
     # initialise TS from default parameter file

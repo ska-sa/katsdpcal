@@ -94,7 +94,7 @@ def setup_ts(ts):
     antenna_mask
 
     Assumed ending ts entries (all immutable)
-    antenna_mask          - csv string of antennas present in the data
+    antenna_mask          - list or csv string of antennas present in the data
     cal_antlist           - list of antennas present in the data
     cal_preferred_refants - ordered list of refant preference
     cal_refant            - reference antenna
@@ -102,7 +102,7 @@ def setup_ts(ts):
 
     # cal_antlist
     #   this should not be pre-set (determine from antenna_mask, which is pre-set)
-    antlist = [ant.strip() for ant in ts.antenna_mask.split(',')]
+    if isinstance(ts.antenna_mask, str): antlist = [ant.strip() for ant in ts.antenna_mask.split(',')]
     ts.add('cal_antlist',antlist,immutable=True)
 
     # cal_preferred_refants
