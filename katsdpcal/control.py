@@ -1,5 +1,6 @@
 import spead2
-import time
+import spead2.send
+import spead2.recv
 
 from katsdpcal.reduction import pipeline
 from katsdpcal import calprocs
@@ -7,6 +8,7 @@ from katsdptelstate.telescope_state import TelescopeState
 
 import socket
 import numpy as np
+import time
 
 import logging
 logger = logging.getLogger(__name__)
@@ -61,16 +63,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # set up logging adapter for the task
             self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
 
-            # Initialise SPEAD receiver
-            self.accumulator_logger.info('Initializing SPEAD receiver')
-
+            # set up multicask sockets
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             if self.l0_endpoint.multicast_subscribe(sock):
                 self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
-
-            self.rx = spead2.recv.Stream(spead2.ThreadPool(4), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            self.rx.add_udp_reader(self.l0_endpoint.port)
 
         def run(self):
             """
@@ -79,6 +76,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             """
             # if we are usig multiprocessing, view ctypes array in numpy format
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
+
+            # Initialise SPEAD receiver
+            self.accumulator_logger.info('Initializing SPEAD receiver')
+            rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            rx.add_udp_reader(self.l0_endpoint.port, max_size=9172, buffer_size=0)
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
@@ -95,7 +97,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
                 self.accumulator_logger.info('accumulating data into buffer %d...' %(current_buffer,))
-                max_ind = self.accumulate(current_buffer)
+                max_ind = self.accumulate(rx, current_buffer)
                 self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                 # awaken pipeline task that was waiting for condition lock
@@ -134,7 +136,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             Send stop packed to force shut down of SPEAD receiver
             """
             self.accumulator_logger.info('stop SPEAD receiver')
-            self.rx.stop()
+            # send the stop only to the local receiver
+            end_transmit('127.0.0.1',self.l0_endpoint.port)
 
         def buffers_to_numpy(self):
             """
@@ -161,7 +164,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.telstate.add('cal_pol_ordering',pol_order)
             self.telstate.add('cal_bls_lookup',bls_lookup)
 
-        def accumulate(self, buffer_index):
+        def accumulate(self, rx, buffer_index):
             """
             Accumulates spead data into arrays
                till **TBD** metadata indicates scan has stopped, or
@@ -193,29 +196,29 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # receive SPEAD stream
             ig = spead2.ItemGroup()
-            for heap in self.rx:
+            for heap in rx:
                 ig.update(heap)
                 array_index += 1
 
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
-                    start_time = ig['timestamp'] + cbf_sync_time
+                    start_time = ig['timestamp'].value + cbf_sync_time
                     start_flag = False
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
 
                 # get activity and target tag from TS
-                data_ts = ig['timestamp'] + cbf_sync_time
+                data_ts = ig['timestamp'].value + cbf_sync_time
                 activity = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0][0]
                 target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
 
                 # reshape data and put into relevent arrays
-                data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
-                data_buffer['flags'][array_index,:,:,:] = ig['flags'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                data_buffer['flags'][array_index,:,:,:] = ig['flags'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 # if we are not receiving weights in the SPEAD stream, fake them
                 if 'weights' in ig.keys():
-                    data_buffer['weights'][array_index,:,:,:] = ig['weights'][:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                    data_buffer['weights'][array_index,:,:,:] = ig['weights'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
@@ -230,7 +233,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
-                duration = (ig['timestamp']+ cbf_sync_time)-start_time
+                duration = (ig['timestamp'].value+ cbf_sync_time)-start_time
                 if duration>2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
                     obs_end_flag = False
@@ -282,10 +285,10 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self.name = 'Pipeline_task_'+str(pipenum)
             self._stop = control_method.Event()
             self.telstate = telstate
-            config = spead2.send.StreamConfig(max_packet_size=9172, rate=l1_rate)
-            self.tx = spead2.send.UdpStream(spead2.ThreadPool(),l1_endpoint.host,l1_endpoint.port,config)
             self.data_shape = data_shape
             self.full_l1 = telstate.cal_full_l1
+            self.l1_rate = l1_rate
+            self.l1_endpoint = l1_endpoint
 
             # set up logging adapter for the task
             self.pipeline_logger = TaskLoggingAdapter(logger, {'connid': self.name})
@@ -347,13 +350,16 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
         def run_pipeline(self):
             # run pipeline calibration
             target_slices = pipeline(self.data,self.telstate,task_name=self.name)
+
             # send data to L1 SPEAD if necessary
+            config = spead2.send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
+            tx = spead2.send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config, buffer_size=0)
             if self.full_l1 or target_scans != []:
                 self.pipeline_logger.info('Transmit L1 data')
-                self.data_to_SPEAD(target_slices)
+                self.data_to_SPEAD(target_slices, tx)
                 self.pipeline_logger.info('End transmit of L1 data')
 
-        def data_to_SPEAD(self, target_slices):
+        def data_to_SPEAD(self, target_slices, tx):
             """
             Sends data to SPEAD stream
 
@@ -367,16 +373,16 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 target_slices = [slice(0,self.data['max_index']+1)]
 
             # create up SPEAD item group
-            sd_flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            ig = spead2.send.ItemGroup(flavour=self.sd_flavour)
+            flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            ig = spead2.send.ItemGroup(flavour=flavour)
             # set up item group with items
             ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                 shape=self.data['vis'][0].shape, dtype=scan_vis.dtype)
+                 shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
             ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                 shape=self.data['flags'][0].shape, dtype=scan_flags.dtype)
+                 shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
             # for now, just transmit flags as placeholder for weights
             ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                 shape=self.data['flags'][0].shape, dtype=scan_weights.dtype)
+                 shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                  shape=(), dtype=None, format=[('f', 64)])
 
@@ -396,7 +402,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                     ig['flags'].value = scan_flags[i]
                     ig['weights'].value = scan_weights[i]
                     ig['timestamp'].value = scan_times[i]
-                    self.tx.send_heap(ig.get_heap())
+                    tx.send_heap(ig.get_heap())
 
     return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
 
@@ -404,7 +410,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 # SPEAD helper functions
 # ---------------------------------------------------------------------------------------
 
-def end_transmit(spead_endpoint):
+def end_transmit(host,port):
     """
     Send stop packet to spead stream tx
 
@@ -413,10 +419,10 @@ def end_transmit(spead_endpoint):
     spead_endpoint : endpoint to transmit to
     """
     config = spead2.send.StreamConfig(max_packet_size=9172)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(),spead_endpoint.host,spead_endpoint.port,config)
+    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-    heap = spead2.Heap(flavour)
+    heap = spead2.send.Heap(flavour)
     heap.add_end()
 
     tx.send_heap(heap)
