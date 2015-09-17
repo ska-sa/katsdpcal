@@ -12,6 +12,7 @@ import pickle
 import os
 import numpy as np
 import spead2
+import spead2.send
 import time
 from random import random
 
@@ -89,7 +90,9 @@ class SimData(katdal.H5DataV2):
             num_scans = max_scans
 
         total_ts, track_ts, slew_ts = 0, 0, 0
-        
+
+        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+        ig = spead2.send.ItemGroup(flavour=flavour)
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
@@ -112,21 +115,18 @@ class SimData(katdal.H5DataV2):
             scan_flags = self.flags()[:]
             scan_weights = self.weights()[:]
 
-            # set up ig items, if they have not been set up yet
-            if 'correlator_data' not in ig:
-                # set up item group with items
-                ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                     shape=scan_data[0].shape, dtype=scan_vis.dtype)
-                ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                     shape=scan_flags[0].shape, dtype=scan_flags.dtype)
-                # for now, just transmit flags as placeholder for weights
-                ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                     shape=scan_flags[0].shape, dtype=scan_weights.dtype)
-                ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                     shape=(), dtype=None, format=[('f', 64)])
-
             # transmit data timestamp by timestamp
             for i in range(scan_data.shape[0]): # time axis
+                ig.add_item(id=None, name='correlator_data', description="Visibilities",
+                    shape=scan_data[0].shape, dtype=scan_data[0].dtype)
+                ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                    shape=scan_flags[0].shape, dtype=scan_flags[0].dtype)
+                # for now, just transmit flags as placeholder for weights
+                ig.add_item(id=None, name='weights', description="Weights for visibilities",
+                    shape=scan_flags[0].shape, dtype=scan_weights[0].dtype)
+                ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                    shape=(), dtype=None, format=[('f', 64)])
+
                 # transmit timestamps, vis, flags and weights
                 ig['correlator_data'].value = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 ig['flags'].value = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
@@ -142,5 +142,5 @@ class SimData(katdal.H5DataV2):
         print 'Total timestamps:', total_ts
                 
         # end transmission
-        tx.end()
+        tx.send_heap(ig.get_end())
     
