@@ -80,7 +80,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
             rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            rx.add_udp_reader(self.l0_endpoint.port, max_size=9172, buffer_size=0)
+            rx.add_udp_reader(self.l0_endpoint.port, max_size=9172)
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
@@ -353,7 +353,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
             # send data to L1 SPEAD if necessary
             config = spead2.send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
-            tx = spead2.send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config, buffer_size=0)
+            tx = spead2.send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
             if self.full_l1 or target_scans != []:
                 self.pipeline_logger.info('Transmit L1 data')
                 self.data_to_SPEAD(target_slices, tx)
@@ -419,7 +419,7 @@ def end_transmit(host,port):
     spead_endpoint : endpoint to transmit to
     """
     config = spead2.send.StreamConfig(max_packet_size=9172)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config,buffer_size=0)
+    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
     heap = spead2.send.Heap(flavour)
