@@ -3,6 +3,7 @@
 # Simulate receiver for L1 data stream
 
 import spead2
+import spead2.recv
 
 from katsdptelstate import endpoint, ArgumentParser
 
@@ -47,10 +48,10 @@ def receive_l1(rx, return_data=False):
     for heap in rx: 
         ig.update(heap)
         
-        timestamp = ig['timestamp']
-        vis = ig['correlator_data']
-        flags = ig['flags']
-        weights = ig['weights']
+        timestamp = ig['timestamp'].value
+        vis = ig['correlator_data'].value
+        flags = ig['flags'].value
+        weights = ig['weights'].value
 
         if return_data:
             data_times.append(timestamp)
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     opts = parse_opts() 
     # Initialise spead receiver
     rx = spead2.recv.Stream(spead2.ThreadPool(4), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-    rx.add_udp_reader(opts.l1_spectral_spead[0].port)
+    rx.add_udp_reader(opts.l1_spectral_spead[0].port, max_size=9172, buffer_size=0)
     # recieve stream and accumulate data into arrays
     return_data = True if opts.h5file else False
     l1_data = receive_l1(rx, return_data=return_data)
@@ -102,9 +103,11 @@ if __name__ == '__main__':
 
             # check for missing timestamps
             if not np.all(f.timestamps[0:ti_max] == times):
-                if np.all(f.timestamps[0:ti_max-1] == times[0:-1]):
-                    print 'SPEAD error: extra final L1 time stamp. Ignoring last time stamp.'
-                    ti_max += -1
+                start_repeat = np.squeeze(np.where(times[ti_max-1]==times))[0]
+
+                if np.all(f.timestamps[0:start_repeat] == times[0:start_repeat]):
+                    print 'SPEAD error: {0} extra final L1 time stamp(s). Ignoring last time stamp(s).'.format(ti_max-start_repeat-1,)
+                    ti_max += -(ti_max-start_repeat-1)
                 else:
                     raise ValueError('L1 array and h5 array have different timestamps!')
 
