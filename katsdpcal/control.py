@@ -419,7 +419,7 @@ def end_transmit(host,port):
     spead_endpoint : endpoint to transmit to
     """
     config = spead2.send.StreamConfig(max_packet_size=9172)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config)
+    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config,buffer_size=0)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
     heap = spead2.send.Heap(flavour)
