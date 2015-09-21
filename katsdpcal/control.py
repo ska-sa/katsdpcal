@@ -63,17 +63,17 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # set up logging adapter for the task
             self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
 
-            # set up multicask sockets
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if self.l0_endpoint.multicast_subscribe(sock):
-                self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
-
         def run(self):
             """
              Task (Process or Thread) run method. Append random vis to the vis list
             at random time.
             """
+            # set up multicast sockets
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if self.l0_endpoint.multicast_subscribe(sock):
+                self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
+
             # if we are usig multiprocessing, view ctypes array in numpy format
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
 
@@ -372,7 +372,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 # use the highest index in the buffer that is filled with data
                 target_slices = [slice(0,self.data['max_index']+1)]
 
-            # create up SPEAD item group
+            # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
             ig = spead2.send.ItemGroup(flavour=flavour)
             # set up item group with items
