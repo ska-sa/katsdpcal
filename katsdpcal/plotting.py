@@ -1,5 +1,10 @@
-import matplotlib.pylab as plt
 import numpy as np
+
+# use Agg backend for when the pipeline is run without an X1 connection
+from matplotlib import use
+use('Agg', warn=False)
+
+import matplotlib.pylab as plt
 
 # for multiple page pdf plotting
 from matplotlib.backends.backend_pdf import PdfPages

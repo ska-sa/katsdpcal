@@ -6,12 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-import plotting
+import katsdpcal.plotting as plotting
 
-import matplotlib.pylab as plt
 import numpy as np
 import time
-
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  rstReport
