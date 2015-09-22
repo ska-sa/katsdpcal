@@ -2,7 +2,8 @@
 # ----------------------------------------------------------
 # Simulate receiver for L1 data stream
 
-import spead64_48 as spead
+import spead2
+import spead2.recv
 
 from katsdptelstate import endpoint, ArgumentParser
 from katsdpcal.simulator import init_simdata, get_file_format
@@ -19,13 +20,13 @@ def parse_opts():
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-def accumulate_l1(spead_stream, return_data=False):
+def accumulate_l1(rx, return_data=False):
     """
     Read L1 data from spead stream and accumulate it into a list
 
     Inputs:
     -------
-    spead_stream : SPEAD data stream
+    rx          : SPEAD data receiver
     return_data : If True, collect and return the data
 
     Returns:
@@ -37,21 +38,21 @@ def accumulate_l1(spead_stream, return_data=False):
     """
     timestamp_prev = 0
 
-    ig = spead.ItemGroup()
-
     if return_data: data_times, data_vis , data_flags = [], [], []
     # don't do weights for now, as I'm not really using weights
     
-    # receive SPEAD stream
     print 'Got heaps: ',
     array_index = 0
-    for heap in spead.iterheaps(spead_stream): 
+
+    # receive SPEAD stream
+    ig = spead2.ItemGroup()
+    for heap in rx: 
         ig.update(heap)
         
-        timestamp = ig['timestamp']
-        vis = ig['correlator_data']
-        flags = ig['flags']
-        weights = ig['weights']
+        timestamp = ig['timestamp'].value
+        vis = ig['correlator_data'].value
+        flags = ig['flags'].value
+        weights = ig['weights'].value
 
         if return_data:
             data_times.append(timestamp)
@@ -73,8 +74,10 @@ if __name__ == '__main__':
     """
     opts = parse_opts() 
     # Initialise spead receiver
-    spead_stream = spead.TransportUDPrx(opts.l1_spectral_spead[0].port)
+    rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    rx.add_udp_reader(opts.l1_spectral_spead[0].port)
     # recieve stream and accumulate data into arrays
+<<<<<<< HEAD
     return_data = True if opts.file else False
     l1_data = accumulate_l1(spead_stream, return_data=return_data)
 

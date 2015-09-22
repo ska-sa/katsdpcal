@@ -193,23 +193,17 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         Path under which to save pipeline report
     """
 
-    # debug print outs
-    print '\nTelescope state: '
-    for k in ts.keys(): print k
-    print '\nTelescope state config graph: '
-    print_dict(ts.config)
-    print
+    print 'opt params: ', antenna_mask, cbf_n_chans
 
-    # extract data shape parameters from TS
-    #  antenna_mask and cbf_n_chans come from MC config if present, else try the TS 
-    try:
-        if antenna_mask is None: antenna_mask = ts.antenna_mask.split(',')
-    except:
+    # extract data shape parameters 
+    #   argument parser traversed TS config to find these
+    if antenna_mask is not None:
+        ts.antenna_mask = antenna_mask
+    elif 'antenna_mask' not in ts:
         raise RuntimeError("No antenna_mask set.")
-    try:
-        if cbf_n_chans is None: cbf_n_chans = ts.cbf_n_chans
-        nchan = cbf_n_chans
-    except:
+    if cbf_n_chans is not None:
+        ts.cbf_n_chans = cbf_n_chans
+    elif 'cbf_n_chans' not in ts:
         raise RuntimeError("No cbf_n_chans set.")
 
     # initialise TS from default parameter file
@@ -221,8 +215,17 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     # save L1 transmit preference to TS
     ts.add('cal_full_l1', full_l1, immutable=True)
 
+    # debug print outs
+    print '\nTelescope state: '
+    for k in ts.keys(): print k
+    print '\nTelescope state config graph: '
+    print_dict(ts.config)
+    print
+
+    logger.info('Receiving L0 data on port {0}'.format(l0_endpoint.port,))
+
     npol = 4
-    nant = len(antenna_mask)
+    nant = len(ts.cal_antlist)
     # number of baselines includes autocorrelations
     nbl = nant*(nant+1)/2
 
@@ -234,12 +237,12 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     # plus minimal extra for scan transition indices
     scale_factor = 8. + 1. + 1.  # vis + flags + weights
     time_factor = 8.
-    array_length = buffer_maxsize/((scale_factor*nchan*npol*nbl) + time_factor)
+    array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*npol*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
 
     # Set up empty buffers
-    buffer_shape = [array_length,nchan,npol,nbl]
+    buffer_shape = [array_length,ts.cbf_n_chans,npol,nbl]
     buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
     # set up conditions for the buffers
@@ -321,7 +324,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             # send L1 stop transmission
             #   wait for a couple of secs before ending transmission
             time.sleep(2.0)
-            end_transmit(l1_endpoint)
+            end_transmit(l1_endpoint.host,l1_endpoint.port)
             logger.info('L1 stream ended')
 
 if __name__ == '__main__':
