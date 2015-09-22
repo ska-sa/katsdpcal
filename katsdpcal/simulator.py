@@ -84,9 +84,11 @@ def init_simdata(file_name, **kwargs):
 
             # check for missing timestamps
             if not np.all(self.timestamps[0:ti_max] == times):
-                if np.all(self.timestamps[0:ti_max-1] == times[0:-1]):
-                    print 'SPEAD error: extra final L1 time stamp. Ignoring last time stamp.'
-                    ti_max -= 1
+                start_repeat = np.squeeze(np.where(times[ti_max-1]==times))[0]
+
+                if np.all(self.timestamps[0:start_repeat] == times[0:start_repeat]):
+                    print 'SPEAD error: {0} extra final L1 time stamp(s). Ignoring last time stamp(s).'.format(ti_max-start_repeat-1,)
+                    ti_max += -(ti_max-start_repeat-1)
                 else:
                     raise ValueError('L1 array and h5 array have different timestamps!')
 
