@@ -93,6 +93,7 @@ class SimData(katdal.H5DataV2):
 
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
         ig = spead2.send.ItemGroup(flavour=flavour)
+
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate
@@ -115,8 +116,8 @@ class SimData(katdal.H5DataV2):
             scan_flags = self.flags()[:]
             scan_weights = self.weights()[:]
 
-            # transmit data timestamp by timestamp
-            for i in range(scan_data.shape[0]): # time axis
+            # set up item group, ising info from first data item
+            if 'correlator_data' not in ig:
                 ig.add_item(id=None, name='correlator_data', description="Visibilities",
                     shape=scan_data[0].shape, dtype=scan_data[0].dtype)
                 ig.add_item(id=None, name='flags', description="Flags for visibilities",
@@ -127,12 +128,15 @@ class SimData(katdal.H5DataV2):
                 ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
 
+            # transmit data timestamp by timestamp
+            for i in range(scan_data.shape[0]): # time axis
                 # transmit timestamps, vis, flags and weights
                 ig['correlator_data'].value = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
                 ig['flags'].value = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
-                ig['weights'].value = scan_weights[i,:,:]
-                ig['timestamp'].value = self.timestamps[i] # time
-                tx.send_heap(ig.get_heap())
+                ig['weights'].value = scan_weights[i,:,:] # weights for this time stamp (currently fake)
+                ig['timestamp'].value = self.timestamps[i] # timestamp
+                # send all of the descriptors with every heap
+                tx.send_heap(ig.get_heap(descriptors='all'))
 
             if scan_ind+1 == max_scans:
                 break
