@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-import katsdpcal.plotting as plotting
+from . import plotting
 
 import numpy as np
 import time

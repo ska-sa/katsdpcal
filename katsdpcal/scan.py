@@ -1,10 +1,10 @@
 """Scan class to data and operations on data."""
 
+from . import calprocs
+from .calprocs import CalSolution
+
 import numpy as np
 import copy
-
-from katsdpcal import calprocs
-from katsdpcal.calprocs import CalSolution
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  Scan

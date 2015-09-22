@@ -1,9 +1,10 @@
-import spead2
-import spead2.send
-import spead2.recv
+from . import spead2
+from . import send
+from . import recv
 
-from katsdpcal.reduction import pipeline
-from katsdpcal import calprocs
+from .reduction import pipeline
+from . import calprocs
+
 from katsdptelstate.telescope_state import TelescopeState
 
 import socket
@@ -79,7 +80,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
-            rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
             rx.add_udp_reader(self.l0_endpoint.port, max_size=9172)
 
             # Increment between buffers, filling and releasing iteratively
@@ -367,8 +368,8 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             target_slices = pipeline(self.data,self.telstate,task_name=self.name)
 
             # send data to L1 SPEAD if necessary
-            config = spead2.send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
-            tx = spead2.send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
+            config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
+            tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
             if self.full_l1 or target_scans != []:
                 self.pipeline_logger.info('Transmit L1 data')
                 self.data_to_SPEAD(target_slices, tx)
@@ -389,7 +390,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
             # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            ig = spead2.send.ItemGroup(flavour=flavour)
+            ig = send.ItemGroup(flavour=flavour)
             # set up item group with items
             ig.add_item(id=None, name='correlator_data', description="Visibilities",
                  shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
@@ -433,11 +434,11 @@ def end_transmit(host,port):
     ----------
     spead_endpoint : endpoint to transmit to
     """
-    config = spead2.send.StreamConfig(max_packet_size=9172)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config)
+    config = send.StreamConfig(max_packet_size=9172)
+    tx = send.UdpStream(spead2.ThreadPool(),host,port,config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-    heap = spead2.send.Heap(flavour)
+    heap = send.Heap(flavour)
     heap.add_end()
 
     tx.send_heap(heap)

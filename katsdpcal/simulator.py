@@ -5,17 +5,17 @@ Simulator class for HDF5 files produced by KAT-7 correlator,
 for testing of the MeerKAT pipeline.
 """
 
-import katdal
-from calprocs import get_reordering_nopol
+from . import table
+from . import spead2
+from . import send
+from .calprocs import get_reordering_nopol
 
+import katdal
 import pickle
 import os
 import numpy as np
-import spead2
-import spead2.send
 import time
 from random import random
-from pyrap.tables import table
 
 #--------------------------------------------------------------------------------------------------
 #--- simdata classes
@@ -136,8 +136,8 @@ def init_simdata(file_name, **kwargs):
             """
             print 'TX: Initializing...'
             # rate limit transmission to work on Laura's laptop
-            config = spead2.send.StreamConfig(max_packet_size=9172, rate=spead_rate)
-            tx = spead2.send.UdpStream(spead2.ThreadPool(),l0_endpoint.host,l0_endpoint.port,config)
+            config = send.StreamConfig(max_packet_size=9172, rate=spead_rate)
+            tx = send.UdpStream(spead2.ThreadPool(),l0_endpoint.host,l0_endpoint.port,config)
 
             # if the maximum number of scans to transmit has not been specified, set to total number of scans
             if max_scans is None or max_scans > self.num_scans:
@@ -448,7 +448,7 @@ class SimDataH5(katdal.H5DataV2):
         total_ts, track_ts, slew_ts = 0, 0, 0
 
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-        ig = spead2.send.ItemGroup(flavour=flavour)
+        ig = send.ItemGroup(flavour=flavour)
 
         for scan_ind, scan_state, target in self.scans(): 
             # update telescope state with scan information
