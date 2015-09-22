@@ -121,4 +121,3 @@ def setup_ts(ts):
     else:
     	if ts.cal_refant not in ts.cal_antlist:
     		ts.add('cal_refant',ts,cal_preferred_refants[0])
-
