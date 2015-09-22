@@ -48,6 +48,7 @@ def accumulate_l1(rx, return_data=False):
     ig = spead2.ItemGroup()
     for heap in rx: 
         ig.update(heap)
+        print ig.keys(), ig.ids()
         
         timestamp = ig['timestamp'].value
         vis = ig['correlator_data'].value
@@ -77,9 +78,9 @@ if __name__ == '__main__':
     rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
     rx.add_udp_reader(opts.l1_spectral_spead[0].port)
     # recieve stream and accumulate data into arrays
-<<<<<<< HEAD
+
     return_data = True if opts.file else False
-    l1_data = accumulate_l1(spead_stream, return_data=return_data)
+    l1_data = accumulate_l1(rx, return_data=return_data)
 
     # if specified, write the output back to the file
     if opts.file:

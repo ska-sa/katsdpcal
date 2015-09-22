@@ -136,7 +136,8 @@ def init_simdata(file_name, **kwargs):
             """
             print 'TX: Initializing...'
             # rate limit transmission to work on Laura's laptop
-            tx = spead.Transmitter(spead.TransportUDPtx(l0_endpoint.host,l0_endpoint.port,rate=spead_rate))
+            config = spead2.send.StreamConfig(max_packet_size=9172, rate=spead_rate)
+            tx = spead2.send.UdpStream(spead2.ThreadPool(),l0_endpoint.host,l0_endpoint.port,config)
 
             # if the maximum number of scans to transmit has not been specified, set to total number of scans
             if max_scans is None or max_scans > self.num_scans:
@@ -144,8 +145,6 @@ def init_simdata(file_name, **kwargs):
 
             # transmit data timestamp by timestamp and update telescope state
             self.tx_data(ts,tx,max_scans)
-            # end SPEAD transmission
-            end_transmit(tx)
 
     #---------------------------------------------------------------------------------------------
     return SimData(file_name, **kwargs)
@@ -360,6 +359,9 @@ class SimDataMS(table):
             if scan_ind+1 == max_scans:
                 break
 
+        # end transmission
+        tx.send_heap(ig.get_end())
+
         print 'Track timestamps:', track_ts
         print 'Slew timestamps: ', slew_ts
         print 'Total timestamps:', total_ts
@@ -386,7 +388,7 @@ class SimDataH5(katdal.H5DataV2):
     
     def __init__(self, file_name, **kwargs):
         mode = kwargs['mode'] if 'mode' in kwargs else 'r'
-        H5DataV2.__init__(self, file_name, mode=mode)
+        super(SimDataH5, self).__init__(file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
    
     def write_data(self,vis,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
@@ -443,18 +445,6 @@ class SimDataH5(katdal.H5DataV2):
         tx        : SPEAD transmitter
         max_scans : Maximum number of scans to transmit
         """
-        print 'TX: Initializing...'
-        # rate limit transmission to work on Laura's laptop
-        config = spead2.send.StreamConfig(max_packet_size=9172, rate=spead_rate)
-        tx = spead2.send.UdpStream(spead2.ThreadPool(),l0_endpoint.host,l0_endpoint.port,config)
-
-        num_scans = len(self.scan_indices)
-        # if the maximum number of scans to transmit has not been specified, set to total number of scans
-        if max_scans is None: 
-            max_scans = num_scans
-        else:
-            num_scans = max_scans
-
         total_ts, track_ts, slew_ts = 0, 0, 0
 
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
@@ -507,9 +497,10 @@ class SimDataH5(katdal.H5DataV2):
             if scan_ind+1 == max_scans:
                 break
 
+        # end transmission
+        tx.send_heap(ig.get_end())
+
         print 'Track timestamps:', track_ts
         print 'Slew timestamps: ', slew_ts
         print 'Total timestamps:', total_ts
 
-        # end transmission
-        tx.send_heap(ig.get_end())
