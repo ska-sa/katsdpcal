@@ -61,24 +61,24 @@ def ts_from_file(ts, filename):
     * Missing parameters are set to empty strings ''
     """
 
-	param_list = np.genfromtxt(filename,delimiter=':',dtype=np.str, comments='#', missing='')
+    param_list = np.genfromtxt(filename,delimiter=':',dtype=np.str, comments='#', missing='')
 
-	param_dict = {}
-	for key, value in param_list:
-		try:
-			# integer?
-			param_value = int(value)				
-		except ValueError:
-			try:
-				# float?
-				param_value = float(value)
-			except ValueError:
-				# keep as string, strip whitespace
-				param_value = value.strip()
+    param_dict = {}
+    for key, value in param_list:
+        try:
+            # integer?
+            param_value = int(value)				
+        except ValueError:
+            try:
+                # float?
+                param_value = float(value)
+            except ValueError:
+                # keep as string, strip whitespace
+                param_value = value.strip()
 
-		param_dict[key.strip()] = param_value
+        param_dict[key.strip()] = param_value
 
-	init_ts(ts, param_dict)
+    init_ts(ts, param_dict)
 
 def setup_ts(ts):
     """
@@ -102,7 +102,7 @@ def setup_ts(ts):
 
     # cal_antlist
     #   this should not be pre-set (determine from antenna_mask, which is pre-set)
-    if isinstance(ts.antenna_mask, str): antlist = [ant.strip() for ant in ts.antenna_mask.split(',')]
+    antlist = [ant.strip() for ant in ts.antenna_mask.split(',')] if isinstance(ts.antenna_mask, str) else ts.antenna_mask
     ts.add('cal_antlist',antlist,immutable=True)
 
     # cal_preferred_refants
