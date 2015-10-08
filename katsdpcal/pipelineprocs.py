@@ -61,7 +61,7 @@ def ts_from_file(ts, filename):
     * Missing parameters are set to empty strings ''
     """
 
-	param_list = np.genfromtxt(filename,delimiter=':',dtype=np.str, comments='#', missing='')
+	param_list = np.genfromtxt(filename,delimiter=':',dtype=np.str, comments='#', missing_values='')
 
 	param_dict = {}
 	for key, value in param_list:
