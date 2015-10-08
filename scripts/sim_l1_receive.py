@@ -94,15 +94,12 @@ if __name__ == '__main__':
 
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
-        elif os.path.isfile(new_file) or os.path.isdir(new_file):
-            print 'WARNING: L1 data file {0} already exists. Over writing it.'.format(new_file,)
-
-            if os.path.isdir(new_file):
+        else:
+            if os.path.isfile(new_file) or os.path.isdir(new_file):
+                print 'WARNING: L1 data file {0} already exists. Over writing it.'.format(new_file,)
                 shutil.rmtree(new_file)
-                shutil.copytree(opts.file,new_file)
-            else:
-                shutil.copyfile(opts.file,new_file)
 
+            shutil.copytree(opts.file,new_file)
             # set up file to write the data into
             datafile = init_simdata(new_file,mode='r+')
 
