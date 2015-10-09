@@ -16,18 +16,20 @@ RUN apt-get -y update && apt-get -y install \
     python-h5py \
     python-matplotlib \
     python-numpy \
-    python-scipy
+    python-scipy \
+    libboost-python1.55-dev \
+    libboost-system1.55-dev
 
 # Install Python packages not available or too old in Ubuntu
 RUN pip install --no-deps \
     pyephem==3.7.5.3 \
     redis==2.10.3 \
     netifaces==0.10.4 \
+    spead2==0.3.0 \
     manhole \
     git+ssh://git@github.com/ska-sa/katpoint \
     git+ssh://git@github.com/ska-sa/katdal \
-    git+ssh://git@github.com/ska-sa/katsdptelstate \
-    git+ssh://git@github.com/ska-sa/PySPEAD
+    git+ssh://git@github.com/ska-sa/katsdptelstate
 
 # Install the current package
 COPY . /tmp/install/katsdpcal

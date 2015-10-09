@@ -1,6 +1,6 @@
 tmuxp==0.8.1
 redis==2.10.3
 manhole
+spead2>=0.3.0
 git+ssh://git@github.com/ska-sa/katdal
-git+https://github.com/ska-sa/PySPEAD
 git+ssh://git@github.com/ska-sa/katsdptelstate
