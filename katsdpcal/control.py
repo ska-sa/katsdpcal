@@ -414,7 +414,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 # transmit data timestamp by timestamp
                 for i in range(len(scan_times)): # time axis
                     # transmit timestamps, vis, flags and weights
-                    ig['correlator_data'].value = scan_vis[i]
+                    ig['correlator_data'].value = 100.*scan_vis[i]
                     ig['flags'].value = scan_flags[i]
                     ig['weights'].value = scan_weights[i]
                     ig['timestamp'].value = scan_times[i]

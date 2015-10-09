@@ -23,12 +23,16 @@ from random import random
 
 def get_file_format(file_name, mode='r'):
 
+    print '###########', file_name
+    print table(file_name)
+
     try:
         # Is it a katdal H5 file?
         katdal.open(file_name, mode=mode)
         data_class = SimDataH5
     except IOError:
         try:
+            print file_name
             # Not an H5 file. Is it an MS?
             table(file_name)
             data_class = SimDataMS
@@ -50,6 +54,7 @@ def init_simdata(file_name, **kwargs):
 
     mode = kwargs['mode'] if 'mode' in kwargs else 'r'
     data_class = get_file_format(file_name, mode)
+    print '&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&7', data_class
 
     #----------------------------------------------------------------------------------------------
     class SimData(data_class):
@@ -147,6 +152,37 @@ def init_simdata(file_name, **kwargs):
 
             # transmit data timestamp by timestamp and update telescope state
             self.tx_data(ts,tx,max_scans)
+
+
+        def setup_ig(self, ig, data, flags, weights):
+            """
+            Initialises data transmit ItemGroup for SPEAD transmit
+
+            Parameters
+            ----------
+
+            """
+            ig.add_item(id=None, name='correlator_data', description="Visibilities",
+                shape=data.shape, dtype=data.dtype)
+            ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                shape=flags.shape, dtype=flags.dtype)
+            # for now, just transmit flags as placeholder for weights
+            ig.add_item(id=None, name='weights', description="Weights for visibilities",
+                shape=weights.shape, dtype=weights.dtype)
+            ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                shape=(), dtype=None, format=[('f', 64)])
+
+
+        def transmit_item(self, tx, ig, timestamp, data, flags, weights):
+
+            # transmit timestamps, vis, flags and weights
+            ig['correlator_data'].value = data # visibilities for this time stamp, for specified channel range
+            ig['flags'].value = flags # flags for this time stamp, for specified channel range
+            ig['weights'].value = weights # weights for this time stamp (currently fake)
+            ig['timestamp'].value = timestamp # timestamp
+            # send all of the descriptors with every heap
+            tx.send_heap(ig.get_heap(descriptors='all'))
+
 
     #---------------------------------------------------------------------------------------------
     return SimData(file_name, **kwargs)
@@ -313,9 +349,11 @@ class SimDataMS(table):
 
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         field_names = table(self.getkeyword('FIELD')).getcol('NAME')
-        npols = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')
         intents = table(self.getkeyword('STATE')).getcol('OBS_MODE')
         antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
+
+        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+        ig = send.ItemGroup(flavour=flavour)
 
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
             # update telescope state with scan information
@@ -355,8 +393,12 @@ class SimDataMS(table):
                 tx_flags = np.hstack(ttime.getcol('FLAG')[self.data_mask]) # flags for this time stamp, for specified channel range
                 tx_weights = np.zeros_like(tx_flags,dtype=np.float64)
 
+                # set up item group, ising info from first data item
+                if 'correlator_data' not in ig:
+                    self.setup_ig(ig,tx_vis,tx_flags,tx_weights)
+
                 # transmit timestamps, vis, flags, weights
-                transmit_item(tx, tx_time, tx_vis, tx_flags, tx_weights)
+                self.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
 
             if scan_ind+1 == max_scans:
                 break
@@ -476,25 +518,19 @@ class SimDataH5(katdal.H5DataV2):
 
             # set up item group, ising info from first data item
             if 'correlator_data' not in ig:
-                ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                    shape=scan_data[0].shape, dtype=scan_data[0].dtype)
-                ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=scan_flags[0].shape, dtype=scan_flags[0].dtype)
-                # for now, just transmit flags as placeholder for weights
-                ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=scan_flags[0].shape, dtype=scan_weights[0].dtype)
-                ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                    shape=(), dtype=None, format=[('f', 64)])
+                self.setup_ig(ig,scan_data[0],scan_flags[0],scan_flags[0])
 
             # transmit data timestamp by timestamp
             for i in range(scan_data.shape[0]): # time axis
-                # transmit timestamps, vis, flags and weights
-                ig['correlator_data'].value = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
-                ig['flags'].value = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
-                ig['weights'].value = scan_weights[i,:,:] # weights for this time stamp (currently fake)
-                ig['timestamp'].value = self.timestamps[i] # timestamp
-                # send all of the descriptors with every heap
-                tx.send_heap(ig.get_heap(descriptors='all'))
+
+                # data values to transmit
+                tx_time = self.timestamps[i] # timestamp
+                tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
+                tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
+                tx_weights = scan_weights[i,:,:]
+
+                # transmit timestamps, vis, flags, weights
+                self.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
 
             if scan_ind+1 == max_scans:
                 break
