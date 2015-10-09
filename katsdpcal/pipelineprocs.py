@@ -37,16 +37,16 @@ def init_ts(ts, param_dict, clear=False):
     """ 
 
     if clear:
-	    # start with empty Telescope State
-	    clear_ts(ts)
+        # start with empty Telescope State
+        clear_ts(ts)
 
     # populate ts with parameters 
     #   parameter only added if it is missing from the TS
     for key in param_dict.keys(): 
-    	if key not in ts: ts.add(key, param_dict[key], immutable=True)
+        if key not in ts: ts.add(key, param_dict[key], immutable=True)
 
 def ts_from_file(ts, filename):
-	"""
+    """
     Initialises up the telescope state from parameter file
 
     Inputs
@@ -60,14 +60,12 @@ def ts_from_file(ts, filename):
     * Parameter file uses hashes (#) for comments
     * Missing parameters are set to empty strings ''
     """
-
     param_list = np.genfromtxt(filename,delimiter=':',dtype=np.str, comments='#', missing_values='')
-
     param_dict = {}
     for key, value in param_list:
         try:
             # integer?
-            param_value = int(value)				
+            param_value = int(value)                
         except ValueError:
             try:
                 # float?
@@ -107,17 +105,17 @@ def setup_ts(ts):
 
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
-    	ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
+        ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
     else:
         # reduce the preferred antenna list to only antennas present in can_antlist
         preferred = [ant for ant in ts.cal_preferred_refants if ant in ts.cal_antlist]
         if preferred != ts.cal_preferred_refants:
-        	ts.delete('cal_preferred_refants')
-        	ts.add('cal_preferred_refants',preferred,immutable=True)
+            ts.delete('cal_preferred_refants')
+            ts.add('cal_preferred_refants',preferred,immutable=True)
 
     # cal_refant
     if 'cal_refant' not in ts:
-    	ts.add('cal_refant',ts.cal_preferred_refants[0]) 
+        ts.add('cal_refant',ts.cal_preferred_refants[0]) 
     else:
-    	if ts.cal_refant not in ts.cal_antlist:
-    		ts.add('cal_refant',ts,cal_preferred_refants[0])
+        if ts.cal_refant not in ts.cal_antlist:
+            ts.add('cal_refant',ts,cal_preferred_refants[0])
