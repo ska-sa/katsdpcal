@@ -15,8 +15,8 @@ setup (
 	"scripts/run_cal.py",	
         "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
-        "scripts/sim_h5_ts.py",
-        "scripts/sim_h5_stream.py"
+        "scripts/sim_ts.py",
+        "scripts/sim_data_stream.py"
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

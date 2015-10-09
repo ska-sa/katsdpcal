@@ -1,4 +1,10 @@
 
+from . import plotting
+from . import calprocs
+from . import report
+from .scan import Scan
+from .rfi import threshold_avg_flagging
+
 import numpy as np
 import optparse
 import sys
@@ -6,16 +12,6 @@ import copy
 
 import pickle
 import os
-
-from katsdpcal import plotting
-from katsdpcal import calprocs
-from katsdpcal.simulator import SimData
-from katsdpcal import report
-from katsdpcal.scan import Scan
-
-from rfi import threshold_avg_flagging
-
-from katsdpcal.calprocs import CalSolution
 
 from time import time
 
@@ -65,24 +61,28 @@ def get_tracks(data, ts):
     --------
     list of slices for each track in the buffer
     """
-    max_ind = data['max_index'][0]
+    max_indx = data['max_index'][0]
 
     activity_key = '{0}_activity'.format(ts.cal_refant,)
-    activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_ind],include_previous=True)
+    activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_indx],include_previous=True)
 
     start_indx, stop_indx = [], []
+    prev_state = ''
     for state, time in activity:
-        nearest_time_indx = np.abs(time - data['times'][0:max_ind+1]).argmin()
+        nearest_time_indx = np.abs(time - data['times'][0:max_indx+1]).argmin()
         if 'track' in state:
             start_indx.append(nearest_time_indx)
+            if 'track' in prev_state:
+                stop_indx.append(nearest_time_indx-1)
         elif 'slew' in state:
             stop_indx.append(nearest_time_indx-1)
+        prev_state = state
 
     # remove first slew time from stop indices
     if len(stop_indx) > 0:
         if stop_indx[0] == -1: stop_indx = stop_indx[1:]
     # add max index in buffer to stop indices of necessary
-    if len(stop_indx) < len(start_indx): stop_indx.append(max_ind)
+    if len(stop_indx) < len(start_indx): stop_indx.append(max_indx)
 
     return [slice(start, stop+1) for start, stop in zip(start_indx, stop_indx)]
 
@@ -108,13 +108,13 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
             # get most recent solution value
             sol, soltime = ts.get_range(ts_solname)[0]
             if X is not 'G':
-                soln = CalSolution(X, sol, soltime)
+                soln = calprocs.CalSolution(X, sol, soltime)
             else:
                 # get G values for an hour range on either side of target scan
                 t0, t1 = time_range
                 gsols = ts.get_range(ts_solname,st=t0-60.*60.,et=t1+60.*60,return_format='recarray')
                 solval, soltime = gsols['value'], gsols['time']
-                soln = CalSolution('G', solval, soltime)
+                soln = calprocs.CalSolution('G', solval, soltime)
 
             solns_to_apply.append(s.interpolate(soln))
             logger.info('Apply {0} solution to {1}'.format(X,s.target))
@@ -188,10 +188,15 @@ def pipeline(data, ts, task_name='pipeline'):
     track_slices = get_tracks(data,ts)
     target_slices = []
 
-    for scan_slice  in reversed(track_slices):
+    for scan_slice in reversed(track_slices):
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
+        print 'scan slice: ', scan_slice, t0, t1
+
+        # if we only have one timestamp in the scan, ignore it
+        #  (this happens when there is no slew between tracks so we catch the first dump of the next track)
+        if (scan_slice.stop - scan_slice.start) == 1: continue
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'

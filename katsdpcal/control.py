@@ -1,9 +1,10 @@
-import spead2
-import spead2.send
-import spead2.recv
+from . import spead2
+from . import send
+from . import recv
 
-from katsdpcal.reduction import pipeline
-from katsdpcal import calprocs
+from .reduction import pipeline
+from . import calprocs
+
 from katsdptelstate.telescope_state import TelescopeState
 
 import socket
@@ -79,7 +80,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
-            rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
             rx.add_udp_reader(self.l0_endpoint.port, max_size=9172)
 
             # Increment between buffers, filling and releasing iteratively
@@ -159,6 +160,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
             # determine lookup list for baselines
             bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)
+            print '>>>>>>', self.ordering, bls_order, pol_order
+            print '$$$$$$$',
+            for i, j in enumerate(self.telstate.cbf_bls_ordering):
+                print i, j, ' - ',
+            print
             # save these to the TS for use in the pipeline/elsewhere
             self.telstate.add('cal_bls_ordering',bls_order)
             self.telstate.add('cal_pol_ordering',pol_order)
@@ -181,6 +187,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             array_index = -1
 
             prev_activity = 'none'
+            prev_activity_time = 0.
             prev_tags = 'none'
 
             # set data buffer for writing
@@ -200,10 +207,18 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 ig.update(heap)
                 array_index += 1
 
+                # get activity and target tag from TS
+                data_ts = ig['timestamp'].value + cbf_sync_time
+                activity_full = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0]
+                activity, activity_time = activity_full
+                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
+
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
-                    start_time = ig['timestamp'].value + cbf_sync_time
+                    start_time = data_ts
                     start_flag = False
+
+                    prev_activity_time = activity_time
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
@@ -223,10 +238,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
 
-                # break if this scan is a slew that follows a track
+                # break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                if ('slew' in activity and 'track' in prev_activity) and 'target' not in prev_tags:
+                if activity_time != prev_activity_time and 'slew' not in prev_activity and 'target' not in prev_tags:
                     self.accumulator_logger.info('Accumulate break due to transition')
                     obs_end_flag = False
                     break
@@ -245,6 +260,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     break
 
                 prev_activity = activity
+                prev_activity_time = activity_time
                 # extract tags from target description string
                 prev_tags = target.split(',')[1]
 
@@ -352,8 +368,8 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             target_slices = pipeline(self.data,self.telstate,task_name=self.name)
 
             # send data to L1 SPEAD if necessary
-            config = spead2.send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
-            tx = spead2.send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
+            config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
+            tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
             if self.full_l1 or target_scans != []:
                 self.pipeline_logger.info('Transmit L1 data')
                 self.data_to_SPEAD(target_slices, tx)
@@ -374,7 +390,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
             # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            ig = spead2.send.ItemGroup(flavour=flavour)
+            ig = send.ItemGroup(flavour=flavour)
             # set up item group with items
             ig.add_item(id=None, name='correlator_data', description="Visibilities",
                  shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
@@ -418,14 +434,11 @@ def end_transmit(host,port):
     ----------
     spead_endpoint : endpoint to transmit to
     """
-    config = spead2.send.StreamConfig(max_packet_size=9172)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(),host,port,config)
+    config = send.StreamConfig(max_packet_size=9172)
+    tx = send.UdpStream(spead2.ThreadPool(),host,port,config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-    heap = spead2.send.Heap(flavour)
+    heap = send.Heap(flavour)
     heap.add_end()
 
     tx.send_heap(heap)
-
-
-
