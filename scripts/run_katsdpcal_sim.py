@@ -103,18 +103,17 @@ if __name__ == '__main__':
     time.sleep(1.0)
 
     # start pipeline running in tmux pane
-    pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
-
     threading = '--threading' if opts.threading else ''
-
+    pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
         --l1-rate {2} --full-l1 --parameters {3} --report-path {4} --log-path {5} {6}'.format(opts.telstate, opts.buffer_maxsize,
         opts.l1_rate, opts.parameters, opts.report_path, opts.log_path, threading))
     pipeline_pane.enter()
 
     # start L1 receiver in tmux pane
+    image = '--image' if (opts.max_scans == 0) else ''
     l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1}'.format(opts.telstate, opts.file))
+    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}'.format(opts.telstate, opts.file, image))
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
