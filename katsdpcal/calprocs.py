@@ -996,8 +996,8 @@ def get_reordering_nopol(antlist,bls_ordering,output_order_bls=None):
 
     Returns:
     --------
-    ordering : ordering array necessary to change given bls_ordering into desired ordering, numpy array shape(nbl*4, 2)
-    bls_wanted : ordering of baselines, without polarisation, list shape(nbl, 2)
+    ordering : ordering array necessary to change given bls_ordering into desired ordering, numpy array, shape(nbl*4, 2)
+    bls_wanted : ordering of baselines, without polarisation, numpy array, shape(nbl, 2)
 
     """
     # convert antlist to list, if it is a csv string
@@ -1013,7 +1013,7 @@ def get_reordering_nopol(antlist,bls_ordering,output_order_bls=None):
         if not b in unique_bls: unique_bls.append(b)
 
     # defermine output ordering:
-    if output_order_bls == None:
+    if output_order_bls is None:
         # default output order is XC then AC
         bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
         # add AC to bls list
