@@ -2,7 +2,7 @@
 # ----------------------------------------------------------
 # Simulate receiver for L1 data stream
 
-from katsdpcal.simulator import init_simdata, get_file_format
+from katsdpcal.simulator import init_simdata, get_file_format, SimDataMS
 # import spead2 through katsdpcal to enforce import order (pyrap must be imported first)
 from katsdpcal import spead2
 
@@ -93,8 +93,13 @@ if __name__ == '__main__':
         # need some info from the telstate
         ts = opts.telstate
 
+        # was our simulator using an H5 or MS file?
+        file_class = get_file_format(opts.file)
+
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
+        elif file_class != SimDataMS:
+            print 'Simulator didnt use MS file. Can only save L1 data to MS, so not saving L1 data to file.'
         else:
             if os.path.isfile(new_file) or os.path.isdir(new_file):
                 print 'WARNING: L1 data file {0} already exists. Over writing it.'.format(new_file,)
