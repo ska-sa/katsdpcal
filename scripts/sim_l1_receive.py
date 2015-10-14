@@ -113,24 +113,24 @@ if __name__ == '__main__':
             datafile.write(ts,l1_data)
             datafile.close()
 
-        if opts.image:
-            bchan = ts.cal_bchan
-            echan = ts.cal_echan
+            if opts.image:
+                bchan = ts.cal_bchan
+                echan = ts.cal_echan
 
-            # image L0 data
-            if os.path.isfile(new_file) or os.path.isdir(new_file):
-                print 'WARNING: L0 image L0_I* already exists. Over writing it.'
-                os.system('rm -rf L0_I*')
+                # image L0 data
+                if os.path.isfile(new_file) or os.path.isdir(new_file):
+                    print 'WARNING: L0 image L0_I* already exists. Over writing it.'
+                    os.system('rm -rf L0_I*')
 
-            # image using casapy
-            clean_params = 'vis="{0}",imagename="L0_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(opts.file,bchan,echan)
-            os.system("casapy -c 'clean({0})' ".format(clean_params))
+                # image using casapy
+                clean_params = 'vis="{0}",imagename="L0_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(opts.file,bchan,echan)
+                os.system("casapy -c 'clean({0})' ".format(clean_params))
 
-            # image L1 data
-            if os.path.isfile(new_file) or os.path.isdir(new_file):
-                print 'WARNING: L1 image L1_I* already exists. Over writing it.'
-                os.system('rm -rf L1_I*')
+                # image L1 data
+                if os.path.isfile(new_file) or os.path.isdir(new_file):
+                    print 'WARNING: L1 image L1_I* already exists. Over writing it.'
+                    os.system('rm -rf L1_I*')
 
-            # image using casapy
-            clean_params = 'vis="{0}",imagename="L1_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(new_file,bchan,echan)
-            os.system("casapy -c 'clean({0})' ".format(clean_params))
+                # image using casapy
+                clean_params = 'vis="{0}",imagename="L1_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(new_file,bchan,echan)
+                os.system("casapy -c 'clean({0})' ".format(clean_params))
