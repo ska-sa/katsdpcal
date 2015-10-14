@@ -355,6 +355,3 @@ def pipeline(data, ts, task_name='pipeline'):
             rfi(s,[3.0,3.0,2.0],[[3,1],[5,8]],pipeline_logger)
 
     return target_slices
-
-
-
