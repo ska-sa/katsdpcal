@@ -94,7 +94,7 @@ if __name__ == '__main__':
         ts = opts.telstate
 
         # was our simulator using an H5 or MS file?
-        #file_class = get_file_format(opts.file)
+        file_class = get_file_format(opts.file)
 
         if not ts.cal_full_l1:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
