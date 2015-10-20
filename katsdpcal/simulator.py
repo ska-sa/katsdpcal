@@ -259,6 +259,16 @@ class SimDataMS(table):
         self.timestamps = np.unique(self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
         self.ants = table(self.getkeyword('ANTENNA')).getcol('NAME')
         self.corr_products, self.bls_ordering = self.get_corrprods(self.ants)
+
+    def field_ids(self):
+        """
+        Field IDs in the data set
+
+        Returns
+        -------
+        List of field IDs
+        """
+        return range(table(self.getkeyword('FIELD')).nrows())
    
     def get_params(self):
         """
@@ -473,6 +483,16 @@ class SimDataH5(katdal.H5DataV2):
         (Does nothing)
         """
         pass
+
+    def field_ids(self):
+        """
+        Field IDs in the data set
+
+        Returns
+        -------
+        List of field IDs
+        """
+        return self.target_indices
 
     def get_params(self):
         """
