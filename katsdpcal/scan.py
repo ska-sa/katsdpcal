@@ -37,8 +37,8 @@ class Scan(object):
     ----------
     dump_period : float
         Dump period of correlator data.
-    bl_mask : array of bool
-        General mask for selecting usbset of the correlation products.
+    bl_slice : slice
+        Slice for selecting susbset of the correlation products.
     corrprod_lookup : list of int, shape (number_of_baselines, 2)
         List of antenna pairs for each baseline.
     vis : array of float, complex64 (ntime, nchan, npol, nbl)
@@ -67,20 +67,24 @@ class Scan(object):
     def __init__(self, data, time_slice, dump_period, nant, bls_lookup, target, chans=None, corr='xc'):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
-        # if scan has explicitly been set up as a cross-correlation scan, seelct XC data only
+        # if scan has explicitly been set up as a cross-correlation scan, select XC data only
+        # NOTE: This makes the asumption that the XC data are grouped at the beginning of the bl ordering,
+        #       Followed by the AC data.
+        # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
         xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
-        self.bl_mask = xc_mask if corr is 'xc' else slice(None)
-        self.corrprod_lookup = bls_lookup[self.bl_mask]
+        xc_slice = slice(np.where(xc_mask)[0][0], np.where(xc_mask)[0][-1]+1)
+        self.bl_slice = xc_slice if corr is 'xc' else slice(None)
+        self.corrprod_lookup = bls_lookup[self.bl_slice]
 
         # get references to this time chunk of data
         # -- just using first polarisation for now
         # data format is:   (time x channels x pol x bl)
-        self.vis = data['vis'][time_slice,:,0:2,self.bl_mask]
-        self.flags = data['flags'][time_slice,:,0:2,self.bl_mask]
+        self.vis = data['vis'][time_slice,:,0:2,self.bl_slice]
+        self.flags = data['flags'][time_slice,:,0:2,self.bl_slice]
         self.weights = np.ones_like(self.flags,dtype=np.float)
 
-        self.cross_vis = data['vis'][time_slice,:,2:,self.bl_mask]
-        self.cross_flags = data['flags'][time_slice,:,2:,self.bl_mask]
+        self.cross_vis = data['vis'][time_slice,:,2:,self.bl_slice]
+        self.cross_flags = data['flags'][time_slice,:,2:,self.bl_slice]
         self.cross_weights = np.ones_like(self.cross_flags,dtype=np.float)
 
         self.times = data['times'][time_slice]
