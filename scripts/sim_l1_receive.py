@@ -109,6 +109,8 @@ if __name__ == '__main__':
 
             print 'Writing data to {0} file {1}'.format(file_type, new_file)
             datafile.write(ts,l1_data)
+            # get field IDs before closing the file
+            field_id_list = datafile.field_ids()
             datafile.close()
 
             if opts.image:
@@ -117,23 +119,24 @@ if __name__ == '__main__':
                     bchan = ts.cal_bchan
                     echan = ts.cal_echan-ts.cal_bchan
 
-                    # image L0 data
-                    if os.path.isfile(new_file) or os.path.isdir(new_file):
-                        print 'WARNING: L0 image L0_I* already exists. Over writing it.'
-                        os.system('rm -rf L0_I*')
+                    for field_id in field_id_list:
+                        # image L0 data
+                        if os.path.isfile(new_file) or os.path.isdir(new_file):
+                            print 'WARNING: L0 image {0}_F{1}_L0_I* already exists. Over writing it.'.format(file_base,field_id)
+                            os.system('rm -rf {0}_F{1}_L0_I*'.format(file_base,field_id))
 
-                    # image using casapy
-                    clean_params = 'vis="{0}",imagename="L0_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(opts.file,bchan,echan)
-                    os.system("casapy -c 'clean({0})' ".format(clean_params))
+                        # image using casapy
+                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L0_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec"'.format(opts.file,file_base,field_id,bchan,echan,field_id)
+                        os.system("casapy -c 'clean({0})' ".format(clean_params))
 
-                    # image L1 data
-                    if os.path.isfile(new_file) or os.path.isdir(new_file):
-                        print 'WARNING: L1 image L1_I* already exists. Over writing it.'
-                        os.system('rm -rf L1_I*')
+                        # image L1 data
+                        if os.path.isfile(new_file) or os.path.isdir(new_file):
+                            print 'WARNING: L1 image {0}_F{1}_L1_I* already exists. Over writing it.'.format(file_base,field_id)
+                            os.system('rm -rf {0}_F{1}_L1_I*'.format(file_base,field_id))
 
-                    # image using casapy
-                    clean_params = 'vis="{0}",imagename="L1_I",niter=0,stokes="I",spw="0:{1}~{2}",field="0",cell="30arcsec"'.format(new_file,bchan,echan)
-                    os.system("casapy -c 'clean({0})' ".format(clean_params))
+                        # image using casapy
+                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L1_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec"'.format(new_file,file_base,field_id,bchan,echan,field_id)
+                        os.system("casapy -c 'clean({0})' ".format(clean_params))
 
                 else:
                     print 'Simulator didnt use MS file. Can only currently image from MS.'
