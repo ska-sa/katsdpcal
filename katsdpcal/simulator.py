@@ -40,7 +40,6 @@ def get_file_format(file_name):
         data_class = SimDataH5
     except IOError:
         try:
-            print file_name
             # Not an H5 file. Is it an MS?
             table(file_name)
             data_class = SimDataMS
@@ -346,9 +345,6 @@ class SimDataMS(table):
         tx        : SPEAD transmitter
         max_scans : Maximum number of scans to transmit
         """
-        # MS files only have tracks (?)
-        track_ts = 0
-
         # order the data for transmission
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         # get metadata information for the telescope state
@@ -385,16 +381,17 @@ class SimDataMS(table):
             print 'timestamps:', n_ts, ' -- ',
             print scan_state, target_desc
 
-            # keep track of number of timestamps
-            if scan_state == 'track': track_ts += n_ts
-
             # transmit the data timestamp by timestamp
             for ttime in tscan.iter('TIME'):
                 # get data to transmit from MS
                 tx_time = ttime.getcol('TIME')[0] # time
                 tx_vis = np.hstack(ttime.getcol('DATA')[self.data_mask]) # visibilities for this time stamp, for specified channel range
                 tx_flags = np.hstack(ttime.getcol('FLAG')[self.data_mask]) # flags for this time stamp, for specified channel range
-                tx_weights = np.zeros_like(tx_flags,dtype=np.float64)
+                try:
+                    tx_weights = np.hstack(ttime.getcol('WEIGHT_SPECTRUM')[self.data_mask]) # weights for this time stamp, for specified channel range
+                except RuntimeError:
+                    # WEIGHT_SPECTRUM column doesn't exist: mock up weights as zeros
+                    tx_weights = np.zeros_like(tx_flags,dtype=np.float64)
 
                 # on first transmittion, set up item group, using info from first data item
                 if 'correlator_data' not in ig:
@@ -408,9 +405,10 @@ class SimDataMS(table):
         # end transmission
         tx.send_heap(ig.get_end())
 
-        print 'Track timestamps:', track_ts
+        # MS only has 'track' scans?
+        print 'Track timestamps:', scan_ind
         print 'Slew timestamps: ', 0
-        print 'Total timestamps:', track_ts
+        print 'Total timestamps:', scan_ind
 
     def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
         """
