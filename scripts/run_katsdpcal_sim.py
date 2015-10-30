@@ -96,7 +96,7 @@ if __name__ == '__main__':
     #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
     #  for parameter missing from the TS)
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1}'.format(opts.telstate, opts.file))
+    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1}'.format(opts.telstate, file_fullpath))
     sim_ts_pane.enter()
 
     # wait a second for TS to be set up
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     # start L1 receiver in tmux pane
     image = '--image' if (opts.max_scans == 0) else ''
     l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}'.format(opts.telstate, opts.file, image))
+    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}'.format(opts.telstate, file_fullpath, image))
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
@@ -122,5 +122,5 @@ if __name__ == '__main__':
     # start data flow in tmux pane
     sim_data_pane = create_pane('sim_data',tmserver,keep_session=opts.keep_sessions)
     sim_data_pane.cmd('send-keys','sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} \
-        --max-scans {3}'.format(opts.telstate, opts.file, opts.l0_rate, opts.max_scans))
+        --max-scans {3}'.format(opts.telstate, file_fullpath, opts.l0_rate, opts.max_scans))
     sim_data_pane.enter()
