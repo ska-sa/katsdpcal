@@ -18,9 +18,8 @@ RUN apt-get -y update && apt-get -y install \
     python-numpy \
     python-scipy \
     libboost-python1.55-dev \
-    libboost-system1.55-dev \
     software-properties-common
-
+ 
 # Install python-casacore
 RUN add-apt-repository -y ppa:radio-astro/main
 RUN apt-get -y update
