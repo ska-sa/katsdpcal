@@ -17,10 +17,10 @@ param_file = 'pipeline_parameters_kat7.txt'
 try:
     from pyrap.tables import table
 except:
-	print "Pyrap not found. Can't use MS simulator."
-	# fake table
-	class table:
-		pass
+    print "Pyrap not found. Can't use MS simulator."
+    # fake table
+    class table:
+        pass
 
 import spead2
 from spead2 import recv
