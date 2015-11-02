@@ -103,6 +103,11 @@ def setup_ts(ts):
     antlist = [ant.strip() for ant in ts.antenna_mask.split(',')] if isinstance(ts.antenna_mask, str) else ts.antenna_mask
     ts.add('cal_antlist',antlist,immutable=True)
 
+    # cal_antlist_description
+    #    list of antenna descriptions
+    description_list = [ts['{0}_description'.format(ant,)] for ant in antlist]
+    ts.add('cal_antlist_description',description_list,immutable=True)
+
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
         ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
@@ -110,12 +115,18 @@ def setup_ts(ts):
         # reduce the preferred antenna list to only antennas present in can_antlist
         preferred = [ant for ant in ts.cal_preferred_refants if ant in ts.cal_antlist]
         if preferred != ts.cal_preferred_refants:
-            ts.delete('cal_preferred_refants')
-            ts.add('cal_preferred_refants',preferred,immutable=True)
+            if preferred == []:
+                ts.delete('cal_preferred_refants')
+                ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
+            else:
+                ts.delete('cal_preferred_refants')
+                ts.add('cal_preferred_refants',preferred,immutable=True)
 
     # cal_refant
     if 'cal_refant' not in ts:
         ts.add('cal_refant',ts.cal_preferred_refants[0]) 
     else:
         if ts.cal_refant not in ts.cal_antlist:
-            ts.add('cal_refant',ts,cal_preferred_refants[0])
+            ts.delete('cal_refant')
+            ts.add('cal_refant',ts.cal_preferred_refants[0])
+
