@@ -11,6 +11,10 @@ from . import send
 from .calprocs import get_reordering_nopol
 
 import katdal
+import katpoint
+
+import ephem
+
 import pickle
 import os
 import numpy as np
@@ -97,7 +101,16 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             # get parameters from data file
             parameter_dict = self.get_params()
             # get/edit extra parameters from TS (set at run time)
-            parameter_dict['cbf_n_chans'] = ts.cal_echan-ts.cal_bchan
+            if ts.has_key('cal_echan'):
+                # if bchan and echan are set, use them to override number of channels
+                parameter_dict['cbf_n_chans'] = ts.cal_echan-ts.cal_bchan
+            else:
+                # else set bchan and echan to be full channel range
+                ts.delete('cal_bchan')
+                ts.add('cal_bchan',0,immutable=True)
+                ts.delete('cal_echan')
+                ts.add('cal_echan',parameter_dict['cbf_n_chans'],immutable=True)
+
             parameter_dict['cbf_channel_freqs'] = parameter_dict['cbf_channel_freqs'][ts.cal_bchan:ts.cal_echan]
             # check that the minimum necessary prameters are set
             min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'experiment_id', 'experiment_id']
@@ -280,6 +293,7 @@ class SimDataMS(table):
         param_dict = {}
 
         param_dict['cbf_channel_freqs'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
+        param_dict['cbf_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
         param_dict['antenna_mask'] = ','.join([ant for ant in self.ants])
         param_dict['cbf_n_ants'] = len(self.ants)
@@ -288,6 +302,17 @@ class SimDataMS(table):
         param_dict['cbf_sync_time'] = 0.0
         param_dict['experiment_id'] = self.file_name.split('.')[0].split('/')[-1]
         param_dict['config'] = {'MS_simulator': True}
+
+        # antenna descriptions for all antennas
+        #  assume the order is the same as self.ants
+        antenna_positions = table(self.getkeyword('ANTENNA')).getcol('POSITION')
+        antenna_diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
+        for ant, diam, pos in zip(self.ants, antenna_diameters, antenna_positions):
+            longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0],pos[1],pos[2])
+            lla_position = ",".join([str(ephem.degrees(longitude)), str(ephem.degrees(latitude)), str(altitude)])
+            description = "{0}, {1}, {2}".format(ant, lla_position, diam)
+            param_dict['{0}_description'.format(ant,)] = description
+
         return param_dict
 
     def get_corrprods(self,antlist):
@@ -443,7 +468,7 @@ class SimDataMS(table):
         for ti, ms_time in enumerate(ms_sorted.iter('TIME')):
             # if we don't yet have a data array, create one
             if data is None: 
-                data = np.zeros_like(ms_time.getcol('CORRECTED_DATA'))
+                data = np.zeros_like(ms_time.getcol('DATA'))
             data[:,bchan:echan,:] = np.rollaxis(correlator_data[ti][...,ordermask],-1,0)
             # save data to CORRECTED_DATA column of the MS
             ms_time.putcol('CORRECTED_DATA',data)
@@ -511,6 +536,10 @@ class SimDataH5(katdal.H5DataV2):
         param_dict['antenna_mask'] = antenna_mask
         param_dict['experiment_id'] = self.experiment_id
         param_dict['config'] = {'h5_simulator':True}
+
+        # antenna descriptions for all antennas
+        for ant in self.ants:
+            param_dict['{0}_description'.format(ant.name,)] = ant.description
 
         return param_dict
         
