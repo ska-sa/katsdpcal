@@ -40,6 +40,8 @@ def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
     parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
+    parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
+    parser.set_defaults(no_auto=False)
     # note - the following lines extract various parameters from the MC config
     parser.add_argument('--cbf-channels', type=int, help='The number of frequency channels in the visibility data. Default from MC config')
     parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the L0 data stream. Default from MC config')
@@ -154,7 +156,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
 
-def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6,
+def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
            mproc=True, param_file='', report_path=''):
     """
@@ -177,6 +179,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     buffer_maxsize: float
         The maximum size of the buffer. Memory for each buffer will be allocated at first
         and then populated by the accumulator from the spead stream.
+    auto: bool
+        True for autocorrelations included in the data, False for cross-correlations only
     l0_endpoint: endpoint
         Endpoint to listen to for L0 stream, default: ':7200'
     l1_endpoint: endpoint
@@ -226,8 +230,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     npol = 4
     nant = len(ts.cal_antlist)
-    # number of baselines includes autocorrelations
-    nbl = nant*(nant+1)/2
+    # number of baselines (may include autocorrelations)
+    nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
 
     # buffer needs to include:
     #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
@@ -353,7 +357,7 @@ if __name__ == '__main__':
 
     run_threads(opts.telstate,
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
-           num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize,
+           num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
            param_file=opts.parameters, report_path=opts.report_path)
