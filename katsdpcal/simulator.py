@@ -602,6 +602,7 @@ class SimDataH5(katdal.H5DataV2):
             for ant in self.ants:
                 ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
                 ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
+            ts.add('cbf_target',target.description,ts=self.timestamps[0]-random()*0.1)
             print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(self.timestamps)
             print 'timestamps:', n_ts, ' -- ',
