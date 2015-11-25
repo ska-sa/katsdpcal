@@ -421,6 +421,7 @@ class SimDataMS(table):
             for ant in antlist:
                 ts.add('{0}_target'.format(ant,),target_desc,ts=scan_time_ut-random()*0.1)
                 ts.add('{0}_activity'.format(ant,),scan_state,ts=scan_time_ut-random()*0.1)
+            ts.add('cbf_target',target_desc,ts=scan_time_utc-random()*0.1)
             print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(tscan.select('unique TIME'))
             print 'timestamps:', n_ts, ' -- ',
