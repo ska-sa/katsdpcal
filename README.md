@@ -41,7 +41,7 @@ Note: The recommended SPEAD rates for laptops are L0: 0.2e7; L1: 1.2e7; And for 
 
 5. run the h5 data stream:
 
- > sim_stream.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\>
+ > sim_data_stream.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\>
  
 ### Shortcut simulator
 
