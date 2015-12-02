@@ -6,6 +6,9 @@ from .calprocs import CalSolution
 import numpy as np
 import copy
 
+import ephem
+import katpoint
+
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  Scan
 #--------------------------------------------------------------------------------------------------
@@ -53,6 +56,8 @@ class Scan(object):
         Name of target obsrved in the scan.
     modvis : array of float, complex64 (ntime, nchan, npol, nbl)
         Intermediate visibility product.
+    model : list
+        List of model components
     nchan : int
         Number of frequency channels in the data.
     channel_freqs : list of float
@@ -88,7 +93,7 @@ class Scan(object):
         self.cross_weights = np.ones_like(self.cross_flags,dtype=np.float)
 
         self.times = data['times'][time_slice]
-        self.target = target
+        self.target = katpoint.Target(target)
 
         # intermediate product visibility - use sparingly!
         self.modvis = None
@@ -99,6 +104,8 @@ class Scan(object):
         self.channel_freqs = range(self.nchan) if chans is None else list(chans)
         self.nant = nant
         self.npol = 4
+
+        self.model = None
 
     def solint_from_nominal(self, input_solint):
         """
@@ -134,6 +141,10 @@ class Scan(object):
         -------
         Gain CalSolution with soltype 'G', shape (time, pol, nant)
         """
+
+        # apply model, if this scan target has an associated model
+        solver_model = self.apply_model()
+        solver_model = solver_model[0] if isinstance(solver_model,list) else solver_model
 
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
@@ -236,6 +247,8 @@ class Scan(object):
         -------
         Bandpass CalSolution with soltype 'B', shape (chan, pol, nant)
         """
+        # apply model, if this scan target has an associated model
+        solver_model = self.apply_model()
 
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
@@ -249,7 +262,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
 
         # solve for bandpass
-        b_soln = calprocs.bp_fit(ave_vis,self.corrprod_lookup,bp0,REFANT)
+        b_soln = calprocs.bp_fit(ave_vis,self.corrprod_lookup,bp0,REFANT,model=solver_model)
 
         return CalSolution('B', b_soln, ave_time)
 
@@ -354,6 +367,49 @@ class Scan(object):
         interp_solns = np.repeat(np.expand_dims(values,axis=0),len(self.times),axis=0)
         return CalSolution(solns.soltype, interp_solns, self.times)
 
+    # ---------------------------------------------------------------------------------------------
+    # apply models
+
+    def apply_model(self, max_offset=8.):
+        """
+        Two possible situations here - 
+          * a single point source in the phase centre, or
+          * something more complicated
+
+        Max offset is the difference in posiiton away from the phase centre for a point to be considered at the phase centre
+        arcseconds
+        8 = meerkat beam
+
+        """ 
+
+        if not self.model: return None
+
+        ra0, dec0 = self.target.radec()
+
+        # deal with easy case first!
+        if self.model.size == 1:
+            # check if source is at the phase centre
+            ra = ephem.hours(self.model['RA'].item())
+            dec = ephem.degrees(self.model['DEC'].item())
+            print 'offset: ', calprocs.arcsec_to_rad(max_offset)
+            if ephem.separation((ra,dec),(ra0,dec0)) < calprocs.arcsec_to_rad(max_offset):
+                if 'si' not in self.model.dtype.names or self.model['si'] == 0:
+                    # spectral index is zero
+                    model = self.model['i'].item()
+                else:
+                    m = self.model['si'].item() / (self.channel_freqs[1]-self.channel_freqs[0])
+                    c = self.model['i'].item() / (self.model['si'].item()*self.model['freq'].item())
+                    model = [m, c]
+                print 'scan model: ', model, self.model['si']
+                return model
+         
+        print 'do something more complex!'
+
+
+        
+
+
+        return None
 
 
 
