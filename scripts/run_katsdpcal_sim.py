@@ -102,7 +102,7 @@ if __name__ == '__main__':
     sim_ts_pane.enter()
 
     # wait a second for TS to be set up
-    time.sleep(1.0)
+    time.sleep(5.0)
 
     # start pipeline running in tmux pane
     threading = '--threading' if opts.threading else ''
