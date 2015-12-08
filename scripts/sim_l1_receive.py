@@ -130,7 +130,7 @@ if __name__ == '__main__':
                         os.system("casapy -c 'flagdata({0})' ".format(flag_params))
 
                         # image using casapy
-                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L0_I",niter=0,stokes="I",,spw="0:{3}~{4}",field="{5}",cell="30arcsec",imsize=[1024,1024],weighting="uniform"'.format(opts.file,file_base,field_id,bchan,echan,field_id)
+                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L0_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec",imsize=[1024,1024],weighting="uniform"'.format(opts.file,file_base,field_id,bchan,echan,field_id)
                         os.system("casapy -c 'clean({0})' ".format(clean_params))
 
                         # image L1 data
