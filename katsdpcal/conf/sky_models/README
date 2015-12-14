@@ -1,0 +1,16 @@
+Model columns:
+--------------
+
+name    component name
+tag     component tag
+RA      RA position
+dRA     RA position uncertainty
+DEC     DEC position
+dDEC    DEC position uncertainty
+a0      Stokes I flux model coefficient a0
+a1      Stokes I flux model coefficient a1
+a2      Stokes I flux model coefficient a2
+a3      Stokes I flux model coefficient a3
+fq      fractional Stokes Q
+fu      fractional Stokes U
+fv      fractional Stokes V
