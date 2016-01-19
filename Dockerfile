@@ -11,5 +11,7 @@ COPY . /tmp/install/katsdpcal
 WORKDIR /tmp/install/katsdpcal
 RUN python ./setup.py clean && pip install --no-index .
 
+WORKDIR /tmp
+
 # expose L1 spead port
 EXPOSE 7202
