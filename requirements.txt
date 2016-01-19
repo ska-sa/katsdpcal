@@ -1,6 +1,7 @@
 argcomplete==1.0.0
 kaptan==0.5.8
 manhole
+matplotlib
 netifaces
 numpy
 pyephem
