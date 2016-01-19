@@ -202,14 +202,14 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     # extract data shape parameters 
     #   argument parser traversed TS config to find these
     if antenna_mask is not None:
-        ts.antenna_mask = antenna_mask
+        ts.add('antenna_mask', antenna_mask, immutable=True)
     elif 'antenna_mask' not in ts:
         raise RuntimeError("No antenna_mask set.")
     if cbf_n_chans is not None:
-        ts.cbf_n_chans = cbf_n_chans
+        ts.add('cbf_n_chans', cbf_n_chans, immutable=True)
     elif 'cbf_n_chans' not in ts:
         raise RuntimeError("No cbf_n_chans set.")
-
+        
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
     if param_file: 
