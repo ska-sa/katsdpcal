@@ -322,7 +322,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
         # create pipeline report (very basic at the moment)
         make_cal_report(ts,report_path)
-        logger.info('Report compiled, in directory {0}/{1}'.format(report_path,ts.experiment_id))
+        experiment_id = ts.experiment_id if ts.has_key('experiment_id') else 'unknown'
+        logger.info('Report compiled, in directory {0}/{1}'.format(report_path,experiment_id))
 
         if full_l1:
             # send L1 stop transmission
