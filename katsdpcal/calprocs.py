@@ -1038,7 +1038,7 @@ def get_bls_lookup(antlist,bls_ordering):
 
     Inputs:
     -------
-    antlist : csv list of antennas, string
+    antlist : list of antenna names, string shape (nant)
     bls_ordering : list of correlation products, string shape(nbl,2)
 
     Returns:
@@ -1046,7 +1046,6 @@ def get_bls_lookup(antlist,bls_ordering):
     corrprod_lookup : lookup table of antenna indices for each baseline, shape(nbl,2)
     """
 
-    antlist = antlist.split(',')
     # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
     antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
     return np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in bls_ordering])
