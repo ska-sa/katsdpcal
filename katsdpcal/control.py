@@ -97,7 +97,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # accumulate data scan by scan into buffer arrays
                 self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
-                self.accumulator_logger.info('accumulating data into buffer %d...' %(current_buffer,))
+                self.accumulator_logger.info('accumulating into buffer %d' %(current_buffer,))
                 max_ind = self.accumulate(rx, current_buffer)
                 self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
@@ -183,7 +183,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             prev_activity = 'none'
             prev_activity_time = 0.
-            prev_tags = 'none'
+            prev_target_tags = 'none'
+            prev_target_name = 'none'
 
             # set data buffer for writing
             data_buffer = self.buffers[buffer_index]
@@ -191,37 +192,61 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # get names of activity and target TS keys, using TS reference antenna
             target_key = '{0}_target'.format(self.telstate.cal_refant,)
             activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
-            # sync time provided by the cbf
-            cbf_sync_time = self.telstate.cbf_sync_time if self.telstate.has_key('cbf_sync_time') else 0.0
 
             obs_end_flag = True
 
+            # sensor parameters which will be set from telescope state when data starts to flow
+            cbf_sync_time = None
+
             # receive SPEAD stream
             ig = spead2.ItemGroup()
+
+            self.accumulator_logger.info('start accumulating data')
             for heap in rx:
                 ig.update(heap)
-                array_index += 1
+
+                # get sync time from TS, if it is present (if it isn't present, don't process this dump further)
+                if not cbf_sync_time:
+                    if self.telstate.has_key('cbf_sync_time'):
+                        cbf_sync_time = self.telstate.cbf_sync_time
+                        self.accumulator_logger.info(' - set cbf_sync_time')
+                    else:
+                        self.accumulator_logger.warning('cbf_sync_time absent from telescope state - ignoring dump')
+                        continue
 
                 # get activity and target tag from TS
                 data_ts = ig['timestamp'].value + cbf_sync_time
                 activity_full = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0]
                 activity, activity_time = activity_full
-                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
 
                 # if this is the first scan of the observation, set up some values
                 if start_flag:
-                    start_time = data_ts
-                    start_flag = False
-
+                    unsync_start_time = ig['timestamp'].value
                     prev_activity_time = activity_time
 
                     # when data starts to flow, set the baseline ordering parameters for re-ordering the data
                     self.set_ordering_parameters()
+                    self.accumulator_logger.info(' - set pipeline data ordering parameters')
 
-                # get activity and target tag from TS
-                data_ts = ig['timestamp'].value + cbf_sync_time
-                activity = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)[0][0]
-                target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
+                    self.accumulator_logger.info('accumulating data from targets:')
+
+                    start_flag = False
+
+                # get target time from TS, if it is present (if it isn't present, set to unknown)
+                if self.telstate.has_key(target_key):
+                    target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
+                    if target == '': target = 'unknown'
+                else:
+                    target = 'unknown'
+                # extract name and tags from target description string
+                target_split = target.split(',')
+                target_name = target_split[0]
+                target_tags = target_split[1] if len(target_split)>1 else 'unknown'
+                if target_name != prev_target_name:
+                    self.accumulator_logger.info(' - {0}'.format(target_name,))
+                    # update source list if necessary
+                    target_list = self.telstate.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if self.telstate.has_key('cal_info_sources') else []
+                    if not target_name in target_list: self.telstate.add('cal_info_sources',target_name)
 
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -232,18 +257,20 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
+                # increment the index indicating how much data has been put into the buffer
+                array_index += 1
 
                 # break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                if activity_time != prev_activity_time and 'slew' not in prev_activity and 'target' not in prev_tags:
-                    self.accumulator_logger.info('Accumulate break due to transition')
+                if (activity_time != prev_activity_time) and ('slew' not in prev_activity) and ('stop' not in prev_activity) and ('unknown' not in prev_activity) and ('target' not in prev_target_tags):
+                    self.accumulator_logger.info('Accumulation break due to transition')
                     obs_end_flag = False
                     break
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
-                duration = (ig['timestamp'].value+ cbf_sync_time)-start_time
+                duration = ig['timestamp'].value - unsync_start_time
                 if duration>2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
                     obs_end_flag = False
@@ -256,8 +283,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 prev_activity = activity
                 prev_activity_time = activity_time
-                # extract tags from target description string
-                prev_tags = target.split(',')[1]
+                prev_target_tags = target_tags
+                prev_target_name = target_name
 
             # if we exited the loop because it was the end of the SPEAD transmission
             if obs_end_flag:
@@ -365,7 +392,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             # send data to L1 SPEAD if necessary
             config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
             tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
-            if self.full_l1 or target_scans != []:
+            if self.full_l1 or target_slices != []:
                 self.pipeline_logger.info('Transmit L1 data')
                 self.data_to_SPEAD(target_slices, tx)
                 self.pipeline_logger.info('End transmit of L1 data')
