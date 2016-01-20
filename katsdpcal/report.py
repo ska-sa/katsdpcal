@@ -73,14 +73,14 @@ def write_summary(report,ts):
     # write RST style bulletted list
     report.writeln('* Int time:     {0:f}'.format(ts.sdp_l0_int_time,))
     report.writeln('* Channels:     {0:d}'.format(ts.cbf_n_chans,))
-    csv_antlist = ts.antenna_mask.split(',')
-    report.writeln('* Antennas:     {0:d}'.format(len(csv_antlist),))
-    report.writeln('* Antenna list: {0:s}'.format(ts.antenna_mask,))
+    report.writeln('* Antennas:     {0:d}'.format(len(ts.antenna_mask),))
+    report.writeln('* Antenna list: {0:s}'.format(', '.join(ts.antenna_mask),))
     report.writeln()
 
     report.writeln('Source list:')
     report.writeln()
-    for target in ts.get_range('cal_info_sources',st=0,return_format='recarray')['value']:
+    target_list = ts.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
+    for target in target_list:
         report.writeln('* {0:s}'.format(target,))
 
     report.writeln()    
@@ -97,7 +97,7 @@ def write_table_timerow(report,colnames,time,data):
     data     : table data, shape (time, columns)
     """
     # create table header
-    header = colnames.split(',')
+    header = colnames
     header.insert(0,'time')
 
     n_entries = len(header)
