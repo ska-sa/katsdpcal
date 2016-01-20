@@ -101,8 +101,8 @@ if __name__ == '__main__':
     sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1} --parameters {2}'.format(opts.telstate, file_fullpath, opts.parameters))
     sim_ts_pane.enter()
 
-    # wait a second for TS to be set up
-    time.sleep(1.0)
+    # wait a few seconds for TS to be set up
+    time.sleep(5.0)
 
     # start pipeline running in tmux pane
     threading = '--threading' if opts.threading else ''
