@@ -237,6 +237,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
                     if target == '': target = 'unknown'
                 else:
+                    self.accumulator_logger.warning('target description {0} absent from telescope state'.format(target_key))
                     target = 'unknown'
                 # extract name and tags from target description string
                 target_split = target.split(',')
