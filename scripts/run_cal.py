@@ -54,7 +54,7 @@ def parse_opts():
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=False)
     parser.add_argument('--parameters', type=str, default=os.path.join(conf_dir,param_file), help='Default pipeline parameter file (will be over written by TelescopeState. [default: {0}]'.format(param_file,))
-    parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
+    parser.add_argument('--report-path', type=str, default='/var/kat/data', help='Path under which to save pipeline report. [default: /var/kat/data]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
@@ -322,8 +322,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
         # create pipeline report (very basic at the moment)
         make_cal_report(ts,report_path)
-        experiment_id = ts.experiment_id if ts.has_key('experiment_id') else 'unknown'
-        logger.info('Report compiled, in directory {0}/{1}'.format(report_path,experiment_id))
+        if not ts.has_key('experiment_id'): ts.add('experiment_id','unknown_project',immutable=True)
+        logger.info('Report compiled, in directory {0}/{1}'.format(report_path,ts.experiment_id))
 
         if full_l1:
             # send L1 stop transmission
