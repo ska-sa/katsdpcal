@@ -20,3 +20,6 @@ WORKDIR /tmp
 
 # expose L1 spead port
 EXPOSE 7202
+
+# expose volume for saving report etc.
+VOLUME ["/var/kat/data"]
