@@ -111,7 +111,12 @@ def init_simdata(file_name, wait=0.1, **kwargs):
                 ts.delete('cal_echan')
                 ts.add('cal_echan',parameter_dict['cbf_n_chans'],immutable=True)
 
-            parameter_dict['cbf_channel_freqs'] = parameter_dict['cbf_channel_freqs'][ts.cal_bchan:ts.cal_echan]
+            # use channel freqs to determine parameters cbf_channel_freq and cbf_bandwidth which will be given by the real system
+            subset_channel_freqs = parameter_dict['cbf_channel_freqs'][ts.cal_bchan:ts.cal_echan]
+            ts.add('cbf_bandwidth',np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]),immutable=True)
+            ts.add('cbf_center_freq',subset_channel_freqs[len(subset_channel_freqs)/2],immutable=True)
+            ts.delete('cbf_channel_freqs')
+
             # check that the minimum necessary prameters are set
             min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'experiment_id', 'experiment_id']
             for key in min_keys: 
@@ -311,7 +316,7 @@ class SimDataMS(table):
             longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0],pos[1],pos[2])
             lla_position = ",".join([str(ephem.degrees(longitude)), str(ephem.degrees(latitude)), str(altitude)])
             description = "{0}, {1}, {2}".format(ant, lla_position, diam)
-            param_dict['{0}_description'.format(ant,)] = description
+            param_dict['{0}_observer'.format(ant,)] = description
 
         return param_dict
 
@@ -539,7 +544,7 @@ class SimDataH5(katdal.H5DataV2):
 
         # antenna descriptions for all antennas
         for ant in self.ants:
-            param_dict['{0}_description'.format(ant.name,)] = ant.description
+            param_dict['{0}_observer'.format(ant.name,)] = ant.description
 
         return param_dict
         
