@@ -206,7 +206,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 ig.update(heap)
 
                 # get sync time from TS, if it is present (if it isn't present, don't process this dump further)
-                if not cbf_sync_time:
+                if cbf_sync_time == None:
                     if self.telstate.has_key('cbf_sync_time'):
                         cbf_sync_time = self.telstate.cbf_sync_time
                         self.accumulator_logger.info(' - set cbf_sync_time')
