@@ -125,8 +125,12 @@ if __name__ == '__main__':
                             print 'WARNING: L0 image {0}_F{1}_L0_I* already exists. Over writing it.'.format(file_base,field_id)
                             os.system('rm -rf {0}_F{1}_L0_I*'.format(file_base,field_id))
 
+                        # flag uncalibrated first dump
+                        flag_params = 'vis="{0}",mode="quack",quackinterval=1.0,quackmode="beg",action="apply",datacolumn="CORRECTED_DATA"'.format(opts.file,)
+                        os.system("casapy -c 'flagdata({0})' ".format(flag_params))
+
                         # image using casapy
-                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L0_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec"'.format(opts.file,file_base,field_id,bchan,echan,field_id)
+                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L0_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec",imsize=[1024,1024],weighting="uniform"'.format(opts.file,file_base,field_id,bchan,echan,field_id)
                         os.system("casapy -c 'clean({0})' ".format(clean_params))
 
                         # image L1 data
@@ -134,8 +138,12 @@ if __name__ == '__main__':
                             print 'WARNING: L1 image {0}_F{1}_L1_I* already exists. Over writing it.'.format(file_base,field_id)
                             os.system('rm -rf {0}_F{1}_L1_I*'.format(file_base,field_id))
 
+                        # flag uncalibrated first dump
+                        flag_params = 'vis="{0}",mode="quack",quackinterval=1.0,quackmode="beg",action="apply",datacolumn="CORRECTED_DATA"'.format(new_file,)
+                        os.system("casapy -c 'flagdata({0})' ".format(flag_params))
+
                         # image using casapy
-                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L1_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec"'.format(new_file,file_base,field_id,bchan,echan,field_id)
+                        clean_params = 'vis="{0}",imagename="{1}_F{2}_L1_I",niter=0,stokes="I",spw="0:{3}~{4}",field="{5}",cell="30arcsec",imsize=[1024,1024],weighting="uniform"'.format(new_file,file_base,field_id,bchan,echan,field_id)
                         os.system("casapy -c 'clean({0})' ".format(clean_params))
 
                 else:

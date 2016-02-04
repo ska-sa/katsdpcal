@@ -5,10 +5,14 @@ from . import report
 from .scan import Scan
 from .rfi import threshold_avg_flagging
 
+from . import lsm_dir
+
 import numpy as np
 import optparse
 import sys
 import copy
+
+import glob
 
 import pickle
 import os
@@ -26,6 +30,29 @@ class ThreadLoggingAdapter(logging.LoggerAdapter):
     """
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
+
+def get_model(name):
+    """
+    Get the model from text file
+    """
+    model_file = glob.glob('{0}/*{1}*'.format(lsm_dir,name))
+    # ignore tilde ~ backup files
+    model_file = [f for f in model_file if f[-1]!='~']
+    if model_file == []: return None
+    
+    if len(model_file) == 1:
+        model_file = model_file[0]
+    else:
+        raise ValueError('More than one possible sky model file for {0}'.format(name,))
+
+    model_dtype = [('tag','S4'),('name','S16'),('RA','S24'),('dRA','S8'),('DEC','S24'),('dDEC','S8'),
+        ('i','f16'),('q','f16'),('u','f16'),('v','f16'),('si','f16'),('freq','f16')]
+    #model_conversion = {}
+    #model_conversion['RA'] = 
+
+    model_components = np.genfromtxt(model_file,delimiter=',',dtype=model_dtype)
+    print model_components
+    return model_components
 
 def rfi(s,thresholds,av_blocks,pipeline_logger):
     """
@@ -226,8 +253,11 @@ def pipeline(data, ts, task_name='pipeline'):
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
 
         # set up scan
-
         s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target_name, chans=ts.cal_channel_freqs)
+        # ---------------------------------------
+        # Model?
+        s.model = get_model(target_name)
+        print '*****', s.model
 
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')

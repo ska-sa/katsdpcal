@@ -209,10 +209,10 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             ti_max = len(data_times)
 
             # check for missing timestamps
-            if not np.all(self.timestamps[0:ti_max] == times):
+            if not np.all(self.to_ut(self.timestamps[0:ti_max]) == times):
                 start_repeat = np.squeeze(np.where(times[ti_max-1]==times))[0]
 
-                if np.all(self.timestamps[0:start_repeat] == times[0:start_repeat]):
+                if np.all(self.to_ut(self.timestamps[0:start_repeat]) == times[0:start_repeat]):
                     print 'SPEAD error: {0} extra final L1 time stamp(s). Ignoring last time stamp(s).'.format(ti_max-start_repeat-1,)
                     ti_max += -(ti_max-start_repeat-1)
                 else:
@@ -276,6 +276,20 @@ class SimDataMS(table):
         self.timestamps = np.unique(self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
         self.ants = table(self.getkeyword('ANTENNA')).getcol('NAME')
         self.corr_products, self.bls_ordering = self.get_corrprods(self.ants)
+
+    def to_ut(self, t):
+        """
+        Converts MJD seconds into Unix time in seconds
+
+        Parameters
+        ----------
+        t : time in MJD seconds
+
+        Returns
+        -------
+        Unix time in seconds
+        """
+        return (t/86400. - 2440587.5 + 2400000.5)*86400.
 
     def field_ids(self):
         """
@@ -379,6 +393,7 @@ class SimDataMS(table):
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         # get metadata information for the telescope state
         field_names = table(self.getkeyword('FIELD')).getcol('NAME')
+        positions = table(self.getkeyword('FIELD')).getcol('DELAY_DIR')
         intents = table(self.getkeyword('STATE')).getcol('OBS_MODE')
         antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
         # set up ItemGroup for transmission
@@ -398,14 +413,20 @@ class SimDataMS(table):
                 raise ValueError('More than one state in a scan!')
             tag = self.intent_to_tag[intents[state_id.pop()]]
            
-            target_desc = ', '.join([field_names[field_id.pop()],tag])
+            f_id = field_id.pop()
+            ra, dec = np.squeeze(positions[f_id])
+            radec = ephem.Equatorial(ra, dec)
+            target_desc = '{0}, radec {1}, {2}, {3}'.format(field_names[f_id],tag,str(radec.ra),str(radec.dec))
 
             # MS files only have tracks (?)
             scan_state = 'track'
 
+            scan_time = tscan.getcol('TIME',startrow=0,nrow=1)[0]
+            scan_time_ut = self.to_ut(scan_time)
             for ant in antlist:
-                ts.add('{0}_target'.format(ant,),target_desc,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
-                ts.add('{0}_activity'.format(ant,),scan_state,ts=tscan.getcol('TIME',startrow=0,nrow=1)[0]-random()*0.1)
+                ts.add('{0}_target'.format(ant,),target_desc,ts=scan_time_ut-random()*0.1)
+                ts.add('{0}_activity'.format(ant,),scan_state,ts=scan_time_ut-random()*0.1)
+            ts.add('cbf_target',target_desc,ts=scan_time_ut-random()*0.1)
             print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(tscan.select('unique TIME'))
             print 'timestamps:', n_ts, ' -- ',
@@ -414,7 +435,7 @@ class SimDataMS(table):
             # transmit the data timestamp by timestamp
             for ttime in tscan.iter('TIME'):
                 # get data to transmit from MS
-                tx_time = ttime.getcol('TIME')[0] # time
+                tx_time = self.to_ut(ttime.getcol('TIME')[0]) # time
                 tx_vis = np.hstack(ttime.getcol('DATA')[self.data_mask]) # visibilities for this time stamp, for specified channel range
                 tx_flags = np.hstack(ttime.getcol('FLAG')[self.data_mask]) # flags for this time stamp, for specified channel range
                 try:
@@ -512,6 +533,21 @@ class SimDataH5(katdal.H5DataV2):
         """
         pass
 
+    def to_ut(self, t):
+        """
+        Allows H5 simulator to emulate MS Unix time conversion
+        (Conversion unnecessary for H5)
+
+        Parameters
+        ----------
+        t : Unix time in seconds
+
+        Returns
+        -------
+        Unix time in seconds
+        """
+        return t
+
     def field_ids(self):
         """
         Field IDs in the data set
@@ -571,6 +607,7 @@ class SimDataH5(katdal.H5DataV2):
             for ant in self.ants:
                 ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
                 ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
+            ts.add('cbf_target',target.description,ts=self.timestamps[0]-random()*0.1)
             print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
             n_ts = len(self.timestamps)
             print 'timestamps:', n_ts, ' -- ',
