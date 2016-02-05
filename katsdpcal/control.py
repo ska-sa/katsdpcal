@@ -249,6 +249,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     target_list = self.telstate.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if self.telstate.has_key('cal_info_sources') else []
                     if not target_name in target_list: self.telstate.add('cal_info_sources',target_name)
 
+                # increment the index indicating the position of the data in the buffer
+                array_index += 1
                 # reshape data and put into relevent arrays
                 data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
                 data_buffer['flags'][array_index,:,:,:] = ig['flags'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
@@ -258,8 +260,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 else:
                     data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
-                # increment the index indicating how much data has been put into the buffer
-                array_index += 1
 
                 # break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
