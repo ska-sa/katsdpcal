@@ -253,7 +253,7 @@ def pipeline(data, ts, task_name='pipeline'):
         pipeline_logger.info('Tags:   {0}'.format(taglist,))
 
         # set up scan
-        s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target_name, chans=ts.cal_channel_freqs)
+        s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target, chans=ts.cal_channel_freqs)
         # ---------------------------------------
         # Model?
         s.model = get_model(target_name)
