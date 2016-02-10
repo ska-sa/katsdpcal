@@ -423,7 +423,7 @@ class Scan(object):
                     # spectral index is zero
                     S = 10.**self.model_raw_params['a0'].item()
                     model = S * (1.0 - np.eye(self.nant, dtype=np.complex))
-                    self.logger.info('     Model: single point source, flat spectrum , flux: {0:03.4f} Jy'.format(S,))
+                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(S,))
                 else:
                     model_params = [self.model_raw_params[a].item() for a in ['a0','a1','a2','a3']]
                     if spectral:
