@@ -88,6 +88,8 @@ def setup_logger(log_path):
     console.setFormatter(formatter)
     # add the handler to the root logger
     logging.getLogger('').addHandler(console)
+    # set log level to INFO for katsdpcal module
+    #logging.getLogger('katsdpcal').setLevel(logging.INFO)
 
 def all_alive(process_list):
     """
