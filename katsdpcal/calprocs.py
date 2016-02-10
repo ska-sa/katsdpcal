@@ -6,9 +6,9 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
 import numpy as np
-import logging
 import copy
 
+import logging
 logger = logging.getLogger(__name__)
 
 #--------------------------------------------------------------------------------------------------
@@ -43,79 +43,6 @@ def list_to_model(model_list, centre_position):
 
     return lmI_list
 
-def get_model(model, num_ants):
-    # set up model based on input format
-    if model:
-        if np.isscalar(model):
-            # single scalar value - set all antenna model values to that value
-            M = model*(1.0 - np.eye(num_ants, dtype=np.complex))
-            # ^^^ working
-        else:
-            # vvvv still to do
-            model_shape = tuple(list(vis.shape[:-1]) + [num_ants]*2)
-            M = np.zeros(model_shape,dtype=np.complex)
-            for i in range(num_ants):
-                M[...,i,i] = model[...,i]
-    else:
-        # if no model is present (model==None) , use 1
-        M = 1.0 - np.eye(num_ants, dtype=np.complex) 
-        #for dim_len in reversed(vis.shape[:-1]):
-        #    M = np.repeat(M[np.newaxis, :, :], dim_len, axis=0)
-        # ^^ working
-    print 'M:', M.shape #, vis.shape, gain_shape
-
-    return M
-
-def scalar_multiply(c):
-    def scalar_multiple_model(model):
-        return c*model
-    return scalar_multiple_model
-
-def linear_multiply(mc):
-    m, c = mc
-    def scalar_multiple_model(model):
-        return m*chan_axis(model)*model + c
-    return scalar_multiple_model
-
-def chan_axis(model):
-    chans = np.arange(np.shape(model)[0])
-    for i in range((len(np.shape(model)) - 1)):
-        chans = np.expand_dims(chans, axis=-1)
-    return chans
-
-def no_transform(model):
-    return model
-
-
-def get_model_transform(model):
-    # set up model based on input format
-    if model:
-        if np.isscalar(model):
-            print 'scalar transform'
-            # single scalar value - set all antenna model values to that value
-            M = scalar_multiply(model)
-            # ^^^ working
-        else:
-            print 'linear transform'
-            M = linear_multiply(model)
-
-    #    else:
-    #        # vvvv still to do
-    #        model_shape = tuple(list(vis.shape[:-1]) + [num_ants]*2)
-    #        M = np.zeros(model_shape,dtype=np.complex)
-    #        for i in range(num_ants):
-    #            M[...,i,i] = model[...,i]
-    else:
-        # if no model is present (model==None) , use 1
-        print 'no transform'
-        M = no_transform
-        #for dim_len in reversed(vis.shape[:-1]):
-        #    M = np.repeat(M[np.newaxis, :, :], dim_len, axis=0)
-        # ^^ working
-    #print 'M:', M.shape #, vis.shape, gain_shape
-
-    return M
-
 #--------------------------------------------------------------------------------------------------
 #--- Solvers
 #--------------------------------------------------------------------------------------------------
@@ -144,7 +71,7 @@ def get_bl_ant_pairs(corrprod_lookup):
     return antlist1, antlist2
 
 def stefcal(vis, num_ants, corrprod_lookup, weights=1.0, ref_ant=0, init_gain=None,
-    model=None, algorithm='adi', num_iters=100, conv_thresh=0.0001, verbose=False):
+    model=1.0, algorithm='adi', num_iters=100, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods:
@@ -276,7 +203,7 @@ def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
 
     return g_curr
 
-def adi_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, model=None,
+def adi_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, model=1.,
 	 num_iters=100, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Parallel version of the algorithm.
     ADI StefCal implimentation from:
@@ -317,25 +244,14 @@ def adi_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=N
 
     # initialise calibrator source model
     #   default is unity with zeros along the diagonals to ignore autocorr
-    #model_shape = tuple(list(vis.shape[:-1]) + [num_ants]*2)
-    #print model_shape
-
-    # set up model based on input format
-    m_transform = get_model_transform(model) #, num_ants)
-    #m_transform = no_transform(model) #get_model_transform(model) #, num_ants)
-    M = 1.0 - np.eye(num_ants, dtype=np.complex)
-    print 'M: ', M
+    M = model * (1.0 - np.eye(num_ants, dtype=np.complex)) if np.isscalar(model) else model
 
     antA, antB = bl_ant_pairs
     for i in range(num_iters):
         # iterate through antennas, solving for each gain
         for p in range(num_ants):
             # z <- g_prev odot M[:,p]
-            #z = g_prev*M[...,p]
-            #z = g_prev*m_transform(M[...,p])
-            z = m_transform(g_prev*M[...,p])
-            #print g_prev.shape, '************', M.shape
-            #print g_prev[-1], '************', M[-1]
+            z = g_prev*M[...,p]
             z = np.delete(z,p,axis=-1)
 
             # R[:,p]
@@ -1184,3 +1100,8 @@ class CalSolution(object):
 
 def arcsec_to_rad(angle):
     return np.pi*angle/60./60./180.
+
+def flux(coeffs,frequencies):
+    nu_ghz = np.array(frequencies)/1.e9
+    a0, a1, a2, a3 = coeffs
+    return 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
