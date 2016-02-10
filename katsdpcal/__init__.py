@@ -26,3 +26,7 @@ except:
 import spead2
 from spead2 import recv
 from spead2 import send
+
+# default log level is INFO
+import logging
+logging.getLogger(__name__).setLevel(logging.INFO)
