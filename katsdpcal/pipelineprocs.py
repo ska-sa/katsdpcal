@@ -5,6 +5,9 @@ Pipeline procedures for MeerKAT calibration pipeline
 
 import numpy as np
 
+# for model files
+import glob
+
 #--------------------------------------------------------------------------------------------------
 #--- Telescope State interactions
 #--------------------------------------------------------------------------------------------------
@@ -31,7 +34,7 @@ def init_ts(ts, param_dict, clear=False):
 
     Inputs
     ======
-    ts: Telescope State
+    ts : Telescope State
     param_dict : dictionary of parameters
     clear : clear ts before initialising
     """ 
@@ -51,7 +54,7 @@ def ts_from_file(ts, filename):
 
     Inputs
     ======
-    ts: Telescope State
+    ts : Telescope State
     filename : parameter file
 
     Notes
@@ -84,7 +87,7 @@ def setup_ts(ts):
 
     Inputs
     ======
-    ts: Telescope State
+    ts : Telescope State
 
     Notes
     =====
@@ -128,4 +131,33 @@ def setup_ts(ts):
         if ts.cal_refant not in ts.cal_antlist:
             ts.delete('cal_refant')
             ts.add('cal_refant',ts.cal_preferred_refants[0])
+
+def get_model(name, lsm_dir):
+    """
+    Get a sky model from a text file.
+    The name of the text file must incorporate the name of the source.
+
+    Inputs
+    ======
+    name : name of source, string
+    lsm_dir : directory containing the source model txt file
+
+    Returns
+    =======
+    model_components : numpy recarray of sky model component parameters
+    """
+    model_file = glob.glob('{0}/*{1}*'.format(lsm_dir,name))
+    # ignore tilde ~ backup files
+    model_file = [f for f in model_file if f[-1]!='~']
+    if model_file == []: return None
+
+    if len(model_file) == 1:
+        model_file = model_file[0]
+    else:
+        raise ValueError('More than one possible sky model file for {0}'.format(name,))
+
+    model_dtype = [('tag','S4'),('name','S16'),('RA','S24'),('dRA','S8'),('DEC','S24'),('dDEC','S8'),
+        ('a0','f16'),('a1','f16'),('a2','f16'),('a3','f16'),('fq','f16'),('fu','f16'),('fv','f16')]
+    model_components = np.genfromtxt(model_file,delimiter=',',dtype=model_dtype)
+    return model_components
 
