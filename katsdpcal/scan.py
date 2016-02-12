@@ -104,6 +104,7 @@ class Scan(object):
         # scan meta-data
         self.dump_period = dump_period
         self.nchan = self.vis.shape[1]
+        # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
         self.channel_freqs = range(self.nchan) if chans is None else list(chans)
         self.nant = nant
         self.npol = 4
