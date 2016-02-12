@@ -92,12 +92,12 @@ def write_table_timerow(report,colnames,time,data):
     Parameters
     ----------
     report   : report file to write to
-    colnames : list of column names, comma separated string
+    colnames : list of column names, list of string
     time     : list of times (equates to number of rows in the table)
     data     : table data, shape (time, columns)
     """
     # create table header
-    header = colnames
+    header = colnames[:]
     header.insert(0,'time')
 
     n_entries = len(header)
