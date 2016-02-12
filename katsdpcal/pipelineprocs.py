@@ -8,6 +8,9 @@ import numpy as np
 # for model files
 import glob
 
+import logging
+logger = logging.getLogger(__name__)
+
 #--------------------------------------------------------------------------------------------------
 #--- Telescope State interactions
 #--------------------------------------------------------------------------------------------------
@@ -132,7 +135,7 @@ def setup_ts(ts):
             ts.delete('cal_refant')
             ts.add('cal_refant',ts.cal_preferred_refants[0])
 
-def get_model(name, lsm_dir):
+def get_model(name, lsm_dir_list = []):
     """
     Get a sky model from a text file.
     The name of the text file must incorporate the name of the source.
@@ -146,15 +149,24 @@ def get_model(name, lsm_dir):
     =======
     model_components : numpy recarray of sky model component parameters
     """
-    model_file = glob.glob('{0}/*{1}*'.format(lsm_dir,name))
-    # ignore tilde ~ backup files
-    model_file = [f for f in model_file if f[-1]!='~']
-    if model_file == []: return None
+    if not isinstance(lsm_dir_list,list): lsm_dir_list = [lsm_dir_list]
+    # default to check the current directory first
+    lsm_dir_list.append('.')
 
-    if len(model_file) == 1:
-        model_file = model_file[0]
-    else:
-        raise ValueError('More than one possible sky model file for {0}'.format(name,))
+    # iterate through the list from the end so the model from the earliest directory in the list is used
+    for lsm_dir in reversed(lsm_dir_list):
+        model_file_list = glob.glob('{0}/*{1}*'.format(lsm_dir,name))
+        # ignore tilde ~ backup files
+        model_file_list = [f for f in model_file_list if f[-1]!='~']
+
+        if len(model_file_list) == 1:
+            model_file = model_file_list[0]
+        elif len(model_file_list) > 1:
+            # if there are more than one model files for the source IN THE SAME DIRECTORY, raise an error
+            raise ValueError('More than one possible sky model file for {0}: {1}'.format(name, model_file_list))
+
+    # if there is not model file, return None
+    if model_file == []: return None
 
     model_dtype = [('tag','S4'),('name','S16'),('RA','S24'),('dRA','S8'),('DEC','S24'),('dDEC','S8'),
         ('a0','f16'),('a1','f16'),('a2','f16'),('a3','f16'),('fq','f16'),('fu','f16'),('fv','f16')]
