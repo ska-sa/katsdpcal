@@ -178,7 +178,7 @@ def pipeline(data, ts, task_name='pipeline'):
         ts.add('cal_antlist_description',description_list,immutable=True)
     # channel frequencies
     if not ts.has_key('cal_channel_freqs'):
-        sideband = 1
+        sideband = ts['cal_sideband'] if ts.has_key('cal_sideband') else 1
         channel_freqs = ts.cbf_center_freq + sideband*(ts.cbf_bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
         ts.add('cal_channel_freqs',channel_freqs,immutable=True)
 
