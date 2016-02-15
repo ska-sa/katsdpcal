@@ -154,8 +154,9 @@ def get_model(name, lsm_dir_list = []):
     lsm_dir_list.append('.')
 
     # iterate through the list from the end so the model from the earliest directory in the list is used
+    model_file = []
     for lsm_dir in reversed(lsm_dir_list):
-        model_file_list = glob.glob('{0}/*{1}*'.format(lsm_dir,name))
+        model_file_list = glob.glob('{0}/*{1}*.txt'.format(lsm_dir,name))
         # ignore tilde ~ backup files
         model_file_list = [f for f in model_file_list if f[-1]!='~']
 
