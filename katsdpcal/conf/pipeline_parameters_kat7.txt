@@ -3,6 +3,8 @@
 cal_refant : ant1
 cal_preferred_refants : ant1,ant2,ant3,ant4,ant5,ant6,ant7
 
+cal_sideband : -1                         # for frequency calculation
+
 # general data parameters
 cal_bchan : 200                           # first channel to process, int
 cal_echan : 800                           # last channel to process, int
