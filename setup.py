@@ -16,7 +16,8 @@ setup (
         "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
         "scripts/sim_ts.py",
-        "scripts/sim_data_stream.py"
+        "scripts/sim_data_stream.py",
+        "scripts/create_test_data.py"
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
