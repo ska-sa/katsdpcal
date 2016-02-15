@@ -400,6 +400,7 @@ class SimDataMS(table):
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
         ig = send.ItemGroup(flavour=flavour)
 
+        time_ind = 0
         # send data scan by scan
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
             # update telescope state with scan information
@@ -450,6 +451,8 @@ class SimDataMS(table):
                 # transmit timestamps, vis, flags, weights
                 self.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
 
+                time_ind += 1
+
             if scan_ind+1 == max_scans:
                 break
 
@@ -457,9 +460,9 @@ class SimDataMS(table):
         tx.send_heap(ig.get_end())
 
         # MS only has 'track' scans?
-        print 'Track timestamps:', scan_ind
+        print 'Track timestamps:', time_ind
         print 'Slew timestamps: ', 0
-        print 'Total timestamps:', scan_ind
+        print 'Total timestamps:', time_ind
 
     def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
         """
