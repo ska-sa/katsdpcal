@@ -3,7 +3,6 @@ from setuptools import setup, find_packages
 
 setup (
     name = "katsdpcal",
-    version = "trunk",
     description = "MeerKAT calibration pipeline",
     author = "Laura Richter",
     author_email = "laura@ska.ac.za",
@@ -12,7 +11,7 @@ setup (
     include_package_data = True,
     scripts = [
         "scripts/reduction_script.py",
-	"scripts/run_cal.py",	
+        "scripts/run_cal.py",
         "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
         "scripts/sim_ts.py",
@@ -31,6 +30,6 @@ setup (
     platforms = [ "OS Independent" ],
     keywords="kat kat7 meerkat ska",
     zip_safe = False,
-    # Bitten Test Suite
-    #test_suite = "katfile.test.suite",
+    install_requires = ["katversion"],
+    use_katversion = True
 )
