@@ -7,7 +7,6 @@ from . import calprocs
 
 from katsdptelstate.telescope_state import TelescopeState
 
-import socket
 import numpy as np
 import time
 
@@ -68,19 +67,13 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
              Task (Process or Thread) run method. Append random vis to the vis list
             at random time.
             """
-            # set up multicast sockets
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if self.l0_endpoint.multicast_subscribe(sock):
-                self.accumulator_logger.info("Subscribing to multicast address {0}".format(self.l0_endpoint.host))
-
             # if we are usig multiprocessing, view ctypes array in numpy format
             if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
 
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
             rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            rx.add_udp_reader(self.l0_endpoint.port, max_size=9172)
+            rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host, max_size=9172)
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
