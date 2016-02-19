@@ -30,6 +30,6 @@ setup (
     platforms = [ "OS Independent" ],
     keywords="kat kat7 meerkat ska",
     zip_safe = False,
-    install_requires = ["katversion"],
+    setup_requires = ["katversion"],
     use_katversion = True
 )
