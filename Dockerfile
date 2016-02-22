@@ -1,4 +1,4 @@
-FROM sdp-ingest5.kat.ac.za:5000/docker-base
+FROM sdp-docker-registry.kat.ac.za:5000/docker-base
 
 MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
