@@ -685,14 +685,14 @@ class SimDataH5V3(katdal.H5DataV3):
         """
         return self.target_indices
 
-    def h5_get_params(self):
-        return get_params(self)
+    def get_params(self):
+        return h5_get_params(self)
 
-    def h5_tx_data(self,ts,tx,max_scans):
-        return tx_data(self,ts,tx,max_scans)
+    def tx_data(self,ts,tx,max_scans):
+        return h5_tx_data(self,ts,tx,max_scans)
 
-    def h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
-        return write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
+    def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
+        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
 
 # katdal v2 data
 class SimDataH5V2(katdal.H5DataV2):
@@ -747,14 +747,14 @@ class SimDataH5V2(katdal.H5DataV2):
         """
         return self.target_indices
 
-    def h5_get_params(self):
-        return get_params(self)
+    def get_params(self):
+        return h5_get_params(self)
 
-    def h5_tx_data(self,ts,tx,max_scans):
-        return tx_data(self,ts,tx,max_scans)
+    def tx_data(self,ts,tx,max_scans):
+        return h5_tx_data(self,ts,tx,max_scans)
 
-    def h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
-        return write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
+    def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
+        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
 
 
 
