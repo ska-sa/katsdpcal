@@ -40,8 +40,9 @@ def get_file_format(file_name):
     try:
         # Is it a katdal H5 file?
         # open in r+ mode so we don't inadvertantly lock it into readonly mode for later
-        katdal.open(file_name, mode='r+')
-        data_class = SimDataH5
+        f = katdal.open(file_name, mode='r+')
+        data_class = SimDataH5V3 if f.version=='3.0' else SimDataH5V2
+        print data_class
     except IOError:
         try:
             # Not an H5 file. Is it an MS?
@@ -509,11 +510,134 @@ class SimDataMS(table):
 #---   simulates pipeline data from H5 file
 #--------------------------------------------------------------------------------------------------
 
-class SimDataH5(katdal.H5DataV2):
+# generic functions for H5 simulator, for V2 and V3 katdal H5 files
+
+def h5_get_params(h5data):
+    """
+    Add key value pairs from H5 file to to parameter dictionary.
+
+    Returns
+    -------
+    param_dict : dictionary of observation parameters
+    """
+    param_dict = {}
+
+    param_dict['cbf_channel_freqs'] = h5data.channel_freqs
+    param_dict['sdp_l0_int_time'] = h5data.dump_period
+    param_dict['cbf_n_ants'] = len(h5data.ants)
+    param_dict['cbf_bls_ordering'] = h5data.corr_products
+    param_dict['cbf_sync_time'] = 0.0
+    antenna_mask = ','.join([ant.name for ant in h5data.ants])
+    param_dict['antenna_mask'] = antenna_mask
+    param_dict['experiment_id'] = h5data.experiment_id
+    param_dict['config'] = {'h5_simulator':True}
+
+    # antenna descriptions for all antennas
+    for ant in h5data.ants:
+        param_dict['{0}_observer'.format(ant.name,)] = ant.description
+
+    return param_dict
+
+def h5_tx_data(h5data,ts,tx,max_scans):
+    """
+    Iterates through H5 file and transmits data as a spead stream,
+    also updating the telescope state accordingly.
+
+    Parameters
+    ----------
+    ts        : Telescope State
+    tx        : SPEAD transmitter
+    max_scans : Maximum number of scans to transmit
+    """
+    total_ts, track_ts, slew_ts = 0, 0, 0
+
+    flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    ig = send.ItemGroup(flavour=flavour)
+
+    for scan_ind, scan_state, target in h5data.scans():
+        # update telescope state with scan information
+        #   subtract random offset to time, <= 0.1 seconds, to simulate
+        #   slight differences in times of different sensors
+        for ant in h5data.ants:
+            ts.add('{0}_target'.format(ant.name,),target.description,ts=h5data.timestamps[0]-random()*0.1)
+            ts.add('{0}_activity'.format(ant.name,),scan_state,ts=h5data.timestamps[0]-random()*0.1)
+        ts.add('cbf_target',target.description,ts=h5data.timestamps[0]-random()*0.1)
+        print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
+        n_ts = len(h5data.timestamps)
+        print 'timestamps:', n_ts, ' -- ',
+        print scan_state, target.description
+
+        # keep track of number of timestamps
+        total_ts += n_ts
+        if scan_state == 'track': track_ts += n_ts
+        if scan_state == 'slew': slew_ts += n_ts
+
+        # transmit the data from this scan, timestamp by timestamp
+        scan_data = h5data.vis[:]
+        scan_flags = h5data.flags()[:]
+        scan_weights = h5data.weights()[:]
+
+        # set up item group, ising info from first data item
+        if 'correlator_data' not in ig:
+            h5data.setup_ig(ig,scan_data[0],scan_flags[0],scan_flags[0])
+
+        # transmit data timestamp by timestamp
+        for i in range(scan_data.shape[0]): # time axis
+
+            # data values to transmit
+            tx_time = h5data.timestamps[i] # timestamp
+            tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
+            tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
+            tx_weights = scan_weights[i,:,:]
+
+            # transmit timestamps, vis, flags, weights
+            h5data.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
+
+        if scan_ind+1 == max_scans:
+            break
+
+    # end transmission
+    tx.send_heap(ig.get_end())
+
+    print 'Track timestamps:', track_ts
+    print 'Slew timestamps: ', slew_ts
+    print 'Total timestamps:', total_ts
+
+def h5_write_data(h5data,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
+    """
+    Writes data into H5 file.
+
+    Parameters
+    ----------
+    correlator_data  : visibilities, numpy array
+    flags            : flags, numpy array
+    ti_max           : index of highest timestamp of supplies correlator_data and flag arrays
+    cal_bls_ordering : baseline ordering of visibility data in the pipleine, list of lists, shape (nbl, 2)
+    cal_pol_ordering : polarisation pair ordering of visibility data in the pipleine, list of lists, shape (npol, 2)
+    bchan            : start channel to write, integer
+    echan            : end channel to write, integer
+    """
+    # pack data into H5 correlation product list
+    #    by iterating through H5 correlation product list
+    for i, [ant1, ant2] in enumerate(h5data.corr_products):
+
+        # find index of this pair in the cal product array
+        antpair = [ant1[:-1],ant2[:-1]]
+        cal_indx = cal_bls_ordering.index(antpair)
+        # find index of this element in the pol dimension
+        polpair = [ant1[-1],ant2[-1]]
+        pol_indx = cal_pol_ordering.index(polpair)
+
+        # vis shape is (ntimes, nchan, ncorrprod) for real and imag
+        h5data._vis[0:ti_max,bchan:echan,i,0] = correlator_data[0:ti_max,:,pol_indx,cal_indx].real
+        h5data._vis[0:ti_max,bchan:echan,i,1] = correlator_data[0:ti_max,:,pol_indx,cal_indx].imag
+
+# katdal v3 data
+class SimDataH5V3(katdal.H5DataV3):
     """
     Simulated data class.
     Uses H5 file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
-    subclassing katdal H5DataV2.
+    subclassing katdal H5DataV3.
 
     Parameters
     ----------
@@ -526,7 +650,7 @@ class SimDataH5(katdal.H5DataV2):
     
     def __init__(self, file_name, **kwargs):
         mode = kwargs['mode'] if 'mode' in kwargs else 'r'
-        super(SimDataH5, self).__init__(file_name, mode=mode)
+        super(SimDataH5V3, self).__init__(file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
 
     def close(self):
@@ -561,125 +685,81 @@ class SimDataH5(katdal.H5DataV2):
         """
         return self.target_indices
 
-    def get_params(self):
+    def h5_get_params(self):
+        return get_params(self)
+
+    def h5_tx_data(self,ts,tx,max_scans):
+        return tx_data(self,ts,tx,max_scans)
+
+    def h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
+        return write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
+
+# katdal v2 data
+class SimDataH5V2(katdal.H5DataV2):
+    """
+    Simulated data class.
+    Uses H5 file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
+    subclassing katdal H5DataV2.
+
+    Parameters
+    ----------
+    file_name : Name of MS file, string
+
+    Attributes
+    ----------
+    num_scans     : Total number of scans in the MS data set
+    """
+
+    def __init__(self, file_name, **kwargs):
+        mode = kwargs['mode'] if 'mode' in kwargs else 'r'
+        super(SimDataH5V2, self).__init__(file_name, mode=mode)
+        self.num_scans = len(self.scan_indices)
+
+    def close(self):
         """
-        Add key value pairs from H5 file to to parameter dictionary.
-   
+        Allows H5 simulator to emulate pyrap MS close function.
+        (Does nothing)
+        """
+        pass
+
+    def to_ut(self, t):
+        """
+        Allows H5 simulator to emulate MS Unix time conversion
+        (Conversion unnecessary for H5)
+
+        Parameters
+        ----------
+        t : Unix time in seconds
+
         Returns
         -------
-        param_dict : dictionary of observation parameters
+        Unix time in seconds
         """
-        param_dict = {}
+        return t
 
-        param_dict['cbf_channel_freqs'] = self.channel_freqs
-        param_dict['sdp_l0_int_time'] = self.dump_period
-        param_dict['cbf_n_ants'] = len(self.ants)
-        param_dict['cbf_bls_ordering'] = self.corr_products
-        param_dict['cbf_sync_time'] = 0.0
-        antenna_mask = ','.join([ant.name for ant in self.ants])
-        param_dict['antenna_mask'] = antenna_mask
-        param_dict['experiment_id'] = self.experiment_id
-        param_dict['config'] = {'h5_simulator':True}
-
-        # antenna descriptions for all antennas
-        for ant in self.ants:
-            param_dict['{0}_observer'.format(ant.name,)] = ant.description
-
-        return param_dict
-        
-    def tx_data(self,ts,tx,max_scans):
+    def field_ids(self):
         """
-        Iterates through H5 file and transmits data as a spead stream,
-        also updating the telescope state accordingly.
-        
-        Parameters
-        ----------
-        ts        : Telescope State
-        tx        : SPEAD transmitter
-        max_scans : Maximum number of scans to transmit
+        Field IDs in the data set
+
+        Returns
+        -------
+        List of field IDs
         """
-        total_ts, track_ts, slew_ts = 0, 0, 0
+        return self.target_indices
 
-        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-        ig = send.ItemGroup(flavour=flavour)
+    def h5_get_params(self):
+        return get_params(self)
 
-        for scan_ind, scan_state, target in self.scans(): 
-            # update telescope state with scan information
-            #   subtract random offset to time, <= 0.1 seconds, to simulate
-            #   slight differences in times of different sensors
-            for ant in self.ants:
-                ts.add('{0}_target'.format(ant.name,),target.description,ts=self.timestamps[0]-random()*0.1)
-                ts.add('{0}_activity'.format(ant.name,),scan_state,ts=self.timestamps[0]-random()*0.1)
-            ts.add('cbf_target',target.description,ts=self.timestamps[0]-random()*0.1)
-            print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
-            n_ts = len(self.timestamps)
-            print 'timestamps:', n_ts, ' -- ',
-            print scan_state, target.description
+    def h5_tx_data(self,ts,tx,max_scans):
+        return tx_data(self,ts,tx,max_scans)
 
-            # keep track of number of timestamps
-            total_ts += n_ts
-            if scan_state == 'track': track_ts += n_ts
-            if scan_state == 'slew': slew_ts += n_ts
-            
-            # transmit the data from this scan, timestamp by timestamp
-            scan_data = self.vis[:]
-            scan_flags = self.flags()[:]
-            scan_weights = self.weights()[:]
+    def h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
+        return write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
 
-            # set up item group, ising info from first data item
-            if 'correlator_data' not in ig:
-                self.setup_ig(ig,scan_data[0],scan_flags[0],scan_flags[0])
 
-            # transmit data timestamp by timestamp
-            for i in range(scan_data.shape[0]): # time axis
 
-                # data values to transmit
-                tx_time = self.timestamps[i] # timestamp
-                tx_vis = scan_data[i,:,:] # visibilities for this time stamp, for specified channel range
-                tx_flags = scan_flags[i,:,:] # flags for this time stamp, for specified channel range
-                tx_weights = scan_weights[i,:,:]
 
-                # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
 
-            if scan_ind+1 == max_scans:
-                break
-
-        # end transmission
-        tx.send_heap(ig.get_end())
-
-        print 'Track timestamps:', track_ts
-        print 'Slew timestamps: ', slew_ts
-        print 'Total timestamps:', total_ts
-
-    def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
-        """
-        Writes data into H5 file.
-   
-        Parameters
-        ----------
-        correlator_data  : visibilities, numpy array
-        flags            : flags, numpy array
-        ti_max           : index of highest timestamp of supplies correlator_data and flag arrays
-        cal_bls_ordering : baseline ordering of visibility data in the pipleine, list of lists, shape (nbl, 2)
-        cal_pol_ordering : polarisation pair ordering of visibility data in the pipleine, list of lists, shape (npol, 2)
-        bchan            : start channel to write, integer
-        echan            : end channel to write, integer
-        """
-        # pack data into H5 correlation product list
-        #    by iterating through H5 correlation product list
-        for i, [ant1, ant2] in enumerate(self.corr_products):
-
-            # find index of this pair in the cal product array
-            antpair = [ant1[:-1],ant2[:-1]]
-            cal_indx = cal_bls_ordering.index(antpair)
-            # find index of this element in the pol dimension
-            polpair = [ant1[-1],ant2[-1]]
-            pol_indx = cal_pol_ordering.index(polpair)
-
-            # vis shape is (ntimes, nchan, ncorrprod) for real and imag
-            self._vis[0:ti_max,bchan:echan,i,0] = correlator_data[0:ti_max,:,pol_indx,cal_indx].real
-            self._vis[0:ti_max,bchan:echan,i,1] = correlator_data[0:ti_max,:,pol_indx,cal_indx].imag
 
 
 
