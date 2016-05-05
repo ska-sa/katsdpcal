@@ -1,0 +1,266 @@
+# parameter file for KAT7
+
+cal_refant : m031
+cal_preferred_refants : m031,m062
+
+cal_sideband : -1                         # for frequency calculation
+
+# general data parameters
+cal_bchan : 2250                          # first channel to process, int
+cal_echan : 2870                          # last channel to process, int
+
+# delay calibration  
+cal_k_solint : 5.0                        # nominal pre-k g solution interval, seconds
+cal_k_chan_sample : 5                     # sample every 10th channel for pre-K BP soln
+cal_kcross_chanave : 1                    # number of channels to average together to kcross solution
+
+# bandpass calibration
+cal_bp_solint : 5.0                       # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+cal_g_solint: 5.0                         # nominal g solution interval, seconds
+
+# General data parameters
+#cal_check : False                         # Only check script, don't execute tasks
+#cal_debug : False                         # run tasks debug
+#cal_fluxModel : PERLEY_BUTLER_2013.csv    # Filename of flux calibrator model (in FITS)
+#cal_staticflags : KAT7_SRFI               # Filename containing a list of frequencies to be flagged (in FITS)
+
+# User Supplied data parameters
+#cal_BPCal : ''
+#cal_ACal : ''
+#cal_PCal : ''
+#cal_targets : ''
+#cal_polcal : ''
+
+# Archive parameters
+#cal_archRoot']      = "KAT-7 DATA" # Root of ASDM/BDF data
+#cal_selBand']       = "L"   # Selected band, def = first
+#cal_selConfig']     = 1     # Selected frequency config, def = first
+#cal_selNIF']        = 1     # Selected number of IFs, def = first
+#cal_Compress']      = False
+
+# Hanning
+#cal_doHann']       = True        # Hanning needed for RFI?
+#cal_doDescm']      = True        # Descimate Hanning?
+
+# Parallactic angle correction
+#cal_doPACor']      = False       # Make parallactic angle correction
+
+# Special editing list
+#cal_doEditList,  True         # Edit using editList?
+#cal_editFG,      1            # Table to apply edit list to
+#cal_editList, ''
+
+# Editing
+#cal_doClearTab']   = True        # Clear cal/edit tables
+#cal_doClearGain, True        # Clear SN and CL tables >1
+#cal_doClearFlag, True        # Clear FG tables > 1
+#cal_doClearBP']    = True        # Clear BP tables?
+#cal_doQuack']      = True        # Quack data?
+#cal_doBadAnt']     = True        # Check for bad antennas?
+#cal_doInitFlag']   = True        # Initial broad Frequency and time domain flagging
+#cal_doChopBand']   = True        # Cut the bandpass from lowest to highest channel after special editing.
+#cal_editList']     = ''          # List of dictionaries    
+#cal_quackBegDrop, 5.0/60.0    # Time to drop from start of each scan in min
+#cal_quackEndDrop, 0.0         # Time to drop from end of each scan in min
+#cal_quackReason, "Quack"     # Reason string
+#cal_begChanFrac, 0.2         # Fraction of beginning channels to drop
+#cal_endChanFrac, 0.2         # Fraction of end channels to drop
+#cal_doShad']       = True        # Shadow flagging (config dependent)
+#cal_shadBl']       = 18.0        # Minimum shadowing baseline (m)
+#cal_doElev']       = False       # Do elevation flagging
+#cal_minElev']      = 15.0        # Minimum elevation to keep.
+#cal_doFD1']        = True        # Do initial frequency domain flagging
+#cal_FD1widMW']     = 55          # Width of the initial FD median window
+#cal_FD1maxRes']    = 5.0         # Clipping level in sigma
+#cal_FD1TimeAvg']   = 1.0         # time averaging in min. for initial FD flagging
+#cal_FD1baseSel']   = None        # Baseline fitting region for FD1 (updates by KAT7CorrParms)
+#cal_doMednTD1']    = True        # Median editing in time domain?
+#cal_mednSigma']    = 5.0         # Median sigma clipping level
+#cal_mednTimeWind, 5.0         # Median window width in min for median flagging
+#cal_mednAvgTime, 0.1         # Median Averaging time in min
+#cal_mednAvgFreq, 1           # Median 1=>avg chAvg chans, 2=>avg all chan, 3=> avg chan and IFs
+#cal_mednChAvg']    = 5           # Median flagger number of channels to average
+#cal_doRMSAvg']    = True         # Edit calibrators by RMSAvg?
+#cal_RMSAvg']      = 3.0          # AutoFlag Max RMS/Avg for time domain RMS filtering
+#cal_RMSTimeAvg, 0.1          # AutoFlag time averaging in min.
+#cal_doAutoFlag, True         # Autoflag editing after first pass calibration?
+#cal_doAutoFlag2, True         # Autoflag editing after final (2nd) calibration?
+#cal_IClip']       = None         # AutoFlag Stokes I clipping
+#cal_VClip']       = None         #
+#cal_XClip']       = None         # AutoFlag cross-pol clipping
+#cal_timeAvg']     = 0.33         # AutoFlag time averaging in min.
+#cal_doAFFD']      = True         # do AutoFlag frequency domain flag
+#cal_FDwidMW']     = 55           # Width of the median window
+#cal_FDmaxRMS']    = [5.0,0.1]    # Channel RMS limits (Jy)
+#cal_FDmaxRes']    = 5.0          # Max. residual flux in sigma
+#cal_FDmaxResBL, 5.0          # Max. baseline residual
+#cal_FDbaseSel']   = None         # Channels for baseline fit (Updated by KAT7CorrParms)
+#cal_FDmaxAmp']    = None         # Maximum average amplitude (Jy)
+#cal_FDmaxV']      = 2.0          # Maximum average VPol amp (Jy)
+#cal_minAmp']      = 1.0e-5       # Minimum allowable amplitude
+#cal_BChDrop']     = None         # number of channels to drop from start of each spectrum
+                                 # NB: based on original number of channels, halved for Hanning
+#cal_EChDrop']     = None         # number of channels to drop from end of each spectrum
+                                 # NB: based on original number of channels, halved for Hanning
+
+# Construct a calibrator model from initial image??
+#cal_getCalModel,  True
+
+
+# Delay calibration
+#cal_doDelayCal']   =  True       # Determine/apply delays from contCals
+#cal_delaySolInt,  10.0        # delay solution interval (min)
+#cal_delaySmoo']    =  1.5        # Delay smoothing time (hr)
+#cal_doTwo']        =  True      # Use two baseline combinations in delay cal
+#cal_delayZeroPhs,  False      # Zero phase in Delay solutions?
+#cal_delayBChan']   =  None       # first channel to use in delay solutions
+#cal_delayEChan']   =  None       # highest channel to use in delay solutions
+
+# Bandpass Calibration?
+#cal_doBPCal']    =    True       # Determine Bandpass calibration
+#cal_bpBChan1']   =    300        # Low freq. channel,  initial cal
+#cal_bpEChan1']   =    325        # Highest freq channel, initial cal, 0=>all
+#cal_bpDoCenter1,   0.05       # Fraction of  channels in 1st, overrides bpBChan1, bpEChan1
+#cal_bpBChan2']   =    None       # Low freq. channel for BP cal
+#cal_bpEChan2']   =    None       # Highest freq channel for BP cal,  0=>all
+#cal_bpChWid2']   =    1          # Number of channels in running mean BP soln
+#cal_bpdoAuto']   =    False      # Use autocorrelations rather than cross?
+#cal_bpsolMode,    'A&P'      # Band pass type 'A&P', 'P', 'P!A'
+#cal_bpsolint1,    10.0/60.0  # BPass phase correction solution in min
+#cal_bpsolint2,    10.0       # BPass bandpass solution in min 0.0->scan average
+#cal_bpUVRange,    [0.0,0.0]   # uv range for bandpass cal
+#cal_specIndex,    0.0         # Spectral index of BP Cal
+#cal_doSpecPlot,    True       # Plot the amp. and phase across the spectrum
+
+# Amp/phase calibration parameters
+#cal_doAmpPhaseCal, True
+#cal_refAnt']   =       0          # Reference antenna
+#cal_refAnts,      [0]         # List of Reference antenna for fringe fitting
+#cal_solInt']   =      3.0         # solution interval (min)
+#cal_ampScalar']=     False        # Ampscalar solutions?
+#cal_solSmo']   =      0.0          # Smoothing interval for Amps (min)
+
+# Apply calibration and average?
+#cal_doCalAvg,      True       # calibrate and average cont. calibrator data
+#cal_avgClass,      "UVAvg"    # AIPS class of calibrated/averaged uv data
+#cal_CalAvgTime,    10.0/60.0  # Time for averaging calibrated uv data (min)
+#cal_CABIF,         1          # First IF to copy
+#cal_CAEIF,         0          # Highest IF to copy
+#cal_chAvg']   =       None       # No channel average
+#cal_avgFreq,       None       # No channel average
+#cal_doAuto,       True       # Export the AutoCorrs as well.
+
+# Right-Left delay calibration
+#cal_doRLDelay,  False             # Determine/apply R-L delays
+#cal_RLDCal']    = [(None,None,None)] # Array of triplets of (name, R-L phase (deg at 1 GHz),
+                                     # RM (rad/m**2)) for calibrators
+#cal_rlBChan']   = 1                  # First (1-rel) channel number
+#cal_rlEChan']   = 0                  # Highest channel number. 0=> high in data.
+#cal_rlUVRange, [0.0,0.0]          # Range of baseline used in kilowavelengths, zeros=all
+#cal_rlCalCode, '  '               # Calibrator code
+#cal_rlDoCal']   = 2                  # Apply calibration table? positive=>calibrate
+#cal_rlgainUse, 0                  # CL/SN table to apply, 0=>highest
+#cal_rltimerange']= [0.0,1000.0]      # time range of data (days)
+#cal_rlDoBand, 1                  # If > 0 apply bandpass calibration
+#cal_rlBPVer']   = 0                  # BP table to apply, 0=>highest
+#cal_rlflagVer, 2                  # FG table version to apply
+#cal_rlrefAnt, 0                  # Reference antenna, defaults to refAnt
+
+# Instrumental polarization cal?
+#cal_doPolCal,  False      # Determine instrumental polarization from PCInsCals?
+#cal_PCInsCals, ''          # instrumental poln calibrators, name or list of names
+#cal_PCFixPoln, False       # if True, don't solve for source polarization in ins. cal
+#cal_PCpmodel, [0.0,0.0,0.0,0.0,0.0,0.0,0.0]  # Instrumental poln cal source poln model.
+#cal_PCAvgIF']   = False       # if True, average IFs in ins. cal.
+#cal_PCSolInt, 2.          # instrumental solution interval (min), 0=> scan average(?)
+#cal_PCRefAnt, 0           # Reference antenna, defaults to refAnt
+#cal_PCSolType, "    "      # solution type, "    ", "LM  "
+#cal_doPol']     = False       # Apply polarization cal in subsequent calibration?
+#cal_PDVer']     = 1           # Apply PD table in subsequent polarization cal?
+#cal_PCChInc']   = 5             # Channel increment in instrumental polarization
+#cal_PCChWid']   = 5             # Channel averaging in instrumental polarization
+
+# Right-Left phase (EVPA) calibration, uses same  values as Right-Left delay calibration
+#cal_doRLCal']    = False      # Set RL phases from RLCal - RLDCal or RLPCal
+#cal_RLPCal']     = None       # RL Calibrator source name, in None no IF based cal.
+#cal_RLPhase']    = 0.0        # R-L phase of RLPCal (deg) at 1 GHz
+#cal_RLRM']       = 0.0        # R-L calibrator RM (NYI)
+#cal_rlChWid']    = 3          # Number of channels in running mean RL BP soln
+#cal_rlsolint1, 10./60     # First solution interval (min), 0=> scan average
+#cal_rlsolint2, 5.0       # Second solution interval (min)
+#cal_rlCleanRad, None       # CLEAN radius about center or None=autoWin
+#cal_rlFOV']      = 0.05       # Field of view radius (deg) needed to image RLPCal
+
+# Recalibration
+#cal_doRecal']       = True        # Redo calibration after editing
+#cal_doDelayCal2']   = True       # Group Delay calibration of averaged data?, 2nd pass
+#cal_doBPCal2']      = True        # Determine Bandpass calibration, 2nd pass
+#cal_doAmpPhaseCal2']= True        # Amplitude/phase calibration, 2nd pass
+#cal_doAutoFlag2']   = True        # Autoflag editing after final calibration?
+
+# Imaging  targets
+#cal_doImage']     = True         # Image targets
+#cal_targets']     = ''           # List of target sources
+#cal_outIClass']   = "IClean"     # Output target final image class
+#cal_Stokes']      = "I"          # Stokes to image
+#cal_Robust']      = 0.0          # Weighting robust parameter
+#cal_FOV']         = 2.0          # Field of view radius in deg.
+#cal_Niter']       = 2000         # Max number of clean iterations
+#cal_minFlux']     = None         # Minimum CLEAN flux density
+#cal_minSNR']      = 4.0          # Minimum Allowed SNR
+#cal_solPMode']    = "P"          # Phase solution for phase self cal
+#cal_solPType']    = "    "       # Solution type for phase self cal
+#cal_solAMode']    = "A&P"        # Delay solution for A&P self cal
+#cal_solAType']    = "    "       # Solution type for A&P self cal
+#cal_avgPol']      = True         # Average poln in self cal?
+#cal_avgIF']       = False        # Average IF in self cal?
+#cal_maxPSCLoop, 3            # Max. number of phase self cal loops
+#cal_minFluxPSC, None         # Min flux density peak for phase self cal
+#cal_solPInt']     = 0.2          # phase self cal solution interval (min)
+#cal_maxASCLoop, 1            # Max. number of Amp+phase self cal loops
+#cal_minFluxASC, None         # Min flux density peak for amp+phase self cal
+#cal_solAInt']     = 1.0          # amp+phase self cal solution interval (min)
+#cal_nTaper']      = 0            # Number of additional imaging multiresolution tapers
+#cal_Tapers']      = [0.0]        # List of tapers in pixels
+#cal_do3D']        = False         # Make ref. pixel tangent to celest. sphere for each facet
+#cal_noNeg']       = False        # F=Allow negative components in self cal model
+#cal_BLFact']      = 1.00         # Baseline dependent time averaging
+#cal_BLchAvg']     = False        # Baseline dependent frequency averaging
+#cal_doMB']        = None         # Use wideband imaging?
+#cal_MBnorder']    = None         # order on wideband imaging
+#cal_MBmaxFBW']    = None         # max. MB fractional bandwidth (Set by KAT7InitContFQParms)
+#cal_PBCor']       = False        # Pri. beam corr on final image
+#cal_antSize']     = 12.0         # ant. diameter (m) for PBCor
+#cal_CleanRad']    = None         # CLEAN radius (pix?) about center or None=autoWin
+#cal_xCells']      = 15.0         # x-cell size in final image
+#cal_yCells']      = 15.0         # y-cell  "
+#cal_nx']          = ''           # x-Size of a facet in pixels
+#cal_ny']          = ''           # y-size of a facet in pixels
+#cal_Reuse']       = 0.0          # How many CC's to reuse after each self-cal loop??
+#cal_minPatch']    = 500          # Minumum beam patch to subtract in pixels
+#cal_OutlierSize, 300          # Size of outlier fields
+#cal_autoCen']     = False        # Do autoCen? 
+#cal_outlierArea, 4            # Multiple of FOV around phase center to find outlying CC's
+
+# Final
+#cal_doReport,     True       # Generate source report?
+#cal_outDisk']   =     0          # FITS disk number for output (0=cwd)
+#cal_doSaveUV,     True       # Save uv data
+#cal_doSaveImg,     True       # Save images
+#cal_doSaveTab,     True       # Save Tables
+#cal_doCleanup,     True       # Destroy AIPS files
+
+# diagnostics
+#cal_plotSource']    =  None      # Name of source for spectral plot
+#cal_plotTime']      =  [0.,1000.]  # timerange for spectral plot
+#cal_doRawSpecPlot,  True       # Plot diagnostic raw spectra?
+#cal_doSpecPlot']    =  True       # Plot diagnostic spectra?
+#cal_doSNPlot']      =  True       # Plot SN tables etc
+#cal_doDiagPlots']   =  True       # Plot single s']ource diagnostics
+#cal_doKntrPlots']   =  False      # Contour plots
+#cal_doMetadata']    =  True       # Save source and project metadata
+#cal_doHTML']        =  True       # Output HTML report
+#cal_doVOTable']     =  True       # VOTable
+
