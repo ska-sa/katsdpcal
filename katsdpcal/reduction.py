@@ -76,7 +76,8 @@ def get_tracks(data, ts):
             start_indx.append(nearest_time_indx)
             if 'track' in prev_state:
                 stop_indx.append(nearest_time_indx-1)
-        elif 'slew' in state:
+        # ignore 'stop' and affiliated 'slew'
+        elif 'slew' in state and 'stop' not in prev_state:
             stop_indx.append(nearest_time_indx-1)
         prev_state = state
 
@@ -203,6 +204,7 @@ def pipeline(data, ts, task_name='pipeline'):
     target_slices = []
 
     for scan_slice in reversed(track_slices):
+
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
