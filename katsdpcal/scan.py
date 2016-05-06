@@ -208,15 +208,13 @@ class Scan(object):
         kcross_soln = calprocs.kcross_fit(ave_vis,av_flags,self.channel_freqs,chan_ave=chan_ave)
         return CalSolution('KCROSS', kcross_soln, np.average(self.times))
 
-    def k_sol(self,chan_sample,k0,bp0,REFANT,pre_apply=[]):
+    def k_sol(self,chan_sample,REFANT,pre_apply=[]):
         """
         Solve for delay
 
         Parameters
         ----------
         chan_sample : channel sampling to use in delay fit
-        k0 : initial estimate of delay, float
-        bp0 : initial estimate of bandpass for solver, shape (chan, pol, nant)
         REFANT : reference antenna, int
         pre_apply : calibration solutions to apply, list of CalSolutions, optional
 
@@ -237,7 +235,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
 
         # solve for delay K
-        k_soln = calprocs.k_fit(ave_vis,self.corrprod_lookup,self.channel_freqs,k0,bp0,REFANT,chan_sample=chan_sample)
+        k_soln = calprocs.k_fit(ave_vis,self.corrprod_lookup,self.channel_freqs,REFANT,chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 

@@ -211,7 +211,8 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # if we only have one timestamp in the scan, ignore it
         #  (this happens when there is no slew between tracks so we catch the first dump of the next track)
-        if (scan_slice.stop - scan_slice.start) == 1: continue
+        n_times = scan_slice.stop - scan_slice.start
+        if n_times == 1: continue
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
@@ -223,6 +224,7 @@ def pipeline(data, ts, task_name='pipeline'):
         target_name = target.split(',')[0]
         pipeline_logger.info('-----------------------------------')
         pipeline_logger.info('Target: {0}'.format(target_name,))
+        pipeline_logger.info('   Timestamps:   {0}'.format(n_times,))
         pipeline_logger.info('   Tags:   {0}'.format(taglist,))
 
         # ---------------------------------------
@@ -259,7 +261,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # ---------------------------------------
             # K solution
             pipeline_logger.info('   Solving for K on delay calibrator {0}'.format(target_name,))
-            k_soln = s.k_sol(k_chan_sample,k0_h,bp0_h,refant_ind,pre_apply=[g_to_apply])
+            k_soln = s.k_sol(k_chan_sample,refant_ind,pre_apply=[g_to_apply])
 
             # ---------------------------------------
             # update TS
