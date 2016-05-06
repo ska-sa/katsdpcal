@@ -648,7 +648,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
     return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
 
-def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=None,algorithm='adi'):
+def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'):
     """
     Fit delay (phase slope across frequency) to visibility data.
 
@@ -656,22 +656,28 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
     ----------
     data : array of complex, shape(num_chans, num_pols, baseline)
     corrprod_lookup : antenna mappings, for first then second antennas in bl pair
-    k0 : array of complex, shape(num_chans, num_pols, num_ants) or None
-    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
-    refant : reference antenna
+    chans : list or array of channel frequencies, shape(num_chans), optional
+    refant : reference antenna, integer, optional
+    algorithm : stefcal algorithm, string, optional
 
     Returns
     -------
     ksoln : delay, shape(num_pols, num_ants)
     """
 
-    num_ants = ants_from_bllist(corrprod_lookup)
-    num_pol = data.shape[-2] if len(data.shape)>2 else 1
-
     # -----------------------------------------------------
     # if channel sampling is specified, thin down the data and channel list
-    data = data[::chan_sample,...]
-    if np.any(chans): chans = chans[::chan_sample]
+    if chan_sample != 1:
+        data = data[::chan_sample,...]
+        if np.any(chans): chans = chans[::chan_sample]
+
+    # set up parameters
+    num_ants = ants_from_bllist(corrprod_lookup)
+    num_pol = data.shape[-2] if len(data.shape)>2 else 1
+    if chans == None:
+        chans = range(data.shape[0])
+    nchans = len(chans)
+    chan_increment = chans[1]-chans[0]
 
     # -----------------------------------------------------
     # initialise values for solver
@@ -683,19 +689,39 @@ def k_fit(data,corrprod_lookup,chans=None,k0=None,bp0=None,refant=0,chan_sample=
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, algorithm=algorithm)
+    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=None, algorithm=algorithm)
 
-    # -----------------------------------------------------
+    # FT the visibilities to get course estimate of K
+    #   with noisy data, this is more robust than unwrapping the phase
+    ft_vis = np.fft.fft(bpass,axis=0)
+
+    # get index of FT maximum
+    k_arg = np.argmax(np.abs(ft_vis),axis=0)
+    if nchans%2 == 0:
+        k_arg[k_arg > ((nchans/2) - 1)] -= nchans
+    else:
+        k_arg[k_arg > ((nchans-1)/2)] -= nchans
+
+    # calculate K from FT sample frequencies
+    coarse_k = 1.*k_arg/(chan_increment*nchans)
+
+    # now remove coarse K estimate then find slope of residual
+    delta_k = np.empty_like(coarse_k)
     # find bandpass phase slopes (delays)
     for i,bp in enumerate(bpass.T):
         # polarisation
         for p in range(num_pol):
-            # unwrap angles before fitting for slope
-            bp_phase = np.unwrap(np.angle(np.atleast_2d(bp)[p]))
+            # apply course K
+            bp_corrected = bp[p] * np.exp(-1.0j*2.*np.pi*coarse_k[p,i]*np.array(chans))
+            # originally unwraped angles before fitting for slope, in case the remaining slope wraps
+            #   but np.unwrap falls over in the case of bad RFI
+            #   so for now assume that the coarse_k removed sufficient slope that there is no wrap
+            bp_phase = np.angle(bp_corrected)
+            bp_phase -= np.median(bp_phase)
             A = np.array([ chans, np.ones(len(chans))])
-            kdelay[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
+            delta_k[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
-    return np.squeeze(kdelay)
+    return np.squeeze(coarse_k + delta_k)
 
 def kcross_fit(data,flags,chans=None,chan_ave=1):
     """
@@ -871,6 +897,9 @@ def solint_from_nominal(solint,dump_period,num_times):
     -------
     nsolint     : new optimal solint
     """
+
+    if dump_period*num_times < solint:
+        return solint, np.round(solint/dump_period)
 
     # number of dumps per nominal solution interval
     dumps_per_solint = np.round(solint/dump_period)
