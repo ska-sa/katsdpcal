@@ -215,9 +215,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # extract scan info from the TS
         #  target string contains: 'target name, tags, RA, DEC'
-        # The large 300s window here is to account for a target that may have been set prior to a
-        # slew, prior to the current scan.
-        target = ts.get_range(target_key,et=t0,include_previous=300.)[0][0]
+        target = ts.get_range(target_key,et=t0)[0][0]
         # add the dump period here to account for scan start and activity change being closely timed
         scan_state = ts.get_range(activity_key,et=t0+dump_period,include_previous=300.)[0][0]
         taglist = target.split(',')[1].split()
