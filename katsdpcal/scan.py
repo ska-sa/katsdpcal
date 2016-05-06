@@ -307,6 +307,7 @@ class Scan(object):
 
         outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
 
+
         # check solution and vis shapes are compatible
         if solval.shape[-2] !=  outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
 
@@ -331,8 +332,8 @@ class Scan(object):
     def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
         if soln.soltype is 'G':
-            # add empty channel dimension
-            full_sol = np.expand_dims(soln.values,axis=1)
+            # add empty channel dimension if necessary
+            full_sol = np.expand_dims(soln.values,axis=1) if len(soln.values.shape) < 4 else soln.values
             return self._apply(full_sol,origvis=origvis,inplace=inplace)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
@@ -364,11 +365,15 @@ class Scan(object):
         values = solns.values
         times = solns.times
 
-        real_interp = calprocs.interp_extrap_1d(times, values.real, kind='linear', axis=0)
-        imag_interp = calprocs.interp_extrap_1d(times, values.imag, kind='linear', axis=0)
+        if len(times) < 2:
+            # case of only one solution value being interpolated
+            return self.inf_interpolate(solns)
+        else:
+            real_interp = calprocs.interp_extrap_1d(times, values.real, kind='linear', axis=0)
+            imag_interp = calprocs.interp_extrap_1d(times, values.imag, kind='linear', axis=0)
 
-        interp_solns = real_interp(self.times) + 1.0j*imag_interp(self.times)
-        return CalSolution(solns.soltype, interp_solns, self.times)
+            interp_solns = real_interp(self.times) + 1.0j*imag_interp(self.times)
+            return CalSolution(solns.soltype, interp_solns, self.times)
 
     def inf_interpolate(self, solns):
         values = solns.values
