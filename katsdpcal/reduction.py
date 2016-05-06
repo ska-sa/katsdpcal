@@ -219,8 +219,6 @@ def pipeline(data, ts, task_name='pipeline'):
         # add the dump period here to account for scan start and activity change being closely timed
         scan_state = ts.get_range(activity_key,et=t0+dump_period,include_previous=300.)[0][0]
         taglist = target.split(',')[1].split()
-        # fudge for now to add delay cal tag to bpcals
-        if 'bpcal' in taglist: taglist.append('delaycal')
 
         target_name = target.split(',')[0]
         pipeline_logger.info('-----------------------------------')
