@@ -6,8 +6,8 @@ cal_preferred_refants : m024,m025,m034
 cal_sideband : 1                          # for frequency calculation
 
 # general data parameters
-cal_bchan : 2100                           # first channel to process, int
-cal_echan : 2800                          # last channel to process, int
+cal_bchan : 500                           # first channel to process, int
+cal_echan : 1100                          # last channel to process, int
 
 # delay calibration  
 cal_k_solint : 5.0                        # nominal pre-k g solution interval, seconds
