@@ -255,7 +255,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # ---------------------------------------
             # K solution
             pipeline_logger.info('   Solving for K on beamformer calibrator {0}'.format(target_name,))
-            k_soln = s.k_sol(1,refant_ind)
+            k_soln = s.k_sol(ts.cal_k_bchan,ts.cal_k_echan,1,refant_ind)
             pipeline_logger.info('   Saving K to Telescope State')
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
@@ -299,7 +299,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # ---------------------------------------
             # K solution
             pipeline_logger.info('   Solving for K on delay calibrator {0}'.format(target_name,))
-            k_soln = s.k_sol(k_chan_sample,refant_ind,pre_apply=[g_to_apply])
+            k_soln = s.k_sol(ts.cal_k_bchan,ts.cal_k_echan,k_chan_sample,refant_ind,pre_apply=[g_to_apply])
 
             # ---------------------------------------
             # update TS
