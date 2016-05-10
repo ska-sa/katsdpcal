@@ -646,7 +646,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
+    return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
 
 def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'):
     """
