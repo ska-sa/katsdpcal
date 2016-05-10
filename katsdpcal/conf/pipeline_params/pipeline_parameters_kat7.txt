@@ -12,6 +12,8 @@ cal_sim_echan : 800                       # last channel to process, int
 # delay calibration  
 cal_k_solint : 10.0                       # nominal pre-k g solution interval, seconds
 cal_k_chan_sample : 10                    # sample every 10th channel for pre-K BP soln
+cal_k_bchan : 1                           # first channel for K fit, int
+cal_k_echan : 0                           # last channel for K fit, int
 cal_kcross_chanave : 1                    # number of channels to average together to kcross solution
 
 # bandpass calibration
