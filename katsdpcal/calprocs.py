@@ -715,11 +715,8 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'
         for p in range(num_pol):
             # apply course K
             bp_corrected = bp[p] * np.exp(-1.0j*2.*np.pi*coarse_k[p,i]*np.array(chans))
-            # originally unwraped angles before fitting for slope, in case the remaining slope wraps
-            #   but np.unwrap falls over in the case of bad RFI
-            #   so for now assume that the coarse_k removed sufficient slope that there is no wrap
-            bp_phase = np.angle(bp_corrected)
-            bp_phase -= np.median(bp_phase)
+            # np.unwrap falls over in the case of bad RFI - robustify this later
+            bp_phase = np.unwrap(np.angle(bp_corrected),discont=1.9*np.pi)
             A = np.array([ chans, np.ones(len(chans))])
             delta_k[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
