@@ -625,14 +625,14 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
 
     Parameters
     ----------
-    data : array of complex, shape(num_chans, baselines)
-    bp0 : array of complex, shape(num_chans, num_ants) or None
+    data : array of complex, shape(num_chans, num_pols, baselines)
+    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
     corrprod_lookup : antenna mappings, for first then second antennas in bl pair
     refant : reference antenna
 
     Returns
     -------
-    bpass : Bandpass, shape(num_chans, num_ants)
+    bpass : Bandpass, shape(num_chans, num_pols, num_ants)
     """
 
     num_ants = ants_from_bllist(corrprod_lookup)
@@ -646,7 +646,9 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
+    bp = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
+    # centre the phase on zero
+    return bp * np.exp(-1.0j*np.median(np.angle(bp),axis=0))
 
 def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'):
     """
