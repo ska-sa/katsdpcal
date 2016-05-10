@@ -249,6 +249,44 @@ def pipeline(data, ts, task_name='pipeline'):
         run_t0 = time()
 
         # perform calibration as appropriate, from scan intent tags:
+
+        # BEAMFORMER
+        if any('bfcal' in k for k in taglist):
+            # ---------------------------------------
+            # K solution
+            pipeline_logger.info('   Solving for K on beamformer calibrator {0}'.format(target_name,))
+            k_soln = s.k_sol(1,refant_ind)
+            pipeline_logger.info('   Saving K to Telescope State')
+            ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
+
+            # ---------------------------------------
+            # B solution
+            pipeline_logger.info('   Solving for B on beamformer calibrator {0}'.format(target.split(',')[0],))
+            # get K solutions to apply and interpolate it to scan timestamps
+            solns_to_apply = get_solns_to_apply(s,ts,['K'],pipeline_logger)
+            b_soln = s.b_sol(bp0_h,refant_ind,pre_apply=solns_to_apply)
+            pipeline_logger.info('   Saving B to Telescope State')
+            ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
+
+            # ---------------------------------------
+            # G solution
+            pipeline_logger.info('   Solving for G on gain calibrator {0}'.format(target.split(',')[0],))
+            # get B solutions to apply and interpolate them to scan timestamps
+            solns_to_apply.extend(get_solns_to_apply(s,ts,['B'],pipeline_logger))
+
+            # use single solution interval
+            dumps_per_solint = np.ceil(scan_slice.stop-scan_slice.start-1)
+            g_solint = dumps_per_solint*dump_period
+            g_soln = s.g_sol(g_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
+            pipeline_logger.info('   Saving G to Telescope State')
+            # add gains to TS, iterating through solution times
+            for v,t in zip(g_soln.values,g_soln.times):
+                ts.add(g_soln.ts_solname,v,ts=t)
+
+            # ---------------------------------------
+            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
+            run_t0 = time()
+
         # DELAY
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------
