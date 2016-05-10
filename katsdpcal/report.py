@@ -50,7 +50,7 @@ def insert_fig(report,fig,name=None):
     report : open report file to write to
     fig    : matplitlib figure 
     """
-    figname = "{}.jpeg".format(name if name else str(fig))
+    figname = "{}.eps".format(name if name else str(fig))
     fig.savefig(figname,bbox_inches='tight')
     fig_text = \
     '''.. image:: {}
