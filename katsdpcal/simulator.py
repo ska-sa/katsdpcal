@@ -102,18 +102,18 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             # get parameters from data file
             parameter_dict = self.get_params()
             # get/edit extra parameters from TS (set at run time)
-            if ts.has_key('cal_echan'):
+            if ts.has_key('cal_sim_echan'):
                 # if bchan and echan are set, use them to override number of channels
-                parameter_dict['cbf_n_chans'] = ts.cal_echan-ts.cal_bchan
+                parameter_dict['cbf_n_chans'] = ts.cal_sim_echan-ts.cal_sim_bchan
             else:
                 # else set bchan and echan to be full channel range
-                ts.delete('cal_bchan')
-                ts.add('cal_bchan',0,immutable=True)
-                ts.delete('cal_echan')
-                ts.add('cal_echan',parameter_dict['cbf_n_chans'],immutable=True)
+                ts.delete('cal_sim_bchan')
+                ts.add('cal_sim_bchan',0,immutable=True)
+                ts.delete('cal_sim_echan')
+                ts.add('cal_sim_echan',parameter_dict['cbf_n_chans'],immutable=True)
 
             # use channel freqs to determine parameters cbf_channel_freq and cbf_bandwidth which will be given by the real system
-            subset_channel_freqs = parameter_dict['cbf_channel_freqs'][ts.cal_bchan:ts.cal_echan]
+            subset_channel_freqs = parameter_dict['cbf_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
             ts.add('cbf_bandwidth',np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]),immutable=True)
             ts.add('cbf_center_freq',subset_channel_freqs[len(subset_channel_freqs)/2],immutable=True)
             ts.delete('cbf_channel_freqs')
@@ -222,8 +222,8 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             # get data format parameters from TS
             cal_bls_ordering = ts.cal_bls_ordering
             cal_pol_ordering = ts.cal_pol_ordering
-            bchan = ts.cal_bchan
-            echan = ts.cal_echan
+            bchan = ts.cal_sim_bchan
+            echan = ts.cal_sim_echan
 
             # write the data into the file
             self.write_data(vis,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=bchan,echan=echan)

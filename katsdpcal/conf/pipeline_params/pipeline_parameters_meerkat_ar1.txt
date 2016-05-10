@@ -6,12 +6,14 @@ cal_preferred_refants : m024,m025,m034
 cal_sideband : 1                          # for frequency calculation
 
 # general data parameters
-cal_bchan : 500                           # first channel to process, int
-cal_echan : 1100                          # last channel to process, int
+cal_sim_bchan : 200                           # first channel to process, int
+cal_sim_echan : 3800                          # last channel to process, int
 
 # delay calibration  
 cal_k_solint : 5.0                        # nominal pre-k g solution interval, seconds
 cal_k_chan_sample : 1                     # sample every 10th channel for pre-K BP soln
+cal_k_bchan : 500                         # first channel for K fit, int
+cal_k_echan : 1100                        # last channel for K fit, int
 cal_kcross_chanave : 1                    # number of channels to average together to kcross solution
 
 # bandpass calibration

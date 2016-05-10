@@ -24,7 +24,7 @@ ts = opts.telstate
 simdata = init_simdata(opts.file)
 
 print "Selecting data to transmit. Slice using ts values."
-simdata.select(channels=slice(ts.cal_bchan,ts.cal_echan))
+simdata.select(channels=slice(ts.cal_sim_bchan,ts.cal_sim_echan))
 
 print "TX: start."
 max_scans = opts.max_scans if not opts.max_scans == 0 else None
