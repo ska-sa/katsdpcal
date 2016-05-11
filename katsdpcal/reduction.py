@@ -288,7 +288,7 @@ def pipeline(data, ts, task_name='pipeline'):
             run_t0 = time()
 
         # DELAY
-        if True: #any('delaycal' in k for k in taglist):
+        if any('delaycal' in k for k in taglist):
             # ---------------------------------------
             # preliminary G solution
             pipeline_logger.info('   Solving for preliminary G on delay calibrator {0}'.format(target_name,))
