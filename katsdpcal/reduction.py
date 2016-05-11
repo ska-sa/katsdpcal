@@ -277,7 +277,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # use single solution interval
             dumps_per_solint = np.ceil(scan_slice.stop-scan_slice.start-1)
             g_solint = dumps_per_solint*dump_period
-            g_soln = s.g_sol(g_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
+            g_soln = s.g_sol(g_solint,g0_h,refant_ind,ts.cal_g_bchan,ts.cal_g_echan,pre_apply=solns_to_apply)
             pipeline_logger.info('   Saving G to Telescope State')
             # add gains to TS, iterating through solution times
             for v,t in zip(g_soln.values,g_soln.times):
@@ -293,7 +293,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # preliminary G solution
             pipeline_logger.info('   Solving for preliminary G on delay calibrator {0}'.format(target_name,))
             # solve and interpolate to scan timestamps
-            pre_g_soln = s.g_sol(k_solint,g0_h,refant_ind)
+            pre_g_soln = s.g_sol(k_solint,g0_h,refant_ind,ts.cal_k_bchan,ts.cal_k_echan)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -379,7 +379,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # set up solution interval: just solve for two intervals per G scan (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop-scan_slice.start-1)/2.0)
             g_solint = dumps_per_solint*dump_period
-            g_soln = s.g_sol(g_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
+            g_soln = s.g_sol(g_solint,g0_h,refant_ind,ts.cal_g_bchan,ts.cal_g_echan,pre_apply=solns_to_apply)
 
             # ---------------------------------------
             # update TS

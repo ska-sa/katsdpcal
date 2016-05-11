@@ -21,3 +21,5 @@ cal_bp_solint : 5.0                       # nominal pre-bp g solution interval, 
 
 # gain calibration
 cal_g_solint: 5.0                         # nominal g solution interval, seconds
+cal_g_bchan : 500                         # first channel for g fit, int
+cal_g_echan : 1100                        # last channel for g fit, int

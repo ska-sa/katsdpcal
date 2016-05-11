@@ -135,7 +135,7 @@ class Scan(object):
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
 
-    def g_sol(self,input_solint,g0,REFANT,pre_apply=[],**kwargs):
+    def g_sol(self,input_solint,g0,REFANT,bchan=1,echan=0,pre_apply=[],**kwargs):
         """
         Solve for gain
 
@@ -144,6 +144,8 @@ class Scan(object):
         input_solint : nominal solution interval to use for the fit
         g0 : initial estimate of gains for solver, shape (time, pol, nant)
         REFANT : reference antenna, int
+        bchan : start channel for fit, int, optional
+        echan : end channel for fit, int, optional
         pre_apply : calibration solutions to apply, list of CalSolutions, optional
 
         Returns
@@ -165,11 +167,12 @@ class Scan(object):
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
 
-        # first averge in time over solution interval
-
-        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.modvis,self.flags,self.weights,
-                dumps_per_solint,axis=0,times=self.times)
-        # second average over all channels
+        # first averge in time over solution interval, for specified channel range (no averaging over channel)
+        if echan == 0: echan = None
+        chan_slice = [slice(None),slice(bchan,echan),slice(None),slice(None)]
+        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.modvis[chan_slice],
+                self.flags[chan_slice],self.weights[chan_slice],dumps_per_solint,axis=0,times=self.times)
+        # secondly, average channels
         ave_vis = calprocs.wavg(ave_vis,ave_flags,ave_weights,axis=1)
 
         # solve for gains G
@@ -215,8 +218,8 @@ class Scan(object):
         Parameters
         ----------
         REFANT : reference antenna, int
-        bchan : start channel for delay fit, int, optional
-        echan : end channel for delay fit, int, optional
+        bchan : start channel for fit, int, optional
+        echan : end channel for fit, int, optional
         chan_sample : channel sampling to use in delay fit, optional
         pre_apply : calibration solutions to apply, list of CalSolutions, optional
 
