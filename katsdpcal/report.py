@@ -255,8 +255,7 @@ def make_cal_report(ts,report_path):
         # convert delays to nano seconds
         vals = 1e9*vals
 
-        cal_rst.writeln('**POL 0**')
-        write_table_timerow(cal_rst,'KCROSS',times,vals)
+        write_table_timerow(cal_rst,['KCROSS'],times,vals)
 
     # ---------------------------------
     # bandpass
