@@ -120,7 +120,7 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
                 soln = calprocs.CalSolution('G', solval, soltime)
 
             solns_to_apply.append(s.interpolate(soln))
-            logger.info('   - Apply {0} solution to {1}'.format(X,s.target.name))
+            logger.info('    - Apply {0} solution to {1}'.format(X,s.target.name))
 
         except KeyError:
             # TS doesn't yet contain 'X'
@@ -272,7 +272,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # G solution
             pipeline_logger.info('   Solving for G on beamformer calibrator {0}'.format(target.split(',')[0],))
             # get B solutions to apply and interpolate them to scan timestamps
-            solns_to_apply.extend(get_solns_to_apply(s,ts,['B'],pipeline_logger))
+            solns_to_apply.extend(get_solns_to_apply(s,ts,['K','B'],pipeline_logger))
 
             # use single solution interval
             dumps_per_solint = np.ceil(scan_slice.stop-scan_slice.start-1)
