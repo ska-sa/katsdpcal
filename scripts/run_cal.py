@@ -323,9 +323,9 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         logger.info('Pipeline tasks closed')
 
         # create pipeline report (very basic at the moment)
-        make_cal_report(ts,report_path)
         if not ts.has_key('experiment_id'): ts.add('experiment_id','unknown_project',immutable=True)
-        logger.info('Report compiled, in directory {0}/{1}'.format(report_path,ts.experiment_id))
+        logger.info('Report compiing in directory {0}/{1}'.format(report_path,ts.experiment_id))
+        make_cal_report(ts,report_path)
 
         if full_l1:
             # send L1 stop transmission
