@@ -120,7 +120,7 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
                 soln = calprocs.CalSolution('G', solval, soltime)
 
             solns_to_apply.append(s.interpolate(soln))
-            logger.info('   Apply {0} solution to {1}'.format(X,s.target.name))
+            logger.info('   - Apply {0} solution to {1}'.format(X,s.target.name))
 
         except KeyError:
             # TS doesn't yet contain 'X'
