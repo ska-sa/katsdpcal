@@ -162,7 +162,7 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-           self.modvis = self.apply(soln,origvis=False)
+            self.modvis = self.apply(soln,origvis=False)
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
@@ -200,7 +200,7 @@ class Scan(object):
             self.modvis = self.cross_vis
 
         for soln in pre_apply:
-           self.modvis = self.apply(soln,origvis=False)
+            self.modvis = self.apply(soln,origvis=False)
 
         # average over all time (no averaging over channel)
         ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis,self.cross_flags,self.cross_weights,axis=0)
@@ -299,7 +299,6 @@ class Scan(object):
         else:
             return self._apply_newvis(solval, origvis=origvis)
 
-
     def _apply_newvis(self, solval, origvis=True):
         """
         Applies calibration solutions.
@@ -312,7 +311,6 @@ class Scan(object):
         """
 
         outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
-
 
         # check solution and vis shapes are compatible
         if solval.shape[-2] !=  outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
