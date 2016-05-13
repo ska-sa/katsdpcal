@@ -203,6 +203,13 @@ def pipeline(data, ts, task_name='pipeline'):
     target_slices = []
 
     for scan_slice in reversed(track_slices):
+        pipeline_logger.info('-----------------------------------')
+        pipeline_logger.info('Baseline details')
+        pipeline_logger.info(ts.cal_antlist)
+        pipeline_logger.info(ts.antenna_mask)
+        pipeline_logger.info(ts.cbf_bls_ordering)
+        pipeline_logger.info(ts.cal_bls_ordering)
+        pipeline_logger.info('-----------------------------------')
 
         # start time, end time
         t0 = data['times'][scan_slice.start]
