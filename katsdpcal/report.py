@@ -164,13 +164,14 @@ def make_cal_report(ts,report_path):
     
     Parameters
     ----------
-    ts : TelescopeState
+    ts          : TelescopeState
+    report_path : path where report will be created, string
     """
 
     try:
         project_name = ts.experiment_id
     except AttributeError:
-        project_name = 'unknown_project'
+        project_name = '{0}_unknown_project'.format(int(time.time()))
 
     # make calibration report directory and move into it
     if not report_path: report_path = '.'
@@ -303,6 +304,8 @@ def make_cal_report(ts,report_path):
     cal_rst.writeln()
     cal_rst.close()
     
+    print os.listdir('.')
+    print os.listdir(project_dir)
     # convert rst to pdf 
     os.system('rst2pdf {} -s eightpoint'.format(report_file))
     # move to project directory
