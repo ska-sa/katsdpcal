@@ -412,7 +412,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             if self.full_l1:
                 # for streaming all of the data (not target only), 
                 # use the highest index in the buffer that is filled with data
-                target_slices = [slice(0,self.data['max_index']+1)]
+                target_slices = [slice(0,self.data['max_index'][0]+1)]
 
             # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
