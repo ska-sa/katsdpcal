@@ -307,8 +307,8 @@ def make_cal_report(ts,report_path):
     print os.listdir('.')
     print os.listdir(project_dir)
     # convert rst to pdf 
-    print 'rst2pdf {0}/{1} -s eightpoint'.format(report_path,report_file)
-    os.system('rst2pdf {0}/{1} -s eightpoint'.format(report_path,report_file))
+    print 'rst2pdf {0}/calreport_source/{1} -s eightpoint'.format(project_dir,report_file)
+    os.system('rst2pdf {0}/calreport_source/{1} -s eightpoint'.format(project_dir,report_file))
     # move to project directory
     shutil.move(report_file.replace('rst','pdf'),project_dir)
     
