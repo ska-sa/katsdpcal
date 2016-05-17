@@ -162,8 +162,11 @@ def pipeline(data, ts, task_name='pipeline'):
     k_solint = ts.cal_k_solint #seconds
     k_chan_sample = ts.cal_k_chan_sample
     g_solint = ts.cal_g_solint #seconds
-
-    dump_period = ts.sdp_l0_int_time
+    try:
+        dump_period = ts.sdp_l0_int_time
+    except:
+        pipeline_logger.warning('Parameter sdp_l0_int_time not present in TS. Will be derived from data.')
+        dump_period = data['times'][1] - data['times'][0]
 
     antlist = ts.cal_antlist
     n_ants = len(antlist)
