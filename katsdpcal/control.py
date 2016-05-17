@@ -262,7 +262,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate subsequent gain scan too
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                if (activity_time != prev_activity_time) and ('slew' not in prev_activity) and ('stop' not in prev_activity) and ('unknown' not in prev_activity) and ('target' not in prev_target_tags):
+                ignore_states = ['slew', 'stop', 'unknown']
+                if (activity_time != prev_activity_time) and not np.any([ignore in prev_activity for ignore in ignore_states]) and ('unknown' not in target_tags) and ('target' not in prev_target_tags):
                     self.accumulator_logger.info('Accumulation break due to transition')
                     obs_end_flag = False
                     break
@@ -280,10 +281,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     obs_end_flag = False
                     break
 
-                # print name of target accumulated, if it has changed
+                # print name of target and activity type, if activity has changed
                 #   this is at the end to avoid printing names of new target slews at the end of an accumulation
-                if target_name != prev_target_name:
-                    self.accumulator_logger.info(' - {0}'.format(target_name,))
+                if activity_time != prev_activity_time:
+                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name,activity))
 
                 prev_activity = activity
                 prev_activity_time = activity_time
