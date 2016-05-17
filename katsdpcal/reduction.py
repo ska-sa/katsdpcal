@@ -77,7 +77,7 @@ def get_tracks(data, ts):
             if 'track' in prev_state:
                 stop_indx.append(nearest_time_indx-1)
         # ignore 'stop' and affiliated 'slew'
-        elif 'slew' in state and 'stop' not in prev_state:
+        elif ('slew' in state) or ('stop' in 'state') and ('track' in prev_state):
             stop_indx.append(nearest_time_indx-1)
         prev_state = state
 
