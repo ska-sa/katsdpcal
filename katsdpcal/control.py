@@ -391,8 +391,8 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self.data['max_index'] = np.ctypeslib.as_array(self.data['max_index'])
 
         def run_pipeline(self):
-            # run pipeline calibration
-            target_slices = pipeline(self.data,self.telstate,task_name=self.name)
+            # run pipeline calibration, if more than zero timestamps accumulated
+            target_slices = pipeline(self.data,self.telstate,task_name=self.name) if (self.data['max_index'][0] > 0) else []
 
             # send data to L1 SPEAD if necessary
             config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
