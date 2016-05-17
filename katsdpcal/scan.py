@@ -79,8 +79,8 @@ class Scan(object):
         # NOTE: This makes the asumption that the XC data are grouped at the beginning of the bl ordering,
         #       Followed by the AC data.
         # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
-        xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
-        xc_slice = slice(np.where(xc_mask)[0][0], np.where(xc_mask)[0][-1]+1)
+        self.xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
+        xc_slice = slice(np.where(self.xc_mask)[0][0], np.where(self.xc_mask)[0][-1]+1)
         self.bl_slice = xc_slice if corr is 'xc' else slice(None)
         self.corrprod_lookup = bls_lookup[self.bl_slice]
 

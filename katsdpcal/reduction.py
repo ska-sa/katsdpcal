@@ -236,6 +236,10 @@ def pipeline(data, ts, task_name='pipeline'):
         # ---------------------------------------
         # set up scan
         s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target, chans=ts.cal_channel_freqs, logger=pipeline_logger)
+        if s.xc_mask.size == 0:
+            pipeline_logger.info('No XC data - no processing performed.')
+            continue
+
         # Do we have a model for this source?
         model_key = 'cal_model_{0}'.format(target_name,)
         if model_key in ts.keys():
