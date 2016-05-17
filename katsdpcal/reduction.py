@@ -224,7 +224,7 @@ def pipeline(data, ts, task_name='pipeline'):
         #  target string contains: 'target name, tags, RA, DEC'
         target = ts.get_range(target_key,et=t0)[0][0]
         # add the dump period here to account for scan start and activity change being closely timed
-        scan_state = ts.get_range(activity_key,et=t0+dump_period,include_previous=300.)[0][0]
+        scan_state = ts.get_range(activity_key,et=t0+dump_period)[0][0]
         taglist = target.split(',')[1].split()
 
         target_name = target.split(',')[0]
