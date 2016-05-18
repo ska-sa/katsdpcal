@@ -200,7 +200,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # receive SPEAD stream
             ig = spead2.ItemGroup()
 
-            self.accumulator_logger.info('start accumulating data')
+            self.accumulator_logger.info('waiting to start accumulating data')
             for heap in rx:
                 ig.update(heap)
 
