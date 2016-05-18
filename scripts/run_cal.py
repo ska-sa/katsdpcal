@@ -227,6 +227,11 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         ts.add('antenna_mask', antenna_mask, immutable=True)
     elif 'antenna_mask' not in ts:
         raise RuntimeError("No antenna_mask set.")
+    if len(ts.antenna_mask) < 4:
+        # if we have less than four antennas, no katsdpcal necessary
+        logger.info('Only {0} antenna present - stopping katsdpcal'.format(len(ts.antenna_mask,)))
+        return
+
     if cbf_n_chans is not None:
         ts.add('cbf_n_chans', cbf_n_chans, immutable=True)
     elif 'cbf_n_chans' not in ts:
