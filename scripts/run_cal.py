@@ -158,6 +158,26 @@ def create_buffer_arrays_threading(buffer_shape):
     data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
 
+def force_shutdown():
+    # forces pipeline threads to shut down
+    accumulator.stop()
+    accumulator.join()
+    # pipeline needs to be terminated, rather than stopped,
+    # to end long running reduction.pipeline function
+    map(lambda x: x.terminate(), pipelines)
+
+def force_hard_shutdown():
+    # forces pipeline threads to shut down
+    #  - faster but dirtier than force_shutdown()
+    accumulator.terminate()
+    # terminating accumulator leaves hanging wait in pipeline
+    # - aggressive kill needed for running pipeline
+    map(lambda x: os.kill(x.pid, signal.SIGKILL), pipelines)
+
+def kill_shutdown():
+    # brutal kill (for threading)
+    os.kill(os.getpid(), signal.SIGKILL)
+
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
            mproc=True, param_file='', report_path=''):
@@ -251,88 +271,80 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     buffer_shape = [array_length,ts.cbf_n_chans,npol,nbl]
     buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
-    # set up conditions for the buffers
-    scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
+    while True:
+        logger.info('=========================')
+        logger.info(' Starting new observation')
 
-    # Set up the accumulator
-    accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
-    # Set up the pipelines (one per buffer)
-    pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
-        l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
+        # set up conditions for the buffers
+        scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
 
-    manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines})
-     # allow remote debug connections and expose telescope state, accumulator and pipelines
-    # Start the pipeline threads
-    map(lambda x: x.start(), pipelines)
-    # Start the accumulator thread
-    accumulator.start()
+        # Set up the accumulator
+        accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
+        # Set up the pipelines (one per buffer)
+        pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
+            l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
 
-    # account for forced shutdown possibilities
-    #  due to SIGTERM, keyboard interrupt, or unknown error
-    forced_shutdown = False
+        try:
+            manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines})
+        # allow remote debug connections and expose telescope state, accumulator and pipelines
+        except manhole.AlreadyInstalled:
+            pass
 
-    def force_shutdown():
-        # forces pipeline threads to shut down
-        accumulator.stop()
-        accumulator.join()
-        # pipeline needs to be terminated, rather than stopped,
-        # to end long running reduction.pipeline function
-        map(lambda x: x.terminate(), pipelines)
+        # Start the pipeline threads
+        map(lambda x: x.start(), pipelines)
+        # Start the accumulator thread
+        accumulator.start()
+        logger.info('Waiting for L0 data')
 
-    def force_hard_shutdown():
-        # forces pipeline threads to shut down
-        #  - faster but dirtier than force_shutdown()
-        accumulator.terminate()
-        # terminating accumulator leaves hanging wait in pipeline
-        # - aggressive kill needed for running pipeline
-        map(lambda x: os.kill(x.pid, signal.SIGKILL), pipelines)
+        # account for forced shutdown possibilities
+        #  due to SIGTERM, keyboard interrupt, or unknown error
+        forced_shutdown = False
 
-    def kill_shutdown():
-        # brutal kill (for threading)
-        os.kill(os.getpid(), signal.SIGKILL)
+        try:
+            # run tasks until the observation has ended
+            while all_alive([accumulator]+pipelines) and not accumulator.obs_finished():
+                time.sleep(0.1)
+        except (KeyboardInterrupt, SystemExit):
+            logger.info('Received interrupt! Quitting threads.')
+            force_shutdown() if mproc else kill_shutdown()
+            forced_shutdown = True
+        except:
+            logger.error('Unknown error. ')
+            force_shutdown()
+            forced_shutdown = True
 
-    try:
-        # run tasks until the observation has ended
-        while all_alive([accumulator]+pipelines) and not accumulator.obs_finished():
-            time.sleep(0.1)
-    except (KeyboardInterrupt, SystemExit):
-        logger.info('Received interrupt! Quitting threads.')
-        force_shutdown() if mproc else kill_shutdown()
-        forced_shutdown = True
-    except:
-        logger.error('Unknown error. ')
-        force_shutdown()
-        forced_shutdown = True
+        # closing steps, if data transmission has stoped (skipped for forced early shutdown)
+        if not forced_shutdown:
+            # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
+            map(lambda x: x.stop(), pipelines)
+            logger.info('Pipelines stopped')
+            # then stop accumulator (releasing conditions)
+            accumulator.stop_release()
+            logger.info('Accumulator stopped')
 
-    # closing steps, if data transmission has stoped (skipped for forced early shutdown)
-    if not forced_shutdown:
-        # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
-        map(lambda x: x.stop(), pipelines)
-        logger.info('Pipelines stopped')
-        # then stop accumulator (releasing conditions)
-        accumulator.stop_release()
-        logger.info('Accumulator stopped')
+            # join tasks
+            accumulator.join()
+            logger.info('Accumulator task closed')
+            # wait till all pipeline runs finish then join
+            while any_alive(pipelines):
+                map(lambda x: x.join(), pipelines)
+                time.sleep(0.5)
+            logger.info('Pipeline tasks closed')
 
-        # join tasks
-        accumulator.join()
-        logger.info('Accumulator task closed')
-        # wait till all pipeline runs finish then join
-        while any_alive(pipelines):
-            map(lambda x: x.join(), pipelines)
-            time.sleep(0.5)
-        logger.info('Pipeline tasks closed')
+            # create pipeline report (very basic at the moment)
+            if not ts.has_key('experiment_id'): ts.add('experiment_id','{0}_unknown_project'.format(int(time.time())),immutable=True)
+            logger.info('Report compiing in directory {0}/{1}'.format(report_path,ts.experiment_id))
+            make_cal_report(ts,report_path)
 
-        # create pipeline report (very basic at the moment)
-        if not ts.has_key('experiment_id'): ts.add('experiment_id','{0}_unknown_project'.format(int(time.time())),immutable=True)
-        logger.info('Report compiing in directory {0}/{1}'.format(report_path,ts.experiment_id))
-        make_cal_report(ts,report_path)
+            if full_l1:
+                # send L1 stop transmission
+                #   wait for a couple of secs before ending transmission
+                time.sleep(2.0)
+                end_transmit(l1_endpoint.host,l1_endpoint.port)
+                logger.info('L1 stream ended')
 
-        if full_l1:
-            # send L1 stop transmission
-            #   wait for a couple of secs before ending transmission
-            time.sleep(2.0)
-            end_transmit(l1_endpoint.host,l1_endpoint.port)
-            logger.info('L1 stream ended')
+        logger.info(' Observation ended')
+        logger.info('=========================')
 
 if __name__ == '__main__':
 
