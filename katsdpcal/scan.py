@@ -80,7 +80,11 @@ class Scan(object):
         #       Followed by the AC data.
         # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
         self.xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
-        xc_slice = slice(np.where(self.xc_mask)[0][0], np.where(self.xc_mask)[0][-1]+1)
+        try:
+            xc_slice = slice(np.where(self.xc_mask)[0][0], np.where(self.xc_mask)[0][-1]+1)
+        except IndexError:
+            # not XC data
+            xc_slice = slice(None)
         self.bl_slice = xc_slice if corr is 'xc' else slice(None)
         self.corrprod_lookup = bls_lookup[self.bl_slice]
 
