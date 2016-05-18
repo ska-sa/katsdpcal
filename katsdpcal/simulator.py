@@ -617,6 +617,7 @@ def h5_write_data(h5data,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_o
     bchan            : start channel to write, integer
     echan            : end channel to write, integer
     """
+    if echan == 0: echan = None
     # pack data into H5 correlation product list
     #    by iterating through H5 correlation product list
     for i, [ant1, ant2] in enumerate(h5data.corr_products):
@@ -692,7 +693,7 @@ class SimDataH5V3(katdal.H5DataV3):
         return h5_tx_data(self,ts,tx,max_scans)
 
     def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
-        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
+        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan,echan)
 
 # katdal v2 data
 class SimDataH5V2(katdal.H5DataV2):
@@ -754,7 +755,7 @@ class SimDataH5V2(katdal.H5DataV2):
         return h5_tx_data(self,ts,tx,max_scans)
 
     def write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0):
-        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan=1,echan=0)
+        return h5_write_data(self,correlator_data,flags,ti_max,cal_bls_ordering,cal_pol_ordering,bchan,echan)
 
 
 

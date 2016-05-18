@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--keep-sessions', action='store_true', help='Keep any pre-existing tmux sessions. Note: Only use this if pipeline not currently running.')
     parser.set_defaults(keep_sessions=False)
     parser.add_argument('--telstate', type=str, default='127.0.0.1:6379', help='Telescope state endpoint. Default "127.0.0.1:6379"')
-    parser.add_argument('--file', type=str, help='H5 or MS file for simulated data')
+    parser.add_argument('--file', type=str, help='Comma separated list of H5 or MS file for simulated data')
     parser.add_argument('--buffer-maxsize', type=float, default=1e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
@@ -80,10 +80,12 @@ def create_pane(sname,tmserver,keep_session=False):
 if __name__ == '__main__':
     opts = parse_args()
 
-    # Get full path to h5 file
+    file_list = opts.file.split(',')
+    # Get full path of first h5 file
     #   Workaround for issue in tmux sessions where relative paths
     #   are not parsed correctly by h5py.File
-    file_fullpath=os.path.abspath(opts.file)
+    first_file = file_list[0]
+    first_file_fullpath=os.path.abspath(first_file)
 
     # create tmux server
     tmserver = tmuxp.Server()
@@ -98,7 +100,7 @@ if __name__ == '__main__':
     #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
     #  for parameter missing from the TS)
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1} --parameters {2}'.format(opts.telstate, file_fullpath, opts.parameters))
+    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1} --parameters {2}'.format(opts.telstate, first_file_fullpath, opts.parameters))
     sim_ts_pane.enter()
 
     # wait a few seconds for TS to be set up
@@ -116,14 +118,24 @@ if __name__ == '__main__':
     # start L1 receiver in tmux pane
     image = '--image' if (opts.max_scans == 0) else ''
     l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-    l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}'.format(opts.telstate, file_fullpath, image))
+    for f in file_list:
+        # Get full path of h5 file
+        file_fullpath=os.path.abspath(f)
+        l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}; '.format(opts.telstate, file_fullpath, image))
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
     time.sleep(2.0)
 
     # start data flow in tmux pane
+    #   wait 60 seconds from the end of one data transmission to the starrt of the next
     sim_data_pane = create_pane('sim_data',tmserver,keep_session=opts.keep_sessions)
-    sim_data_pane.cmd('send-keys','sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} \
-        --max-scans {3}'.format(opts.telstate, file_fullpath, opts.l0_rate, opts.max_scans))
+    for f in file_list:
+        # Get full path of h5 file
+        file_fullpath=os.path.abspath(f)
+        sim_data_pane.cmd('send-keys','sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} \
+            --max-scans {3}; sleep 60. ; '.format(opts.telstate, file_fullpath, opts.l0_rate, opts.max_scans))
     sim_data_pane.enter()
+
+
+
