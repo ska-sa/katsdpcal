@@ -313,8 +313,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             logger.info('Received interrupt! Quitting threads.')
             force_shutdown() if mproc else kill_shutdown()
             forced_shutdown = True
-        except:
-            logger.error('Unknown error. ')
+        except Exception, e::
+            logger.error('Unknown error: {}'.formax(e,))
             force_shutdown()
             forced_shutdown = True
 
@@ -333,7 +333,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             # wait till all pipeline runs finish then join
             while any_alive(pipelines):
                 map(lambda x: x.join(), pipelines)
-                time.sleep(0.5)
             logger.info('Pipeline tasks closed')
 
             # create pipeline report (very basic at the moment)
