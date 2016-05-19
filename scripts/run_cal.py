@@ -313,7 +313,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             logger.info('Received interrupt! Quitting threads.')
             force_shutdown() if mproc else kill_shutdown()
             forced_shutdown = True
-        except Exception, e::
+        except Exception, e:
             logger.error('Unknown error: {}'.formax(e,))
             force_shutdown()
             forced_shutdown = True

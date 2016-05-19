@@ -169,7 +169,7 @@ def make_cal_report(ts,report_path):
     """
 
     try:
-        project_name = ts.experiment_id
+        project_name = ts.obs_params['experiment_id']
     except AttributeError:
         project_name = '{0}_unknown_project'.format(int(time.time()))
 
