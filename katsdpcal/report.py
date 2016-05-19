@@ -309,6 +309,7 @@ def make_cal_report(ts,report_path):
     # convert rst to pdf 
     print 'rst2pdf  -s eightpoint {0}/calreport_source/{1}'.format(project_dir,report_file)
 
+    # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         os.system('rst2pdf  -s eightpoint {0}/calreport_source/{1}'.format(project_dir,report_file))
         # move to project directory
