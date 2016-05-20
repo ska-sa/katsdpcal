@@ -60,6 +60,28 @@ def insert_fig(report,fig,name=None):
     report.writeln(fig_text)
     report.writeln()
 
+def write_bullet_if_present(report,ts,var_text,var_name,var_format,transform=None):
+    """
+    Write bullet point, if TescopeState key is present
+
+    Parameters
+    ----------
+    report : report file to write to
+    ts     : telescope state
+    var_text : bullet point description, string
+    var_name : telescope state key, string
+    var_format : format for printing, string
+    transform : transform for applying to TelescopeState value before reporting, optional
+    """
+    try:
+        ts_value = ts[var_name]
+    except AttributeError:
+        # key not present
+        ts_value = 'unknown'
+    if transform is not None:
+        ts_value = transform(ts_value)
+    report.writeln('* {0}:  {1:{2}}'.format(var_text,ts_value,var_format))
+
 def write_summary(report,ts):
     """
     Write observation summary information to report
@@ -69,19 +91,22 @@ def write_summary(report,ts):
     report : report file to write to
     ts     : telescope state
     """
-
     # write RST style bulletted list
-    report.writeln('* Int time:     {0:f}'.format(ts.sdp_l0_int_time,))
-    report.writeln('* Channels:     {0:d}'.format(ts.cbf_n_chans,))
-    report.writeln('* Antennas:     {0:d}'.format(len(ts.antenna_mask),))
-    report.writeln('* Antenna list: {0:s}'.format(', '.join(ts.antenna_mask),))
+    write_bullet_if_present(report,ts,'Int time','sdp_l0_int_time','f')
+    write_bullet_if_present(report,ts,'Channels','cbf_n_chans','d')
+    write_bullet_if_present(report,ts,'Antennas','antenna_mask','d',transform=len)
+    write_bullet_if_present(report,ts,'Antenna list','antenna_mask','s')
     report.writeln()
 
     report.writeln('Source list:')
     report.writeln()
-    target_list = ts.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
-    for target in target_list:
-        report.writeln('* {0:s}'.format(target,))
+    try:
+        target_list = ts.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
+        for target in target_list:
+            report.writeln('* {0:s}'.format(target,))
+    except AttributeError:
+        # key not present
+        report.writeln('* Unknown')
 
     report.writeln()    
 
@@ -169,8 +194,10 @@ def make_cal_report(ts,report_path):
     """
 
     try:
-        project_name = ts.obs_params['experiment_id']
-    except AttributeError:
+        project_name = ts.get_range('obs_params')['experiment_id']
+    except (TypeError, KeyError, AttributeError):
+        # TypeError, KeyError because this isn't properly implimented yet
+        # AttributeError in case this key isnt in the telstate for whatever reason
         project_name = '{0}_unknown_project'.format(int(time.time()))
 
     # make calibration report directory and move into it
@@ -182,6 +209,7 @@ def make_cal_report(ts,report_path):
     except OSError:
         shutil.rmtree(project_dir)
         os.mkdir(project_dir)
+    logger.info('Report compiing in directory {0}/{1}'.format(report_path,project_name))
 
     os.chdir(project_dir)
     
