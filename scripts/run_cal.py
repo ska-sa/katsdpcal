@@ -278,7 +278,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
 
     while True:
         logger.info('=========================')
-        logger.info(' Starting new observation')
+        logger.info('   Starting new observation')
 
         # set up conditions for the buffers
         scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
@@ -336,8 +336,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
             logger.info('Pipeline tasks closed')
 
             # create pipeline report (very basic at the moment)
-            if not ts.has_key('experiment_id'): ts.add('experiment_id','{0}_unknown_project'.format(int(time.time())),immutable=True)
-            logger.info('Report compiing in directory {0}/{1}'.format(report_path,ts.experiment_id))
             make_cal_report(ts,report_path)
 
             if full_l1:
@@ -347,7 +345,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
                 end_transmit(l1_endpoint.host,l1_endpoint.port)
                 logger.info('L1 stream ended')
 
-        logger.info(' Observation ended')
+        logger.info('   Observation ended')
         logger.info('=========================')
 
 if __name__ == '__main__':
