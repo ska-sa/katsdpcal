@@ -267,6 +267,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.accumulator_logger.info('Accumulation break due to transition')
                     obs_end_flag = False
                     break
+                # beamformer special case
+                if (activity_time != prev_activity_time) and ('bfcal' in prev_target_tags):
+                    self.accumulator_logger.info('Accumulation break for beamformer gains')
+                    obs_end_flag = False
+                    break
 
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
