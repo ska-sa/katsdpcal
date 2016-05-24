@@ -203,6 +203,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.accumulator_logger.info('waiting to start accumulating data')
             for heap in rx:
                 ig.update(heap)
+                if len(ig.keys()) < 1:
+                    self.accumulator_logger.info('==== empty stop packet received ====')
+                    continue
 
                 # get sync time from TS, if it is present (if it isn't present, don't process this dump further)
                 if cbf_sync_time == None:
