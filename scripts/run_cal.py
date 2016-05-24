@@ -74,16 +74,16 @@ def setup_logger(log_path):
 
     # logging to file
     logging.basicConfig(filename='{0}/pipeline.log'.format(log_path,),
-                        format='%(asctime)s %(name)-24s %(levelname)-8s %(message)s',
-                        datefmt='%d-%m-%y %H:%M',)
+                        format='%(asctime)s.%(msecs)02d %(name)-24s %(levelname)-8s %(message)s',
+                        datefmt='%d-%m-%y %H:%M:%S',)
     logger.setLevel(logging.INFO)
 
     # logging to stdout
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     # set format for console use
-    formatter = logging.Formatter('%(asctime)s %(name)-24s %(levelname)-8s %(message)s')
-    formatter.datefmt='%d-%m %H:%M'
+    formatter = logging.Formatter('%(asctime)s.%(msecs)02d %(name)-24s %(levelname)-8s %(message)s')
+    formatter.datefmt='%d-%m %H:%M:%S'
     # tell the handler to use this format
     console.setFormatter(formatter)
     # add the handler to the root logger
