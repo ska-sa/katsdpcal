@@ -158,7 +158,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
 
-def force_shutdown():
+def force_shutdown(accumulator, pipelines):
     # forces pipeline threads to shut down
     accumulator.stop()
     accumulator.join()
@@ -166,7 +166,7 @@ def force_shutdown():
     # to end long running reduction.pipeline function
     map(lambda x: x.terminate(), pipelines)
 
-def force_hard_shutdown():
+def force_hard_shutdown(accumulator, pipelines):
     # forces pipeline threads to shut down
     #  - faster but dirtier than force_shutdown()
     accumulator.terminate()
@@ -276,7 +276,11 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     buffer_shape = [array_length,ts.cbf_n_chans,npol,nbl]
     buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
-    while True:
+    # account for forced shutdown possibilities
+    #  due to SIGTERM, keyboard interrupt, or unknown error
+    forced_shutdown = False
+
+    while not forced_shutdown:
         logger.info('=========================')
         logger.info('   Starting new observation')
 
@@ -301,21 +305,17 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
         accumulator.start()
         logger.info('Waiting for L0 data')
 
-        # account for forced shutdown possibilities
-        #  due to SIGTERM, keyboard interrupt, or unknown error
-        forced_shutdown = False
-
         try:
             # run tasks until the observation has ended
             while all_alive([accumulator]+pipelines) and not accumulator.obs_finished():
                 time.sleep(0.1)
         except (KeyboardInterrupt, SystemExit):
             logger.info('Received interrupt! Quitting threads.')
-            force_shutdown() if mproc else kill_shutdown()
+            force_shutdown(accumulator, pipelines) if mproc else kill_shutdown()
             forced_shutdown = True
         except Exception, e:
             logger.error('Unknown error: {}'.formax(e,))
-            force_shutdown()
+            force_shutdown(accumulator, pipelines)
             forced_shutdown = True
 
         # closing steps, if data transmission has stoped (skipped for forced early shutdown)
@@ -345,8 +345,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
                 end_transmit(l1_endpoint.host,l1_endpoint.port)
                 logger.info('L1 stream ended')
 
-        logger.info('   Observation ended')
-        logger.info('=========================')
+            logger.info('   Observation ended')
+            logger.info('=========================')
 
 if __name__ == '__main__':
 
