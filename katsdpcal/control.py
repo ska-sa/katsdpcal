@@ -229,8 +229,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                     self.accumulator_logger.info('accumulating data from targets:')
 
-                    start_flag = False
-
                 # get target time from TS, if it is present (if it isn't present, set to unknown)
                 if self.telstate.has_key(target_key):
                     target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
@@ -246,6 +244,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     # update source list if necessary
                     target_list = self.telstate.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if self.telstate.has_key('cal_info_sources') else []
                     if not target_name in target_list: self.telstate.add('cal_info_sources',target_name)
+
+                # print name of target and activity type, if activity has changed or start of accumulator
+                if start_flag or (activity_time != prev_activity_time):
+                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name,activity))
+                start_flag = False
 
                 # increment the index indicating the position of the data in the buffer
                 array_index += 1
@@ -285,11 +288,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.accumulator_logger.info('Accumulate break due to buffer size limit')
                     obs_end_flag = False
                     break
-
-                # print name of target and activity type, if activity has changed
-                #   this is at the end to avoid printing names of new target slews at the end of an accumulation
-                if activity_time != prev_activity_time:
-                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name,activity))
 
                 prev_activity = activity
                 prev_activity_time = activity_time
