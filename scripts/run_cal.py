@@ -267,9 +267,10 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=100
     #   time, shape(time), type float64 (8 bytes)
     # plus minimal extra for scan transition indices
     scale_factor = 8. + 1. + 1.  # vis + flags + weights
-    time_factor = 1. # 8.
+    time_factor = 4. # 8.
     array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*npol*nbl) + time_factor)
-    array_length = 700 #np.int(np.ceil(array_length))
+    array_length = np.int(np.ceil(array_length))
+    logger.info('Buffer size : {0} G'.format(buffer_maxsize/1.e9,))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
 
     # Set up empty buffers
