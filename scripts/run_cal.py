@@ -39,7 +39,7 @@ def comma_list(type_):
 def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
-    parser.add_argument('--buffer-maxsize', type=float, default=1000e6, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
+    parser.add_argument('--buffer-maxsize', type=float, default=50e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
     # note - the following lines extract various parameters from the MC config
@@ -178,7 +178,7 @@ def kill_shutdown():
     # brutal kill (for threading)
     os.kill(os.getpid(), signal.SIGKILL)
 
-def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=1000e6, auto=True,
+def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=50e9, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
            mproc=True, param_file='', report_path=''):
     """
