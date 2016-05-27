@@ -42,7 +42,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.scan_accumulator_conditions = scan_accumulator_conditions
             self.num_buffers = len(buffers)
 
-            self.name = 'Accumulator_task'
+            self.name = 'Accumulator'
             self._stop = control_method.Event()
             self._obsend = control_method.Event()
 
@@ -331,7 +331,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             control_task.__init__(self)
             self.data = data
             self.scan_accumulator_condition = scan_accumulator_condition
-            self.name = 'Pipeline_task_'+str(pipenum)
+            self.name = 'Pipeline_'+str(pipenum)
             self._stop = control_method.Event()
             self.telstate = telstate
             self.data_shape = data_shape
