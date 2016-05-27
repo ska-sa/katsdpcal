@@ -836,7 +836,6 @@ def wavg_full(data,flags,weights,axis=0,threshold=0.3):
 
     av_sig = np.nanstd(data*weights*(~flags))
     av_data = np.nansum(data*weights*(~flags),axis=axis)/np.nansum(weights*(~flags),axis=axis)
-    threshold = 0
     av_flags = np.nansum(flags,axis=axis) > flags.shape[0]*threshold
 
     # fake weights for now
@@ -855,7 +854,7 @@ def wavg_full_t(data,flags,weights,solint,axis=0,times=None):
     data       : array of complex
     flags      : array of boolean
     weights    : array of floats
-    solint     : index interval over which to average
+    solint     : index interval over which to average, integer
     axis       : axis to average over
     times      : optional array of times to average, array of floats
 
@@ -867,7 +866,8 @@ def wavg_full_t(data,flags,weights,solint,axis=0,times=None):
     av_sig     : sigma of averaged data
     av_times   : optional average of times
     """
-
+    # ensure solint is an intager
+    solint = np.int(solint)
     inc_array = np.arange(0,data.shape[axis],solint)
     wavg = np.array([wavg_full(data[ti:ti+solint],flags[ti:ti+solint],weights[ti:ti+solint],axis=0) for ti in inc_array])
 
