@@ -50,7 +50,9 @@ def insert_fig(report,fig,name=None):
     report : open report file to write to
     fig    : matplitlib figure 
     """
-    figname = "{}.eps".format(name if name else str(fig))
+    if (name == None):
+        name = str(fig)
+    figname = "{}.eps".format(name,)
     fig.savefig(figname,bbox_inches='tight')
     fig_text = \
     '''.. image:: {}
@@ -148,7 +150,7 @@ def write_table_timecol(report,antennas,time,data):
     Parameters
     ----------
     report : report file to write to
-    antennas : list of antenna names, comma separated string
+    antennas : list of antenna names, comma separated string, or single string of comma separated antenna names
     time     : list of times (equates to number of columns in the table)
     data     : table data, shape (time, antenna)
     """
@@ -168,7 +170,7 @@ def write_table_timecol(report,antennas,time,data):
     report.writeln(col_header*n_entries)
 
     # add each antenna row to the table
-    antlist = antennas.split(',')
+    antlist = antennas if isinstance(antennas, list) else antennas.split(',')
     for a, d in zip(antlist,data.T):
         data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in d])
         report.write(a.ljust(col_width+1))
@@ -210,12 +212,14 @@ def make_cal_report(ts,report_path):
     os.chdir(project_dir)
     
     # make source directory and move into is
-    os.mkdir('calreport_source')
-    os.chdir('calreport_source')
+    report_dirname = 'calreport_source'
+    report_path = '{0}/{1}'.format(project_dir,report_dirname)
+    os.mkdir(report_path)
+    os.chdir(report_path)
     
     # --------------------------------------------------------------------
     # open report file
-    report_file = 'calreport.rst'
+    report_file = 'calreport_{0}.rst'.format(project_name,)
     cal_rst = rstReport(report_file, 'w')
 
     # --------------------------------------------------------------------
@@ -258,9 +262,9 @@ def make_cal_report(ts,report_path):
         vals = 1e9*vals
 
         cal_rst.writeln('**POL 0**')
-        write_table_timerow(cal_rst,antenna_mask,times,vals[:,0,:])
+        write_table_timecol(cal_rst,antenna_mask,times,vals[:,0,:])
         cal_rst.writeln('**POL 1**')
-        write_table_timerow(cal_rst,antenna_mask,times,vals[:,1,:])
+        write_table_timecol(cal_rst,antenna_mask,times,vals[:,1,:])
 
     # ---------------------------------
     # cross pol delay
@@ -331,7 +335,7 @@ def make_cal_report(ts,report_path):
     # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         # convert rst to pdf
-        os.system('rst2pdf  -s eightpoint {0}/calreport_source/{1}'.format(project_dir,report_file))
+        os.system('rst2pdf  -s eightpoint {0}/{1}'.format(report_path,report_file))
         # move to project directory
         shutil.move(report_file.replace('rst','pdf'),project_dir)
     except Exception, e:
