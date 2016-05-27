@@ -73,11 +73,7 @@ def write_bullet_if_present(report,ts,var_text,var_name,var_format,transform=Non
     var_format : format for printing, string
     transform : transform for applying to TelescopeState value before reporting, optional
     """
-    try:
-        ts_value = ts[var_name]
-    except AttributeError:
-        # key not present
-        ts_value = 'unknown'
+    ts_value = ts[var_name] if ts.has_key(var_name) else 'unknown'
     if transform is not None:
         ts_value = transform(ts_value)
     report.writeln('* {0}:  {1:{2}}'.format(var_text,ts_value,var_format))
