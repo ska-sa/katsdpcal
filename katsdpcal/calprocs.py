@@ -926,6 +926,7 @@ def solint_from_nominal(solint,dump_period,num_times):
             smallest_inc[i] = intervals % int(intervals)
 
     # choose a solint to minimise the final fractional solution interval
+    logger.info('solint index: {0}'.format(np.where(smallest_inc==max(smallest_inc))[0],))
     nsolint = solint+solint_check_range[np.where(smallest_inc==max(smallest_inc))[0]]
     # calculate new dumps per solints
     dumps_per_solint = np.round(nsolint/dump_period)
