@@ -166,6 +166,7 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # set up solution interval
@@ -204,6 +205,7 @@ class Scan(object):
             self.modvis = self.cross_vis
 
         for soln in pre_apply:
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # average over all time (no averaging over channel)
@@ -238,7 +240,8 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-           self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.modvis = self.apply(soln,origvis=False)
 
         # average over all time, for specified channel range (no averaging over channel)
         if echan == 0: echan = None
@@ -274,7 +277,8 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-           self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.modvis = self.apply(soln,origvis=False)
 
         # average over all time (no averaging over channel)
         ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)

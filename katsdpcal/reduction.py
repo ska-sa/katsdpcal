@@ -268,7 +268,6 @@ def pipeline(data, ts, task_name='pipeline'):
             # B solution
             pipeline_logger.info('   Solving for B on beamformer calibrator {0}'.format(target.split(',')[0],))
             # get K solutions to apply and interpolate it to scan timestamps
-            pipeline_logger.info('    - Pre-apply {0} solution to {1}'.format('K',s.target.name))
             solns_to_apply = get_solns_to_apply(s,ts,['K'],pipeline_logger)
             b_soln = s.b_sol(bp0_h,refant_ind,pre_apply=solns_to_apply)
             pipeline_logger.info('    - Saving B to Telescope State')
@@ -283,8 +282,6 @@ def pipeline(data, ts, task_name='pipeline'):
             # use single solution interval
             dumps_per_solint = np.ceil(scan_slice.stop-scan_slice.start-1)
             g_solint = dumps_per_solint*dump_period
-            pipeline_logger.info('    - Pre-apply {0} solution to {1}'.format('K',s.target.name))
-            pipeline_logger.info('    - Pre-apply {0} solution to {1}'.format('B',s.target.name))
             g_soln = s.g_sol(g_solint,g0_h,refant_ind,ts.cal_g_bchan,ts.cal_g_echan,pre_apply=solns_to_apply)
             pipeline_logger.info('    - Saving G to Telescope State')
             # add gains to TS, iterating through solution times
@@ -322,14 +319,16 @@ def pipeline(data, ts, task_name='pipeline'):
         if any('polcal' in k for k in taglist):
             # ---------------------------------------
             # get K solutions to apply and interpolate them to scan timestamps
-            solns_to_apply = get_solns_to_apply(s,ts,['K','B'],pipeline_logger)
+            pre_apply_solns = ['K','B']
+            solns_to_apply = get_solns_to_apply(s,ts,pre_apply_solns,pipeline_logger)
             #solns_to_apply.append(g_to_apply)
 
             # ---------------------------------------
             # preliminary G solution
             pipeline_logger.info('   Solving for preliminary G on KCROSS calibrator {0}'.format(target_name,))
-            # solve and interpolate to scan timestamps
+            # solve (pre-applying given solutions)
             pre_g_soln = s.g_sol(k_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
+            # interpolate to scan timestamps
             g_to_apply = s.interpolate(pre_g_soln)
             solns_to_apply.append(g_to_apply)
 
