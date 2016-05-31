@@ -57,7 +57,7 @@ def insert_fig(report,fig,name=None):
     fig_text = \
     '''.. image:: {}
        :align: center
-    '''.format(figname)
+    '''.format(figname,)
     report.writeln()
     report.writeln(fig_text)
     report.writeln()
@@ -195,7 +195,7 @@ def make_cal_report(ts,report_path):
     except (TypeError, KeyError, AttributeError):
         # TypeError, KeyError because this isn't properly implimented yet
         # AttributeError in case this key isnt in the telstate for whatever reason
-        project_name = '{0}_unknown_project'.format(int(time.time()))
+        project_name = '{0}_unknown_project'.format(int(time.time()),)
 
     # make calibration report directory and move into it
     if not report_path: report_path = '.'
