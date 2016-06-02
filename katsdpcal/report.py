@@ -179,42 +179,36 @@ def write_table_timecol(report,antennas,time,data):
     report.writeln(col_header*n_entries)
     report.writeln()
 
-def make_cal_report(ts,report_path): 
+def make_cal_report(ts,report_path,project_name=None):
     """
     Creates pdf calibration pipeline report (from RST source),
     using data from the Telescope State 
     
     Parameters
     ----------
-    ts          : TelescopeState
-    report_path : path where report will be created, string
+    ts           : TelescopeState
+    report_path  : path where report will be created, string
+    project_name : ID associated with project, string
     """
 
-    try:
-        project_name = ts.get_range('obs_params')['experiment_id']
-    except (TypeError, KeyError, AttributeError):
-        # TypeError, KeyError because this isn't properly implimented yet
-        # AttributeError in case this key isnt in the telstate for whatever reason
-        project_name = '{0}_unknown_project'.format(int(time.time()),)
+    if project_name == None:
+        project_name = '{0}_unknown_project'.format(time.time())
 
-    # make calibration report directory and move into it
     if not report_path: report_path = '.'
     report_path = os.path.abspath(report_path)
     project_dir = '{0}/{1}'.format(report_path,project_name)
-    try:
+    # if the directory does not exist, create it
+    if not os.path.isdir(project_dir):
         os.mkdir(project_dir)
-    except OSError:
-        shutil.rmtree(project_dir)
-        os.mkdir(project_dir)
-    logger.info('Report compiing in directory {0}/{1}'.format(report_path,project_name))
 
+    # change into project directory
     os.chdir(project_dir)
     
     # make source directory and move into is
     report_dirname = 'calreport_source'
-    report_path = '{0}/{1}'.format(project_dir,report_dirname)
-    os.mkdir(report_path)
-    os.chdir(report_path)
+    report_source_path = '{0}/{1}'.format(project_dir,report_dirname)
+    os.mkdir(report_source_path)
+    os.chdir(report_source_path)
     
     # --------------------------------------------------------------------
     # open report file
@@ -334,7 +328,7 @@ def make_cal_report(ts,report_path):
     # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         # convert rst to pdf
-        os.system('rst2pdf  -s eightpoint {0}/{1}'.format(report_path,report_file))
+        os.system('rst2pdf  -s eightpoint {0}/{1}'.format(report_source_path,report_file))
         # move to project directory
         shutil.move(report_file.replace('rst','pdf'),project_dir)
     except Exception, e:
