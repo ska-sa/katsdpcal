@@ -112,6 +112,10 @@ def setup_observation_logger(log_name,log_path='.'):
     obs_log = logging.FileHandler('{0}/{1}'.format(log_path,log_name))
     obs_log.setFormatter(formatter)
     logging.getLogger('').addHandler(obs_log)
+    return obs_log
+
+def stop_observation_logger(obs_log):
+    logging.getLogger('').removeHandler(obs_log)
 
 def all_alive(process_list):
     """
@@ -307,7 +311,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
 
     while not forced_shutdown:
         observation_log = '{0}_pipeline.log'.format(int(time.time()),)
-        setup_observation_logger(observation_log,log_path)
+        obs_log = setup_observation_logger(observation_log,log_path)
 
         logger.info('===========================')
         logger.info('   Starting new observation')
@@ -397,7 +401,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
             logger.info('===========================')
 
             # copy log of this observation into the report directory
-            shutil.copy('{0}/{1}'.format(log_path,observation_log),'{0}/pipeline_{1}.log'.format(obs_dir,experiment_id))
+            shutil.move('{0}/{1}'.format(log_path,observation_log),'{0}/pipeline_{1}.log'.format(obs_dir,experiment_id))
+            stop_observation_logger(obs_log)
             if full_log != None:
                 shutil.copy('{0}/{1}'.format(log_path,full_log),'{0}/{1}'.format(obs_dir,full_log))
 
