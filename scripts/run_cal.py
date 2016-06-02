@@ -285,7 +285,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
     forced_shutdown = False
 
     while not forced_shutdown:
-        logger.info('=========================')
+        logger.info('===========================')
         logger.info('   Starting new observation')
 
         # set up conditions for the buffers
@@ -370,7 +370,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 logger.info('L1 stream ended')
 
             logger.info('   Observation ended')
-            logger.info('=========================')
+            logger.info('===========================')
 
             # copy log of this observation into the report directory
             if full_log_path == None: full_log_path = 'pipeline.log'
