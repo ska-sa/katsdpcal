@@ -126,6 +126,13 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             for param in parameter_dict:
                 print param, parameter_dict[param]
                 ts.add(param, parameter_dict[param])
+
+            # fake obs params for now
+            ts.add('obs_params',"experiment_id '2016_{0}'".format(time.time(),))
+            ts.add('obs_params',"observer 'AR1'")
+            ts.add('obs_params',"proposal_id 'PIPELINE-AR1'")
+            ts.add('obs_params',"project_id 'PIPELINETEST'")
+            ts.add('obs_params',"sim_file '{0}'".format(self.file_name,))
             
         def datatoSPEAD(self,ts,l0_endpoint,spead_rate=5e8,max_scans=None):
             """
@@ -653,6 +660,7 @@ class SimDataH5V3(katdal.H5DataV3):
         mode = kwargs['mode'] if 'mode' in kwargs else 'r'
         super(SimDataH5V3, self).__init__(file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
+        self.file_name = file_name
 
     def close(self):
         """
@@ -715,6 +723,7 @@ class SimDataH5V2(katdal.H5DataV2):
         mode = kwargs['mode'] if 'mode' in kwargs else 'r'
         super(SimDataH5V2, self).__init__(file_name, mode=mode)
         self.num_scans = len(self.scan_indices)
+        self.file_name = file_name
 
     def close(self):
         """
