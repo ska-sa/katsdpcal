@@ -126,13 +126,6 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             for param in parameter_dict:
                 print param, parameter_dict[param]
                 ts.add(param, parameter_dict[param])
-
-            # fake obs params for now
-            ts.add('obs_params',"experiment_id '2016_{0}'".format(time.time(),))
-            ts.add('obs_params',"observer 'AR1'")
-            ts.add('obs_params',"proposal_id 'PIPELINE-AR1'")
-            ts.add('obs_params',"project_id 'PIPELINETEST'")
-            ts.add('obs_params',"sim_file '{0}'".format(self.file_name,))
             
         def datatoSPEAD(self,ts,l0_endpoint,spead_rate=5e8,max_scans=None):
             """
@@ -176,6 +169,22 @@ def init_simdata(file_name, wait=0.1, **kwargs):
                 shape=weights.shape, dtype=weights.dtype)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                 shape=(), dtype=None, format=[('f', 64)])
+
+        def setup_obs_params(self, ts):
+            """
+            Set up fake obs params
+
+            Parameters
+            ----------
+            ts : Telescope State
+            """
+
+            # fake obs params for now
+            ts.add('obs_params',"experiment_id '2016_{0}'".format(int(time.time()),))
+            ts.add('obs_params',"observer 'AR1'")
+            ts.add('obs_params',"proposal_id 'PIPELINE-AR1'")
+            ts.add('obs_params',"project_id 'PIPELINETEST'")
+            ts.add('obs_params',"sim_file '{0}'".format(self.file_name,))
 
         def transmit_item(self, tx, ig, timestamp, correlator_data, flags, weights):
             """
@@ -397,6 +406,10 @@ class SimDataMS(table):
         tx        : SPEAD transmitter
         max_scans : Maximum number of scans to transmit
         """
+
+        # fake obs params for now
+        self.setup_obs_params(ts)
+
         # order the data for transmission
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         # get metadata information for the telescope state
@@ -556,6 +569,9 @@ def h5_tx_data(h5data,ts,tx,max_scans):
     tx        : SPEAD transmitter
     max_scans : Maximum number of scans to transmit
     """
+    # fake obs params for now
+    h5data.setup_obs_params(ts)
+
     total_ts, track_ts, slew_ts = 0, 0, 0
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
