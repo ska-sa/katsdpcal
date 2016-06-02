@@ -2,6 +2,7 @@
 import numpy as np
 import time
 import os
+import shutil
 import signal
 import manhole
 
@@ -59,7 +60,7 @@ def parse_opts():
     #parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-def setup_logger(log_path):
+def setup_logger(log_path,log_name):
     """
     Set up the pipeline logger.
     The logger writes to a pipeline.log file and to stdout.
@@ -73,7 +74,7 @@ def setup_logger(log_path):
     log_path = os.path.abspath(log_path)
 
     # logging to file
-    logging.basicConfig(filename='{0}/pipeline.log'.format(log_path,),
+    logging.basicConfig(filename='{0}/{1}'.format(log_path,log_name),
                         format='%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',)
     logger.setLevel(logging.INFO)
@@ -180,7 +181,7 @@ def kill_shutdown():
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e9, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
-           mproc=True, param_file='', report_path=''):
+           mproc=True, param_file='', report_path='', full_log_path=None):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -217,6 +218,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
         File of default pipeline parameters
     report_path : string
         Path under which to save pipeline report
+    full_log_path : string
+        Path and file name to move pipeline log to
     """
 
     print 'opt params: ', antenna_mask, cbf_n_chans
@@ -336,8 +339,28 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 map(lambda x: x.join(), pipelines)
             logger.info('Pipeline tasks closed')
 
+            # get observation name
+            try:
+                obs_keys = ts.get_range('obs_params', st=0,return_format='recarray')['value']
+                # choose most recent experiment id, if there are more than one
+                experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
+                experiment_id = experiment_id_string.split()[-1].strip('\'')
+            except (TypeError, KeyError, AttributeError):
+                # TypeError, KeyError because this isn't properly implimented yet
+                # AttributeError in case this key isnt in the telstate for whatever reason
+                experiment_id = '{0}_unknown_project'.format(int(time.time()),)
+
+            # make directory for this observation, for logs and report
+            if not report_path: report_path = '.'
+            report_path = os.path.abspath(report_path)
+            obs_dir = '{0}/{1}'.format(report_path,experiment_id)
+            try:
+                os.mkdir(obs_dir)
+            except OSError:
+                logger.warning('Experiment ID directory {} already exits'.format(obs_dir,))
+
             # create pipeline report (very basic at the moment)
-            make_cal_report(ts,report_path)
+            make_cal_report(ts,report_path,experiment_id)
 
             if full_l1:
                 # send L1 stop transmission
@@ -349,12 +372,18 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
             logger.info('   Observation ended')
             logger.info('=========================')
 
+            # copy log of this observation into the report directory
+            if full_log_path == None: full_log_path = 'pipeline.log'
+            shutil.move(full_log_path,'{0}/pipeline_{1}.log'.format(obs_dir,experiment_id))
+
 if __name__ == '__main__':
 
     opts = parse_opts()
 
     # set up logging
-    setup_logger(opts.log_path)
+    log_name = 'pipeline.log'
+    setup_logger(opts.log_path,log_name)
+    full_log_path = '{0}/{1}'.format(opts.log_path,log_name)
 
     # threading or multiprocessing imports
     if opts.threading is False:
@@ -378,4 +407,4 @@ if __name__ == '__main__':
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
-           param_file=opts.parameters, report_path=opts.report_path)
+           param_file=opts.parameters, report_path=opts.report_path, full_log_path=full_log_path)
