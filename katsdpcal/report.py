@@ -200,7 +200,7 @@ def make_cal_report(ts,report_path,project_name=None):
     # if the directory does not exist, create it
     if not os.path.isdir(project_dir):
         os.mkdir(project_dir)
-    logger.info('Report compiing in directory {0}/{1}'.format(report_path,project_name))
+    logger.info('Report compiling in directory {0}/{1}'.format(report_path,project_name))
 
     # change into project directory
     os.chdir(project_dir)
