@@ -370,7 +370,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
             # get observation name
             try:
                 obs_params = ts.get_range('obs_params',st=0,return_format='recarray')
-                print 'obs params: ', obs_params
                 obs_keys = obs_params['value']
                 obs_times = obs_params['time']
                 # choose most recent experiment id (last entry in the list), if there are more than one
