@@ -98,7 +98,7 @@ def write_summary(report,ts):
     report.writeln('Source list:')
     report.writeln()
     try:
-        target_list = ts.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
+        target_list = ts.get_range('cal_info_sources',st=st,et=et,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
         for target in target_list:
             report.writeln('* {0:s}'.format(target,))
     except AttributeError:
@@ -179,7 +179,7 @@ def write_table_timecol(report,antennas,time,data):
     report.writeln(col_header*n_entries)
     report.writeln()
 
-def make_cal_report(ts,report_path,project_name=None):
+def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     """
     Creates pdf calibration pipeline report (from RST source),
     using data from the Telescope State 
@@ -251,7 +251,7 @@ def make_cal_report(ts,report_path,project_name=None):
         cal_rst.writeln('Delay calibration solutions ([ns])')
         cal_rst.writeln()
 
-        product = ts.get_range(cal_product,st=0,return_format='recarray')
+        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
         vals = product['value']
         # K shape is n_time, n_pol, n_ant
         times = product['time']
@@ -274,7 +274,7 @@ def make_cal_report(ts,report_path,project_name=None):
         cal_rst.writeln('Cross polarisation delay calibration solutions ([ns])')
         cal_rst.writeln()
 
-        product = ts.get_range(cal_product,st=0,return_format='recarray')
+        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
         vals = product['value']
         # K shape is n_time, n_pol, n_ant
         times = product['time']
@@ -294,7 +294,7 @@ def make_cal_report(ts,report_path,project_name=None):
         cal_rst.writeln('Bandpass calibration solutions')
         cal_rst.writeln()
 
-        product = ts.get_range(cal_product,st=0,return_format='recarray')
+        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
         vals = product['value']
         # B shape is n_time, n_chan, n_pol, n_ant
         times = product['time']
@@ -314,7 +314,7 @@ def make_cal_report(ts,report_path,project_name=None):
         cal_rst.writeln('Gain calibration solutions')
         cal_rst.writeln()
 
-        product = ts.get_range(cal_product,st=0,return_format='recarray')
+        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
         vals = product['value']
         # G shape is n_time, n_pol, n_ant
         times = product['time']
