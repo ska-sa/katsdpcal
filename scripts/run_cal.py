@@ -373,6 +373,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 # choose most recent experiment id, if there are more than one
                 experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
                 experiment_id = eval(experiment_id_string.split()[-1])
+                obs_start = ts.get_range('obs_params',st=0,return_format='recarray')['time'][-1]
             except (TypeError, KeyError, AttributeError):
                 # TypeError, KeyError because this isn't properly implimented yet
                 # AttributeError in case this key isnt in the telstate for whatever reason
@@ -388,7 +389,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 logger.warning('Experiment ID directory {} already exits'.format(obs_dir,))
 
             # create pipeline report (very basic at the moment)
-            make_cal_report(ts,report_path,experiment_id)
+            make_cal_report(ts,report_path,experiment_id,st=obs_start)
 
             if full_l1:
                 # send L1 stop transmission
