@@ -369,11 +369,14 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
 
             # get observation name
             try:
-                obs_keys = ts.get_range('obs_params',st=0,return_format='recarray')['value']
-                # choose most recent experiment id, if there are more than one
+                obs_params = ts.get_range('obs_params',st=0,return_format='recarray')
+                print 'obs params: ', obs_params
+                obs_keys = obs_params['value']
+                obs_times = obs_params['time']
+                # choose most recent experiment id (last entry in the list), if there are more than one
                 experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
                 experiment_id = eval(experiment_id_string.split()[-1])
-                obs_start = ts.get_range('obs_params',st=0,return_format='recarray')['time'][-1]
+                obs_start = [t for x,t in zip(obs_keys,obs_times) if 'experiment_id' in x][-1]
             except (TypeError, KeyError, AttributeError):
                 # TypeError, KeyError because this isn't properly implimented yet
                 # AttributeError in case this key isnt in the telstate for whatever reason
