@@ -170,7 +170,7 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                 shape=(), dtype=None, format=[('f', 64)])
 
-        def setup_obs_params(self, ts):
+        def setup_obs_params(self, ts, t=None):
             """
             Set up fake obs params
 
@@ -180,11 +180,11 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             """
 
             # fake obs params for now
-            ts.add('obs_params',"experiment_id '2016_{0}'".format(int(time.time()),))
-            ts.add('obs_params',"observer 'AR1'")
-            ts.add('obs_params',"proposal_id 'PIPELINE-AR1'")
-            ts.add('obs_params',"project_id 'PIPELINETEST'")
-            ts.add('obs_params',"sim_file '{0}'".format(self.file_name,))
+            ts.add('obs_params',"experiment_id '2016_{0}'".format(int(time.time()),),ts=t)
+            ts.add('obs_params',"observer 'AR1'",ts=t)
+            ts.add('obs_params',"proposal_id 'PIPELINE-AR1'",ts=t)
+            ts.add('obs_params',"project_id 'PIPELINETEST'",ts=t)
+            ts.add('obs_params',"sim_file '{0}'".format(self.file_name,),ts=t)
 
         def transmit_item(self, tx, ig, timestamp, correlator_data, flags, weights):
             """
@@ -569,13 +569,13 @@ def h5_tx_data(h5data,ts,tx,max_scans):
     tx        : SPEAD transmitter
     max_scans : Maximum number of scans to transmit
     """
-    # fake obs params for now
-    h5data.setup_obs_params(ts)
-
     total_ts, track_ts, slew_ts = 0, 0, 0
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
     ig = send.ItemGroup(flavour=flavour)
+
+    # fake obs params for now
+    h5data.setup_obs_params(ts,t=h5data.timestamps[0])
 
     for scan_ind, scan_state, target in h5data.scans():
         # update telescope state with scan information
