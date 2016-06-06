@@ -125,7 +125,7 @@ if __name__ == '__main__':
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
-    time.sleep(2.0)
+    time.sleep(5.0)
 
     # start data flow in tmux pane
     #   wait 60 seconds from the end of one data transmission to the starrt of the next
