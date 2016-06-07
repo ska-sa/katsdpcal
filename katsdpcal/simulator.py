@@ -177,6 +177,7 @@ def init_simdata(file_name, wait=0.1, **kwargs):
             Parameters
             ----------
             ts : Telescope State
+            t  : time for setting parameters, seconds, float, optional
             """
 
             # fake obs params for now
@@ -406,10 +407,6 @@ class SimDataMS(table):
         tx        : SPEAD transmitter
         max_scans : Maximum number of scans to transmit
         """
-
-        # fake obs params for now
-        self.setup_obs_params(ts)
-
         # order the data for transmission
         ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         # get metadata information for the telescope state
@@ -420,6 +417,9 @@ class SimDataMS(table):
         # set up ItemGroup for transmission
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
         ig = send.ItemGroup(flavour=flavour)
+
+        # fake obs params for now
+        self.setup_obs_params(ts,t=self.to_ut(self.getcol('TIME')[0]))
 
         time_ind = 0
         # send data scan by scan
