@@ -158,6 +158,8 @@ def write_table_timecol(report,antennas,times,data):
     times    : list of times (equates to number of columns in the table)
     data     : table data, shape (time, antenna)
     """
+    # remove excess dimensions if they exist
+    data = np.squeeze(data)
 
     n_entries = len(times) + 1
     col_width = 30
