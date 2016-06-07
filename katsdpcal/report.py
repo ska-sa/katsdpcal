@@ -342,7 +342,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     try:
         # convert rst to pdf
         print 'pwd - '
-        ps.system('pwd')
+        os.system('pwd')
         print 'ls -'
         os.system('ls')
         print 'command -'
