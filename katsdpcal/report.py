@@ -341,6 +341,12 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         # convert rst to pdf
+        print 'pwd - '
+        ps.system('pwd')
+        print 'ls -'
+        os.system('ls')
+        print 'command -'
+        print 'rst2pdf -s eightpoint {0}/{1}'.format(report_source_path,report_file)
         os.system('rst2pdf  -s eightpoint {0}/{1}'.format(report_source_path,report_file))
         # move to project directory
         shutil.move(report_file.replace('rst','pdf'),project_dir)
