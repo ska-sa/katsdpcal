@@ -380,6 +380,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 # TypeError, KeyError because this isn't properly implimented yet
                 # AttributeError in case this key isnt in the telstate for whatever reason
                 experiment_id = '{0}_unknown_project'.format(int(time.time()),)
+                obs_start = None
 
             # make directory for this observation, for logs and report
             if not report_path: report_path = '.'
