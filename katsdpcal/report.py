@@ -87,6 +87,8 @@ def write_summary(report,ts,st=None,et=None):
     ----------
     report : report file to write to
     ts     : telescope state
+    st     : start time for reporting parameters, seconds, float, optional
+    et     : end time for reporting parameters, seconds, float, optional
     """
     # write RST style bulletted list
     report.writeln('* {0}:  {1}'.format('Start time',time.strftime("%x %X",time.gmtime(st))))
@@ -192,7 +194,9 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     ----------
     ts           : TelescopeState
     report_path  : path where report will be created, string
-    project_name : ID associated with project, string
+    project_name : ID associated with project, string, optional
+    st           : start time for reporting parameters, seconds, float, optional
+    et           : end time for reporting parameters, seconds, float, optional
     """
 
     if project_name == None:
