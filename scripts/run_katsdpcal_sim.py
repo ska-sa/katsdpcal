@@ -125,6 +125,8 @@ if __name__ == '__main__':
     l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
+    #   time for setting up the pipeline and L1 receiver (setting parameters, creating buffers, etc)
+    #   simulator testing is often done on Laura's laptop, which can need a few seconds here if the buffers are ~> 1G
     time.sleep(5.0)
 
     # start data flow in tmux pane
