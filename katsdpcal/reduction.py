@@ -335,7 +335,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # ---------------------------------------
             # KCROSS solution
             pipeline_logger.info('   Solving for KCROSS on delay calibrator {0}'.format(target_name,))
-            kcross_soln = s.kcross_sol(ts.cal_kcross_chanave,pre_apply=solns_to_apply)
+            kcross_soln = s.kcross_sol(ts.cal_k_bchan,ts.cal_k_echan,ts.cal_kcross_chanave,pre_apply=solns_to_apply)
 
             # ---------------------------------------
             # update TS
