@@ -158,9 +158,6 @@ def write_table_timecol(report,antennas,times,data):
     times    : list of times (equates to number of columns in the table)
     data     : table data, shape (time, antenna)
     """
-    # remove excess dimensions if they exist
-    data = np.squeeze(data)
-
     n_entries = len(times) + 1
     col_width = 30
     col_header = '='*col_width+' '
@@ -251,12 +248,16 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # add cal products to report
     antenna_mask = ts.antenna_mask
 
+    logger.info('Calibration solution summary')
+
     # ---------------------------------
     # delay
     cal = 'K'
     cal_product = 'cal_product_'+cal
 
     if cal_product in ts.keys():
+        logger.info('  Calibration product: {0}'.format(cal,))
+
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
         cal_rst.writeln('Delay calibration solutions ([ns])')
         cal_rst.writeln()
@@ -270,9 +271,13 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         vals = 1e9*vals
 
         cal_rst.writeln('**POL 0**')
-        write_table_timecol(cal_rst,antenna_mask,times,vals[:,0,:])
+        kpol = vals[:,0,:]
+        logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
+        write_table_timecol(cal_rst,antenna_mask,times,kpol)
         cal_rst.writeln('**POL 1**')
-        write_table_timecol(cal_rst,antenna_mask,times,vals[:,1,:])
+        kpol = vals[:,1,:]
+        logger.info('  pol{0} shape: {1}'.format('1',kpol.shape))
+        write_table_timecol(cal_rst,antenna_mask,times,kpol)
 
     # ---------------------------------
     # cross pol delay
@@ -280,6 +285,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_product = 'cal_product_'+cal
 
     if cal_product in ts.keys():
+        logger.info('Calibration product: {0}'.format(cal,))
+
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
         cal_rst.writeln('Cross polarisation delay calibration solutions ([ns])')
         cal_rst.writeln()
@@ -288,6 +295,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         vals = product['value']
         # K shape is n_time, n_pol, n_ant
         times = product['time']
+        logger.info('  shape: {0}'.format(vals.shape,))
 
         # convert delays to nano seconds
         vals = 1e9*vals
@@ -300,6 +308,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_product = 'cal_product_'+cal
 
     if cal_product in ts.keys():
+        logger.info('Calibration product: {0}'.format(cal,))
+
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
         cal_rst.writeln('Bandpass calibration solutions')
         cal_rst.writeln()
@@ -308,6 +318,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         vals = product['value']
         # B shape is n_time, n_chan, n_pol, n_ant
         times = product['time']
+        logger.info('  shape: {0}'.format(vals.shape,))
 
         for ti in range(len(times)):
             t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
@@ -320,6 +331,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_product = 'cal_product_'+cal
 
     if cal_product in ts.keys():
+        logger.info('Calibration product: {0}'.format(cal,))
+
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
         cal_rst.writeln('Gain calibration solutions')
         cal_rst.writeln()
@@ -330,9 +343,13 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         times = product['time']
 
         cal_rst.writeln('**POL 0**')
-        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,0,:]),name='{0}/G_P0'.format(report_source_path,))
+        gpol = vals[:,0,:]
+        logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='{0}/G_P0'.format(report_source_path,))
         cal_rst.writeln('**POL 1**')
-        insert_fig(cal_rst,plotting.plot_g_solns(times,vals[:,1,:]),name='{0}/G_P1'.format(report_source_path,))
+        gpol = vals[:,1,:]
+        logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='{0}/G_P1'.format(report_source_path,))
 
     # --------------------------------------------------------------------
     # close off report
