@@ -185,7 +185,7 @@ class Scan(object):
 
         return CalSolution('G', g_soln, ave_times)
 
-    def kcross_sol(self,chan_ave,pre_apply=[]):
+    def kcross_sol(self,bchan=1,echan=0,chan_ave=1,pre_apply=[]):
         """
         Solve for cross hand delay offset
 
@@ -208,13 +208,15 @@ class Scan(object):
             self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
-        # average over all time (no averaging over channel)
-        ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis,self.cross_flags,self.cross_weights,axis=0)
+        # average over all time, for specified channel range (no averaging over channel)
+        if echan == 0: echan = None
+        chan_slice = [slice(None),slice(bchan,echan),slice(None),slice(None)]
+        ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice],self.cross_flags[chan_slice],self.cross_weights[chan_slice],axis=0)
 
         # solve for cross hand delay KCROSS
         # note that the kcross solver needs the flags because it averages the data
         #  (strictly it should need weights too, but deal with that leter when weights are meaningful)
-        kcross_soln = calprocs.kcross_fit(ave_vis,av_flags,self.channel_freqs,chan_ave=chan_ave)
+        kcross_soln = calprocs.kcross_fit(ave_vis,av_flags,self.channel_freqs[bchan:echan],chan_ave=chan_ave)
         return CalSolution('KCROSS', kcross_soln, np.average(self.times))
 
     def k_sol(self,REFANT,bchan=1,echan=0,chan_sample=1,pre_apply=[]):
