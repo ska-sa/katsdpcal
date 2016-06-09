@@ -392,7 +392,10 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
                 logger.warning('Experiment ID directory {} already exits'.format(obs_dir,))
 
             # create pipeline report (very basic at the moment)
-            make_cal_report(ts,report_path,experiment_id,st=obs_start)
+            try:
+                make_cal_report(ts,report_path,experiment_id,st=obs_start)
+            except Exception, e:
+                logger.info('Report generation failed: {0}'.format(e,))
 
             if full_l1:
                 # send L1 stop transmission

@@ -256,7 +256,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_product = 'cal_product_'+cal
 
     if cal_product in ts.keys():
-        logger.info('  Calibration product: {0}'.format(cal,))
+        logger.info('Calibration product: {0}'.format(cal,))
 
         cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
         cal_rst.writeln('Delay calibration solutions ([ns])')
@@ -269,6 +269,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
 
         # convert delays to nano seconds
         vals = 1e9*vals
+
+        logger.info('  shape: {0}'.format(vals.shape,))
 
         cal_rst.writeln('**POL 0**')
         kpol = vals[:,0,:]
@@ -341,6 +343,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         vals = product['value']
         # G shape is n_time, n_pol, n_ant
         times = product['time']
+
+        logger.info('  shape: {0}'.format(vals.shape,))
 
         cal_rst.writeln('**POL 0**')
         gpol = vals[:,0,:]
