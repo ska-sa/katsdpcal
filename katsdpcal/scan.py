@@ -191,7 +191,9 @@ class Scan(object):
 
         Parameters
         ----------
-        chan_ave : channels to average together prior during fit
+        bchan : start channel for fit, int, optional
+        echan : end channel for fit, int, optional
+        chan_ave : channels to average together prior during fit, int, optional
         pre_apply : calibration solutions to apply, list of CalSolutions, optional
 
         Returns
