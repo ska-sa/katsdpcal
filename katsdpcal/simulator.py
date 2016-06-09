@@ -55,7 +55,7 @@ def get_file_format(file_name):
 
     return data_class
 
-def init_simdata(file_name, wait=0.1, **kwargs):
+def init_simdata(file_name, wait=0.0, **kwargs):
     """
     Initialise simulated data class, using either H5 or MS files for simulation.
 
