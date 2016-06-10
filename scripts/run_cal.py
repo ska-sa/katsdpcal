@@ -19,15 +19,25 @@ from katsdpcal import conf_dir, param_file
 import logging
 logger = logging.getLogger(__name__)
 
-def print_dict(dictionary, ident = '', braces=1):
+def print_dict(dictionary,ident='',braces=1):
     """ Recursively prints nested dictionaries."""
 
     for key, value in dictionary.iteritems():
         if isinstance(value, dict):
-           print '%s%s%s%s' %(ident,braces*'[',key,braces*']')
+           print '{0}{1}{2}{3}'.format(ident,braces*'[',key,braces*']')
            print_dict(value, ident+'  ', braces+1)
         else:
-           print ident+'%s = %s' %(key, value)
+           print '{0}{1} = {2}'.format(ident,key,value)
+
+def log_dict(dictionary,ident='',braces=1):
+    """ Recursively logs nested dictionaries."""
+
+    for key, value in dictionary.iteritems():
+        if isinstance(value, dict):
+            logger.info('{0}{1}{2}{3}'.format(ident,braces*'[',key,braces*']'))
+            log_dict(value, ident+'  ', braces+1)
+        else:
+            logger.info('{0}{1} = {2}'.format(ident,key,value))
 
 def comma_list(type_):
     """Return a function which splits a string on commas and converts each element to
@@ -247,7 +257,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
         Path for pipeline logs
     """
 
-    print 'opt params: ', antenna_mask, cbf_n_chans
+    logger.info('opt params: {0} {1}'.format(antenna_mask,cbf_n_chans))
 
     # extract data shape parameters 
     #   argument parser traversed TS config to find these
@@ -274,14 +284,10 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
     # save L1 transmit preference to TS
     ts.add('cal_full_l1', full_l1, immutable=True)
 
-    # debug print outs
-    print '\nTelescope state: '
-    for k in ts.keys(): print k
-    print '\nTelescope state config graph: '
-    print_dict(ts.config)
-    print
-
-    logger.info('Receiving L0 data on port {0}'.format(l0_endpoint.port,))
+    # telescope state logs for debugging
+    logger.info('Telescope state parameters: {0}'.format(ts.keys()))
+    logger.info('Telescope state config graph:')
+    log_dict(ts.config)
 
     npol = 4
     nant = len(ts.cal_antlist)
@@ -309,6 +315,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
     #  due to SIGTERM, keyboard interrupt, or unknown error
     forced_shutdown = False
 
+    logger.info('Receiving L0 data on port {0}'.format(l0_endpoint.port,))
     while not forced_shutdown:
         observation_log = '{0}_pipeline.log'.format(int(time.time()),)
         obs_log = setup_observation_logger(observation_log,log_path)
