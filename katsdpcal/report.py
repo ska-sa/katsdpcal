@@ -218,7 +218,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     try:
         os.mkdir(report_source_path)
     except OSError:
-        print 'Report source directory already exists. Stop report generation.'
+        logger.info('Report source directory already exists. Stop report generation.')
         return
     os.chdir(report_source_path)
     
