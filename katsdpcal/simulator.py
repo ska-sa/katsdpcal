@@ -119,7 +119,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             ts.delete('cbf_channel_freqs')
 
             # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'experiment_id', 'experiment_id']
+            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time']
             for key in min_keys: 
                 if not key in parameter_dict: raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
             # add parameters to telescope state
@@ -337,7 +337,6 @@ class SimDataMS(table):
         # need polarisation information in the cbf_bls_ordering
         param_dict['cbf_bls_ordering'] = self.corr_products
         param_dict['cbf_sync_time'] = 0.0
-        param_dict['experiment_id'] = self.file_name.split('.')[0].split('/')[-1]
         param_dict['config'] = {'MS_simulator': True}
 
         # antenna descriptions for all antennas
@@ -549,7 +548,6 @@ def h5_get_params(h5data):
     param_dict['cbf_sync_time'] = 0.0
     antenna_mask = ','.join([ant.name for ant in h5data.ants])
     param_dict['antenna_mask'] = antenna_mask
-    param_dict['experiment_id'] = h5data.experiment_id
     param_dict['config'] = {'h5_simulator':True}
 
     # antenna descriptions for all antennas
