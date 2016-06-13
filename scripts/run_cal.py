@@ -14,7 +14,7 @@ from katsdpcal.control import end_transmit
 from katsdpcal.report import make_cal_report
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
-from katsdpcal import conf_dir, param_file
+from katsdpcal import conf_dir
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def parse_opts():
     parser.set_defaults(full_l1=False)
     parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=True)
-    parser.add_argument('--parameters', type=str, default=os.path.join(conf_dir,param_file), help='Default pipeline parameter file (will be over written by TelescopeState. [default: {0}]'.format(param_file,))
+    parser.add_argument('--parameters', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default='/var/kat/data', help='Path under which to save pipeline report. [default: /var/kat/data]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
@@ -277,8 +277,18 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
         
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
-    if param_file: 
-        ts_from_file(ts,param_file)
+    if param_file == '':
+        if ts.cbf_n_chans == 4096:
+            param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
+            param_file = os.path.join(conf_dir,param_filename)
+            logger.info('Parameter file for 4k mode: {0}'.format(param_file,))
+        else:
+            param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
+            param_file = os.path.join(conf_dir,param_filename)
+            logger.info('Parameter file for 32k mode: {0}'.format(param_file,))
+    else:
+        logger.info('Parameter file: {0}'.format(param_file))
+    ts_from_file(ts,param_file)
     # set up TS for pipeline use
     setup_ts(ts)
     # save L1 transmit preference to TS
