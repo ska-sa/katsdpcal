@@ -1,6 +1,7 @@
 
 import os
 import subprocess
+import shutil
 
 import logging
 logger = logging.getLogger(__name__)
@@ -365,7 +366,10 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     try:
         # convert rst to pdf
         subprocess.check_output(['rst2pdf', '-s', 'eightpoint', '{0}'.format(report_source_path,report_file)])
-        # move to project directory
-        subprocess.check_output(['mv', report_file.replace('rst','pdf'), project_dir])
     except subprocess.CalledProcessError as e:
-        logger.info('Report generation failed: {0}'.format(e.output,))
+        logger.info('Report pdf creation failed: code {0}'.format(e.returncode,))
+        logger.info('                            command {0}'.format(e.cmd,))
+        logger.info('                            output {0}'.format(e.output,))
+
+    # move to project directory
+    shutil.move(report_file.replace('rst','pdf'),project_dir)
