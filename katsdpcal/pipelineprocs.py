@@ -49,7 +49,7 @@ def init_ts(ts, param_dict, clear=False):
     # populate ts with parameters 
     #   parameter only added if it is missing from the TS
     for key in param_dict.keys(): 
-        if key not in ts: ts.add(key, param_dict[key], immutable=True)
+        if key not in ts: ts.add(key, param_dict[key])
 
 def ts_from_file(ts, filename):
     """
@@ -87,7 +87,8 @@ def ts_from_file(ts, filename):
 def setup_ts(ts):
     """
     Set up the telescope state for pipeline use.
-
+    In general, the calibration parameters are mutable.
+    Only subarray characteristics (e.g. antenna_mask) are immutable.
     Inputs
     ======
     ts : Telescope State
@@ -97,8 +98,8 @@ def setup_ts(ts):
     Assumed starting ts entries:
     antenna_mask
 
-    Assumed ending ts entries (all immutable)
-    antenna_mask          - list or csv string of antennas present in the data
+    Assumed ending ts entries
+    antenna_mask          - list or csv string of antennas present in the data, immutable
     cal_antlist           - list of antennas present in the data
     cal_preferred_refants - ordered list of refant preference
     cal_refant            - reference antenna
@@ -111,21 +112,21 @@ def setup_ts(ts):
         ts.add('antenna_mask',antlist,immutable=True)
     # cal_antlist
     #   this should not be pre-set (determine from antenna_mask, which is pre-set)
-    ts.add('cal_antlist',ts.antenna_mask,immutable=True)
+    ts.add('cal_antlist',ts.antenna_mask)
 
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
-        ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
+        ts.add('cal_preferred_refants',ts.cal_antlist,)
     else:
         # reduce the preferred antenna list to only antennas present in can_antlist
         preferred = [ant for ant in ts.cal_preferred_refants if ant in ts.cal_antlist]
         if preferred != ts.cal_preferred_refants:
             if preferred == []:
                 ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants',ts.cal_antlist,immutable=True)
+                ts.add('cal_preferred_refants',ts.cal_antlist)
             else:
                 ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants',preferred,immutable=True)
+                ts.add('cal_preferred_refants',preferred)
 
     # cal_refant
     if 'cal_refant' not in ts:
