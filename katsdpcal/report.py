@@ -365,7 +365,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         # convert rst to pdf
-        subprocess.check_output(['rst2pdf', '-s', 'eightpoint', '{0}'.format(report_source_path,report_file)])
+        subprocess.check_output(['rst2pdf', '-s', 'eightpoint', '{0}/{1}'.format(report_source_path,report_file)])
     except subprocess.CalledProcessError as e:
         logger.info('Report pdf creation failed: code {0}'.format(e.returncode,))
         logger.info('                            command {0}'.format(e.cmd,))
