@@ -135,6 +135,16 @@ def setup_ts(ts):
             ts.delete('cal_refant')
             ts.add('cal_refant',ts.cal_preferred_refants[0])
 
+    # temporary fix:
+    #     the parameter files are surrently set up for 4k mode use.
+    #     if we have 32k channels, scale the solution channel ranges accordingly
+    if ts.cbf_n_chans > 4096: #i.e. 32k mode
+        key_list = ['cal_k_bchan','cal_k_echan','cal_g_bchan','cal_g_echan']
+        for k in key_list:
+            cal_value = ts[k]
+            ts.delete(k)
+            ts.add(k,cal_value*8)
+
 def get_model(name, lsm_dir_list = []):
     """
     Get a sky model from a text file.
