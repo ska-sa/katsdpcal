@@ -1,0 +1,25 @@
+# parameter file for MeerKAT AR1, 32k channels
+
+cal_refant : m024
+cal_preferred_refants : m024,m025,m034
+
+cal_sideband : 1                          # for frequency calculation
+
+# general data parameters
+cal_sim_bchan : 800                       # first channel to process, int
+cal_sim_echan : 30400                     # last channel to process, int
+
+# delay calibration  
+cal_param_k_solint : 5.0                  # nominal pre-k g solution interval, seconds
+cal_param_k_chan_sample : 1               # sample every 10th channel for pre-K BP soln
+cal_param_k_bchan : 16800                 # first channel for K fit, int
+cal_param_k_echan : 18400                 # last channel for K fit, int
+cal_param_kcross_chanave : 1              # number of channels to average together to kcross solution
+
+# bandpass calibration
+cal_param_bp_solint : 5.0                 # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+cal_param_g_solint: 5.0                   # nominal g solution interval, seconds
+cal_param_g_bchan : 16800                 # first channel for g fit, int
+cal_param_g_echan : 18400                 # last channel for g fit, int

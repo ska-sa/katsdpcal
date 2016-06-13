@@ -1,4 +1,4 @@
-# parameter file for MeerKAT AR1
+# parameter file for MeerKAT AR1, 4k channels
 
 cal_refant : m024
 cal_preferred_refants : m024,m025,m034
