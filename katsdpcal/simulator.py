@@ -544,6 +544,7 @@ def h5_get_params(h5data):
     param_dict['cbf_channel_freqs'] = h5data.channel_freqs
     param_dict['sdp_l0_int_time'] = h5data.dump_period
     param_dict['cbf_n_ants'] = len(h5data.ants)
+    param_dict['cbf_n_chans'] = len(h5data.channels)
     param_dict['cbf_bls_ordering'] = h5data.corr_products
     param_dict['cbf_sync_time'] = 0.0
     antenna_mask = ','.join([ant.name for ant in h5data.ants])
