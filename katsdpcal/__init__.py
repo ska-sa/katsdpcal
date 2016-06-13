@@ -10,9 +10,6 @@ from pkg_resources import resource_filename
 conf_dir = resource_filename(__name__, 'conf/pipeline_params')
 lsm_dir = resource_filename(__name__, 'conf/sky_models')
 
-# Default parameter file
-param_file = 'pipeline_parameters_meerkat_ar1.txt'
-
 # force module to import pyrap before spead
 # (bug fix)
 try:
