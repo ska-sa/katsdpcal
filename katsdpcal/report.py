@@ -1,6 +1,6 @@
 
 import os
-import shutil
+import subprocess
 
 import logging
 logger = logging.getLogger(__name__)
@@ -364,15 +364,8 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
     try:
         # convert rst to pdf
-        print 'pwd - '
-        os.system('pwd')
-        print 'ls -'
-        os.system('ls')
-        print 'command -'
-        print 'rst2pdf -s eightpoint {0}/{1}'.format(report_source_path,report_file)
-        os.system('rst2pdf  -s eightpoint {0}/{1}'.format(report_source_path,report_file))
+        subprocess.check_output(['rst2pdf', '-s', 'eightpoint', '{0}'.format(report_source_path,report_file)])
         # move to project directory
-        shutil.move(report_file.replace('rst','pdf'),project_dir)
-    except Exception, e:
-        print 'Report generation failed: {0}'.format(e,)
-    
+        subprocess.check_output(['mv', report_file.replace('rst','pdf'), project_dir])
+    except subprocess.CalledProcessError as e:
+        logger.info('Report generation failed: {0}'.format(e.output,))
