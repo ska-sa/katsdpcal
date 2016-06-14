@@ -10,7 +10,7 @@ import os
 def parse_opts():
     parser = ArgumentParser(description = 'Simulate Telescope State from h5 or MS file')    
     parser.add_argument('--file', type=str, help='H5 or MS file for simulated data')
-    parser.add_argument('--parameters', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -27,7 +27,7 @@ print "Add to and override TS data from simulator."
 simdata.setup_ts(ts)
 
 print "Use parameters from parameter file."
-param_file = opts.parameters
+param_file = opts.parameter_file
 if param_file == '':
     if ts.cbf_n_chans == 4096:
         param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'

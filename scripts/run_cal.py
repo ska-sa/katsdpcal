@@ -64,7 +64,7 @@ def parse_opts():
     parser.set_defaults(full_l1=False)
     parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=True)
-    parser.add_argument('--parameters', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default='/var/kat/data', help='Path under which to save pipeline report. [default: /var/kat/data]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     #parser.set_defaults(telstate='localhost')
@@ -461,4 +461,4 @@ if __name__ == '__main__':
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
-           param_file=opts.parameters, report_path=opts.report_path, log_path=log_path, full_log=log_name)
+           param_file=opts.parameter_file, report_path=opts.report_path, log_path=log_path, full_log=log_name)

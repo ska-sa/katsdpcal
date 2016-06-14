@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 1.2e7. Default: 5e7')
-    parser.add_argument('--parameters', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     #  we use the parameter file to initialise  the telescope state for the simulator
     #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
     #  for parameter missing from the TS)
-    param_string = '--parameters {0}'.format(opts.parameters,) if opts.parameters != '' else ''
+    param_string = '--parameter-file {0}'.format(opts.parameter_file,) if opts.parameter_file != '' else ''
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
     sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1} {2}'.format(opts.telstate, first_file_fullpath, param_string))
     sim_ts_pane.enter()
