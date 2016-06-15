@@ -109,7 +109,7 @@ def plot_bp_solns(data,chans=None):
     npols = data.shape[-2]
     nrows, ncols = npols, 2  
 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(12.0*ncols,3.0*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(10.0*ncols,3.0*nrows))
     for p in range(npols):
         plot_data_v_chan(data[:,p,:],axes,plotnum=p,ylabelplus=' - POL '+str(p))
 
@@ -143,7 +143,7 @@ def plot_g_solns(times,data):
     data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1,2 
-    fig, axes = plt.subplots(nrows,ncols,figsize=(12.0*ncols,3.0*nrows))
+    fig, axes = plt.subplots(nrows,ncols,figsize=(10.0*ncols,3.0*nrows))
    
     times = np.array(times) - times[0]
     data = np.array(data)
