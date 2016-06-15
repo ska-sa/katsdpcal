@@ -1,6 +1,5 @@
 
 import os
-import subprocess
 import shutil
 
 import logging
@@ -11,6 +10,8 @@ from . import plotting
 
 import numpy as np
 import time
+
+from docutils.core import publish_file
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  rstReport
@@ -53,7 +54,7 @@ def insert_fig(report,fig,name=None):
     """
     if (name == None):
         name = str(fig)
-    figname = "{}.eps".format(name,)
+    figname = "{}.png".format(name,)
     fig.savefig(figname,bbox_inches='tight')
     fig_text = \
     '''.. image:: {}
@@ -140,8 +141,8 @@ def write_table_timerow(report,colnames,times,data):
 
     # add each time row to the table
     for t, d in zip(times,data):
-        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
-        report.write("{:.4e}".format(t,).ljust(col_width+1))
+        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
+        report.write("{:.3f}".format(t,).ljust(col_width+1))
         report.writeln(data_string)  
 
     # table footer
@@ -177,7 +178,7 @@ def write_table_timecol(report,antennas,times,data):
     # add each antenna row to the table
     antlist = antennas if isinstance(antennas, list) else antennas.split(',')
     for a, d in zip(antlist,data.T):
-        data_string = " ".join(["{:.4e}".format(di.real,).ljust(col_width) for di in d])
+        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in d])
         report.write(a.ljust(col_width+1))
         report.writeln(data_string)  
 
@@ -214,7 +215,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     os.chdir(project_dir)
     
     # make source directory and move into is
-    report_dirname = 'calreport_source'
+    report_dirname = 'calreport'
     report_source_path = '{0}/{1}'.format(project_dir,report_dirname)
     try:
         os.mkdir(report_source_path)
@@ -250,6 +251,10 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     antenna_mask = ts.antenna_mask
 
     logger.info('Calibration solution summary')
+    cal_list = ['K','KCROSS','B','G']
+    solns_exist = any(['cal_product_'+cal in ts.keys() for cal in cal_list])
+    if not solns_exist:
+        logger.info(' - no calibration solutions')
 
     # ---------------------------------
     # delay
@@ -326,7 +331,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         for ti in range(len(times)):
             t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
             cal_rst.writeln('Time: {}'.format(t,))
-            insert_fig(cal_rst,plotting.plot_bp_solns(vals[ti]),name='{0}/B_{1}'.format(report_source_path,str(ti)))
+            insert_fig(cal_rst,plotting.plot_bp_solns(vals[ti]),name='B_{0}'.format(str(ti),))
 
     # ---------------------------------
     # gain
@@ -350,11 +355,11 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         cal_rst.writeln('**POL 0**')
         gpol = vals[:,0,:]
         logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
-        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='{0}/G_P0'.format(report_source_path,))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='G_P0')
         cal_rst.writeln('**POL 1**')
         gpol = vals[:,1,:]
         logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
-        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='{0}/G_P1'.format(report_source_path,))
+        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='G_P1')
 
     # --------------------------------------------------------------------
     # close off report
@@ -362,14 +367,5 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_rst.writeln()
     cal_rst.close()
 
-    # will do this properly with subprocess later (quick fix for now, to keep katsdpcal running)
-    try:
-        # convert rst to pdf
-        subprocess.check_output(['rst2pdf', '-s', 'eightpoint', '{0}/{1}'.format(report_source_path,report_file)])
-    except subprocess.CalledProcessError as e:
-        logger.info('Report pdf creation failed: code {0}'.format(e.returncode,))
-        logger.info('                            command {0}'.format(e.cmd,))
-        logger.info('                            output {0}'.format(e.output,))
-
-    # move to project directory
-    shutil.move(report_file.replace('rst','pdf'),project_dir)
+    # convert to html
+    publish_file(source_path=report_file,destination_path=report_file.replace('rst','html'),writer_name='html')
