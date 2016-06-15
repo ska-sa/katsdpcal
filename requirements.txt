@@ -1,3 +1,4 @@
+docutils
 Cython                  # for h5py
 h5py
 manhole
