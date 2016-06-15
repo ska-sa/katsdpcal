@@ -9,7 +9,6 @@ For katsdpcal:
 * redis (2.8.19+)
 * PySPEAD
 * katsdptelstate
-* rst2pdf
 
 For katsdpcal simulator:
 
