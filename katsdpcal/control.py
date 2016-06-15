@@ -263,12 +263,12 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
                 ignore_states = ['slew', 'stop', 'unknown']
                 if (activity_time != prev_activity_time) and not np.any([ignore in prev_activity for ignore in ignore_states]) and ('unknown' not in target_tags) and ('target' not in prev_target_tags):
-                    self.accumulator_logger.info('Accumulation break due to transition')
+                    self.accumulator_logger.info('Accumulation break - transition')
                     obs_end_flag = False
                     break
                 # beamformer special case
-                if (activity_time != prev_activity_time) and ('bfcal' in prev_target_tags):
-                    self.accumulator_logger.info('Accumulation break for beamformer gains')
+                if (activity_time != prev_activity_time) and ('single_accumulation' in prev_target_tags):
+                    self.accumulator_logger.info('Accumulation break - single scan accumulation')
                     obs_end_flag = False
                     break
 
@@ -281,7 +281,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     break
                 # end accumulation if maximum array size has been accumulated
                 if array_index >= self.max_length - 1:
-                    self.accumulator_logger.info('Accumulate break due to buffer size limit')
+                    self.accumulator_logger.info('Accumulate break - buffer size limit')
                     obs_end_flag = False
                     break
 
