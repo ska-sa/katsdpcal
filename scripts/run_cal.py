@@ -50,7 +50,7 @@ def comma_list(type_):
 def parse_opts():
     parser = ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
-    parser.add_argument('--buffer-maxsize', type=float, default=20e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
+    parser.add_argument('--buffer-maxsize', type=float, help='The amount of memory (in bytes) to allocate to each buffer.')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
     # note - the following lines extract various parameters from the MC config
@@ -214,7 +214,7 @@ def kill_shutdown():
     # brutal kill (for threading)
     os.kill(os.getpid(), signal.SIGKILL)
 
-def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e9, auto=True,
+def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
            mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
@@ -303,6 +303,16 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=20e
     nant = len(ts.cal_antlist)
     # number of baselines (may include autocorrelations)
     nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
+
+    # get biffer size
+    if buffer_maxsize != None:
+        ts.add('cal_buffer_size',buffer_maxsize)
+    else:
+        if ts.has_key('cal_buffer_size'):
+            buffer_maxsize = ts['cal_buffer_size']
+        else:
+            buffer_maxsize = 20.0e9
+            ts.add('cal_buffer_size',buffer_maxsize)
 
     # buffer needs to include:
     #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
