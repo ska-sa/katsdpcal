@@ -304,7 +304,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     # number of baselines (may include autocorrelations)
     nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
 
-    # get biffer size
+    # get buffer size
     if buffer_maxsize != None:
         ts.add('cal_buffer_size',buffer_maxsize)
     else:
