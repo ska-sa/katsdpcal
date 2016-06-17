@@ -34,7 +34,7 @@ def parse_args():
     parser.set_defaults(keep_sessions=False)
     parser.add_argument('--telstate', type=str, default='127.0.0.1:6379', help='Telescope state endpoint. Default "127.0.0.1:6379"')
     parser.add_argument('--file', type=str, help='Comma separated list of H5 or MS file for simulated data')
-    parser.add_argument('--buffer-maxsize', type=float, default=1e9, help='The amount of memory (in bytes?) to allocate to each buffer. default: 1e9')
+    parser.add_argument('--buffer-maxsize', type=float, default=1e9, help='The amount of memory (in bytes) to allocate to each buffer. default: 1e9')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
