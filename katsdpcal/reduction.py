@@ -210,22 +210,28 @@ def pipeline(data, ts, task_name='pipeline'):
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
 
-        # if we only have one timestamp in the scan, ignore it
-        #  (this happens when there is no slew between tracks so we catch the first dump of the next track)
+        # if we only have one or two timestamps in the scan, ignore it
+        #  (a single timestamp can happen when there is no slew between tracks so we catch the first dump of the next track)
         n_times = scan_slice.stop - scan_slice.start
-        if n_times < 2: continue
+        if n_times < 3: continue
 
         # extract scan info from the TS
-        #  target string contains: 'target name, tags, RA, DEC'
-        target = ts.get_range(target_key,et=t0)[0][0]
         # add the dump period here to account for scan start and activity change being closely timed
         scan_state = ts.get_range(activity_key,et=t0+dump_period)[0][0]
-        taglist = target.split(',')[1].split()
-
-        target_name = target.split(',')[0]
+        #  target string contains: 'target name, tags, RA, DEC'
+        target = ts.get_range(target_key,et=t0)[0][0]
+        target_list = target.split(',')
+        target_name = target_list[0]
         pipeline_logger.info('-----------------------------------')
         pipeline_logger.info('Target: {0}'.format(target_name,))
         pipeline_logger.info('   Timestamps:   {0}'.format(n_times,))
+
+        # if there are no tags, don't process this scan
+        if len(target_list) > 1:
+            taglist = target_list[1].split()
+        else:
+            pipeline_logger.info('   Tags:   None')
+            continue
         pipeline_logger.info('   Tags:   {0}'.format(taglist,))
 
         # ---------------------------------------
@@ -266,7 +272,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # B solution
-            pipeline_logger.info('   Solving for B on beamformer calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('   Solving for B on beamformer calibrator {0}'.format(target_name,))
             # get K solutions to apply and interpolate it to scan timestamps
             solns_to_apply = get_solns_to_apply(s,ts,['K'],pipeline_logger)
             b_soln = s.b_sol(bp0_h,refant_ind,pre_apply=solns_to_apply)
@@ -275,7 +281,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # G solution
-            pipeline_logger.info('   Solving for G on beamformer calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('   Solving for G on beamformer calibrator {0}'.format(target_name,))
             # get B solutions to apply and interpolate them to scan timestamps along with K
             solns_to_apply.extend(get_solns_to_apply(s,ts,['B'],pipeline_logger))
 
@@ -354,14 +360,14 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # Preliminary G solution
-            pipeline_logger.info('   Solving for preliminary G on bandpass calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('   Solving for preliminary G on bandpass calibrator {0}'.format(target_name,))
             # solve and interpolate to scan timestamps
             pre_g_soln = s.g_sol(bp_solint,g0_h,refant_ind,pre_apply=solns_to_apply)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
             # B solution
-            pipeline_logger.info('   Solving for B on bandpass calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('   Solving for B on bandpass calibrator {0}'.format(target_name,))
             solns_to_apply.append(g_to_apply)
             b_soln = s.b_sol(bp0_h,refant_ind,pre_apply=solns_to_apply)
 
@@ -382,7 +388,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # G solution
-            pipeline_logger.info('   Solving for G on gain calibrator {0}'.format(target.split(',')[0],))
+            pipeline_logger.info('   Solving for G on gain calibrator {0}'.format(target_name,))
             # set up solution interval: just solve for two intervals per G scan (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop-scan_slice.start-1)/2.0)
             g_solint = dumps_per_solint*dump_period
