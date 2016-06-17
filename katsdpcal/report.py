@@ -204,25 +204,10 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
         project_name = '{0}_unknown_project'.format(time.time())
 
     if not report_path: report_path = '.'
-    report_path = os.path.abspath(report_path)
-    project_dir = '{0}/{1}'.format(report_path,project_name)
-    # if the directory does not exist, create it
-    if not os.path.isdir(project_dir):
-        os.mkdir(project_dir)
-    logger.info('Report compiling in directory {0}/{1}'.format(report_path,project_name))
-
+    project_dir = os.path.abspath(report_path)
+    logger.info('Report compiling in directory {0}'.format(project_dir,))
     # change into project directory
     os.chdir(project_dir)
-    
-    # make source directory and move into is
-    report_dirname = 'calreport'
-    report_source_path = '{0}/{1}'.format(project_dir,report_dirname)
-    try:
-        os.mkdir(report_source_path)
-    except OSError:
-        logger.info('Report source directory already exists. Stop report generation.')
-        return
-    os.chdir(report_source_path)
     
     # --------------------------------------------------------------------
     # open report file

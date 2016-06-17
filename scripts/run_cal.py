@@ -420,7 +420,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
 
             # create pipeline report (very basic at the moment)
             try:
-                make_cal_report(ts,report_path,experiment_id,st=obs_start)
+                make_cal_report(ts,obs_dir,experiment_id,st=obs_start)
             except Exception, e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
