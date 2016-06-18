@@ -13,6 +13,8 @@ import time
 
 from docutils.core import publish_file
 
+import matplotlib.pylab as plt
+
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  rstReport
 #--------------------------------------------------------------------------------------------------
@@ -56,6 +58,10 @@ def insert_fig(report,fig,name=None):
         name = str(fig)
     figname = "{}.png".format(name,)
     fig.savefig(figname,bbox_inches='tight')
+    # closing the plot is necessary to relase the memory
+    #  (this is a pylab issue)
+    plt.close()
+
     fig_text = \
     '''.. image:: {}
        :align: center
