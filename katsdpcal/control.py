@@ -398,7 +398,8 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
             if self.full_l1 or target_slices != []:
                 self.pipeline_logger.info('   Transmit L1 data')
-                self.data_to_SPEAD(target_slices, tx)
+                self.pipeline_logger.info('   --- transmit disabled for now ---')
+                #self.data_to_SPEAD(target_slices, tx)
                 self.pipeline_logger.info('   End transmit of L1 data')
 
         def data_to_SPEAD(self, target_slices, tx):
