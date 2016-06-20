@@ -413,14 +413,15 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             if not report_path: report_path = '.'
             report_path = os.path.abspath(report_path)
             obs_dir = '{0}/{1}'.format(report_path,experiment_id)
+            current_obs_dir = '{0}-current'.format(obs_dir,)
             try:
-                os.mkdir(obs_dir)
+                os.mkdir(current_obs_dir)
             except OSError:
-                logger.warning('Experiment ID directory {} already exits'.format(obs_dir,))
+                logger.warning('Experiment ID directory {} already exits'.format(current_obs_dir,))
 
             # create pipeline report (very basic at the moment)
             try:
-                make_cal_report(ts,obs_dir,experiment_id,st=obs_start)
+                make_cal_report(ts,current_obs_dir,experiment_id,st=obs_start)
             except Exception, e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
@@ -435,10 +436,13 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             logger.info('===========================')
 
             # copy log of this observation into the report directory
-            shutil.move('{0}/{1}'.format(log_path,observation_log),'{0}/pipeline_{1}.log'.format(obs_dir,experiment_id))
+            shutil.move('{0}/{1}'.format(log_path,observation_log),'{0}/pipeline_{1}.log'.format(current_obs_dir,experiment_id))
             stop_observation_logger(obs_log)
             if full_log != None:
-                shutil.copy('{0}/{1}'.format(log_path,full_log),'{0}/{1}'.format(obs_dir,full_log))
+                shutil.copy('{0}/{1}'.format(log_path,full_log),'{0}/{1}'.format(current_obs_dir,full_log))
+
+            # change report and log directory to final name for archiving
+            shutil.move(current_obs_dir,obs_dir)
 
 if __name__ == '__main__':
 
