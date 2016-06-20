@@ -101,6 +101,9 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             """   
             # get parameters from data file
             parameter_dict = self.get_params()
+            # add fake subarray_id to parameter_dict
+            parameter_dict['subarray_product_id'] = 'unknown_subarray'
+
             # get/edit extra parameters from TS (set at run time)
             if ts.has_key('cal_sim_echan'):
                 # if bchan and echan are set, use them to override number of channels
@@ -119,7 +122,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             ts.delete('cbf_channel_freqs')
 
             # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time']
+            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'subarray_product_id']
             for key in min_keys: 
                 if not key in parameter_dict: raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
             # add parameters to telescope state

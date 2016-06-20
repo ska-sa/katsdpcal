@@ -335,6 +335,9 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     #  due to SIGTERM, keyboard interrupt, or unknown error
     forced_shutdown = False
 
+    # get subarray ID
+    subarray_id = ts['subarray_product_id'] if ts.has_key('subarray_product_id') else 'unknown_subarray'
+
     logger.info('Receiving L0 data on port {0}'.format(l0_endpoint.port,))
     while not forced_shutdown:
         observation_log = '{0}_pipeline.log'.format(int(time.time()),)
@@ -412,7 +415,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             # make directory for this observation, for logs and report
             if not report_path: report_path = '.'
             report_path = os.path.abspath(report_path)
-            obs_dir = '{0}/{1}'.format(report_path,experiment_id)
+            obs_dir = '{0}/{1}_{2}'.format(report_path,subarray_id,experiment_id)
             current_obs_dir = '{0}-current'.format(obs_dir,)
             try:
                 os.mkdir(current_obs_dir)
