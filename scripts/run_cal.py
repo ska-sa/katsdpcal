@@ -397,9 +397,11 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
                 map(lambda x: x.join(), pipelines)
             logger.info('Pipeline tasks closed')
 
+            # get observation end time
+            obs_end = ts.cal_obs_end_time
             # get observation name
             try:
-                obs_params = ts.get_range('obs_params',st=0,return_format='recarray')
+                obs_params = ts.get_range('obs_params',st=0,et=obs_end,return_format='recarray')
                 obs_keys = obs_params['value']
                 obs_times = obs_params['time']
                 # choose most recent experiment id (last entry in the list), if there are more than one
@@ -424,7 +426,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
 
             # create pipeline report (very basic at the moment)
             try:
-                make_cal_report(ts,current_obs_dir,experiment_id,st=obs_start)
+                make_cal_report(ts,current_obs_dir,experiment_id,st=obs_start,et=obs_end)
             except Exception, e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
