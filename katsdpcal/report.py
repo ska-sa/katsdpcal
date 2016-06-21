@@ -251,106 +251,113 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # delay
     cal = 'K'
     cal_product = 'cal_product_'+cal
-
-    if cal_product in ts.keys():
-        logger.info('Calibration product: {0}'.format(cal,))
-
-        cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
-        cal_rst.writeln('Delay calibration solutions ([ns])')
-        cal_rst.writeln()
-
+    if ts.has_key(cal_product):
         product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
-        vals = product['value']
-        # K shape is n_time, n_pol, n_ant
-        times = product['time']
+        if len(product['time']) > 0:
+            logger.info('Calibration product: {0}'.format(cal,))
 
-        # convert delays to nano seconds
-        vals = 1e9*vals
+            cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
+            cal_rst.writeln('Delay calibration solutions ([ns])')
+            cal_rst.writeln()
 
-        logger.info('  shape: {0}'.format(vals.shape,))
+            vals = product['value']
+            # K shape is n_time, n_pol, n_ant
+            times = product['time']
 
-        cal_rst.writeln('**POL 0**')
-        kpol = vals[:,0,:]
-        logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
-        write_table_timecol(cal_rst,antenna_mask,times,kpol)
-        cal_rst.writeln('**POL 1**')
-        kpol = vals[:,1,:]
-        logger.info('  pol{0} shape: {1}'.format('1',kpol.shape))
-        write_table_timecol(cal_rst,antenna_mask,times,kpol)
+            # convert delays to nano seconds
+            vals = 1e9*vals
+
+            logger.info('  shape: {0}'.format(vals.shape,))
+
+            cal_rst.writeln('**POL 0**')
+            kpol = vals[:,0,:]
+            logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
+            write_table_timecol(cal_rst,antenna_mask,times,kpol)
+            cal_rst.writeln('**POL 1**')
+            kpol = vals[:,1,:]
+            logger.info('  pol{0} shape: {1}'.format('1',kpol.shape))
+            write_table_timecol(cal_rst,antenna_mask,times,kpol)
 
     # ---------------------------------
     # cross pol delay
     cal = 'KCROSS'
     cal_product = 'cal_product_'+cal
-
-    if cal_product in ts.keys():
-        logger.info('Calibration product: {0}'.format(cal,))
-
-        cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
-        cal_rst.writeln('Cross polarisation delay calibration solutions ([ns])')
-        cal_rst.writeln()
-
+    if ts.has_key(cal_product):
         product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
-        vals = product['value']
-        # K shape is n_time, n_pol, n_ant
-        times = product['time']
-        logger.info('  shape: {0}'.format(vals.shape,))
+        if len(product['time']) > 0:
+            logger.info('Calibration product: {0}'.format(cal,))
 
-        # convert delays to nano seconds
-        vals = 1e9*vals
+            cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
+            cal_rst.writeln('Cross polarisation delay calibration solutions ([ns])')
+            cal_rst.writeln()
 
-        write_table_timerow(cal_rst,['KCROSS'],times,vals)
+            vals = product['value']
+            # K shape is n_time, n_pol, n_ant
+            times = product['time']
+            logger.info('  shape: {0}'.format(vals.shape,))
+
+            # convert delays to nano seconds
+            vals = 1e9*vals
+
+            write_table_timerow(cal_rst,['KCROSS'],times,vals)
 
     # ---------------------------------
     # bandpass
     cal = 'B'
     cal_product = 'cal_product_'+cal
-
-    if cal_product in ts.keys():
-        logger.info('Calibration product: {0}'.format(cal,))
-
-        cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
-        cal_rst.writeln('Bandpass calibration solutions')
-        cal_rst.writeln()
-
+    if ts.has_key(cal_product):
         product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
-        vals = product['value']
-        # B shape is n_time, n_chan, n_pol, n_ant
-        times = product['time']
-        logger.info('  shape: {0}'.format(vals.shape,))
+        if len(product['time']) > 0:
+            logger.info('Calibration product: {0}'.format(cal,))
 
-        for ti in range(len(times)):
-            t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
-            cal_rst.writeln('Time: {}'.format(t,))
-            insert_fig(cal_rst,plotting.plot_bp_solns(vals[ti]),name='B_{0}'.format(str(ti),))
+            cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
+            cal_rst.writeln('Bandpass calibration solutions')
+            cal_rst.writeln()
+
+            vals = product['value']
+            # B shape is n_time, n_chan, n_pol, n_ant
+            times = product['time']
+            logger.info('  shape: {0}'.format(vals.shape,))
+
+            for ti in range(len(times)):
+                t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
+                cal_rst.writeln('Time: {}'.format(t,))
+                plot = plotting.plot_bp_solns(vals[ti])
+                insert_fig(cal_rst,plot,name='B_{0}'.format(str(ti),))
 
     # ---------------------------------
     # gain
     cal = 'G'
     cal_product = 'cal_product_'+cal
-
-    if cal_product in ts.keys():
-        logger.info('Calibration product: {0}'.format(cal,))
-
-        cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
-        cal_rst.writeln('Gain calibration solutions')
-        cal_rst.writeln()
-
+    if ts.has_key(cal_product):
         product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
-        vals = product['value']
-        # G shape is n_time, n_pol, n_ant
-        times = product['time']
+        if len(product['time']) > 0:
+            logger.info('Calibration product: {0}'.format(cal,))
 
-        logger.info('  shape: {0}'.format(vals.shape,))
+            cal_rst.write_heading_1('Calibration product {0:s}'.format(cal,))
+            cal_rst.writeln('Gain calibration solutions')
+            cal_rst.writeln()
 
-        cal_rst.writeln('**POL 0**')
-        gpol = vals[:,0,:]
-        logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
-        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='G_P0')
-        cal_rst.writeln('**POL 1**')
-        gpol = vals[:,1,:]
-        logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
-        insert_fig(cal_rst,plotting.plot_g_solns(times,gpol),name='G_P1')
+            vals = product['value']
+            # G shape is n_time, n_pol, n_ant
+            times = product['time']
+
+            logger.info('  shape: {0}'.format(vals.shape,))
+
+            cal_rst.writeln('**POL 0**')
+            gpol = vals[:,0,:]
+            logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
+            plot = plotting.plot_g_solns(times,gpol,colours=ant_colours)
+            #legendfig = plt.figure(figsize=(3,2))
+            #legendfig.legend(plot,antlist)
+            #legendfig.savefig('legend.png')
+
+            insert_fig(cal_rst,plot,name='G_P0')
+            cal_rst.writeln('**POL 1**')
+            gpol = vals[:,1,:]
+            logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
+            plot = plotting.plot_g_solns(times,gpol,colours=ant_colours)
+            insert_fig(cal_rst,plot,name='G_P1')
 
     # --------------------------------------------------------------------
     # close off report
