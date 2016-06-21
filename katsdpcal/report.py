@@ -299,7 +299,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             # convert delays to nano seconds
             vals = 1e9*vals
 
-            write_table_timerow(cal_rst,['KCROSS'],times,vals)
+            write_table_timerow(cal_rst,[cal],times,vals)
 
     # ---------------------------------
     # bandpass
@@ -323,7 +323,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
                 t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
                 cal_rst.writeln('Time: {}'.format(t,))
                 plot = plotting.plot_bp_solns(vals[ti])
-                insert_fig(cal_rst,plot,name='B_{0}'.format(str(ti),))
+                insert_fig(cal_rst,plot,name='{0}_{1}'.format(cal,str(ti)))
 
     # ---------------------------------
     # gain
@@ -352,12 +352,12 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             #legendfig.legend(plot,antlist)
             #legendfig.savefig('legend.png')
 
-            insert_fig(cal_rst,plot,name='G_P0')
+            insert_fig(cal_rst,plot,name='{0}_P0'.format(cal,))
             cal_rst.writeln('**POL 1**')
             gpol = vals[:,1,:]
             logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
             plot = plotting.plot_g_solns(times,gpol,colours=ant_colours)
-            insert_fig(cal_rst,plot,name='G_P1')
+            insert_fig(cal_rst,plot,name='{0}_P1'.format(cal,))
 
     # --------------------------------------------------------------------
     # close off report
