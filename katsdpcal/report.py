@@ -347,16 +347,13 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             cal_rst.writeln('**POL 0**')
             gpol = vals[:,0,:]
             logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
-            plot = plotting.plot_g_solns(times,gpol,colours=ant_colours)
-            #legendfig = plt.figure(figsize=(3,2))
-            #legendfig.legend(plot,antlist)
-            #legendfig.savefig('legend.png')
+            plot = plotting.plot_g_solns(times,gpol)
 
             insert_fig(cal_rst,plot,name='{0}_P0'.format(cal,))
             cal_rst.writeln('**POL 1**')
             gpol = vals[:,1,:]
             logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
-            plot = plotting.plot_g_solns(times,gpol,colours=ant_colours)
+            plot = plotting.plot_g_solns(times,gpol)
             insert_fig(cal_rst,plot,name='{0}_P1'.format(cal,))
 
     # --------------------------------------------------------------------
