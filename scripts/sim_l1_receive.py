@@ -96,7 +96,7 @@ if __name__ == '__main__':
         # was our simulator using an H5 or MS file?
         file_class = get_file_format(opts.file)
 
-        if not ts.cal_full_l1:
+        if False:
             print 'Only target L1 stream transmitted. Not saving L1 data to file.'
         else:
             if os.path.isfile(new_file) or os.path.isdir(new_file):

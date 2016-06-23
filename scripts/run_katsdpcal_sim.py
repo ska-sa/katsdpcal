@@ -111,7 +111,7 @@ if __name__ == '__main__':
     no_auto = '--no-auto' if opts.no_auto else ''
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-        --l1-rate {2} --full-l1 {3} --report-path {4} --log-path {5} {6} {7}'.format(opts.telstate, opts.buffer_maxsize,
+        --l1-rate {2} {3} --report-path {4} --log-path {5} {6} {7}'.format(opts.telstate, opts.buffer_maxsize,
         opts.l1_rate, param_string, opts.report_path, opts.log_path, threading_option, no_auto))
     pipeline_pane.enter()
 
