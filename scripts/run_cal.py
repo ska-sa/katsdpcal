@@ -60,8 +60,7 @@ def parse_opts():
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 spead stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
-    parser.add_argument('--full-l1', action='store_true', help='Send full data set to L1 [default: Only send target data to L1')
-    parser.set_defaults(full_l1=False)
+    parser.add_argument('--l1_level', default=0, help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
     parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
     parser.set_defaults(threading=True)
     parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
@@ -215,7 +214,7 @@ def kill_shutdown():
     os.kill(os.getpid(), signal.SIGKILL)
 
 def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
-           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, full_l1=False,
+           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
            mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
@@ -245,8 +244,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
     l1_rate : float
         Rate for L1 stream transmission, default 5e7
-    full_l1 : bool
-        True to transmit all of the data to L1, False to only transmit target data.
+    l1_level : int
+        Data to transmit to L1: 0 - none, 1 - target only, 2 - all
     mproc: bool
         True for control via multiprocessing, False for control via threading
     param_file : string
@@ -291,8 +290,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     ts_from_file(ts,param_file)
     # set up TS for pipeline use
     setup_ts(ts)
-    # save L1 transmit preference to TS
-    ts.add('cal_full_l1', full_l1, immutable=True)
 
     # telescope state logs for debugging
     logger.info('Telescope state parameters: {0}'.format(ts.keys()))
@@ -353,7 +350,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
         accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
         # Set up the pipelines (one per buffer)
         pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
-            l1_endpoint, l1_rate, ts) for i in range(num_buffers)]
+            l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
 
         try:
             manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines})
@@ -430,7 +427,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             except Exception, e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
-            if full_l1:
+            if l1_level != 0:
                 # send L1 stop transmission
                 #   wait for a couple of secs before ending transmission
                 time.sleep(2.0)
@@ -479,5 +476,5 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, full_l1=opts.full_l1, mproc=not(opts.threading),
+           l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not(opts.threading),
            param_file=opts.parameter_file, report_path=opts.report_path, log_path=log_path, full_log=log_name)
