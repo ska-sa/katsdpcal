@@ -119,7 +119,8 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
                 solval, soltime = gsols['value'], gsols['time']
                 soln = calprocs.CalSolution('G', solval, soltime)
 
-            solns_to_apply.append(s.interpolate(soln))
+            if len(soln.values) > 0: solns_to_apply.append(s.interpolate(soln))
+            logger.info('{0} correction to be applied, shape {1}'.format(X,soln.values.shape))
 
         except KeyError:
             # TS doesn't yet contain 'X'
