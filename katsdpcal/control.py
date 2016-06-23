@@ -189,6 +189,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # sensor parameters which will be set from telescope state when data starts to flow
             cbf_sync_time = None
+            data_ts = None
 
             # receive SPEAD stream
             ig = spead2.ItemGroup()
@@ -292,9 +293,9 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # if we exited the loop because it was the end of the SPEAD transmission
             if obs_end_flag:
-                try:
+                if data_ts != None:
                     self.telstate.add('cal_obs_end_time',data_ts,ts=data_ts)
-                except:
+                else:
                     # no data_ts variable because no data has flowed
                     self.accumulator_logger.info(' --- no data flowed ---')
                 self.accumulator_logger.info('Observation ended')
@@ -318,14 +319,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 # ---------------------------------------------------------------------------------------
 
 def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, \
-        l1_rate,  telstate):
+        l1_level, l1_rate, telstate):
 
     class pipeline_control(control_task):
         """
         Task (Process or Thread) which runs pipeline
         """
 
-        def __init__(self, control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate):
+        def __init__(self, control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
             self.scan_accumulator_condition = scan_accumulator_condition
@@ -333,7 +334,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             self._stop = control_method.Event()
             self.telstate = telstate
             self.data_shape = data_shape
-            self.full_l1 = telstate.cal_full_l1
+            self.l1_level = l1_level
             self.l1_rate = l1_rate
             self.l1_endpoint = l1_endpoint
 
@@ -399,12 +400,14 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             target_slices = pipeline(self.data,self.telstate,task_name=self.name) if (self.data['max_index'][0] > 0) else []
 
             # send data to L1 SPEAD if necessary
-            config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
-            tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
-            if self.full_l1 or target_slices != []:
+            if self.l1_level != 0:
+                config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
+                tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
                 self.pipeline_logger.info('   Transmit L1 data')
-                self.pipeline_logger.info('   --- transmit disabled for now ---')
-                #self.data_to_SPEAD(target_slices, tx)
+                # for streaming all of the data (not target only),
+                # use the highest index in the buffer that is filled with data
+                transmit_slices = [slice(0,self.data['max_index'][0]+1)] if self.l1_level == 2 else target_slices
+                self.data_to_SPEAD(transmit_slices, tx)
                 self.pipeline_logger.info('   End transmit of L1 data')
 
         def data_to_SPEAD(self, target_slices, tx):
@@ -415,11 +418,6 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             target_slices : list of slices
                 slices for target scans in the data buffer
             """
-            if self.full_l1:
-                # for streaming all of the data (not target only), 
-                # use the highest index in the buffer that is filled with data
-                target_slices = [slice(0,self.data['max_index'][0]+1)]
-
             # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
             ig = send.ItemGroup(flavour=flavour)
@@ -452,7 +450,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                     ig['timestamp'].value = scan_times[i]
                     tx.send_heap(ig.get_heap())
 
-    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_rate, telstate)
+    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_level, l1_rate, telstate)
 
 # ---------------------------------------------------------------------------------------
 # SPEAD helper functions
