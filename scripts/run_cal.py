@@ -414,7 +414,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             # make directory for this observation, for logs and report
             if not report_path: report_path = '.'
             report_path = os.path.abspath(report_path)
-            obs_dir = '{0}/{1}_{2}'.format(report_path,subarray_id,experiment_id)
+            obs_dir = '{0}/{1}_{2}_{3}'.format(report_path,int(time.time()),subarray_id,experiment_id)
             current_obs_dir = '{0}-current'.format(obs_dir,)
             try:
                 os.mkdir(current_obs_dir)
