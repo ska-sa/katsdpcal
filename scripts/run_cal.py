@@ -395,7 +395,11 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             logger.info('Pipeline tasks closed')
 
             # get observation end time
-            obs_end = ts.cal_obs_end_time
+            if ts.has_key('cal_obs_end_time'):
+                obs_end = ts.cal_obs_end_time
+            else:
+                logger.info('Unknown observation end time')
+                obs_end = time.time()
             # get observation name
             try:
                 obs_params = ts.get_range('obs_params',st=0,et=obs_end,return_format='recarray')

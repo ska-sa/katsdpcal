@@ -298,10 +298,12 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # if we exited the loop because it was the end of the SPEAD transmission
             if obs_end_flag:
                 if data_ts != None:
-                    self.telstate.add('cal_obs_end_time',data_ts,ts=data_ts)
+                    end_time = data_ts
                 else:
                     # no data_ts variable because no data has flowed
                     self.accumulator_logger.info(' --- no data flowed ---')
+                    end_time = time.time()
+                self.telstate.add('cal_obs_end_time',end_time,ts=end_time)
                 self.accumulator_logger.info('Observation ended')
                 self._obsend.set()
 
