@@ -71,7 +71,7 @@ def get_bl_ant_pairs(corrprod_lookup):
     return antlist1, antlist2
 
 def stefcal(vis, num_ants, corrprod_lookup, weights=1.0, ref_ant=0, init_gain=None,
-    model=1.0, algorithm='adi', num_iters=100, conv_thresh=0.0001, verbose=False):
+    model=1.0, algorithm='adi_schwardt', num_iters=100, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal.
     ADI StefCal implimentation from:
     'Fast gain calibration in radio astronomy using alternating direction implicit methods:
@@ -159,7 +159,7 @@ def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
     g_curr = 1.0*g_prev
     # initialise calibrator source model
     #   default is unity with zeros along the diagonals to ignore autocorr
-    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
+    M = model * (1.0 - np.eye(num_ants, dtype=np.complex)) if np.isscalar(model) else model
 
     antA, antB = bl_ant_pairs
     for i in range(num_iters):
@@ -377,7 +377,7 @@ def adi_stefcal_acorr(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_
     return g_curr
 
 def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
-	init_gain=None, model=None,  num_iters=100, conv_thresh=0.0001, verbose=False):
+	init_gain=None, model=None, num_iters=30, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using StEFCal (array dot product version).
     The observed visibilities are provided in a NumPy array of any shape and
     dimension, as long as the last dimension represents baselines. The gains
@@ -390,6 +390,7 @@ def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
     full_vis = np.concatenate((vis, vis.conj()), axis=-1)
     full_antA = np.r_[antA, antB]
     full_antB = np.r_[antB, antA]
+
     Parameters
     ----------
     vis : array of complex, shape (M, ..., N)
@@ -410,15 +411,18 @@ def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
         Initial gain vector (all equal to 1.0 by default)
     conv_thresh : float, optional
         Convergence threshold (max relative l_2 norm of change in gain vector)
+
     Returns
     -------
     gains : array of complex, shape (M, ..., num_ants)
         Complex gains per antenna
+
     Notes
     -----
     The model visibilities are assumed to be 1, implying a point source model.
     The algorithm is iterative but should converge in a small number of
     iterations (10 to 30).
+
     References
     ----------
     .. [1] Salvini, Wijnholds, "Fast gain calibration in radio astronomy using
@@ -1121,6 +1125,46 @@ def get_bls_lookup(antlist,bls_ordering):
     # make polarisation and corr_prod lookup tables (assume this doesn't change over the course of an observaton)
     antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
     return np.array([[antlist_index[a1[0:4]],antlist_index[a2[0:4]]] for a1,a2 in bls_ordering])
+
+#--------------------------------------------------------------------------------------------------
+#--- Simulation
+#--------------------------------------------------------------------------------------------------
+
+def fake_vis(nants=7,gains=None,noise=None): #   (self,algorithm,delta=1e-3,noise=False,gains=None):
+    """Create fake point source visibilities, corrupted by given or random gains"""
+    import numpy as np
+
+    # create antenna lists
+    antlist = range(nants)
+    list1 = np.array([])
+    for a,i in enumerate(range(nants-1,0,-1)):
+        list1 = np.hstack([list1,np.ones(i)*a])
+    list1 = np.hstack([list1,antlist])
+    list1 = np.int_(list1)
+
+    list2 = np.array([], dtype=np.int)
+    mod_antlist = antlist[1:]
+    for i in (range(0,len(mod_antlist))):
+        list2 = np.hstack([list2,mod_antlist[:]])
+        mod_antlist.pop(0)
+    list2 = np.hstack([list2,antlist])
+
+    # create fake gains, if gains are not given as input
+    if gains is None: gains = np.random.random(nants)
+
+    # create fake corrupted visibilities
+    nbl = nants*(nants+1)/2
+    vis = np.ones([nbl])
+    # corrupt vis with gains
+    for i,j in zip(list1,list2): vis[(list1==i)&(list2==j)] *= gains[i]*gains[j]
+    # if requested, corrupt vis with noise
+    if noise != None:
+        vis_noise = (np.random.random(vis.shape)-0.5)*noise
+        vis = vis+vis_noise
+
+    # return useful info
+    bl_pair_list = np.column_stack([list1, list2])
+    return vis, bl_pair_list, gains
 
 #--------------------------------------------------------------------------------------------------
 #--- CLASS :  CalSolution
