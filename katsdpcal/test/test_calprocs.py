@@ -40,15 +40,15 @@ class TestCalprocs(unittest.TestCase):
         self._test_stefcal('schwardt',noise=True)
 
     def test_schwardt_adi_stefcal(self):
-        """Check that schwardt_adi stefcal calculates gains correct to within 1e-3"""
-        self._test_stefcal('schwardt_adi')
+        """Check that adi_schwardt stefcal calculates gains correct to within 1e-3"""
+        self._test_stefcal('adi_schwardt')
         
-    def test_schwardt_adi_stefcal_noise(self):
-        """Check that schwardt_adi stefcal calculates gains correct to within 1e-3, on noisy data"""
-        self._test_stefcal('schwardt_adi',noise=True)
+    def test_adi_schwardt_stefcal_noise(self):
+        """Check that adi_schwardt stefcal calculates gains correct to within 1e-3, on noisy data"""
+        self._test_stefcal('adi_schwardt',noise=True)
         
     def test_stefcal_comparison(self):
-        """Check that schwardt_adi and adi stefcal gains are equivalent within 1e-3"""
+        """Check that adi_schwardt and adi stefcal gains are equivalent within 1e-3"""
         from katsdpcal.calprocs import fake_vis
         nants = 7
         vis, bl_ant_list, gains = fake_vis(nants)
@@ -57,7 +57,7 @@ class TestCalprocs(unittest.TestCase):
         vis_and_conj = np.hstack((vis, vis.conj()))
         from katsdpcal.calprocs import stefcal
         calc_gains_0 = stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm='adi')
-        calc_gains_1 = stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm='schwardt_adi')
+        calc_gains_1 = stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100, ref_ant=0, init_gain=None, algorithm='adi_schwardt')
 
         for i in range(len(gains)): self.assertAlmostEqual(calc_gains_0[i],calc_gains_1[i],delta=1.e-3)
 
