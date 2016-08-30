@@ -5,6 +5,7 @@ from .calprocs import CalSolution
 
 import numpy as np
 import copy
+from time import time
 
 import ephem
 import katpoint
@@ -120,6 +121,20 @@ class Scan(object):
 
         self.logger = logger
 
+    def logsolutiontime(f):
+        """
+        Decorator to log time duration of solver functions
+        """
+        def timed(*args, **kw):
+            ts = time()
+            result = f(*args, **kw)
+            te = time()
+
+            scanlogger = args[0].logger
+            scanlogger.info('    - Solution time: {0} sec'.format(te-ts,))
+            return result
+        return timed
+
     def solint_from_nominal(self, input_solint):
         """
         Determine appropriate solution interval given nominal solution interval
@@ -139,6 +154,7 @@ class Scan(object):
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
 
+    @logsolutiontime
     def g_sol(self,input_solint,g0,REFANT,bchan=1,echan=0,pre_apply=[],**kwargs):
         """
         Solve for gain
@@ -171,6 +187,7 @@ class Scan(object):
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
+        self.logger.info('    - G solution interval: {0}s'.format(solint,))
 
         # first averge in time over solution interval, for specified channel range (no averaging over channel)
         if echan == 0: echan = None
@@ -185,6 +202,7 @@ class Scan(object):
 
         return CalSolution('G', g_soln, ave_times)
 
+    @logsolutiontime
     def kcross_sol(self,bchan=1,echan=0,chan_ave=1,pre_apply=[]):
         """
         Solve for cross hand delay offset
@@ -221,6 +239,7 @@ class Scan(object):
         kcross_soln = calprocs.kcross_fit(ave_vis,av_flags,self.channel_freqs[bchan:echan],chan_ave=chan_ave)
         return CalSolution('KCROSS', kcross_soln, np.average(self.times))
 
+    @logsolutiontime
     def k_sol(self,REFANT,bchan=1,echan=0,chan_sample=1,pre_apply=[]):
         """
         Solve for delay
@@ -258,6 +277,7 @@ class Scan(object):
 
         return CalSolution('K', k_soln, ave_time)
 
+    @logsolutiontime
     def b_sol(self,bp0,REFANT,pre_apply=[]):
         """
         Solve for bandpass
