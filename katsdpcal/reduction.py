@@ -16,7 +16,7 @@ from . import lsm_dir
 import pickle
 import os
 
-from time import time
+import time
 
 import logging
 logger = logging.getLogger(__name__)
@@ -236,7 +236,8 @@ def pipeline(data, ts, task_name='pipeline'):
         target_name = target_list[0]
         pipeline_logger.info('-----------------------------------')
         pipeline_logger.info('Target: {0}'.format(target_name,))
-        pipeline_logger.info('   Timestamps:   {0}'.format(n_times,))
+        pipeline_logger.info('   Timestamps: {0}'.format(n_times,))
+        pipeline_logger.info('   Time:       {0} - {1}'.format(time.strftime("%H:%M:%S", time.gmtime(t0)),time.strftime("%H:%M:%S", time.gmtime(t1))))
 
         # if there are no tags, don't process this scan
         if len(target_list) > 1:
@@ -244,7 +245,7 @@ def pipeline(data, ts, task_name='pipeline'):
         else:
             pipeline_logger.info('   Tags:   None')
             continue
-        pipeline_logger.info('   Tags:   {0}'.format(taglist,))
+        pipeline_logger.info('   Tags:       {0}'.format(taglist,))
 
         # ---------------------------------------
         # set up scan
@@ -269,7 +270,7 @@ def pipeline(data, ts, task_name='pipeline'):
         pipeline_logger.info('   Preliminary flagging')
         rfi(s,[3.0,3.0,2.0,1.6],[[3,1],[3,5],[3,8]],pipeline_logger)
 
-        run_t0 = time()
+        run_t0 = time.time()
 
         # perform calibration as appropriate, from scan intent tags:
 
@@ -307,8 +308,8 @@ def pipeline(data, ts, task_name='pipeline'):
                 ts.add(g_soln.ts_solname,v,ts=t)
 
             # ---------------------------------------
-            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            #timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+            run_t0 = time.time()
 
         # DELAY
         if any('delaycal' in k for k in taglist):
@@ -330,8 +331,8 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
             # ---------------------------------------
-            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            #timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+            run_t0 = time.time()
 
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
@@ -361,8 +362,8 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(kcross_soln.ts_solname,kcross_soln.values,ts=kcross_soln.times)
 
             # ---------------------------------------
-            #timing_file.write("K cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            #timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+            run_t0 = time.time()
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):
@@ -389,8 +390,8 @@ def pipeline(data, ts, task_name='pipeline'):
             ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
 
             # ---------------------------------------
-            #timing_file.write("B cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            #timing_file.write("B cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+            run_t0 = time.time()
 
         # GAIN
         if any('gaincal' in k for k in taglist):
@@ -414,8 +415,8 @@ def pipeline(data, ts, task_name='pipeline'):
                 ts.add(g_soln.ts_solname,v,ts=t)
 
             # ---------------------------------------
-            #timing_file.write("G cal:    %s \n" % (np.round(time()-run_t0,3),))
-            run_t0 = time()
+            #timing_file.write("G cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+            run_t0 = time.time()
 
         # TARGET
         if any('target' in k for k in taglist):
