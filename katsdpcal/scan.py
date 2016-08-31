@@ -131,7 +131,7 @@ class Scan(object):
             te = time()
 
             scanlogger = args[0].logger
-            scanlogger.info('    - Solution time: {0} sec'.format(te-ts,))
+            scanlogger.info('  - Solution time: {0} s'.format(te-ts,))
             return result
         return timed
 
@@ -182,12 +182,12 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
-        self.logger.info('    - G solution interval: {0}s'.format(solint,))
+        self.logger.info('  - G solution interval: {0} s'.format(solint,))
 
         # first averge in time over solution interval, for specified channel range (no averaging over channel)
         if echan == 0: echan = None
@@ -225,7 +225,7 @@ class Scan(object):
             self.modvis = self.cross_vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # average over all time, for specified channel range (no averaging over channel)
@@ -263,7 +263,7 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # average over all time, for specified channel range (no averaging over channel)
@@ -301,7 +301,7 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
             self.modvis = self.apply(soln,origvis=False)
 
         # average over all time (no averaging over channel)
@@ -465,20 +465,20 @@ class Scan(object):
                     # spectral index is zero
                     S = 10.**self.model_raw_params['a0'].item()
                     model = S * (1.0 - np.eye(self.nant, dtype=np.complex))
-                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(S,))
+                    self.logger.info('   Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(S,))
                 else:
                     model_params = [self.model_raw_params[a].item() for a in ['a0','a1','a2','a3']]
                     if spectral:
                         # full spectral model
                         freq_model = calprocs.flux(model_params,self.channel_freqs)
                         pol_freq_model = np.vstack([freq_model,freq_model]).T
-                        self.logger.info('     Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(freq_model)))
+                        self.logger.info('   Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(freq_model)))
                         model = pol_freq_model[:,:,np.newaxis,np.newaxis] * (1.0 - np.eye(self.nant, dtype=np.complex))
                     else:
                         # use flux at the centre frequency
                         S_freq = calprocs.flux(model_params,self.channel_freqs[len(self.channel_freqs)/2])
                         model = S_freq * (1.0 - np.eye(self.nant, dtype=np.complex))
-                        self.logger.info('     Model: single point source, flux at centre frequency {0:03.3f} GHz: {1:03.4f} Jy'.format(self.channel_freqs[len(self.channel_freqs)/2]/1.e9, S_freq))
+                        self.logger.info('   Model: single point source, flux at centre frequency {0:03.3f} GHz: {1:03.4f} Jy'.format(self.channel_freqs[len(self.channel_freqs)/2]/1.e9, S_freq))
         else:
             print 'do something more complex!'
 
