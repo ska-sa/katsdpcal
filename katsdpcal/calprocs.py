@@ -376,7 +376,7 @@ def adi_stefcal_acorr(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_
 
     return g_curr
 
-def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
+def adi_schwardt_stefcal(rawvis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
 	init_gain=None, model=None, num_iters=30, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using StEFCal (array dot product version).
     The observed visibilities are provided in a NumPy array of any shape and
@@ -393,7 +393,7 @@ def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
 
     Parameters
     ----------
-    vis : array of complex, shape (M, ..., N)
+    rawvis : array of complex, shape (M, ..., N)
         Complex cross-correlations between antennas A and B, assuming *N*
         baselines or antenna pairs on the last dimension
     num_ants : int
@@ -432,10 +432,13 @@ def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
     # ignore autocorr data
     antA, antB = bl_ant_pairs
     xcorr = antA!=antB
-    vis = vis[...,xcorr]
+    vis = rawvis[...,xcorr]
     antA_new = antA[xcorr]
     antB = antB[xcorr]
     antA = antA_new
+    # log a warning if the XC visiblilties are a copy rather than a view
+    memsharing = np.may_share_memory(vis,rawvis)
+    if not memsharing: logger.warning('Visibilies are being copied in StEFCal solver.')
 
     # Each row of this array contains the indices of baselines with the same antA
     baselines_per_antA = np.array([(antA == m).nonzero()[0] for m in range(num_ants)])
@@ -478,7 +481,7 @@ def adi_schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
         g_curr *= np.exp(-1j * middle_angle)[..., np.newaxis]
     return g_curr
 
-def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, num_iters=100, verbose=False):
+def schwardt_stefcal(rawvis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, num_iters=100, verbose=False):
     """Solve for antenna gains using StefCal (array dot product version).
     The observed visibilities are provided in a NumPy array of any shape and
     dimension, as long as the last dimension represents baselines. The gains
@@ -493,7 +496,7 @@ def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_g
     full_antB = np.r_[antB, antA]
     Parameters
     ----------
-    vis : array of complex, shape (M, ..., N)
+    rawvis : array of complex, shape (M, ..., N)
         Complex cross-correlations between antennas A and B, assuming *N*
         baselines or antenna pairs on the last dimension
     num_ants : int
@@ -523,10 +526,13 @@ def schwardt_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_g
     # ignore autocorr data
     antA, antB = bl_ant_pairs
     xcorr = antA!=antB
-    vis = vis[...,xcorr]
+    vis = rawvis[...,xcorr]
     antA_new = antA[xcorr]
     antB = antB[xcorr]
     antA = antA_new
+    # log a warning if the XC visiblilties are a copy rather than a view
+    memsharing = np.may_share_memory(vis,rawvis)
+    if not memsharing: logger.warning('Visibilies are being copied in StEFCal solver.')
 
     # Each row of this array contains the indices of baselines with the same antA
     baselines_per_antA = np.array([(antA == m).nonzero()[0] for m in range(num_ants)])
@@ -907,8 +913,13 @@ def solint_from_nominal(solint,dump_period,num_times):
     Returns
     -------
     nsolint     : new optimal solint
+    dumps_per_solint : number of dump periods in a solution interval
     """
 
+    # case of solution interval that is shorter than dump time
+    if dump_period > solint:
+        return dump_period, 1.0
+    # case of solution interval that is longer than scan
     if dump_period*num_times < solint:
         return solint, np.round(solint/dump_period)
 
@@ -930,8 +941,9 @@ def solint_from_nominal(solint,dump_period,num_times):
             smallest_inc[i] = intervals % int(intervals)
 
     # choose a solint to minimise the final fractional solution interval
-    logger.info('solint index: {0}'.format(np.where(smallest_inc==max(smallest_inc))[0],))
-    nsolint = solint+solint_check_range[np.where(smallest_inc==max(smallest_inc))[0]]
+    solint_index = np.where(smallest_inc==max(smallest_inc))[0][0]
+    logger.debug('solint index: {0}'.format(solint_index,))
+    nsolint = solint+solint_check_range[solint_index]
     # calculate new dumps per solints
     dumps_per_solint = np.round(nsolint/dump_period)
 
