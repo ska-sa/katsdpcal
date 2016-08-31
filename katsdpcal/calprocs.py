@@ -432,13 +432,15 @@ def adi_schwardt_stefcal(rawvis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
     # ignore autocorr data
     antA, antB = bl_ant_pairs
     xcorr = antA!=antB
-    vis = rawvis[...,xcorr]
-    antA_new = antA[xcorr]
-    antB = antB[xcorr]
-    antA = antA_new
-    # log a warning if the XC visiblilties are a copy rather than a view
-    memsharing = np.may_share_memory(vis,rawvis)
-    if not memsharing: logger.warning('Visibilies are being copied in StEFCal solver.')
+    if np.all(xcorr):
+        vis = rawvis
+    else:
+        vis = rawvis[...,xcorr]
+        antA_new = antA[xcorr]
+        antB = antB[xcorr]
+        antA = antA_new
+        # log a warning as the XC visiblilties are copied
+        logger.warning('Autocorr visibilities present in StEFCal solver. Solver running on copy of crosscorr visibilities.')
 
     # Each row of this array contains the indices of baselines with the same antA
     baselines_per_antA = np.array([(antA == m).nonzero()[0] for m in range(num_ants)])
@@ -526,13 +528,15 @@ def schwardt_stefcal(rawvis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, ini
     # ignore autocorr data
     antA, antB = bl_ant_pairs
     xcorr = antA!=antB
-    vis = rawvis[...,xcorr]
-    antA_new = antA[xcorr]
-    antB = antB[xcorr]
-    antA = antA_new
-    # log a warning if the XC visiblilties are a copy rather than a view
-    memsharing = np.may_share_memory(vis,rawvis)
-    if not memsharing: logger.warning('Visibilies are being copied in StEFCal solver.')
+    if np.all(xcorr):
+        vis = rawvis
+    else:
+        vis = rawvis[...,xcorr]
+        antA_new = antA[xcorr]
+        antB = antB[xcorr]
+        antA = antA_new
+        # log a warning as the XC visiblilties are copied
+        logger.warning('Autocorr visibilities present in StEFCal solver. Solver running on copy of crosscorr visibilities.')
 
     # Each row of this array contains the indices of baselines with the same antA
     baselines_per_antA = np.array([(antA == m).nonzero()[0] for m in range(num_ants)])
