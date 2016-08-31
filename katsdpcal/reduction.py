@@ -65,29 +65,40 @@ def get_tracks(data, ts):
     """
     max_indx = data['max_index'][0]
 
-    activity_key = '{0}_activity'.format(ts.cal_refant,)
-    activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_indx],include_previous=True)
+    # get track start and stop indices from each antenna activity sensor
+    starts, stops = [], []
+    for ant in ts.cal_antlist:
+        activity_key = '{0}_activity'.format(ant,)
+        activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_indx],include_previous=True)
 
-    start_indx, stop_indx = [], []
-    prev_state = ''
-    for state, time in activity:
-        nearest_time_indx = np.abs(time - data['times'][0:max_indx+1]).argmin()
-        if 'track' in state:
-            start_indx.append(nearest_time_indx)
+        start_indx, stop_indx = [], []
+        prev_state = ''
+        for state, time in activity:
+            nearest_time_indx = np.abs(time - data['times'][0:max_indx+1]).argmin()
+            if 'track' in state:
+                start_indx.append(nearest_time_indx)
+                if 'track' in prev_state:
+                    stop_indx.append(nearest_time_indx-1)
+            #    stop_indx.append(nearest_time_indx-1)
             if 'track' in prev_state:
                 stop_indx.append(nearest_time_indx-1)
-        #    stop_indx.append(nearest_time_indx-1)
-        if 'track' in prev_state:
-            stop_indx.append(nearest_time_indx-1)
-        prev_state = state
+            prev_state = state
 
-    # remove first slew time from stop indices
-    if len(stop_indx) > 0:
-        if stop_indx[0] == -1: stop_indx = stop_indx[1:]
-    # add max index in buffer to stop indices of necessary
-    if len(stop_indx) < len(start_indx): stop_indx.append(max_indx)
+        # remove first slew time from stop indices
+        if len(stop_indx) > 0:
+            if stop_indx[0] == -1: stop_indx = stop_indx[1:]
+        # add max index in buffer to stop indices of necessary
+        if len(stop_indx) < len(start_indx): stop_indx.append(max_indx)
 
-    return [slice(start, stop+1) for start, stop in zip(start_indx, stop_indx)]
+        starts.append(start_indx)
+        stops.append(stop_indx)
+
+    # return the minimum slice indices where all antennas were in track
+    starts = np.array(starts)
+    stops = np.array(stops)+1
+    reduced_starts = np.max(starts,axis=0)
+    reduced_stops = np.min(stops,axis=0)
+    return [slice(start, stop) for start, stop in zip(reduced_starts, reduced_stops)]
 
 def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
     """
