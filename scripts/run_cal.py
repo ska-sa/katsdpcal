@@ -287,14 +287,19 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
             logger.info('Parameter file for 32k mode: {0}'.format(param_file,))
     else:
         logger.info('Parameter file: {0}'.format(param_file))
+    logger.info('Inputting Telescope State parameters from parameter file.')
     ts_from_file(ts,param_file)
-    # set up TS for pipeline use
-    setup_ts(ts)
-
     # telescope state logs for debugging
-    logger.info('Telescope state parameters: {0}'.format(ts.keys()))
+    logger.info('Telescope state parameters:')
+    for keyval in ts.keys():
+        if keyval not in ['cbf_bls_ordering','cbf_channel_freqs']:
+            logger.info('{0} : {1}'.format(keyval,ts[keyval]))
     logger.info('Telescope state config graph:')
     log_dict(ts.config)
+
+    # set up TS for pipeline use
+    logger.info('Setting up Telescope State parameters for pipeline.')
+    setup_ts(ts)
 
     npol = 4
     nant = len(ts.cal_antlist)
