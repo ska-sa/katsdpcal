@@ -117,7 +117,8 @@ def init_simdata(file_name, wait=0.0, **kwargs):
 
             # use channel freqs to determine parameters cbf_channel_freq and cbf_bandwidth which will be given by the real system
             subset_channel_freqs = parameter_dict['cbf_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
-            ts.add('cbf_bandwidth',np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]),immutable=True)
+            channel_width = np.abs(subset_channel_freqs[1] - subset_channel_freqs[0])
+            ts.add('cbf_bandwidth',np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]+channel_width),immutable=True)
             ts.add('cbf_center_freq',subset_channel_freqs[len(subset_channel_freqs)/2],immutable=True)
             ts.delete('cbf_channel_freqs')
 
@@ -289,6 +290,7 @@ class SimDataMS(table):
         self.file_name = file_name
         self.data_mask = None
         self.intent_to_tag = {'CALIBRATE_PHASE,CALIBRATE_AMPLI':'gaincal', 
+                              'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY,CALIBRATE_POLARIZATION':'bpcal polcal',
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY':'bpcal',
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX':'bpcal',
                               'CALIBRATE_POLARIZATION':'polcal',
@@ -311,6 +313,31 @@ class SimDataMS(table):
         Unix time in seconds
         """
         return (t/86400. - 2440587.5 + 2400000.5)*86400.
+
+    def get_antdesc(self):
+        """
+        Get antenna description dictionary. 
+        """
+        positions = table(self.getkeyword('ANTENNA')).getcol('POSITION')
+        diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
+        names = [ant for ant in self.ants]
+
+        antdesc = {}
+        first_ant = True
+        for ant, diam, pos in zip(names, diameters, positions):
+            if first_ant:
+                # set up reference position (this is necessary to preserve precision of antenna positions when converting
+                #  because of ephem limitation in truncating decimal places when printing strings
+                longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0],pos[1],pos[2])
+                longitude_centre = ephem.degrees(str(ephem.degrees(longitude)))
+                latitude_centre = ephem.degrees(str(ephem.degrees(latitude)))
+                altitude_centre = round(altitude)
+                ref_position = katpoint.Antenna('reference_position, {0}, {1}, {2}, 0.0'.format(longitude_centre,latitude_centre,altitude_centre))
+                first_ant = False
+            # now determine offsets from the reference position to build up full antenna description string
+            e, n, u = katpoint.ecef_to_enu(longitude_centre, latitude_centre, altitude_centre, pos[0],pos[1],pos[2])
+            antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(ant, longitude_centre, latitude_centre, altitude_centre, diam, e, n, u)
+        return antdesc
 
     def field_ids(self):
         """
@@ -335,22 +362,17 @@ class SimDataMS(table):
         param_dict['cbf_channel_freqs'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
         param_dict['cbf_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
-        param_dict['antenna_mask'] = ','.join([ant for ant in self.ants])
+        antenna_names = [ant for ant in self.ants]
+        param_dict['antenna_mask'] = ','.join(antenna_names)
         param_dict['cbf_n_ants'] = len(self.ants)
         # need polarisation information in the cbf_bls_ordering
         param_dict['cbf_bls_ordering'] = self.corr_products
         param_dict['cbf_sync_time'] = 0.0
         param_dict['config'] = {'MS_simulator': True}
-
         # antenna descriptions for all antennas
-        #  assume the order is the same as self.ants
-        antenna_positions = table(self.getkeyword('ANTENNA')).getcol('POSITION')
-        antenna_diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
-        for ant, diam, pos in zip(self.ants, antenna_diameters, antenna_positions):
-            longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0],pos[1],pos[2])
-            lla_position = ",".join([str(ephem.degrees(longitude)), str(ephem.degrees(latitude)), str(altitude)])
-            description = "{0}, {1}, {2}".format(ant, lla_position, diam)
-            param_dict['{0}_observer'.format(ant,)] = description
+        antenna_descriptions = self.get_antdesc()
+        for antname in antenna_names:
+            param_dict['{0}_observer'.format(antname,)] = antenna_descriptions[antname]
 
         return param_dict
 
