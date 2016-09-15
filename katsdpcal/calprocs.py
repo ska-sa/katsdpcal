@@ -7,6 +7,7 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 
 import numpy as np
 import copy
+import katpoint
 
 import logging
 logger = logging.getLogger(__name__)
@@ -42,6 +43,43 @@ def list_to_model(model_list, centre_position):
         lmI_list.append([l, m, I])
 
     return lmI_list
+
+def to_ut(t):
+    """
+    Converts MJD seconds into Unix time in seconds
+
+    Parameters
+    ----------
+    t : time in MJD seconds
+
+    Returns
+    -------
+    Unix time in seconds
+    """
+    return (t/86400. - 2440587.5 + 2400000.5)*86400.
+
+def calc_uvw(phase_centre, wavelength, time, corrprod_lookup, ant_desc):
+    """
+    Calculate uvw coordinates
+
+    Parameters
+    ----------
+    phase_centre : katpoint target for phase centre position
+    wavelength : wavelengths, single value or array shape(nchans)
+    time : times, array of floats, shape(nrows)
+    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
+    ant1, ant2: array of antenna indices, shape(nrows)
+
+    Returns
+    -------
+    uvw_wave : uvw coordinates, normalised by wavelength
+    """
+    uvw = np.empty([3,len(time),len(corrprod_lookup)])
+    print 'SHAPE:', uvw.shape
+    for i,[a1,a2] in enumerate(corrprod_lookup):
+        uvw[...,i] = np.array([phase_centre.uvw(katpoint.Antenna(ant_desc[a1]), timestamp=t, antenna=katpoint.Antenna(ant_desc[a2])) for t in time]).T
+    uvw_wave = np.squeeze(np.moveaxis([uvw/wl for wl in np.atleast_1d(wavelength)],0,2))
+    return uvw_wave
 
 #--------------------------------------------------------------------------------------------------
 #--- Solvers
@@ -125,7 +163,7 @@ def stefcal(vis, num_ants, corrprod_lookup, weights=1.0, ref_ant=0, init_gain=No
     else:
         raise ValueError(' '+algorithm+' is not a valid stefcal implimentation.')
 
-def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, model=None,
+def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None, model=1.,
 	num_iters=100, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal. Non parallel version of the algorithm.
     ADI StefCal implimentation from:
@@ -159,7 +197,7 @@ def adi_stefcal_nonparallel(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0,
     g_curr = 1.0*g_prev
     # initialise calibrator source model
     #   default is unity with zeros along the diagonals to ignore autocorr
-    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
+    M = model * (1.0 - np.eye(num_ants, dtype=np.complex)) if np.isscalar(model) else model
 
     antA, antB = bl_ant_pairs
     for i in range(num_iters):
@@ -297,7 +335,7 @@ def adi_stefcal(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=N
     return g_curr
 
 def adi_stefcal_acorr(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_gain=None,
-	model=None,  num_iters=100, conv_thresh=0.0001, verbose=False):
+	model=1.,  num_iters=100, conv_thresh=0.0001, verbose=False):
     """Solve for antenna gains using ADI StefCal, including fake autocorr data. Non parallel version of
     the algorithm.
     ADI StefCal implimentation from:
@@ -338,7 +376,7 @@ def adi_stefcal_acorr(vis, num_ants, bl_ant_pairs, weights=1.0, ref_ant=0, init_
     g_curr = 1.0*g_prev
     # initialise calibrator source model
     #   default is unity with zeros along the diagonals to ignore autocorr
-    M = 1.0 - np.eye(num_ants, dtype=np.complex) if model is None else model
+    M = model * (1.0 - np.eye(num_ants, dtype=np.complex)) if np.isscalar(model) else model
 
     antA, antB = bl_ant_pairs
     for i in range(num_iters):
@@ -619,7 +657,7 @@ def g_fit(data,corrprod_lookup,g0=None,refant=0,**kwargs):
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
     return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, ref_ant=refant, init_gain=g0, **kwargs)
 
-def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
+def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
     """
     Fit bandpass to visibility data.
 
@@ -646,7 +684,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,algorithm='adi',model=None):
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    bp = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=bp0, model=model, algorithm=algorithm)
+    bp = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, init_gain=bp0, **kwargs)
     # centre the phase on zero
     return bp * np.exp(-1.0j*np.median(np.angle(bp),axis=0))
 
