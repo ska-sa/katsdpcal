@@ -212,9 +212,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
                 # get activity and target tag from TS
                 data_ts = ig['timestamp'].value + cbf_sync_time
+                activity_full = []
                 if self.telstate.has_key(activity_key):
                     activity_full = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)
-                if (not self.telstate.has_key(activity_key)) or (activity_full == []):
+                if not activity_full:
                     self.accumulator_logger.info('no activity recorded for reference antenna {0} - ignoring dump'.format(self.telstate.cal_refant,))
                     continue
                 activity, activity_time = activity_full[0]
