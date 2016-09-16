@@ -2,7 +2,7 @@
 # ----------------------------------------------------------
 # Simulate the data stream from a file
 
-from katsdpcal.simulator import SimData
+from katsdpcal.simulator import init_simdata
 from katsdpcal import calprocs
 
 from argparse import ArgumentParser
@@ -21,34 +21,49 @@ def average_timer(n,func,*args,**kwargs):
 def parse_opts():
     parser = ArgumentParser(description = 'Simulate SPEAD data stream from H5 file')    
 
-    parser.add_argument('--file', type=str, help='File for simulated data (H5)')
-    parser.add_argument('-n', '--niter', type=int, default=1, help='Numer of iterations for timer.')
+    parser.add_argument('-n', '--niter', type=int, default=100, help='Numer of iterations for timer.')
+    parser.add_argument('--file', type=str, default='', help='File for simulated data (H5).')
+    parser.add_argument('--nants', type=int, default=7, help='Number of antennas for simulated array (if no file is provided).')
+    parser.add_argument('--nchans', type=int, default=1, help='Number of channels for simulated array (if no file is provided).')
+    parser.add_argument('--noise', action='store_true', help='Add noise to simulated data (if no file is provided).')
+    parser.set_defaults(noise=False)
+
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
 opts = parse_opts()
 
-print
-print 'Data: open file {0}'.format(opts.file,)
-simdata = SimData(opts.file)
+if opts.file == '':
+    # if we are not provided with a file, simulate interferometer data
+    print
+    print 'Data: simulated {0} antenna array'.format(opts.nants,)
 
-print "Data: use HH pol only"
-simdata.select(pol='hh')
-print "Data: use 100 timestamps only"
-vis = simdata.vis[0:100]
+    vis_av, bls_lookup, gains = calprocs.fake_vis(opts.nants, noise=False)
+    if opts.nchans > 1: vis_av = np.repeat(vis_av[:,np.newaxis],opts.nchans,axis=1).T
 
-print "Data: average over time"
-vis_av = np.mean(vis,axis=0)
-print "Data: shape {0}".format(vis_av.shape,)
-print
+else:
+    # if we are provided with a file, extract data  and metadata from the file
+    print
+    print 'Data: open file {0}'.format(opts.file,)
+    simdata = init_simdata(opts.file)
 
-# get data parameters for solver
-antlist = ','.join([a.name for a in simdata.ants])
-bls_lookup = calprocs.get_bls_lookup(antlist,simdata.corr_products)
+    print "Data: use HH pol only"
+    simdata.select(pol='hh')
+    print "Data: use 100 timestamps only"
+    vis = simdata.vis[0:100]
+
+    print "Data: average over time"
+    vis_av = np.mean(vis,axis=0)
+    print "Data: shape {0}".format(vis_av.shape,)
+    print
+
+    # get data parameters for solver
+    antlist = ','.join([a.name for a in simdata.ants])
+    bls_lookup = calprocs.get_bls_lookup(antlist,simdata.corr_products)
 
 # numter of iterations for the timer
 niter = opts.niter
-print("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*41))
+print("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*43))
 
 # time each algorithm
 for algorithm in ALGORITHMS:
