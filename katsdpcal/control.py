@@ -408,7 +408,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
             # send data to L1 SPEAD if necessary
             if self.l1_level != 0:
-                config = send.StreamConfig(max_packet_size=9172, rate=self.l1_rate)
+                config = send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
                 tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
                 self.pipeline_logger.info('   Transmit L1 data')
                 # for streaming all of the data (not target only),
@@ -471,7 +471,7 @@ def end_transmit(host,port):
     ----------
     spead_endpoint : endpoint to transmit to
     """
-    config = send.StreamConfig(max_packet_size=9172)
+    config = send.StreamConfig(max_packet_size=8972)
     tx = send.UdpStream(spead2.ThreadPool(),host,port,config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
