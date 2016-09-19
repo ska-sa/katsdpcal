@@ -50,7 +50,7 @@ def rfi(s,thresholds,av_blocks,pipeline_logger):
     threshold_avg_flagging(s.vis,s.flags,thresholds,blocks=av_blocks,transform=np.abs)
     pipeline_logger.info('  - New flags:   {0:.3f}%'.format(np.sum(s.flags.view(np.bool))/total_size,))
 
-def get_tracks(data, ts):
+def get_tracks(data, ts, logger=logger):
     """
     Determines start and end indices of each track in the data buffer
 
@@ -71,31 +71,39 @@ def get_tracks(data, ts):
         activity_key = '{0}_activity'.format(ant,)
         activity = ts.get_range(activity_key,st=data['times'][0],et=data['times'][max_indx],include_previous=True)
 
+        # NOTE: stop indices are always the final index+1
         start_indx, stop_indx = [], []
         prev_state = ''
-        for state, time in activity:
-            nearest_time_indx = np.abs(time - data['times'][0:max_indx+1]).argmin()
+        for state, statetime in activity:
+            nearest_time_indx = np.abs(statetime - data['times'][0:max_indx+1]).argmin()
             if 'track' in state:
                 start_indx.append(nearest_time_indx)
                 if 'track' in prev_state:
-                    stop_indx.append(nearest_time_indx-1)
-            #    stop_indx.append(nearest_time_indx-1)
+                    stop_indx.append(nearest_time_indx)
             if 'track' in prev_state:
-                stop_indx.append(nearest_time_indx-1)
+                stop_indx.append(nearest_time_indx)
             prev_state = state
 
         # remove first slew time from stop indices
         if len(stop_indx) > 0:
             if stop_indx[0] == -1: stop_indx = stop_indx[1:]
-        # add max index in buffer to stop indices of necessary
-        if len(stop_indx) < len(start_indx): stop_indx.append(max_indx)
+        # add max index in buffer to stop indices if necessary
+        if len(stop_indx) < len(start_indx): stop_indx.append(max_indx+1)
 
         starts.append(start_indx)
         stops.append(stop_indx)
 
     # return the minimum slice indices where all antennas were in track
+
     starts = np.array(starts)
-    stops = np.array(stops)+1
+    stops = np.array(stops)
+    # if the start/stop arrays have different lengths, the numpy array will be an object
+    if (starts.dtype == np.object) or (stops.dtype == np.object):
+        # Something is going wrong with the tracking:
+        # inconsistent number of tracks across antennas - deal with this better later
+        logger.warning('Inconsistent number of tracks across antennas - will not process this accumulation block.')
+        return []
+
     reduced_starts = np.max(starts,axis=0)
     reduced_stops = np.min(stops,axis=0)
     return [slice(start, stop) for start, stop in zip(reduced_starts, reduced_stops)]
@@ -214,7 +222,7 @@ def pipeline(data, ts, task_name='pipeline'):
     #    iterate backwards in time through the scans,
     #    for the case where a gains need to be calculated from a gain scan after a target scan,
     #    for application to the target scan
-    track_slices = get_tracks(data,ts)
+    track_slices = get_tracks(data,ts,logger=pipeline_logger)
     target_slices = []
 
     for scan_slice in reversed(track_slices):
