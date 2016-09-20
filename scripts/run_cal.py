@@ -93,7 +93,7 @@ def setup_logger(log_name,log_path='.'):
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     # set format for console use
-    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
+    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ - %(name)s - %(levelname)s - %(message)s')
     formatter.datefmt='%Y-%m-%d %H:%M:%S'
     # tell the handler to use this format
     console.setFormatter(formatter)
