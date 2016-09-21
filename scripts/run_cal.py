@@ -87,6 +87,7 @@ def setup_logger(log_name,log_path='.'):
     logging.basicConfig(filename='{0}/{1}'.format(log_path,log_name),
                         format='%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',)
+    logging.Formatter.converter = time.gmtime
     logger.setLevel(logging.INFO)
 
     # logging to stdout
@@ -95,6 +96,7 @@ def setup_logger(log_name,log_path='.'):
     # set format for console use
     formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ - %(name)s - %(levelname)s - %(message)s')
     formatter.datefmt='%Y-%m-%d %H:%M:%S'
+    formatter.converter = time.gmtime    
     # tell the handler to use this format
     console.setFormatter(formatter)
     # add the handler to the root logger
