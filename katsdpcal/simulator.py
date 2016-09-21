@@ -117,7 +117,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             # use channel freqs to determine parameters cbf_channel_freq and cbf_bandwidth which will be given by the real system
             subset_channel_freqs = parameter_dict['cbf_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
             channel_width = np.abs(subset_channel_freqs[1] - subset_channel_freqs[0])
-            ts.add('cbf_bandwidth', np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]+channel_width), immutable=True)
+            ts.add('cbf_bandwidth', np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1])+channel_width, immutable=True)
             ts.add('cbf_center_freq', subset_channel_freqs[len(subset_channel_freqs)/2], immutable=True)
             ts.delete('cbf_channel_freqs')
 
@@ -294,6 +294,7 @@ class SimDataMS(table):
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY': 'bpcal',
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX': 'bpcal',
                               'CALIBRATE_POLARIZATION': 'polcal',
+                              'UNKNOWN': 'unknown',
                               'TARGET': 'target'}
         self.num_scans = max(self.getcol('SCAN_NUMBER'))
         self.timestamps = np.unique(self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
