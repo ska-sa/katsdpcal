@@ -8,13 +8,15 @@ import copy
 
 import ephem
 import katpoint
+from scipy.constants import c as light_speed
 
 import logging
 logger = logging.getLogger(__name__)
 
-#--------------------------------------------------------------------------------------------------
-#--- CLASS :  Scan
-#--------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------
+# --- CLASS :  Scan
+# --------------------------------------------------------------------------------------------------
+
 
 class Scan(object):
     """
@@ -36,50 +38,65 @@ class Scan(object):
         Name of target observed in the scan.
     chans : array of float
         Array of channel frequencies.
+    ants : array of string
+        Array of antenna description strings.
     corr : string, optional
         String to select correlation product, 'xc' for cross-correlations.
 
     Attributes
     ----------
-    dump_period : float
-        Dump period of correlator data.
+    xc_mask : numpy array of bool
+        Mask for selecting cross-correlation data
     bl_slice : slice
         Slice for selecting susbset of the correlation products.
     corrprod_lookup : list of int, shape (number_of_baselines, 2)
         List of antenna pairs for each baseline.
-    vis : array of float, complex64 (ntime, nchan, npol, nbl)
+    vis : array of float, complex64 (ntime, nchan, 2, nbl)
         Visibility data.
-    flags : array of uint8, shape (ntime, nchan, npol, nbl)
+    flags : array of uint8, shape (ntime, nchan, 2, nbl)
         Flag data.
-    weights : array of float64, shape (ntime, nchan, npol, nbl)
+    weights : array of float32, shape (ntime, nchan, 2, nbl)
         Weight data.
-    times : array of float, shape (ntime, nchan, npol, nbl)
+    cross_vis : array of float, complex64 (ntime, nchan, 2, nbl)
+        Cross polarisation visibility data.
+    cross_flags : array of uint8, shape (ntime, nchan, 2, nbl)
+        Cross polarisation flag data.
+    cross_weights : array of float32, shape (ntime, nchan, 2, nbl)
+        Cross polarisation weight data.
+    timestamps : array of float, shape (ntime, nchan, npol, nbl)
         Times.
-    target : string
-        Name of target obsrved in the scan.
+    target : katpoint Target
+        Phase centre of the scan.
     modvis : array of float, complex64 (ntime, nchan, npol, nbl)
         Intermediate visibility product.
-    model : list
-        List of model components
+    dump_period : float
+        Dump period of correlator data.
     nchan : int
         Number of frequency channels in the data.
     channel_freqs : list of float
-        List of frequencies corresponding to channels (or channel indices, in the absence of frequencies)
-    nant : int
-        Number of antennas in the data.
+        List of frequencies corresponding to channels (or channel indices, in the absence of frequencies).
     npol : int
         Number of polarisations in the data.
-
+    nant : int
+        Number of antennas in the data
+    antenna_descriptions : list of string
+        Antenna description strings
+    model_raw_params : list
+        List of model components
+    model : scalar or array
+        Model of the visibilities
+    logger : logger
+        logger
     """
 
-    def __init__(self, data, time_slice, dump_period, nant, bls_lookup, target, chans=None, corr='xc', logger=logger):
+    def __init__(self, data, time_slice, dump_period, nant, bls_lookup, target, chans=None, ants=None, corr='xc', logger=logger):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
         # if scan has explicitly been set up as a cross-correlation scan, select XC data only
         # NOTE: This makes the asumption that the XC data are grouped at the beginning of the bl ordering,
         #       Followed by the AC data.
         # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
-        self.xc_mask = np.array([b0!=b1 for b0,b1 in bls_lookup])
+        self.xc_mask = np.array([b0 != b1 for b0, b1 in bls_lookup])
         try:
             xc_slice = slice(np.where(self.xc_mask)[0][0], np.where(self.xc_mask)[0][-1]+1)
         except IndexError:
@@ -88,18 +105,17 @@ class Scan(object):
         self.bl_slice = xc_slice if corr is 'xc' else slice(None)
         self.corrprod_lookup = bls_lookup[self.bl_slice]
 
-        # get references to this time chunk of data
-        # -- just using first polarisation for now
+        # get references to this time chunk of data, parallel hand polarisations only
         # data format is:   (time x channels x pol x bl)
-        self.vis = data['vis'][time_slice,:,0:2,self.bl_slice]
-        self.flags = data['flags'][time_slice,:,0:2,self.bl_slice]
-        self.weights = np.ones_like(self.flags,dtype=np.float)
+        self.vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
+        self.flags = data['flags'][time_slice, :, 0:2, self.bl_slice]
+        self.weights = np.ones_like(data['weights'][time_slice, :, 0:2, self.bl_slice])
+        # cross hand polarisations
+        self.cross_vis = data['vis'][time_slice, :, 2:, self.bl_slice]
+        self.cross_flags = data['flags'][time_slice, :, 2:, self.bl_slice]
+        self.cross_weights = np.ones_like(data['weights'][time_slice, :, 2:, self.bl_slice])
 
-        self.cross_vis = data['vis'][time_slice,:,2:,self.bl_slice]
-        self.cross_flags = data['flags'][time_slice,:,2:,self.bl_slice]
-        self.cross_weights = np.ones_like(self.cross_flags,dtype=np.float)
-
-        self.times = data['times'][time_slice]
+        self.timestamps = data['times'][time_slice]
         self.target = katpoint.Target(target)
 
         # intermediate product visibility - use sparingly!
@@ -110,13 +126,13 @@ class Scan(object):
         self.nchan = self.vis.shape[1]
         # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
         self.channel_freqs = range(self.nchan) if chans is None else list(chans)
-        self.nant = nant
         self.npol = 4
+        self.nant = nant
+        self.antenna_descriptions = ants
 
-        # initialise model to unity
-        self.model = 1.
-        self.freqavg_model = 1.
+        # initialise models
         self.model_raw_params = None
+        self.model = None
 
         self.logger = logger
 
@@ -134,12 +150,12 @@ class Scan(object):
         dumps_per_solint : number of dumps per solution interval
         """
 
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
+        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
 
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
 
-    def g_sol(self,input_solint,g0,REFANT,bchan=1,echan=0,pre_apply=[],**kwargs):
+    def g_sol(self, input_solint, g0, REFANT, bchan=1, echan=0, pre_apply=[], **kwargs):
         """
         Solve for gain
 
@@ -156,38 +172,47 @@ class Scan(object):
         -------
         Gain CalSolution with soltype 'G', shape (time, pol, nant)
         """
-
-        # initialise model, if this scan target has an associated model
-        self._init_model(spectral=False)
-
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
         else:
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
-            self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+            self.modvis = self.apply(soln, origvis=False)
 
         # set up solution interval
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint,self.dump_period,len(self.times))
+        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
+        # determine channel range for fit
+        if echan == 0: echan = None
+        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+
+        # initialise model, if this scan target has an associated model
+        self._init_model()
+        # apply model
+        if self.model is None:
+            fitvis = self.modvis[chan_slice]
+        elif np.isscalar(self.model):
+            fitvis = self.modvis[chan_slice]/self.model
+        elif len(self.model.shape) == 1:
+            fitvis = self.modvis[chan_slice]/(self.model[slice(bchan, echan), np.newaxis, np.newaxis])
+        else:
+            fitvis = self.modvis[chan_slice]/self.model[chan_slice]
 
         # first averge in time over solution interval, for specified channel range (no averaging over channel)
-        if echan == 0: echan = None
-        chan_slice = [slice(None),slice(bchan,echan),slice(None),slice(None)]
-        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(self.modvis[chan_slice],
-                self.flags[chan_slice],self.weights[chan_slice],dumps_per_solint,axis=0,times=self.times)
+        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(fitvis, self.flags[chan_slice],
+                self.weights[chan_slice], dumps_per_solint, axis=0, times=self.timestamps)
         # secondly, average channels
-        ave_vis = calprocs.wavg(ave_vis,ave_flags,ave_weights,axis=1)
-
-        # solve for gains G
-        g_soln = calprocs.g_fit(ave_vis,self.corrprod_lookup,g0,REFANT,model=self.freqavg_model,**kwargs)
+        ave_vis = calprocs.wavg(ave_vis, ave_flags, ave_weights, axis=1)
+        # solve for gain
+        g_soln = calprocs.g_fit(ave_vis, self.corrprod_lookup, g0, REFANT, **kwargs)
 
         return CalSolution('G', g_soln, ave_times)
 
-    def kcross_sol(self,bchan=1,echan=0,chan_ave=1,pre_apply=[]):
+    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[]):
         """
         Solve for cross hand delay offset
+        *** doesn't currently use models ***
 
         Parameters
         ----------
@@ -207,21 +232,21 @@ class Scan(object):
             self.modvis = self.cross_vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
-            self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+            self.modvis = self.apply(soln, origvis=False)
 
         # average over all time, for specified channel range (no averaging over channel)
         if echan == 0: echan = None
-        chan_slice = [slice(None),slice(bchan,echan),slice(None),slice(None)]
-        ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice],self.cross_flags[chan_slice],self.cross_weights[chan_slice],axis=0)
+        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+        ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice], self.cross_flags[chan_slice], self.cross_weights[chan_slice], axis=0)
 
         # solve for cross hand delay KCROSS
         # note that the kcross solver needs the flags because it averages the data
         #  (strictly it should need weights too, but deal with that leter when weights are meaningful)
-        kcross_soln = calprocs.kcross_fit(ave_vis,av_flags,self.channel_freqs[bchan:echan],chan_ave=chan_ave)
-        return CalSolution('KCROSS', kcross_soln, np.average(self.times))
+        kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan], chan_ave=chan_ave)
+        return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
 
-    def k_sol(self,REFANT,bchan=1,echan=0,chan_sample=1,pre_apply=[]):
+    def k_sol(self, REFANT, bchan=1, echan=0, chan_sample=1, pre_apply=[]):
         """
         Solve for delay
 
@@ -244,21 +269,31 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
-            self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+            self.modvis = self.apply(soln, origvis=False)
+
+        # determine channel range for fit
+        if echan == 0: echan = None
+        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+        # use specified channel range for frequencies
+        k_freqs = self.channel_freqs[bchan:echan]
+
+        # initialise model, if this scan target has an associated model
+        self._init_model()
+        # for delay case, only apply case C full visibility model (other models don't impact delay)
+        if len(self.model.shape) == len(self.vis.shape):
+            fitvis = self.modvis[chan_slice]/self.model[chan_slice]
+        else:
+            fitvis = self.modvis[chan_slice]
 
         # average over all time, for specified channel range (no averaging over channel)
-        if echan == 0: echan = None
-        chan_slice = [slice(None),slice(bchan,echan),slice(None),slice(None)]
-        ave_vis, ave_time = calprocs.wavg(self.modvis[chan_slice],self.flags[chan_slice],self.weights[chan_slice],times=self.times,axis=0)
-
-        # solve for delay K, using specified channel range
-        k_freqs = self.channel_freqs[bchan:echan]
-        k_soln = calprocs.k_fit(ave_vis,self.corrprod_lookup,k_freqs,REFANT,chan_sample=chan_sample)
+        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags[chan_slice], self.weights[chan_slice], times=self.timestamps, axis=0)
+        # fit for delay
+        k_soln = calprocs.k_fit(ave_vis, self.corrprod_lookup, k_freqs, REFANT, chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 
-    def b_sol(self,bp0,REFANT,pre_apply=[]):
+    def b_sol(self, bp0, REFANT, pre_apply=[]):
         """
         Solve for bandpass
 
@@ -272,23 +307,31 @@ class Scan(object):
         -------
         Bandpass CalSolution with soltype 'B', shape (chan, pol, nant)
         """
-        # initialise model, if this scan target has an associated model
-        self._init_model(spectral=True)
-
         if len(pre_apply) > 0:
             self.modvis = copy.deepcopy(self.vis)
         else:
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
-            self.modvis = self.apply(soln,origvis=False)
+            self.logger.info('    - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+            self.modvis = self.apply(soln, origvis=False)
 
-        # average over all time (no averaging over channel)
-        ave_vis, ave_time = calprocs.wavg(self.modvis,self.flags,self.weights,times=self.times,axis=0)
+        # initialise model, if this scan target has an associated model
+        self._init_model()
+        # apply model
+        if self.model is None:
+            fitvis = self.modvis
+        elif np.isscalar(self.model):
+            fitvis = self.modvis/self.model
+        elif len(self.model.shape) == 1:
+            fitvis = self.modvis/(self.model[:,np.newaxis,np.newaxis])
+        else:
+            fitvis = self.modvis/self.model
 
+        # first averge in time
+        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags, self.weights, times=self.timestamps, axis=0)
         # solve for bandpass
-        b_soln = calprocs.bp_fit(ave_vis,self.corrprod_lookup,bp0,REFANT,model=self.model)
+        b_soln = calprocs.bp_fit(ave_vis, self.corrprod_lookup, bp0, REFANT)
 
         return CalSolution('B', b_soln, ave_time)
 
@@ -325,10 +368,10 @@ class Scan(object):
         outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
 
         # check solution and vis shapes are compatible
-        if solval.shape[-2] !=  outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
+        if solval.shape[-2] != outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
 
         for cp in range(len(self.corrprod_lookup)):
-            outvis[...,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+            outvis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]]*(solval[..., self.corrprod_lookup[cp][1]].conj())
 
         return outvis
 
@@ -343,23 +386,23 @@ class Scan(object):
         """
 
         for cp in range(len(self.corrprod_lookup)):
-            self.vis[...,cp] /= solval[...,self.corrprod_lookup[cp][0]]*(solval[...,self.corrprod_lookup[cp][1]].conj())
+            self.vis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]]*(solval[..., self.corrprod_lookup[cp][1]].conj())
 
     def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
         if soln.soltype is 'G':
             # add empty channel dimension if necessary
-            full_sol = np.expand_dims(soln.values,axis=1) if len(soln.values.shape) < 4 else soln.values
-            return self._apply(full_sol,origvis=origvis,inplace=inplace)
+            full_sol = np.expand_dims(soln.values, axis=1) if len(soln.values.shape) < 4 else soln.values
+            return self._apply(full_sol, origvis=origvis, inplace=inplace)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
             gain_shape = tuple(list(self.vis.shape[:-1]) + [self.nant])
-            g_from_k = np.zeros(gain_shape,dtype=np.complex)
+            g_from_k = np.zeros(gain_shape, dtype=np.complex)
             for ci, c in enumerate(self.channel_freqs):
-                g_from_k[:,ci,:,:] = np.exp(1.0j*2.*np.pi*soln.values*c)
-            return self._apply(g_from_k,origvis=origvis,inplace=inplace)
+                g_from_k[:, ci, :, :] = np.exp(1.0j*2.*np.pi*soln.values*c)
+            return self._apply(g_from_k, origvis=origvis, inplace=inplace)
         elif soln.soltype is 'B':
-            return self._apply(soln.values,origvis=origvis,inplace=inplace)
+            return self._apply(soln.values, origvis=origvis, inplace=inplace)
         else:
             return ValueError('Solution type is invalid.')
 
@@ -370,7 +413,6 @@ class Scan(object):
         # set up more complex interpolation methods later
         soltype = solns.soltype
         if soltype is 'G':
-            #return self.self_interpolate(num_dumps, **kwargs)
             return self.linear_interpolate(solns)
         if soltype is 'K':
             return self.inf_interpolate(solns)
@@ -379,108 +421,117 @@ class Scan(object):
 
     def linear_interpolate(self, solns):
         values = solns.values
-        times = solns.times
+        timestamps = solns.times
 
-        if len(times) < 2:
+        if len(timestamps) < 2:
             # case of only one solution value being interpolated
             return self.inf_interpolate(solns)
         else:
-            real_interp = calprocs.interp_extrap_1d(times, values.real, kind='linear', axis=0)
-            imag_interp = calprocs.interp_extrap_1d(times, values.imag, kind='linear', axis=0)
+            real_interp = calprocs.interp_extrap_1d(timestamps, values.real, kind='linear', axis=0)
+            imag_interp = calprocs.interp_extrap_1d(timestamps, values.imag, kind='linear', axis=0)
 
-            interp_solns = real_interp(self.times) + 1.0j*imag_interp(self.times)
-            return CalSolution(solns.soltype, interp_solns, self.times)
+            interp_solns = real_interp(self.timestamps) + 1.0j*imag_interp(self.timestamps)
+            return CalSolution(solns.soltype, interp_solns, self.timestamps)
 
     def inf_interpolate(self, solns):
         values = solns.values
-        interp_solns = np.repeat(np.expand_dims(values,axis=0),len(self.times),axis=0)
-        return CalSolution(solns.soltype, interp_solns, self.times)
+        interp_solns = np.repeat(np.expand_dims(values, axis=0), len(self.timestamps), axis=0)
+        return CalSolution(solns.soltype, interp_solns, self.timestamps)
 
     # ---------------------------------------------------------------------------------------------
     # model related functions
 
-    def _create_model(self, max_offset=8., spectral=False):
+    def _create_model(self, max_offset=8., timestamps=None):
         """
-        Creates numpy array models for use in the solver
-        *** more complex models will be divided through from the data - watch this space ***
+        Creates models from raw model parameters. *** models are currently unploarised ***
 
-        Models are currently implimented for:
-          * a flat spectrum single point source in the phase centre
-          * a varied spectrum point source in the phase centre
+        Models are currently implimented for three cases:
+        * A - Point source at the phase centre, no spectral slope -- model is a scalar
+        * B - Point source at the phase centre, with spectral slope -- model is an array of fluxes of shape (nchan)
+        * C - Complex model requiring calculation via uvw coordinates -- model is an array of the same shape as self.vis
 
         Inputs
         ======
         max_offset : float
             The difference in positon away from the phase centre for a point to be considered at the phase centre [arcseconds]
             Default: 8 (= meerkat beam)
-        spectral : boolean
-            whether the model will have spectral dimensions
-
-        Returns
-        =======
-        Model of the source. Dimensions can be:
-           * scalar values 1
-           * (nant, nant)
-           * (nchan, 2, nant, nant)  (where the 2 is for polarisation)
-
+        timestamps: array of floats
+            Timestamps (optional, only necessary for complex models)
         """
-        # if models parameters have not been set for the scan, return unity model
-
-        if self.model_raw_params is None:
-            return 1.0
-
+        # phase centre position
         ra0, dec0 = self.target.radec()
+        # position of first source
+        ra = ephem.hours(self.model_raw_params[0]['RA'].item())
+        dec = ephem.degrees(self.model_raw_params[0]['DEC'].item())
 
-        # deal with easy case first!
-        if (self.model_raw_params is not None) and (self.model_raw_params.size == 1):
-            # check if source is at the phase centre
-            ra = ephem.hours(self.model_raw_params['RA'].item())
-            dec = ephem.degrees(self.model_raw_params['DEC'].item())
-
-            if ephem.separation((ra,dec),(ra0,dec0)) < calprocs.arcsec_to_rad(max_offset):
-
+        # deal with easy case first - single point at the phase centre
+        if (self.model_raw_params.size == 1) and (ephem.separation((ra, dec), (ra0, dec0)) < calprocs.arcsec_to_rad(max_offset)):
                 if (('a1' not in self.model_raw_params.dtype.names or self.model_raw_params['a1'] == 0) and
                     ('a2' not in self.model_raw_params.dtype.names or self.model_raw_params['a2'] == 0) and
                     ('a3' not in self.model_raw_params.dtype.names or self.model_raw_params['a3'] == 0)):
+                    #### CASE A - Point source as the phase centre, no spectral slope ####
                     # spectral index is zero
-                    S = 10.**self.model_raw_params['a0'].item()
-                    model = S * (1.0 - np.eye(self.nant, dtype=np.complex))
-                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(S,))
+                    self.model = 10.**self.model_raw_params['a0'].item()
+                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(self.model,))
                 else:
-                    model_params = [self.model_raw_params[a].item() for a in ['a0','a1','a2','a3']]
-                    if spectral:
-                        # full spectral model
-                        freq_model = calprocs.flux(model_params,self.channel_freqs)
-                        pol_freq_model = np.vstack([freq_model,freq_model]).T
-                        self.logger.info('     Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(freq_model)))
-                        model = pol_freq_model[:,:,np.newaxis,np.newaxis] * (1.0 - np.eye(self.nant, dtype=np.complex))
-                    else:
-                        # use flux at the centre frequency
-                        S_freq = calprocs.flux(model_params,self.channel_freqs[len(self.channel_freqs)/2])
-                        model = S_freq * (1.0 - np.eye(self.nant, dtype=np.complex))
-                        self.logger.info('     Model: single point source, flux at centre frequency {0:03.3f} GHz: {1:03.4f} Jy'.format(self.channel_freqs[len(self.channel_freqs)/2]/1.e9, S_freq))
+                    #### CASE B - Point source at the phase centre, with spectral slope ####
+                    model_params = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
+                    # full spectral model
+                    self.model = calprocs.calculate_flux(model_params, self.channel_freqs)
+                    self.logger.info('     Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(self.model)))
+        #### CASE C - Complex model requiring calculation via uvw coordinates ####
+        # If not one of the simple cases above, make a proper full model
         else:
-            print 'do something more complex!'
+            self.logger.info('     Model: {0} point sources'.format(len(np.atleast_1d(self.model_raw_params)),))
 
-        return model
+            # calculate uvw
+            wl = light_speed/np.array(self.channel_freqs)
+            self.uvw = calprocs.calc_uvw(self.target, wl, self.timestamps, self.corrprod_lookup, self.antenna_descriptions)
+            u = self.uvw[0]
+            v = self.uvw[1]
+            w = self.uvw[2]
 
-    def _init_model(self, max_offset=8., spectral=False):
+            # set up model visibility
+            complexmodel = np.zeros_like(self.vis)
+            nu_ghz = np.array(self.channel_freqs)/1.0e9
+
+            # iteratively add sources to the model
+            for source in np.atleast_1d(self.model_raw_params):
+                # source spectral flux
+                a0, a1, a2, a3 = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
+                S = 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
+                # source position
+                ra = ephem.hours(source['RA'].item())
+                dec = ephem.degrees(source['DEC'].item())
+                l = np.cos(dec)*np.sin(ra-ra0)
+                m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra - ra0)
+                # the axies awkwardness is to allow appropriate broadcasting
+                #    this may be a ***terrible*** way to do this - will see!
+                complexmodel += (S[np.newaxis, :, np.newaxis]*np.exp(2.*np.pi*1j*(u*l + v*m + w*(np.sqrt(1.0-l**2.0-m**2.0)-1.0))))[:, :, np.newaxis, :]
+            self.model = complexmodel
+        return
+
+    def _init_model(self, max_offset=8.0):
         """
         Initialises models for use in the solver.
-        Checks for existing model scan attributes and creates models if models are not yet present
+        Checks for existing model and creates models if it is not yet present
 
         Inputs
         ======
         max_offset : float
             The difference in positon away from the phase centre for a point to be considered at the phase centre [arcseconds]
             Default: 8 (= meerkat beam)
-        spectral : boolean
-            whether the model will have spectral dimensions
         """
+        # if models parameters have not been set for the scan, return unity model
+        if self.model_raw_params is None:
+            self.model = None
+            return
 
-        if spectral:
-            if np.isscalar(self.model) and np.all(self.model == 1.):
-                self.model = self._create_model(max_offset, spectral=True)
-        else:
-            if np.isscalar(self.freqavg_model) and np.all(self.freqavg_model == 1.):
-                self.freqavg_model = self._create_model(max_offset, spectral=False)
+        if self.model is None:
+            self._create_model(max_offset)
+
+    def add_model(self, model_raw_params):
+        """
+        Add raw parameters for model
+        """
+        self.model_raw_params = np.atleast_1d(model_raw_params)
