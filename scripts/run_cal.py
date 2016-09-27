@@ -62,7 +62,7 @@ def parse_opts():
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
     parser.add_argument('--l1_level', default=0, help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
     parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
-    parser.set_defaults(threading=True)
+    parser.set_defaults(notthreading=True)
     parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default='/var/kat/data', help='Path under which to save pipeline report. [default: /var/kat/data]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
@@ -188,7 +188,7 @@ def create_buffer_arrays_threading(buffer_shape):
     data={}
     data['vis'] = np.empty(buffer_shape,dtype=np.complex64)
     data['flags'] = np.empty(buffer_shape,dtype=np.uint8)
-    data['weights'] = np.empty(buffer_shape,dtype=np.float64)
+    data['weights'] = np.empty(buffer_shape,dtype=np.float32)
     data['times'] = np.empty(buffer_shape[0],dtype=np.float)
     data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
@@ -460,11 +460,13 @@ if __name__ == '__main__':
     setup_logger(log_name,log_path)
 
     # threading or multiprocessing imports
-    if opts.threading is False:
+    if opts.notthreading is True:
+        logger.info("Using multiprocessing")
         import multiprocessing as control_method
         from multiprocessing import Process as control_task
-        from ctypes import c_float, c_ubyte, c_double, c_int
+        from ctypes import c_ubyte, c_double, c_int, c_float
     else:
+        logger.info("Using threading")
         import threading as control_method
         from threading import Thread as control_task
 
@@ -480,5 +482,5 @@ if __name__ == '__main__':
            cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not(opts.threading),
+           l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
            param_file=opts.parameter_file, report_path=opts.report_path, log_path=log_path, full_log=log_name)
