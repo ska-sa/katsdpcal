@@ -104,8 +104,14 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             parameter_dict['subarray_product_id'] = 'unknown_subarray'
 
             # get/edit extra parameters from TS (set at run time)
+
+            # simulator channel frequency range
             if ts.has_key('cal_sim_echan'):
                 # if bchan and echan are set, use them to override number of channels
+                if ts['cal_sim_echan'] == 0:
+                    ts.delete('cal_sim_echan')
+                    ts.add('cal_sim_echan', parameter_dict['cbf_n_chans'], immutable=True)
+
                 parameter_dict['cbf_n_chans'] = ts.cal_sim_echan-ts.cal_sim_bchan
             else:
                 # else set bchan and echan to be full channel range
@@ -291,7 +297,7 @@ class SimDataMS(table):
         self.data_mask = None
         self.intent_to_tag = {'CALIBRATE_PHASE,CALIBRATE_AMPLI': 'gaincal',
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY,CALIBRATE_POLARIZATION': 'bpcal polcal',
-                              'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY': 'bpcal',
+                              'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY': 'bpcal delaycal',
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX': 'bpcal',
                               'CALIBRATE_POLARIZATION': 'polcal',
                               'UNKNOWN': 'unknown',
@@ -492,7 +498,7 @@ class SimDataMS(table):
                     tx_weights = np.hstack(ttime.getcol('WEIGHT_SPECTRUM')[self.data_mask])  # weights for this time stamp, for specified channel range
                 except RuntimeError:
                     # WEIGHT_SPECTRUM column doesn't exist: mock up weights as zeros
-                    tx_weights = np.zeros_like(tx_flags, dtype=np.float64)
+                    tx_weights = np.zeros_like(tx_flags, dtype=np.float32)
 
                 # on first transmittion, set up item group, using info from first data item
                 if 'correlator_data' not in ig:
