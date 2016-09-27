@@ -688,7 +688,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
     # centre the phase on zero
     return bp * np.exp(-1.0j*np.median(np.angle(bp),axis=0))
 
-def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'):
+def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
     """
     Fit delay (phase slope across frequency) to visibility data.
 
@@ -754,7 +754,7 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,algorithm='adi'
                 v_corrected[ci,p,vi] = data[ci,p,vi] * np.exp(-1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,0]]) * np.exp(1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,1]])
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((v_corrected, v_corrected.conj()),axis=-1)
-    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=None, algorithm=algorithm)
+    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=None, **kwargs)
 
     # find slope of the residual bandpass
     delta_k = np.empty_like(coarse_k)
@@ -877,7 +877,7 @@ def wavg_full(data,flags,weights,axis=0,threshold=0.3):
     av_flags = np.nansum(flags,axis=axis) > flags.shape[0]*threshold
 
     # fake weights for now
-    av_weights = np.ones_like(av_data,dtype=np.float)
+    av_weights = np.ones_like(av_data,dtype=np.float32)
 
     return av_data, av_flags, av_weights, av_sig
 
@@ -1179,7 +1179,7 @@ class CalSolution(object):
 def arcsec_to_rad(angle):
     return np.pi*angle/60./60./180.
 
-def flux(coeffs,frequencies):
+def calculate_flux(coeffs,frequencies):
     nu_ghz = np.array(frequencies)/1.e9
     a0, a1, a2, a3 = coeffs
     return 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
