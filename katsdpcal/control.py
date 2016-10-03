@@ -242,10 +242,10 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 target_split = target.split(',')
                 target_name = target_split[0]
                 target_tags = target_split[1] if len(target_split)>1 else 'unknown'
-                if target_name != prev_target_name:
+                if (target_name != prev_target_name) or start_flag:
                     # update source list if necessary
                     target_list = self.telstate.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if self.telstate.has_key('cal_info_sources') else []
-                    if not target_name in target_list: self.telstate.add('cal_info_sources',target_name)
+                    if not target_name in target_list: self.telstate.add('cal_info_sources',target_name,ts=data_ts)
 
                 # print name of target and activity type, if activity has changed or start of accumulator
                 if start_flag or (activity_time != prev_activity_time):
