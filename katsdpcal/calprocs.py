@@ -75,7 +75,6 @@ def calc_uvw(phase_centre, wavelength, time, corrprod_lookup, ant_desc):
     uvw_wave : uvw coordinates, normalised by wavelength
     """
     uvw = np.empty([3,len(time),len(corrprod_lookup)])
-    print 'SHAPE:', uvw.shape
     for i,[a1,a2] in enumerate(corrprod_lookup):
         uvw[...,i] = np.array([phase_centre.uvw(katpoint.Antenna(ant_desc[a1]), timestamp=t, antenna=katpoint.Antenna(ant_desc[a2])) for t in time]).T
     uvw_wave = np.squeeze(np.moveaxis([uvw/wl for wl in np.atleast_1d(wavelength)],0,2))
@@ -1240,7 +1239,7 @@ def arcsec_to_rad(angle):
     """
     Convert angle in arcseconds to angle in radians
     """
-    return np.pi*angle/60./60./180.
+    return np.deg2rad(angle/60./60.)
 
 def calculate_flux(coeffs,freq):
     """
