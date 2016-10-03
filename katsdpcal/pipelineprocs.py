@@ -128,7 +128,7 @@ def setup_ts(ts, logger=logger):
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
         logger.info('Preferred antenna list set to antenna mask list:')
-        ts.add('cal_preferred_refants',ts.cal_antlist,)
+        ts.add('cal_preferred_refants',ts.cal_antlist)
         logger.info('{0} : {1}'.format('cal_preferred_refants',ts.cal_preferred_refants))
     else:
         # change cal_preferred_refants to lists of strings (not single csv string)
