@@ -126,7 +126,7 @@ class Scan(object):
         self.dump_period = dump_period
         self.nchan = self.vis.shape[1]
         # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
-        self.channel_freqs = range(self.nchan) if chans is None else list(chans)
+        self.channel_freqs = np.arange(self.nchan) if chans is None else np.array(chans)
         self.npol = 4
         self.nant = nant
         self.antenna_descriptions = ants
@@ -495,9 +495,14 @@ class Scan(object):
                     self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(self.model,))
                 else:
                     #### CASE B - Point source at the phase centre, with spectral slope ####
-                    model_params = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
+                    source_coefs = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
                     # full spectral model
-                    self.model = calprocs.calculate_flux(model_params, self.channel_freqs)
+                    # katpoint.FluxDensityModel needs upper and lower limits of applicability of the model.
+                    #   we make the assumptions that models provided will apply to our data so ignore this functionality by
+                    #   using frequency range 0 -- 100 GHz (==100e3 MHz)
+                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
+                    # katsdpcal flux model parameters referenced to GHz, not MHz (so use frequencies in GHz)
+                    self.model = source_flux.flux_density(self.channel_freqs/1.0e9)
                     self.logger.info('     Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(self.model)))
         #### CASE C - Complex model requiring calculation via uvw coordinates ####
         # If not one of the simple cases above, make a proper full model
@@ -505,7 +510,7 @@ class Scan(object):
             self.logger.info('     Model: {0} point sources'.format(len(np.atleast_1d(self.model_raw_params)),))
 
             # calculate uvw
-            wl = light_speed/np.array(self.channel_freqs)
+            wl = light_speed/self.channel_freqs
             self.uvw = calprocs.calc_uvw(self.target, wl, self.timestamps, self.corrprod_lookup, self.antenna_descriptions)
             u = self.uvw[0]
             v = self.uvw[1]
@@ -513,13 +518,17 @@ class Scan(object):
 
             # set up model visibility
             complexmodel = np.zeros_like(self.vis)
-            nu_ghz = np.array(self.channel_freqs)/1.0e9
 
             # iteratively add sources to the model
             for source in np.atleast_1d(self.model_raw_params):
                 # source spectral flux
-                a0, a1, a2, a3 = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
-                S = 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
+                source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
+                # katpoint.FluxDensityModel needs upper and lower limits of applicability of the model.
+                #   we make the assumptions that models provided will apply to our data so ignore this functionality by
+                #   using frequency range 0 -- 100 GHz (==100e3 MHz)
+                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
+                # katsdpcal flux model parameters referenced to GHz, not MHz (so use frequencies in GHz)
+                S = source_flux.flux_density(self.channel_freqs/1.0e9)
                 # source position
                 ra = ephem.hours(source['RA'].item())
                 dec = ephem.degrees(source['DEC'].item())
