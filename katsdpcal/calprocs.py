@@ -1240,25 +1240,3 @@ def arcsec_to_rad(angle):
     Convert angle in arcseconds to angle in radians
     """
     return np.deg2rad(angle/60./60.)
-
-def calculate_flux(coeffs,freq):
-    """
-    Calculate flux from flux model coefficient list and frequency.
-    Flux model uses the form given in "An accurate flux density scale from 1 to 50 GHz", Perley & Butler, 2013:
-       Flux = 10.**(a0 + a1*np.log10(frequency) + a2*(np.log10(frequency)**2.0) + a3*(np.log10(frequency)**3.0))
-    Where frequency is in GHz
-
-    Inputs:
-    -------
-    coeffs : list
-        flux model coefficient list [a0, a1, a2, a3]
-    freq : scalar or array
-        scalar freqiency or array of frequencies
-
-    Returns:
-    --------
-    Flux for each input frequency (scalar for scalar input frequency, array for frequency array)
-    """
-    nu_ghz = np.array(freq)/1.e9
-    a0, a1, a2, a3 = coeffs
-    return 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
