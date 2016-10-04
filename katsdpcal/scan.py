@@ -198,7 +198,7 @@ class Scan(object):
             self.modvis = self.apply(soln,origvis=False)
 
         # set up solution interval
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.times))
+        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
         self.logger.info('  - G solution interval: {0} s'.format(solint,))
         # determine channel range for fit
         if echan == 0: echan = None
