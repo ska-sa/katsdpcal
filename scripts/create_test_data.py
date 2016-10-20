@@ -77,25 +77,73 @@ def extract_scans(msfile, num_scans):
     return new_ms
 
 
-def calc_uvw(phase_centre, wavelength, timestamps, antlist, ant1, ant2, ant_desc):
+def calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions, refant_ind=0):
     """
     Calculate uvw coordinates
 
     Parameters
     ----------
     phase_centre : katpoint target for phase centre position
-    wavelength   : wavelengths, single value or array shape(nchans)
-    timestamps   : times, array of floats, shape(nrows)
-    antlist      : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
-    ant1, ant2   : array of antenna indices, shape(nrows)
+    timestamps : times, array of floats, shape(nrows)
+    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
+    ant1, ant2: array of antenna indices, shape(nrows)
+    antenna_descriptions : description strings for the antennas, same order as antlist, string
+    refant_ind : index of reference antenna in antlist, integer
 
     Returns
     -------
-    uvw_wave : uvw coordinates, normalised by wavelength
+    uvw : uvw coordinates numpy array, shape (3,nbl x ntimes)
     """
-    uvw = np.array([phase_centre.uvw(katpoint.Antenna(ant_desc[antlist[a1]]), timestamp=to_ut(t), antenna=katpoint.Antenna(ant_desc[antlist[a2]])) for t, a1, a2 in zip(timestamps, ant1, ant2)])
-    uvw_wave = np.array([uvw/wl for wl in wavelength])
-    return uvw_wave
+    refant = katpoint.Antenna(ant_descriptions[antlist[refant_ind]])
+    array_reference_position = katpoint.Antenna('array_position',*refant.ref_position_wgs84)
+    # use the array reference position for the basis
+    basis = phase_centre.uvw_basis(timestamp=to_ut(timestamps), antenna=array_reference_position)
+    # get enu vector for each row in MS, for each antenna in the baseline pair for that row
+    antenna1_uvw = np.empty([3,len(timestamps)])
+    antenna2_uvw = np.empty([3,len(timestamps)])
+    for i, [a1, a2] in enumerate(zip(ant1,ant2)):
+        antenna1 = katpoint.Antenna(ant_descriptions[antlist[a1]])
+        enu1 = np.array(antenna1.baseline_toward(array_reference_position))
+        antenna1_uvw[...,i] = np.tensordot(basis[...,i], enu1, ([1], [0]))
+
+        antenna2 = katpoint.Antenna(ant_descriptions[antlist[a2]])
+        enu2 = np.array(antenna2.baseline_toward(array_reference_position))
+        antenna2_uvw[...,i] = np.tensordot(basis[...,i], enu2, ([1], [0]))
+
+    # then subtract the vectors for each antenna to get the baseline vectors
+    baseline_uvw = np.empty([3,len(timestamps)])
+    for i,[a1,a2] in enumerate(zip(ant1,ant2)):
+        baseline_uvw[...,i] = - antenna1_uvw[...,i] + antenna2_uvw[...,i]
+
+    return baseline_uvw
+
+
+def calc_uvw_wave(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions, refant_ind=0, wavelengths=None):
+    """
+    Calculate uvw coordinates
+
+    Parameters
+    ----------
+    phase_centre : katpoint target for phase centre position
+    timestamps : times, array of floats, shape(nrows)
+    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
+    ant1, ant2: array of antenna indices, shape(nrows)
+    antenna_descriptions : description strings for the antennas, same order as antlist, string
+    refant_ind : index of reference antenna in antlist, integer
+    wavelengths : wavelengths, single value or array shape(nchans)
+
+    Returns
+    -------
+    uvw_wave : uvw coordinates normalised by wavelength, shape (3,nbl x ntimes,len(wavelengths))
+    """
+    uvw = calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions)
+    if wavelengths == None:
+        return uvw
+    elif np.isscalar(wavelengths):
+        return uvw/wavelengths
+    else:
+        return uvw[:,:,np.newaxis]/wavelengths[np.newaxis,np.newaxis,:]
+
 
 # ---------------------------------------------------------------------------------------------------
 # SIMPLE POINT
@@ -303,10 +351,8 @@ def create_points_two(orig_msfile, basename='TEST2'):
     # set up phase centre as katpoint target
     centre_target = katpoint.Target('{0}, radec target, {1}, {2}'.format(basename, ra0_string, dec0_string))
     # calculate uvw
-    uvw = calc_uvw(centre_target, wl, timestamps, antlist, ant1, ant2, antenna_descriptions)
-    u = uvw[:, :, 0].T
-    v = uvw[:, :, 1].T
-    w = uvw[:, :, 2].T
+    uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
+    uvw_wave = uvw/wl
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
@@ -338,9 +384,10 @@ def create_points_two(orig_msfile, basename='TEST2'):
         m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
 
         S = 10.**a0
-        new_data += S*np.exp(2.*np.pi*1j*(u*l + v*m + w*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis]
+        new_data += S*np.exp(2.*np.pi*1j*(uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis]
 
     t.putcol('DATA', new_data)
+    t.putcol('UVW', uvw.T)
     t.close()
 
     # change source name and position (field is centered on S0)
@@ -361,11 +408,6 @@ def create_points_two(orig_msfile, basename='TEST2'):
 
     field_table.close()
     source_table.close()
-
-    # change uvw coords in the MS file to reflect then new phase centre position
-    casa_command = 'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'.format(msfile, msfile)
-    proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
-    outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
     casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
@@ -434,10 +476,8 @@ def create_points_five(orig_msfile, basename='TEST3'):
     # set up phase centre as katpoint target
     centre_target = katpoint.Target('{0}, radec target, {1}, {2}'.format(basename, ra0_string, dec0_string))
     # calculate uvw
-    uvw = calc_uvw(centre_target, wl, timestamps, antlist, ant1, ant2, antenna_descriptions)
-    u = uvw[:, :, 0].T
-    v = uvw[:, :, 1].T
-    w = uvw[:, :, 2].T
+    uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
+    uvw_wave = uvw[:,:,np.newaxis]/wl[np.newaxis,np.newaxis,:]
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
@@ -466,9 +506,10 @@ def create_points_five(orig_msfile, basename='TEST3'):
         m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
 
         # add each source to the data
-        new_data += (S*np.exp(2.*np.pi*1j*(u*l + v*m + w*(np.sqrt(1.0-l**2.0-m**2.0)-1.0))))[:, :, np.newaxis]
+        new_data += (S*np.exp(2.*np.pi*1j*(uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0))))[:, :, np.newaxis]
 
     t.putcol('DATA', new_data)
+    t.putcol('UVW', uvw.T)
     t.close()
 
     # change source name and position (field is centered on S0)
@@ -489,11 +530,6 @@ def create_points_five(orig_msfile, basename='TEST3'):
 
     field_table.close()
     source_table.close()
-
-    # change uvw coords in the MS file to reflect then new phase centre position
-    casa_command = 'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'.format(msfile, msfile)
-    proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
-    outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
     casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
@@ -520,7 +556,7 @@ if __name__ == "__main__":
     if opts.num_scans > 0:
         msfile = extract_scans(msfile, opts.num_scans)
 
-    # create test data sets and accompanying sky model files
+    create test data sets and accompanying sky model files
     basename = 'TEST0'
     create_point_simple(msfile, basename=basename)
     if opts.image:
