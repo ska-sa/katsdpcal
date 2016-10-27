@@ -109,6 +109,8 @@ def setup_ts(ts, logger=logger):
     Assumed ending ts entries
     antenna_mask          - list or csv string of antennas present in the data, immutable
     cal_antlist           - list of antennas present in the data
+    cal_antlist_description - list of antenna descriptions (in katpoint description string format)
+    cal_array_position    - array position (in katpoint description string format)
     cal_preferred_refants - ordered list of refant preference
     cal_refant            - reference antenna
     """
@@ -124,6 +126,10 @@ def setup_ts(ts, logger=logger):
     #    list of antenna descriptions
     description_list = [ts['{0}_observer'.format(ant,)] for ant in ts.cal_antlist]
     ts.add('cal_antlist_description', description_list, immutable=True)
+    # array reference position
+    if 'cal_array_position' not in ts:
+        # take lat-long-alt value from first antenna in antenna list as the array reference position
+        ts.add('cal_array_position','array_position, '+','.join(description_list[0].split(',')[1:-1]))
 
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
@@ -156,6 +162,7 @@ def setup_ts(ts, logger=logger):
             ts.delete('cal_refant')
             ts.add('cal_refant',ts.cal_preferred_refants[0])
             logger.info('Requested reference antenna not present in subarray. Change to reference antenna: {0}'.format(ts.cal_refant,))
+
 
 def csv_to_list(ts,keyname):
     """
