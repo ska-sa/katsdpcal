@@ -87,13 +87,14 @@ def calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions, re
     timestamps : times, array of floats, shape(nrows)
     antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
     ant1, ant2: array of antenna indices, shape(nrows)
-    antenna_descriptions : description strings for the antennas, same order as antlist, string
+    antenna_descriptions : description strings for the antennas, same order as antlist, list of string
     refant_ind : index of reference antenna in antlist, integer
 
     Returns
     -------
     uvw : uvw coordinates numpy array, shape (3,nbl x ntimes)
     """
+    # use the lat-long-alt values of one of the antennas as the array reference position
     refant = katpoint.Antenna(ant_descriptions[antlist[refant_ind]])
     array_reference_position = katpoint.Antenna('array_position',*refant.ref_position_wgs84)
     # use the array reference position for the basis
@@ -137,7 +138,7 @@ def calc_uvw_wave(phase_centre, timestamps, antlist, ant1, ant2, ant_description
     uvw_wave : uvw coordinates normalised by wavelength, shape (3,nbl x ntimes,len(wavelengths))
     """
     uvw = calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions)
-    if wavelengths == None:
+    if wavelengths is None:
         return uvw
     elif np.isscalar(wavelengths):
         return uvw/wavelengths
@@ -352,7 +353,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
     centre_target = katpoint.Target('{0}, radec target, {1}, {2}'.format(basename, ra0_string, dec0_string))
     # calculate uvw
     uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
-    uvw_wave = uvw/wl
+    uvw_wave = uvw[:,:,np.newaxis]/wl[np.newaxis,np.newaxis,:]
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
@@ -556,7 +557,7 @@ if __name__ == "__main__":
     if opts.num_scans > 0:
         msfile = extract_scans(msfile, opts.num_scans)
 
-    create test data sets and accompanying sky model files
+    # create test data sets and accompanying sky model files
     basename = 'TEST0'
     create_point_simple(msfile, basename=basename)
     if opts.image:
