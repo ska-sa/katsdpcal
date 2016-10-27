@@ -538,7 +538,7 @@ class Scan(object):
     def _init_model(self, max_offset=8.0):
         """
         Initialises models for use in the solver.
-        Checks for existing model and creates models if it is not yet present
+        Checks for existing models and creates them if they are not yet present
 
         Inputs
         ======

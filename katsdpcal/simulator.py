@@ -327,7 +327,7 @@ class SimDataMS(table):
 
         Returns
         -------
-        Antenna description doctionary
+        Antenna description dictionary
         """
         positions = table(self.getkeyword('ANTENNA')).getcol('POSITION')
         diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
