@@ -578,7 +578,7 @@ class Scan(object):
            * self.modvis divided by the model, over the selected channel range
 
         """
-        if chan_select == None: chan_select = slice(None)
+        if chan_select is None: chan_select = slice(None)
         if self.model is None:
             return self.modvis[chan_select]
         else:
