@@ -58,27 +58,71 @@ def to_ut(t):
     """
     return (t/86400. - 2440587.5 + 2400000.5)*86400.
 
-def calc_uvw(phase_centre, wavelength, time, corrprod_lookup, ant_desc):
+def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, ant_descriptions, wavelengths=None, array_centre=None):
     """
     Calculate uvw coordinates
 
     Parameters
     ----------
     phase_centre : katpoint target for phase centre position
-    wavelength : wavelengths, single value or array shape(nchans)
-    time : times, array of floats, shape(nrows)
-    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
-    ant1, ant2: array of antenna indices, shape(nrows)
+    timestamps : times, array of floats, shape(nrows)
+    corrprod_lookup : lookup table of antenna indices for each baseline, array shape(nant,2)
+    antenna_descriptions : description strings for the antennas, same order as antlist, list of string
+    wavelengths : wavelengths, single value or array shape(nchans)
+    array_centre : description string for array centre position, string
 
     Returns
     -------
     uvw_wave : uvw coordinates, normalised by wavelength
     """
-    uvw = np.empty([3,len(time),len(corrprod_lookup)])
+    uvw = calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_centre)
+    if wavelengths is None:
+        return uvw
+    elif np.isscalar(wavelengths):
+        return uvw/wavelengths
+    else:
+        print uvw.shape, wavelengths.shape
+        return uvw[:,:,np.newaxis,:]/wavelengths[:,np.newaxis]
+
+def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_centre=None):
+    """
+    Calculate uvw coordinates
+
+    Parameters
+    ----------
+    phase_centre : katpoint target for phase centre position
+    timestamps : times, array of floats, shape(nrows)
+    corrprod_lookup : lookup table of antenna indices for each baseline, array shape(nant,2)
+    antenna_descriptions : description strings for the antennas, same order as antlist, list of string
+    array_centre : description string for array centre position, string
+
+    Returns
+    -------
+    uvw_wave : uvw coordinates
+    """
+    if array_centre is not None:
+        print array_centre
+        array_reference_position = katpoint.Antenna(array_centre)
+    else:
+        # if no array centre position is given, use lat-long-alt of first antenna in the antenna list
+        refant = katpoint.Antenna(ant_descriptions[0])
+        array_reference_position = katpoint.Antenna('array_position',*refant.ref_position_wgs84)
+
+    # use the array reference position for the basis
+    basis = phase_centre.uvw_basis(timestamp=timestamps, antenna=array_reference_position)
+    antenna_uvw = np.empty([len(ant_descriptions),3,len(timestamps)])
+
+    for i, antenna in enumerate(ant_descriptions):
+        ant = katpoint.Antenna(antenna)
+        enu = np.array(ant.baseline_toward(array_reference_position))
+        v = np.tensordot(basis, enu, ([1], [0]))
+        antenna_uvw[i,...] = np.tensordot(basis, enu, ([1], [0]))
+
+    baseline_uvw = np.empty([3,len(timestamps),len(corrprod_lookup)])
     for i,[a1,a2] in enumerate(corrprod_lookup):
-        uvw[...,i] = np.array([phase_centre.uvw(katpoint.Antenna(ant_desc[a1]), timestamp=t, antenna=katpoint.Antenna(ant_desc[a2])) for t in time]).T
-    uvw_wave = np.squeeze(np.moveaxis([uvw/wl for wl in np.atleast_1d(wavelength)],0,2))
-    return uvw_wave
+        baseline_uvw[...,i] = antenna_uvw[a2] - antenna_uvw[a1]
+
+    return baseline_uvw
 
 #--------------------------------------------------------------------------------------------------
 #--- Solvers
