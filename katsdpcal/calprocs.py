@@ -81,7 +81,6 @@ def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, ant_descriptions, w
     elif np.isscalar(wavelengths):
         return uvw/wavelengths
     else:
-        print uvw.shape, wavelengths.shape
         return uvw[:,:,np.newaxis,:]/wavelengths[:,np.newaxis]
 
 def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_centre=None):
@@ -101,7 +100,6 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_
     uvw_wave : uvw coordinates
     """
     if array_centre is not None:
-        print array_centre
         array_reference_position = katpoint.Antenna(array_centre)
     else:
         # if no array centre position is given, use lat-long-alt of first antenna in the antenna list
