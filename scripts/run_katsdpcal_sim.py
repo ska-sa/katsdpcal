@@ -23,7 +23,7 @@
 #
 # ---------------------------------------------------------------------------------------
 
-import tmuxp
+import libtmux
 import time
 from argparse import ArgumentParser
 import os.path
@@ -64,16 +64,16 @@ def create_pane(sname,tmserver,keep_session=False):
         try:
             tmserver.kill_session(sname)
             print 'killed session {},'.format(sname,),
-        except tmuxp.exc.TmuxpException:
+        except libtmux.exc.LibTmuxException:
             print 'session {} did not exist,'.format(sname,),
     # start new session
     try:
         tmserver.new_session(sname)
         print 'created session {}'.format(sname,)
-    except tmuxp.exc.TmuxSessionExists:
+    except libtmux.exc.TmuxSessionExists:
         print 'session {} already exists'.format(sname,)		
     # get pane
-    session = tmserver.findWhere({"session_name":sname})
+    session = tmserver.find_where({"session_name":sname})
     return session.windows[0].panes[0]
 
 if __name__ == '__main__':
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     first_file_fullpath=os.path.abspath(first_file)
 
     # create tmux server
-    tmserver = tmuxp.Server()
+    tmserver = libtmux.Server()
 
     # start redis-server in tmux pane
     redis_pane = create_pane('redis',tmserver,keep_session=opts.keep_sessions)

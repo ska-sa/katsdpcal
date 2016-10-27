@@ -19,7 +19,7 @@ scipy
 spead2
 argcomplete==1.0.0      # for tmuxp
 kaptan==0.5.8           # for tmuxp
-tmuxp==0.8.1
+tmuxp==1.2.2
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdptelstate
