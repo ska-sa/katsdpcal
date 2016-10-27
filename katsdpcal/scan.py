@@ -7,7 +7,6 @@ import numpy as np
 import copy
 from time import time
 
-import ephem
 import katpoint
 from scipy.constants import c as light_speed
 
@@ -480,11 +479,11 @@ class Scan(object):
         # phase centre position
         ra0, dec0 = self.target.radec()
         # position of first source
-        ra = ephem.hours(self.model_raw_params[0]['RA'].item())
-        dec = ephem.degrees(self.model_raw_params[0]['DEC'].item())
+        first_source = katpoint.construct_radec_target(self.model_raw_params[0]['RA'].item(),self.model_raw_params[0]['DEC'].item())
+        position_offset = self.target.separation(first_source, antenna=katpoint.Antenna(self.array_position))
 
         # deal with easy case first - single point at the phase centre
-        if (self.model_raw_params.size == 1) and (ephem.separation((ra, dec), (ra0, dec0)) < calprocs.arcsec_to_rad(max_offset)):
+        if (self.model_raw_params.size == 1) and (position_offset < calprocs.arcsec_to_rad(max_offset)):
                 if (('a1' not in self.model_raw_params.dtype.names or self.model_raw_params['a1'] == 0) and
                     ('a2' not in self.model_raw_params.dtype.names or self.model_raw_params['a2'] == 0) and
                     ('a3' not in self.model_raw_params.dtype.names or self.model_raw_params['a3'] == 0)):
@@ -528,10 +527,8 @@ class Scan(object):
                 #   currently using the same flux model for both polarisations
                 S = source_flux.flux_density(self.channel_freqs/1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
                 # source position
-                ra = ephem.hours(source['RA'].item())
-                dec = ephem.degrees(source['DEC'].item())
-                l = np.cos(dec)*np.sin(ra-ra0)
-                m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra - ra0)
+                source_position = katpoint.construct_radec_target(source['RA'].item(),source['DEC'].item())
+                l, m = self.target.sphere_to_plane(*source_position.radec(), projection_type='SIN', coord_system='radec')
                 # the axis awkwardness is to allow appropriate broadcasting
                 #    this may be a ***terrible*** way to do this - will see!
                 complexmodel += S*(np.exp(2.*np.pi*1j*(self.uvw[0]*l + self.uvw[1]*m + self.uvw[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis, :])
