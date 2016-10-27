@@ -258,7 +258,7 @@ def pipeline(data, ts, task_name='pipeline'):
         # ---------------------------------------
         # set up scan
         s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target, chans=ts.cal_channel_freqs,
-            ants=ts.cal_antlist_description, refant=refant_ind, logger=pipeline_logger)
+            ants=ts.cal_antlist_description, refant=refant_ind, array_position=ts.cal_array_position, logger=pipeline_logger)
         if s.xc_mask.size == 0:
             pipeline_logger.info('No XC data - no processing performed.')
             continue
