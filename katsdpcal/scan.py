@@ -490,7 +490,7 @@ class Scan(object):
                     #### CASE A - Point source as the phase centre, no spectral slope ####
                     # spectral index is zero
                     self.model = np.array([10.**self.model_raw_params['a0'].item()])
-                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(self.model,))
+                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(self.model[0],))
                 else:
                     #### CASE B - Point source at the phase centre, with spectral slope ####
                     source_coefs = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
@@ -579,6 +579,12 @@ class Scan(object):
         if self.model is None:
             return self.modvis[chan_select]
         else:
-            # if the channel axis has dimension 1 (== no channel axis), select all data
-            if (self.model.shape[1] == 1): chan_select = slice(None)
-            return self.modvis[chan_select]/self.model[chan_select]
+            # for single element model, divide through selected channels by model
+            if len(self.model.shape) < 2:
+                return self.modvis[chan_select]/self.model
+            # for model with empty channel axis, divide through selected channels by model
+            elif (self.model.shape[1] == 1):
+                return self.modvis[chan_select]/self.model
+            else:
+                # for full model, divide through selected channels by same channel selection in the model
+                return self.modvis[chan_select]/self.model[chan_select]
