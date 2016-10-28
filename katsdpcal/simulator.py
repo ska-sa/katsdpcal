@@ -53,6 +53,29 @@ def get_file_format(file_name):
 
     return data_class
 
+def get_antdesc_relative(names, diameters, positions):
+    """
+    Determine antenna description dictionary, using offsets from a lat-long-alt reference position.
+
+    Returns
+    -------
+    Antenna description dictionary
+    """
+    antdesc = {}
+    first_ant = True
+    for ant, diam, pos in zip(names, diameters, positions):
+        if first_ant:
+            # set up reference position (this is necessary to preserve precision of antenna positions when converting
+            # because of ephem limitation in truncating decimal places when printing strings)
+            longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0], pos[1], pos[2])
+            longitude_ref = ephem.degrees(str(ephem.degrees(longitude)))
+            latitude_ref = ephem.degrees(str(ephem.degrees(latitude)))
+            altitude_ref = round(altitude)
+            first_ant = False
+        # now determine offsets from the reference position to build up full antenna description string
+        e, n, u = katpoint.ecef_to_enu(longitude_ref, latitude_ref, altitude_ref, pos[0], pos[1], pos[2])
+        antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(ant, longitude_ref, latitude_ref, altitude_ref, diam, e, n, u)
+    return antdesc
 
 def init_simdata(file_name, wait=0.0, **kwargs):
     """
@@ -323,7 +346,7 @@ class SimDataMS(table):
 
     def get_antdesc(self):
         """
-        Determine antenna description dictionary, using offsets from a reference position.
+        Determine antenna description dictionary, using offsets from a lat-long-alt reference position.
 
         Returns
         -------
@@ -333,21 +356,8 @@ class SimDataMS(table):
         diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
         names = [ant for ant in self.ants]
 
-        antdesc = {}
-        first_ant = True
-        for ant, diam, pos in zip(names, diameters, positions):
-            if first_ant:
-                # set up reference position (this is necessary to preserve precision of antenna positions when converting
-                # because of ephem limitation in truncating decimal places when printing strings)
-                longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0], pos[1], pos[2])
-                longitude_ref = ephem.degrees(str(ephem.degrees(longitude)))
-                latitude_ref = ephem.degrees(str(ephem.degrees(latitude)))
-                altitude_ref = round(altitude)
-                first_ant = False
-            # now determine offsets from the reference position to build up full antenna description string
-            e, n, u = katpoint.ecef_to_enu(longitude_ref, latitude_ref, altitude_ref, pos[0], pos[1], pos[2])
-            antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(ant, longitude_ref, latitude_ref, altitude_ref, diam, e, n, u)
-        return antdesc
+        # determine an antenna description dictionary using a reference lat-long-alt position end enu offsets
+        return get_antdesc_relative(names, diameters, positions)
 
     def field_ids(self):
         """

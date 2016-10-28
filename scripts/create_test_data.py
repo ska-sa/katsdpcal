@@ -12,6 +12,7 @@ import optparse
 import katpoint
 from scipy.constants import c as light_speed
 from katsdpcal.calprocs import to_ut
+from katsdpcal.simulator import get_antdesc_relative
 
 
 def parse_opts():
@@ -43,25 +44,6 @@ def get_msname(filename):
         return None
     else:
         return ms_name[0]
-
-
-def get_antdesc(names, positions, diameters):
-    # get antenna description dictionary
-    antdesc = {}
-    first_ant = True
-    for ant, diam, pos in zip(names, diameters, positions):
-        if first_ant:
-            # set up reference position (this is necessary to preserve precision of antenna positions when converting
-            #  because of ephem limitation in truncating decimal places when printing strings
-            longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0], pos[1], pos[2])
-            longitude_centre = ephem.degrees(str(ephem.degrees(longitude)))
-            latitude_centre = ephem.degrees(str(ephem.degrees(latitude)))
-            altitude_centre = round(altitude)
-            first_ant = False
-        # now determine offsets from the reference position to build up full antenna description string
-        e, n, u = katpoint.ecef_to_enu(longitude_centre, latitude_centre, altitude_centre, pos[0], pos[1], pos[2])
-        antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(ant, longitude_centre, latitude_centre, altitude_centre, diam, e, n, u)
-    return antdesc
 
 
 def extract_scans(msfile, num_scans):
@@ -328,7 +310,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
     diameters = ant_table.getcol('DISH_DIAMETER')
     ant_table.close()
 
-    antenna_descriptions = get_antdesc(antlist, positions, diameters)
+    antenna_descriptions = get_antdesc_relative(antlist, diameters, positions)
 
     # get wavelength info
     spw_table = tables.table(msfile+'/SPECTRAL_WINDOW')
@@ -449,7 +431,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
     diameters = ant_table.getcol('DISH_DIAMETER')
     ant_table.close()
 
-    antenna_descriptions = get_antdesc(antlist, positions, diameters)
+    antenna_descriptions = get_antdesc_relative(antlist, diameters, positions)
 
     # get wavelength info
     spw_table = tables.table(msfile+'/SPECTRAL_WINDOW')
