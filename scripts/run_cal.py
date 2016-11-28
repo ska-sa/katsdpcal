@@ -294,7 +294,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
-        if keyval not in ['cbf_bls_ordering','cbf_channel_freqs']:
+        if keyval not in ['sdp_l0_bls_ordering','cbf_channel_freqs']:
             logger.info('{0} : {1}'.format(keyval,ts[keyval]))
     logger.info('Telescope state config graph:')
     log_dict(ts.config)

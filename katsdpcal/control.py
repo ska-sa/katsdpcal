@@ -149,7 +149,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
         def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
-            self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.cbf_bls_ordering)
+            self.ordering, bls_order, pol_order = calprocs.get_reordering(self.telstate.antenna_mask,self.telstate.sdp_l0_bls_ordering)
             # determine lookup list for baselines
             bls_lookup = calprocs.get_bls_lookup(self.telstate.antenna_mask, bls_order)
             # save these to the TS for use in the pipeline/elsewhere

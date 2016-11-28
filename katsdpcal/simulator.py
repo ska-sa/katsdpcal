@@ -151,7 +151,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             ts.delete('cbf_channel_freqs')
 
             # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_bls_ordering', 'cbf_sync_time', 'subarray_product_id']
+            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'sdp_l0_bls_ordering', 'cbf_sync_time', 'subarray_product_id']
             for key in min_keys:
                 if key not in parameter_dict:
                     raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
@@ -385,8 +385,8 @@ class SimDataMS(table):
         antenna_names = [ant for ant in self.ants]
         param_dict['antenna_mask'] = ','.join(antenna_names)
         param_dict['cbf_n_ants'] = len(self.ants)
-        # need polarisation information in the cbf_bls_ordering
-        param_dict['cbf_bls_ordering'] = self.corr_products
+        # need polarisation information in the sdp_l0_bls_ordering
+        param_dict['sdp_l0_bls_ordering'] = self.corr_products
         param_dict['cbf_sync_time'] = 0.0
         param_dict['config'] = {'MS_simulator': True}
         # antenna descriptions for all antennas
@@ -592,7 +592,7 @@ def h5_get_params(h5data):
     param_dict['sdp_l0_int_time'] = h5data.dump_period
     param_dict['cbf_n_ants'] = len(h5data.ants)
     param_dict['cbf_n_chans'] = len(h5data.channels)
-    param_dict['cbf_bls_ordering'] = h5data.corr_products
+    param_dict['sdp_l0_bls_ordering'] = h5data.corr_products
     param_dict['cbf_sync_time'] = 0.0
     antenna_mask = ','.join([ant.name for ant in h5data.ants])
     param_dict['antenna_mask'] = antenna_mask
