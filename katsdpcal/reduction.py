@@ -33,8 +33,8 @@ def rfi(s,thresholds,av_blocks,pipeline_logger):
     """
     Place holder for RFI detection algorithms to come.
 
-    Inputs:
-    -------
+    Inputs
+    ------
     s : Scan
         Scan to flag
     thresholds : list of float, shape(N)
@@ -54,13 +54,13 @@ def get_tracks(data, ts, logger=logger):
     """
     Determines start and end indices of each track in the data buffer
 
-    Inputs:
-    -------
+    Inputs
+    ------
     data : data buffer, dictionary
     ts : telescope state, TelescopeState
 
-    Returns:
-    --------
+    Returns
+    -------
     list of slices for each track in the buffer
     """
     max_indx = data['max_index'][0]
@@ -112,14 +112,14 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
     """
     For a given scan, extract and interpolate specified calibration solutions from TelescopeState
 
-    Inputs:
-    -------
+    Inputs
+    ------
     s : scan, Scan
     ts : telescope state, TelescopeState
     sol_list : list of calibration solutions to extract and interpolate, list of strings
 
-    Returns:
-    --------
+    Returns
+    -------
     solns_to_apply : list of CalSolution solutions
     """
     solns_to_apply = []
@@ -147,18 +147,44 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
 
     return solns_to_apply
 
+def init_ts_params(ts):
+    """
+    Initialise telescope state parameteters
+    This is necessary to add telescope state parameters derived from information available only after data has started flowing
+
+    Inputs
+    ------
+    ts : telescope state, TelescopeState
+    """
+    description_list = [ts['{0}_observer'.format(ant,)] for ant in ts.cal_antlist]
+    # list of antenna descriptions
+    if 'cal_antlist_description' not in ts:
+        ts.add('cal_antlist_description',description_list,immutable=True)
+
+    # array reference position
+    if 'cal_array_position' not in ts:
+        # take lat-long-alt value from first antenna in antenna list as the array reference position
+        ts.add('cal_array_position', 'array_position, '+','.join(description_list[0].split(',')[1:-1]))
+
+    # channel frequencies
+    if 'cal_channel_freqs' not in ts:
+        n_chans = ts.cbf_n_chans
+        sideband = ts['cal_sideband'] if ts.has_key('cal_sideband') else 1
+        channel_freqs = ts.cbf_center_freq + sideband*(ts.cbf_bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
+        ts.add('cal_channel_freqs',channel_freqs,immutable=True)
+
 def pipeline(data, ts, task_name='pipeline'):
     """
     Pipeline calibration
 
-    Inputs:
-    -------
+    Inputs
+    ------
     data : data buffer, dictionary
     ts : telescope state, TelescopeState
     task_name : name of pipeline task (used for logging), string
 
-    Returns:
-    --------
+    Returns
+    -------
     list of slices for each target track in the buffer
     """
 
@@ -190,20 +216,11 @@ def pipeline(data, ts, task_name='pipeline'):
 
     antlist = ts.cal_antlist
     n_ants = len(antlist)
-    n_chans = ts.cbf_n_chans
     # refant index number in the antenna list
     refant_ind = antlist.index(ts.cal_refant)
 
     # set up parameters that are static during an observation, but only available when the first data starts to flow
-    # list of antenna descriptions
-    if not ts.has_key('cal_antlist_description'):
-        description_list = [ts['{0}_observer'.format(ant,)] for ant in antlist]
-        ts.add('cal_antlist_description',description_list,immutable=True)
-    # channel frequencies
-    if not ts.has_key('cal_channel_freqs'):
-        sideband = ts['cal_sideband'] if ts.has_key('cal_sideband') else 1
-        channel_freqs = ts.cbf_center_freq + sideband*(ts.cbf_bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
-        ts.add('cal_channel_freqs',channel_freqs,immutable=True)
+    init_ts_params(ts)
 
     # get names of activity and target TS keys, using TS reference antenna
     target_key = '{0}_target'.format(ts.cal_refant,)
