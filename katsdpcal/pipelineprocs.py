@@ -90,6 +90,7 @@ def ts_from_file(ts, filename):
 
     init_ts(ts, param_dict)
 
+
 def setup_ts(ts, logger=logger):
     """
     Set up the telescope state for pipeline use.
@@ -117,7 +118,7 @@ def setup_ts(ts, logger=logger):
 
     # ensure that antenna_mask is list of strings, not single csv string
     if isinstance(ts.antenna_mask, str):
-        csv_to_list(ts,'antenna_mask')
+        csv_to_list(ts, 'antenna_mask')
     # cal_antlist
     #   this should not be pre-set (determine from antenna_mask, which is pre-set)
     ts.add('cal_antlist', ts.antenna_mask)
@@ -129,16 +130,16 @@ def setup_ts(ts, logger=logger):
     # array reference position
     if 'cal_array_position' not in ts:
         # take lat-long-alt value from first antenna in antenna list as the array reference position
-        ts.add('cal_array_position','array_position, '+','.join(description_list[0].split(',')[1:-1]))
+        ts.add('cal_array_position', 'array_position, '+','.join(description_list[0].split(',')[1:-1]))
 
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
         logger.info('Preferred antenna list set to antenna mask list:')
-        ts.add('cal_preferred_refants',ts.cal_antlist)
-        logger.info('{0} : {1}'.format('cal_preferred_refants',ts.cal_preferred_refants))
+        ts.add('cal_preferred_refants', ts.cal_antlist)
+        logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
     else:
         # change cal_preferred_refants to lists of strings (not single csv string)
-        csv_to_list(ts,'cal_preferred_refants')
+        csv_to_list(ts, 'cal_preferred_refants')
         # reduce the preferred antenna list to only antennas present in cal_antlist
         preferred = [ant for ant in ts.cal_preferred_refants if ant in ts.cal_antlist]
         if preferred != ts.cal_preferred_refants:
@@ -150,21 +151,21 @@ def setup_ts(ts, logger=logger):
             else:
                 logger.info('Preferred antenna list reduced to only include antennas in antenna mask:')
                 ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants',preferred)
-            logger.info('{0} : {1}'.format('cal_preferred_refants',ts.cal_preferred_refants))
+                ts.add('cal_preferred_refants', preferred)
+            logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
 
     # cal_refant
     if 'cal_refant' not in ts:
-        ts.add('cal_refant',ts.cal_preferred_refants[0])
+        ts.add('cal_refant', ts.cal_preferred_refants[0])
         logger.info('Reference antenna: {0}'.format(ts.cal_refant,))
     else:
         if ts.cal_refant not in ts.cal_antlist:
             ts.delete('cal_refant')
-            ts.add('cal_refant',ts.cal_preferred_refants[0])
+            ts.add('cal_refant', ts.cal_preferred_refants[0])
             logger.info('Requested reference antenna not present in subarray. Change to reference antenna: {0}'.format(ts.cal_refant,))
 
 
-def csv_to_list(ts,keyname):
+def csv_to_list(ts, keyname):
     """
     Cange Telescope State entry for immutable key from csv string to list of strings
 
@@ -177,7 +178,8 @@ def csv_to_list(ts,keyname):
     if isinstance(ts[keyname], str):
         keyvallist = [val.strip() for val in ts[keyname].split(',')]
         ts.delete(keyname)
-        ts.add(keyname,keyvallist,immutable=True)
+        ts.add(keyname, keyvallist, immutable=True)
+
 
 def get_model(name, lsm_dir_list=[]):
     """
