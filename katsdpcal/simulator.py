@@ -646,7 +646,7 @@ def h5_tx_data(h5data, ts, tx, max_scans):
 
         # transmit the data from this scan, timestamp by timestamp
         scan_data = h5data.vis[:]
-        scan_flags = h5data.flags()[:]
+        scan_flags = h5data.flags[:]
         scan_weights = np.ones_like(scan_data)
 
         # set up item group, ising info from first data item
