@@ -151,7 +151,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             ts.delete('cbf_channel_freqs')
 
             # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'sdp_l0_bls_ordering', 'cbf_sync_time', 'subarray_product_id']
+            min_keys = ['sdp_l0_int_time', 'antenna_mask', 'cbf_n_ants', 'cbf_n_chans', 'cbf_n_pols', 'sdp_l0_bls_ordering', 'cbf_sync_time', 'subarray_product_id']
             for key in min_keys:
                 if key not in parameter_dict:
                     raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
@@ -381,6 +381,7 @@ class SimDataMS(table):
 
         param_dict['cbf_channel_freqs'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
         param_dict['cbf_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
+        param_dict['cbf_n_pols'] = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')[0]
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
         antenna_names = [ant for ant in self.ants]
         param_dict['antenna_mask'] = ','.join(antenna_names)
@@ -593,6 +594,15 @@ def h5_get_params(h5data):
     param_dict['cbf_n_ants'] = len(h5data.ants)
     param_dict['cbf_n_chans'] = len(h5data.channels)
     param_dict['sdp_l0_bls_ordering'] = h5data.corr_products
+
+    # determine number of polarisation products
+    corrprods_polonly = [[b[0][4],b[1][4]] for b in h5data.corr_products]
+    # find unique pol combinations
+    unique_pol = []
+    for pbl in corrprods_polonly:
+        if pbl not in unique_pol: unique_pol.append(pbl)
+    param_dict['cbf_n_pols'] = len(unique_pol)
+
     param_dict['cbf_sync_time'] = 0.0
     antenna_mask = ','.join([ant.name for ant in h5data.ants])
     param_dict['antenna_mask'] = antenna_mask
