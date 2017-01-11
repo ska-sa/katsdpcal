@@ -216,6 +216,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
     antlist = ts.cal_antlist
     n_ants = len(antlist)
+    n_pols = ts.cbf_n_pols
     # refant index number in the antenna list
     refant_ind = antlist.index(ts.cal_refant)
 
@@ -274,7 +275,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # ---------------------------------------
         # set up scan
-        s = Scan(data, scan_slice, dump_period, n_ants, ts.cal_bls_lookup, target, chans=ts.cal_channel_freqs,
+        s = Scan(data, scan_slice, dump_period, n_ants, n_pols, ts.cal_bls_lookup, target, chans=ts.cal_channel_freqs,
             ants=ts.cal_antlist_description, refant=refant_ind, array_position=ts.cal_array_position, logger=pipeline_logger)
         if s.xc_mask.size == 0:
             pipeline_logger.info('No XC data - no processing performed.')
@@ -363,7 +364,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
-            if ts.cbf_n_pols < 4:
+            if n_pols < 4:
                 pipeline_logger.info('Cant solve for KCROSS without four polarisation products.')
             else:
                 # ---------------------------------------
