@@ -1096,7 +1096,7 @@ def get_pol_bls(bls_ordering,pol):
     """
     pol_ant_dtype = np.array(bls_ordering[0][0]+'h').dtype
     nbl = len(bls_ordering)
-    pol_bls_ordering = np.empty([nbl*4,2],dtype=pol_ant_dtype)
+    pol_bls_ordering = np.empty([nbl*len(pol),2],dtype=pol_ant_dtype)
     for i,p in enumerate(pol):
         for b,bls in enumerate(bls_ordering):
             pol_bls_ordering[nbl*i+b] = bls[0]+p[0], bls[1]+p[1]
@@ -1122,8 +1122,6 @@ def get_reordering(antlist,bls_ordering,output_order_bls=None,output_order_pol=N
     """
     # convert antlist to list, if it is a csv string
     if isinstance(antlist,str): antlist = antlist.split(',')
-    nants = len(antlist)
-    nbl = nants*(nants+1)/2
     # convert bls_ordering to a list, if it is not a list (e.g. np.ndarray)
     if not isinstance(bls_ordering,list): bls_ordering = bls_ordering.tolist()
 
@@ -1132,16 +1130,42 @@ def get_reordering(antlist,bls_ordering,output_order_bls=None,output_order_pol=N
     # find unique elements
     unique_bls = []
     for b in bls_ordering_nopol:
-        if not b in unique_bls: unique_bls.append(b)
+        if b not in unique_bls: unique_bls.append(b)
 
-    # determine output ordering:
-    # default polarisation ordering
-    pol_order = [['h','h'],['v','v'],['h','v'],['v','h']] if output_order_pol==None else output_order_pol
+    # determine polarisation ordering
+    if output_order_pol is not None:
+        pol_order = output_order_pol
+    else:
+        # get polarisation products from current antenna list
+        bls_ordering_polonly = [[b[0][4],b[1][4]] for b in bls_ordering]
+        # find unique pol combinations
+        unique_pol = []
+        for pbl in bls_ordering_polonly:
+            if pbl not in unique_pol: unique_pol.append(pbl)
+        # put parallel polarisations first
+        pol_order = []
+        if len(bls_ordering_polonly) > 2:
+            for pp in unique_pol:
+                if pp[0]==pp[1]:
+                    pol_order.insert(0,pp)
+                else:
+                    pol_order.append(pp)
+    npol = len(pol_order)
+
     if output_order_bls == None:
         # default output order is XC then AC
         bls_wanted = [b for b in unique_bls if b[0]!=b[1]]
-        # add AC to bls list
-        bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
+
+        # number of baselines including autocorrelations
+        nants = len(antlist)
+        nbl_ac = nants*(nants+1)/2
+
+        # add AC to bls list, if necessary
+        # assume that AC are either included or not (no partial states)
+        if len(bls_ordering) == (nbl_ac * npol):
+            # data include XC and AC
+            bls_wanted.extend([b for b in unique_bls if b[0]==b[1]])
+
         bls_pol_wanted = get_pol_bls(bls_wanted,pol_order)
     else:
         bls_pol_wanted = get_pol_bls(output_order_bls,pol_order)
@@ -1150,6 +1174,7 @@ def get_reordering(antlist,bls_ordering,output_order_bls=None,output_order_pol=N
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
     ordering = np.array([np.all(bls_ordering==bls,axis=1).nonzero()[0][0] for bls in bls_pol_wanted])
+
     # how to use this:
     #print bls_ordering[ordering]
     #print bls_ordering[ordering].reshape([4,nbl,2])
