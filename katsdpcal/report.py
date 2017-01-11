@@ -146,8 +146,10 @@ def write_table_timerow(report,colnames,times,data):
     report.writeln(" ".join([h.ljust(col_width) for h in header])) 
     report.writeln(col_header*n_entries)
 
+    timestrings = [time.strftime("%d %X",time.gmtime(t)) for t in times]
+
     # add each time row to the table
-    for t, d in zip(times,data):
+    for t, d in zip(timestrings,data):
         data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
         report.write("{:.3f}".format(t,).ljust(col_width+1))
         report.writeln(data_string)  
