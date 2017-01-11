@@ -55,6 +55,7 @@ def parse_opts():
     parser.set_defaults(no_auto=False)
     # note - the following lines extract various parameters from the MC config
     parser.add_argument('--cbf-channels', type=int, help='The number of frequency channels in the visibility data. Default from MC config')
+    parser.add_argument('--cbf-pols', type=int, help='The number of polarisation products in the visibility data. Default from MC config')
     parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the L0 data stream. Default from MC config')
     # also need bls ordering
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 spead stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
@@ -215,7 +216,7 @@ def kill_shutdown():
     # brutal kill (for threading)
     os.kill(os.getpid(), signal.SIGKILL)
 
-def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
+def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
            l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
            mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
@@ -230,6 +231,8 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
         The telescope state, default: 'localhost' database 0
     cbf_n_chans: int
         The number of channels in the data stream
+    cbf_n_pols: int
+        The number of polarisations in the data stream
     antenna_mask: list of strings
         List of antennas present in the data stream
     num_buffers: int
@@ -258,9 +261,12 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
         Path for pipeline logs
     """
 
-    logger.info('opt params: {0} {1}'.format(antenna_mask,cbf_n_chans))
+    logger.info('Pipeline system input parameters')
+    logger.info('   - antenna mask: {0}'.format(antenna_mask,))
+    logger.info('   - number of channels: {0}'.format(cbf_n_chans,))
+    logger.info('   - number of polarisation products: {0}'.format(cbf_n_pols,))
 
-    # extract data shape parameters 
+    # extract data shape parameters
     #   argument parser traversed TS config to find these
     if antenna_mask is not None:
         ts.add('antenna_mask', antenna_mask, immutable=True)
@@ -271,11 +277,16 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
         logger.info('Only {0} antenna present - stopping katsdpcal'.format(len(ts.antenna_mask,)))
         return
 
+    # deal with required input parameters
     if cbf_n_chans is not None:
         ts.add('cbf_n_chans', cbf_n_chans, immutable=True)
     elif 'cbf_n_chans' not in ts:
         raise RuntimeError("No cbf_n_chans set.")
-        
+    if cbf_n_pols is not None:
+        ts.add('cbf_n_polss', cbf_n_pols, immutable=True)
+    elif 'cbf_n_pols' not in ts:
+        raise RuntimeError("No cbf_n_pols set.")
+
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
     if param_file == '':
@@ -290,7 +301,7 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     else:
         logger.info('Parameter file: {0}'.format(param_file))
     logger.info('Inputting Telescope State parameters from parameter file.')
-    ts_from_file(ts,param_file)
+    ts_from_file(ts, param_file)
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
@@ -303,7 +314,6 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     logger.info('Setting up Telescope State parameters for pipeline.')
     setup_ts(ts)
 
-    npol = 4
     nant = len(ts.cal_antlist)
     # number of baselines (may include autocorrelations)
     nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
@@ -326,13 +336,13 @@ def run_threads(ts, cbf_n_chans, antenna_mask, num_buffers=2, buffer_maxsize=Non
     # plus minimal extra for scan transition indices
     scale_factor = 8. + 1. + 4. # vis + flags + weights
     time_factor = 8. + 0.1 # time + 0.1 for good measure (indiced)
-    array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*npol*nbl) + time_factor)
+    array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*ts.cbf_n_pols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Buffer size : {0} G'.format(buffer_maxsize/1.e9,))
     logger.info('Max length of buffer array : {0}'.format(array_length,))
 
     # Set up empty buffers
-    buffer_shape = [array_length,ts.cbf_n_chans,npol,nbl]
+    buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
     buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
 
     # account for forced shutdown possibilities
@@ -482,11 +492,11 @@ if __name__ == '__main__':
         raise SystemExit
 
     signal.signal(signal.SIGTERM, force_exit)
-     # mostly needed for Docker use since this process runs as PID 1
-     # and does not get passed sigterm unless it has a custom listener
+    # mostly needed for Docker use since this process runs as PID 1
+    # and does not get passed sigterm unless it has a custom listener
 
     run_threads(opts.telstate,
-           cbf_n_chans=opts.cbf_channels, antenna_mask=opts.antenna_mask,
+           cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask, 
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
            l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
