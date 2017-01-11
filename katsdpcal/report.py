@@ -104,6 +104,7 @@ def write_summary(report,ts,st=None,et=None):
     # telescope state values
     write_bullet_if_present(report,ts,'Int time','sdp_l0_int_time')
     write_bullet_if_present(report,ts,'Channels','cbf_n_chans')
+    write_bullet_if_present(report,ts,'Polarisation products','cbf_n_pols')
     write_bullet_if_present(report,ts,'Antennas','antenna_mask',transform=len)
     write_bullet_if_present(report,ts,'Antenna list','antenna_mask')
     report.writeln()
