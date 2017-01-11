@@ -363,34 +363,37 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
-            # ---------------------------------------
-            # get K solutions to apply and interpolate them to scan timestamps
-            pre_apply_solns = ['K','B']
-            solns_to_apply = get_solns_to_apply(s,ts,pre_apply_solns,pipeline_logger)
-            #solns_to_apply.append(g_to_apply)
+            if ts.cbf_n_pols < 4:
+                pipeline_logger.info('Cant solve for KCROSS without four polarisation products.')
+            else:
+                # ---------------------------------------
+                # get K solutions to apply and interpolate them to scan timestamps
+                pre_apply_solns = ['K','B']
+                solns_to_apply = get_solns_to_apply(s,ts,pre_apply_solns,pipeline_logger)
+                #solns_to_apply.append(g_to_apply)
 
-            # ---------------------------------------
-            # preliminary G solution
-            pipeline_logger.info('Solving for preliminary G on KCROSS calibrator {0}'.format(target_name,))
-            # solve (pre-applying given solutions)
-            pre_g_soln = s.g_sol(k_solint,g0_h,pre_apply=solns_to_apply)
-            # interpolate to scan timestamps
-            g_to_apply = s.interpolate(pre_g_soln)
-            solns_to_apply.append(g_to_apply)
+                # ---------------------------------------
+                # preliminary G solution
+                pipeline_logger.info('Solving for preliminary G on KCROSS calibrator {0}'.format(target_name,))
+                # solve (pre-applying given solutions)
+                pre_g_soln = s.g_sol(k_solint,g0_h,pre_apply=solns_to_apply)
+                # interpolate to scan timestamps
+                g_to_apply = s.interpolate(pre_g_soln)
+                solns_to_apply.append(g_to_apply)
 
-            # ---------------------------------------
-            # KCROSS solution
-            pipeline_logger.info('Solving for KCROSS on cross-hand delay calibrator {0}'.format(target_name,))
-            kcross_soln = s.kcross_sol(ts.cal_param_k_bchan,ts.cal_param_k_echan,ts.cal_param_kcross_chanave,pre_apply=solns_to_apply)
+                # ---------------------------------------
+                # KCROSS solution
+                pipeline_logger.info('Solving for KCROSS on cross-hand delay calibrator {0}'.format(target_name,))
+                kcross_soln = s.kcross_sol(ts.cal_param_k_bchan,ts.cal_param_k_echan,ts.cal_param_kcross_chanave,pre_apply=solns_to_apply)
 
-            # ---------------------------------------
-            # update TS
-            pipeline_logger.info('  - Saving KCROSS to Telescope State')
-            ts.add(kcross_soln.ts_solname,kcross_soln.values,ts=kcross_soln.times)
+                # ---------------------------------------
+                # update TS
+                pipeline_logger.info('  - Saving KCROSS to Telescope State')
+                ts.add(kcross_soln.ts_solname,kcross_soln.values,ts=kcross_soln.times)
 
-            # ---------------------------------------
-            #timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
-            run_t0 = time.time()
+                # ---------------------------------------
+                #timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
+                run_t0 = time.time()
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):

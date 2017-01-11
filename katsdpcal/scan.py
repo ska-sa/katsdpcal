@@ -32,6 +32,8 @@ class Scan(object):
         Dump period of correlator data.
     nant : int
         Number of antennas in the array.
+    npol : int
+        Number of polarisation products in the data.
     bls_lookup : list of int, shape (2, number of baselines)
         List of antenna pairs for each baseline.
     target : string
@@ -101,7 +103,7 @@ class Scan(object):
         logger
     """
 
-    def __init__(self, data, time_slice, dump_period, nant, bls_lookup, target, chans=None, ants=None, refant=0, array_position=None, corr='xc', logger=logger):
+    def __init__(self, data, time_slice, dump_period, nant, npol, bls_lookup, target, chans=None, ants=None, refant=0, array_position=None, corr='xc', logger=logger):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
         # if scan has explicitly been set up as a cross-correlation scan, select XC data only
@@ -140,7 +142,7 @@ class Scan(object):
         self.nchan = self.vis.shape[1]
         # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
         self.channel_freqs = np.arange(self.nchan) if chans is None else np.array(chans)
-        self.npol = 4
+        self.npol = npol
         self.nant = nant
         self.antenna_descriptions = ants
         self.refant = refant
@@ -235,7 +237,7 @@ class Scan(object):
     @logsolutiontime
     def kcross_sol(self,bchan=1,echan=0,chan_ave=1,pre_apply=[]):
         """
-        Solve for cross hand delay offset
+        Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
 
         Parameters
@@ -249,26 +251,29 @@ class Scan(object):
         -------
         Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape (nant)
         """
-
-        if len(pre_apply) > 0:
-            self.modvis = copy.deepcopy(self.cross_vis)
+        if self.npol < 4:
+            self.logger.info('Cant solve for KCROSS without four polarisation products.')
+            return
         else:
-            self.modvis = self.cross_vis
+            if len(pre_apply) > 0:
+                self.modvis = copy.deepcopy(self.cross_vis)
+            else:
+                self.modvis = self.cross_vis
 
-        for soln in pre_apply:
-            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
-            self.modvis = self.apply(soln, origvis=False)
+            for soln in pre_apply:
+                self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+                self.modvis = self.apply(soln, origvis=False)
 
-        # average over all time, for specified channel range (no averaging over channel)
-        if echan == 0: echan = None
-        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
-        ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice], self.cross_flags[chan_slice], self.cross_weights[chan_slice], axis=0)
+            # average over all time, for specified channel range (no averaging over channel)
+            if echan == 0: echan = None
+            chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+            ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice], self.cross_flags[chan_slice], self.cross_weights[chan_slice], axis=0)
 
-        # solve for cross hand delay KCROSS
-        # note that the kcross solver needs the flags because it averages the data
-        #  (strictly it should need weights too, but deal with that leter when weights are meaningful)
-        kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan], chan_ave=chan_ave)
-        return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
+            # solve for cross hand delay KCROSS
+            # note that the kcross solver needs the flags because it averages the data
+            #  (strictly it should need weights too, but deal with that leter when weights are meaningful)
+            kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan], chan_ave=chan_ave)
+            return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
     def k_sol(self, bchan=1, echan=0, chan_sample=1, pre_apply=[]):

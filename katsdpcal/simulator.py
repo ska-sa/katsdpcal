@@ -324,6 +324,7 @@ class SimDataMS(table):
                               'CALIBRATE_BANDPASS,CALIBRATE_FLUX': 'bpcal',
                               'CALIBRATE_POLARIZATION': 'polcal',
                               'UNKNOWN': 'unknown',
+                              'TARGET,CALIBRATE_POLARIZATION': 'target polcal',
                               'TARGET': 'target'}
         self.num_scans = max(self.getcol('SCAN_NUMBER'))
         self.timestamps = np.unique(self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
