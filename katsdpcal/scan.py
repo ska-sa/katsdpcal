@@ -252,7 +252,7 @@ class Scan(object):
         Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape (nant)
         """
         if self.npol < 4:
-            self.logger.info('Cant solve for KCROSS without four polarisation products.')
+            self.logger.info('Cant solve for KCROSS without four polarisation products')
             return
         else:
             if len(pre_apply) > 0:

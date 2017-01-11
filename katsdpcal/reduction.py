@@ -365,7 +365,7 @@ def pipeline(data, ts, task_name='pipeline'):
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
             if n_pols < 4:
-                pipeline_logger.info('Cant solve for KCROSS without four polarisation products.')
+                pipeline_logger.info('Cant solve for KCROSS without four polarisation products')
             else:
                 # ---------------------------------------
                 # get K solutions to apply and interpolate them to scan timestamps
