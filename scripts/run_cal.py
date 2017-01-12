@@ -283,9 +283,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     elif 'cbf_n_chans' not in ts:
         raise RuntimeError("No cbf_n_chans set.")
     if cbf_n_pols is not None:
-        ts.add('cbf_n_polss', cbf_n_pols, immutable=True)
+        ts.add('cbf_n_pols', cbf_n_pols, immutable=True)
     elif 'cbf_n_pols' not in ts:
-        raise RuntimeError("No cbf_n_pols set.")
+        logger.warning('Number of polarisation inputs cbf_n_pols not set. Setting to default value 4')
+        ts.add('cbf_n_pols', 4, immutable=True)
 
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
