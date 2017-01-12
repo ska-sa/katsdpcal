@@ -151,7 +151,7 @@ def write_table_timerow(report,colnames,times,data):
     # add each time row to the table
     for t, d in zip(timestrings,data):
         data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
-        report.write("{:.3f}".format(t,).ljust(col_width+1))
+        report.write("{}".format(t,).ljust(col_width+1))
         report.writeln(data_string)  
 
     # table footer
