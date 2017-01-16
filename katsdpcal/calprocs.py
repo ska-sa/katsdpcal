@@ -743,8 +743,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
     bp = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, init_gain=bp0, **kwargs)
     # centre the phase on zero
     centre_rotation = np.exp(-1.0j*np.nanmedian(np.angle(bp), axis=0))
-    rotated_bp = bp*centre_rotation if not np.isnan(centre_rotation) else bp
-    print '**********************'
+    rotated_bp = bp*centre_rotation
     return rotated_bp
 
 def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
