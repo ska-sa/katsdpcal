@@ -729,24 +729,21 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,norm=True,**kwargs):
     bpass : Bandpass, shape(num_chans, num_pols, num_ants)
     """
 
-    num_ants = ants_from_bllist(corrprod_lookup)
-
-    # -----------------------------------------------------
-    # initialise values for solver
-    bpsoln = np.empty([data.shape[0],num_ants],dtype=np.complex) # Make empty array to fill bandpass into
+    n_ants = ants_from_bllist(corrprod_lookup)
+    n_chans = data.shape[0]
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
 
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
-    bp = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, init_gain=bp0, **kwargs)
+    bp = stefcal(vis_and_conj, n_ants, corrprod_lookup, weights=1.0, num_iters=100, init_gain=bp0, **kwargs)
     # centre the phase on zero
     centre_rotation = np.exp(-1.0j*np.nanmedian(np.angle(bp), axis=0))
     rotated_bp = bp*centre_rotation
     # normalise
     if norm:
-        rotated_bp /= np.nansum(np.abs(rotated_bp), axis=0)
+        rotated_bp /= (np.nansum(np.abs(rotated_bp), axis=0)/n_chans)
     return rotated_bp
 
 def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
@@ -815,7 +812,7 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
                 v_corrected[ci,p,vi] = data[ci,p,vi] * np.exp(-1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,0]]) * np.exp(1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,1]])
     # stefcal needs the visibilities as a list of [vis,vis.conjugate]
     vis_and_conj = np.concatenate((v_corrected, v_corrected.conj()),axis=-1)
-    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=1000, ref_ant=refant, init_gain=None, **kwargs)
+    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
 
     # find slope of the residual bandpass
     delta_k = np.empty_like(coarse_k)
