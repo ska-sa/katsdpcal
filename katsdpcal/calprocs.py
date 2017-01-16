@@ -715,6 +715,7 @@ def g_fit(data,corrprod_lookup,g0=None,refant=0,**kwargs):
 def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
     """
     Fit bandpass to visibility data.
+    The bandpass phae is centred on zero.
 
     Parameters
     ----------
