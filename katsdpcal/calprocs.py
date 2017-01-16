@@ -712,7 +712,7 @@ def g_fit(data,corrprod_lookup,g0=None,refant=0,**kwargs):
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
     return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, ref_ant=refant, init_gain=g0, **kwargs)
 
-def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
+def bp_fit(data,corrprod_lookup,bp0=None,refant=0,norm=True,**kwargs):
     """
     Fit bandpass to visibility data.
     The bandpass phae is centred on zero.
@@ -744,6 +744,9 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,**kwargs):
     # centre the phase on zero
     centre_rotation = np.exp(-1.0j*np.nanmedian(np.angle(bp), axis=0))
     rotated_bp = bp*centre_rotation
+    # normalise
+    if norm:
+        rotated_bp /= np.nansum(np.abs(rotated_bp), axis=0)
     return rotated_bp
 
 def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
