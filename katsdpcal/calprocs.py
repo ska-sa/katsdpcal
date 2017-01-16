@@ -779,52 +779,57 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
 
     # -----------------------------------------------------
     # initialise values for solver
-    kdelay = np.empty([num_pol,num_ants],dtype=np.complex) # Make empty array to fill delay into
+    kdelay = []
     if not(np.any(chans)): chans = np.arange(data.shape[0])
 
-    # -----------------------------------------------------
-    # FT to find visibility space delays
-    ft_vis = np.fft.fft(data,axis=0)
-    # get index of FT maximum
-    k_arg = np.argmax(np.abs(ft_vis),axis=0)
-    if nchans%2 == 0:
-        k_arg[k_arg > ((nchans/2) - 1)] -= nchans
-    else:
-        k_arg[k_arg > ((nchans-1)/2)] -= nchans
+    # NOTE: I know that iterating over polarisation is horrible, but I ran out of time to fix this up
+    # I initially just assumed we would always have two polarisations, but shouldn't make that assumption
+    # especially for use of calprocs offline on an h5 file
+    for p in range(num_pol):
+        pol_data = data[:,p,:] if len(data.shape)>2 else data
 
-    # calculate vis space K from FT sample frequencies
-    vis_k = 1.*k_arg/(chan_increment*nchans)
+        # -----------------------------------------------------
+        # FT to find visibility space delays
+        ft_vis = np.fft.fft(pol_data, axis=0)
+        # get index of FT maximum
+        k_arg = np.argmax(np.abs(ft_vis),axis=0)
+        if nchans%2 == 0:
+            k_arg[k_arg > ((nchans/2) - 1)] -= nchans
+        else:
+            k_arg[k_arg > ((nchans-1)/2)] -= nchans
 
-    # now determine per-antenna K values
-    coarse_k = np.zeros([num_pol,num_ants])
-    for ai in range(num_ants):
-        k = vis_k[...,(corrprod_lookup[:,0]==ai)&(corrprod_lookup[:,1]==refant)]
-        if k.size > 0: coarse_k[...,ai] = np.squeeze(k)
-    for ai in range(num_ants):
-        k = vis_k[...,(corrprod_lookup[:,1]==ai)&(corrprod_lookup[:,0]==refant)]
-        if k.size > 0: coarse_k[...,ai] = np.squeeze(-1.0*k)
+        # calculate vis space K from FT sample frequencies
+        vis_k = 1.*k_arg/(chan_increment*nchans)
 
-    # apply coarse K values to the data and solve for bandpass
-    v_corrected = np.zeros_like(data)
-    for vi in range(v_corrected.shape[-1]):
-        for p in range(num_pol):
+        # now determine per-antenna K values
+        coarse_k = np.zeros(num_ants)
+        for ai in range(num_ants):
+            k = vis_k[...,(corrprod_lookup[:,0]==ai)&(corrprod_lookup[:,1]==refant)]
+            if k.size > 0: coarse_k[...,ai] = np.squeeze(k)
+        for ai in range(num_ants):
+            k = vis_k[...,(corrprod_lookup[:,1]==ai)&(corrprod_lookup[:,0]==refant)]
+            if k.size > 0: coarse_k[...,ai] = np.squeeze(-1.0*k)
+
+        # apply coarse K values to the data and solve for bandpass
+        v_corrected = np.zeros_like(pol_data)
+        for vi in range(v_corrected.shape[-1]):
             for ci, c in enumerate(chans):
-                v_corrected[ci,p,vi] = data[ci,p,vi] * np.exp(-1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,0]]) * np.exp(1.0j*2.*np.pi*c*coarse_k[p,corrprod_lookup[vi,1]])
-    # stefcal needs the visibilities as a list of [vis,vis.conjugate]
-    vis_and_conj = np.concatenate((v_corrected, v_corrected.conj()),axis=-1)
-    bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
+                v_corrected[ci,vi] = pol_data[ci,vi] * np.exp(-1.0j*2.*np.pi*c*coarse_k[corrprod_lookup[vi,0]]) * np.exp(1.0j*2.*np.pi*c*coarse_k[corrprod_lookup[vi,1]])
+        # stefcal needs the visibilities as a list of [vis,vis.conjugate]
+        vis_and_conj = np.concatenate((v_corrected, v_corrected.conj()),axis=-1)
+        bpass = stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
 
-    # find slope of the residual bandpass
-    delta_k = np.empty_like(coarse_k)
-    for i,bp in enumerate(bpass.T):
-        # polarisation
-        for p in range(num_pol):
+        # find slope of the residual bandpass
+        delta_k = np.empty_like(coarse_k)
+        for i,bp in enumerate(bpass.T):
             # np.unwrap falls over in the case of bad RFI - robustify this later
-            bp_phase = np.unwrap(np.angle(bp[p]),discont=1.9*np.pi)
+            bp_phase = np.unwrap(np.angle(bp),discont=1.9*np.pi)
             A = np.array([ chans, np.ones(len(chans))])
-            delta_k[p,i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
+            delta_k[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
-    return np.squeeze(coarse_k + delta_k)
+        kdelay.append(np.squeeze(coarse_k + delta_k))
+
+    return np.array(kdelay)
 
 def kcross_fit(data,flags,chans=None,chan_ave=1):
     """
