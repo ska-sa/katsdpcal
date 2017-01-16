@@ -829,7 +829,7 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
 
         kdelay.append(np.squeeze(coarse_k + delta_k))
 
-    return np.array(kdelay)
+    return np.squeeze(kdelay)
 
 def kcross_fit(data,flags,chans=None,chan_ave=1):
     """
