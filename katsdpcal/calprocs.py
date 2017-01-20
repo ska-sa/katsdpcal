@@ -712,10 +712,10 @@ def g_fit(data,corrprod_lookup,g0=None,refant=0,**kwargs):
     vis_and_conj = np.concatenate((data, data.conj()),axis=-1)
     return stefcal(vis_and_conj, num_ants, corrprod_lookup, weights=1.0, ref_ant=refant, init_gain=g0, **kwargs)
 
-def bp_fit(data,corrprod_lookup,bp0=None,refant=0,norm=True,**kwargs):
+def bp_fit(data,corrprod_lookup,bp0=None,refant=0,normalise=True,**kwargs):
     """
     Fit bandpass to visibility data.
-    The bandpass phae is centred on zero.
+    The bandpass phase is centred on zero.
 
     Parameters
     ----------
@@ -723,6 +723,7 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,norm=True,**kwargs):
     bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
     corrprod_lookup : antenna mappings, for first then second antennas in bl pair
     refant : reference antenna
+    normalise : bool, True to normalise the bandpass amplitude
 
     Returns
     -------
@@ -741,8 +742,8 @@ def bp_fit(data,corrprod_lookup,bp0=None,refant=0,norm=True,**kwargs):
     # centre the phase on zero
     centre_rotation = np.exp(-1.0j*np.nanmedian(np.angle(bp), axis=0))
     rotated_bp = bp*centre_rotation
-    # normalise
-    if norm:
+    # normalise bandpasses by dividing through by the average
+    if normalise:
         rotated_bp /= (np.nansum(np.abs(rotated_bp), axis=0)/n_chans)
     return rotated_bp
 
