@@ -243,6 +243,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # --------------------------------------------------------------------    
     # add cal products to report
     antenna_mask = ts.antenna_mask
+    n_pols = ts.cbf_n_pols
 
     logger.info('Calibration solution summary')
     cal_list = ['K','KCROSS','B','G']
@@ -272,14 +273,11 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
 
             logger.info('  shape: {0}'.format(vals.shape,))
 
-            cal_rst.writeln('**POL 0**')
-            kpol = vals[:,0,:]
-            logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
-            write_table_timecol(cal_rst,antenna_mask,times,kpol)
-            cal_rst.writeln('**POL 1**')
-            kpol = vals[:,1,:]
-            logger.info('  pol{0} shape: {1}'.format('1',kpol.shape))
-            write_table_timecol(cal_rst,antenna_mask,times,kpol)
+            for pi in range(n_pols):
+                cal_rst.writeln('**POL {0}**'.format(pi,))
+                kpol = vals[:,pi,:]
+                logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
+                write_table_timecol(cal_rst,antenna_mask,times,kpol)
 
     # ---------------------------------
     # cross pol delay
@@ -347,17 +345,12 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
 
             logger.info('  shape: {0}'.format(vals.shape,))
 
-            cal_rst.writeln('**POL 0**')
-            gpol = vals[:,0,:]
-            logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
-            plot = plotting.plot_g_solns(times,gpol)
-
-            insert_fig(cal_rst,plot,name='{0}_P0'.format(cal,))
-            cal_rst.writeln('**POL 1**')
-            gpol = vals[:,1,:]
-            logger.info('  pol{0} shape: {1}'.format('1',gpol.shape))
-            plot = plotting.plot_g_solns(times,gpol)
-            insert_fig(cal_rst,plot,name='{0}_P1'.format(cal,))
+            for pi in range(n_pols):
+                cal_rst.writeln('**POL {0}**'.format(pi,))
+                gpol = vals[:,pi,:]
+                logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
+                plot = plotting.plot_g_solns(times,gpol)
+                insert_fig(cal_rst,plot,name='{0}_P{1}'.format(cal,pi))
 
     # --------------------------------------------------------------------
     # close off report
