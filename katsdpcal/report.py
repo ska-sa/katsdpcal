@@ -243,7 +243,6 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     # --------------------------------------------------------------------    
     # add cal products to report
     antenna_mask = ts.antenna_mask
-    n_pols = ts.cbf_n_pols
 
     logger.info('Calibration solution summary')
     cal_list = ['K','KCROSS','B','G']
@@ -273,10 +272,11 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
 
             logger.info('  shape: {0}'.format(vals.shape,))
 
-            for pi in range(n_pols):
+            # iterate through polarisation
+            for pi in range(vals.shape[-2]):
                 cal_rst.writeln('**POL {0}**'.format(pi,))
                 kpol = vals[:,pi,:]
-                logger.info('  pol{0} shape: {1}'.format('0',kpol.shape))
+                logger.info('  pol{0} shape: {1}'.format(pi,kpol.shape))
                 write_table_timecol(cal_rst,antenna_mask,times,kpol)
 
     # ---------------------------------
@@ -345,10 +345,11 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
 
             logger.info('  shape: {0}'.format(vals.shape,))
 
-            for pi in range(n_pols):
+            # iterate through polarisation
+            for pi in range(vals.shape[-2]):
                 cal_rst.writeln('**POL {0}**'.format(pi,))
                 gpol = vals[:,pi,:]
-                logger.info('  pol{0} shape: {1}'.format('0',gpol.shape))
+                logger.info('  pol{0} shape: {1}'.format(pi,gpol.shape))
                 plot = plotting.plot_g_solns(times,gpol)
                 insert_fig(cal_rst,plot,name='{0}_P{1}'.format(cal,pi))
 
