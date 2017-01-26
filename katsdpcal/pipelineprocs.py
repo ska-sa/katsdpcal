@@ -58,7 +58,7 @@ def init_ts(ts, param_dict, clear=False):
             ts.add(key, param_dict[key])
 
 
-def ts_from_file(ts, param_filename, rfi_filename):
+def ts_from_file(ts, param_filename, rfi_filename=None):
     """
     Initialises the telescope state from parameter file.
     Note: parameters will be returned as ints, floats or strings (not lists)
@@ -67,7 +67,7 @@ def ts_from_file(ts, param_filename, rfi_filename):
     ======
     ts : Telescope State
     param_filename : parameter file, text file
-    rfi_filename : RFI mask file, pickle
+    rfi_filename : RFI mask file, pickle, optional
 
     Notes
     =====
@@ -91,8 +91,8 @@ def ts_from_file(ts, param_filename, rfi_filename):
 
         param_dict[key.strip()] = param_value
 
-    param_dict['cal_rfi_mask'] = pickle.load(open(rfi_filename))
-    print param_dict['cal_rfi_mask']
+    if rfi_filename is not None:
+        param_dict['cal_rfi_mask'] = pickle.load(open(rfi_filename))
 
     init_ts(ts, param_dict)
 
