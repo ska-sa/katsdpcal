@@ -1078,15 +1078,6 @@ class interp_extrap_1d(scipy.interpolate.interp1d):
     copy : bool, optional
         If True, the class makes internal copies of x and y.
         If False, references to `x` and `y` are used. The default is to copy.
-    bounds_error : bool, optional
-        If True, a ValueError is raised any time interpolation is attempted on
-        a value outside of the range of x (where extrapolation is
-        necessary). If False, out of bounds values are assigned `fill_value`.
-        By default, an error is raised.
-    fill_value : float, optional
-        If provided, then this value will be used to fill in for requested
-        points outside of the data range. If not provided, then the default
-        is NaN.
     assume_sorted : bool, optional
         If False, values of `x` can be in any order and they are sorted first.
         If True, `x` has to be an array of monotonically increasing values.
@@ -1099,10 +1090,12 @@ class interp_extrap_1d(scipy.interpolate.interp1d):
 
     def __call__(cls, x, **kwds):
         x_new = copy.copy(x)
-
+        # for input x values that are less than the lowest value of the interpolation function x-range, set them to the lowest value
         x_new[x_new < cls.x[0]] = cls.x[0]
+        # likewise, for input x values that are greater than the greatest value of the interpolation function x-range, set them to the highest value
         x_new[x_new > cls.x[-1]] = cls.x[-1]
-
+        # this is a sneaky way to force extrapolated y values to be the same as the y exterior values of the interpolation range
+        # by setting the x-values outside to the interpolation range to the same values as the x exterior values of the interpolation range
         return scipy.interpolate.interp1d.__call__(cls, x_new, **kwds)
 
 #--------------------------------------------------------------------------------------------------
