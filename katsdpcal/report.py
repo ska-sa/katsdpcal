@@ -273,10 +273,10 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             logger.info('  shape: {0}'.format(vals.shape,))
 
             # iterate through polarisation
-            for pi in range(vals.shape[-2]):
-                cal_rst.writeln('**POL {0}**'.format(pi,))
-                kpol = vals[:,pi,:]
-                logger.info('  pol{0} shape: {1}'.format(pi,kpol.shape))
+            for p in range(vals.shape[-2]):
+                cal_rst.writeln('**POL {0}**'.format(p,))
+                kpol = vals[:,p,:]
+                logger.info('  pol{0} shape: {1}'.format(p,kpol.shape))
                 write_table_timecol(cal_rst,antenna_mask,times,kpol)
 
     # ---------------------------------
@@ -346,12 +346,12 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             logger.info('  shape: {0}'.format(vals.shape,))
 
             # iterate through polarisation
-            for pi in range(vals.shape[-2]):
-                cal_rst.writeln('**POL {0}**'.format(pi,))
-                gpol = vals[:,pi,:]
-                logger.info('  pol{0} shape: {1}'.format(pi,gpol.shape))
+            for p in range(vals.shape[-2]):
+                cal_rst.writeln('**POL {0}**'.format(p,))
+                gpol = vals[:,p,:]
+                logger.info('  pol{0} shape: {1}'.format(p,gpol.shape))
                 plot = plotting.plot_g_solns(times,gpol)
-                insert_fig(cal_rst,plot,name='{0}_P{1}'.format(cal,pi))
+                insert_fig(cal_rst,plot,name='{0}_P{1}'.format(cal,p))
 
     # --------------------------------------------------------------------
     # close off report
