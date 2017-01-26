@@ -293,6 +293,12 @@ def pipeline(data, ts, task_name='pipeline'):
                 pipeline_logger.info('   Model file: {0}'.format(model_file,))
         pipeline_logger.debug('Model parameters for source {0}: {1}'.format(target_name, s.model_raw_params))
 
+        # do we have an rfi mask? In which case, apply it
+        if 'cal_rfi_mask' in ts.keys():
+            flag_mask = ts.cal_rfi_mask[np.newaxis, :, np.newaxis, np.newaxis]
+            print '******************', s.flags.shape, flag_mask.shape
+            s.flags = np.logical_or(s.flags, flag_mask)
+
         # ---------------------------------------
         # initial RFI flagging
         pipeline_logger.info('Preliminary flagging')

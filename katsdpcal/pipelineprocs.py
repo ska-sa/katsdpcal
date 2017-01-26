@@ -8,6 +8,8 @@ import numpy as np
 # for model files
 import glob
 
+import pickle
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,7 @@ def init_ts(ts, param_dict, clear=False):
             ts.add(key, param_dict[key])
 
 
-def ts_from_file(ts, filename):
+def ts_from_file(ts, param_filename, rfi_filename):
     """
     Initialises the telescope state from parameter file.
     Note: parameters will be returned as ints, floats or strings (not lists)
@@ -64,7 +66,8 @@ def ts_from_file(ts, filename):
     Inputs
     ======
     ts : Telescope State
-    filename : parameter file
+    param_filename : parameter file, text file
+    rfi_filename : RFI mask file, pickle
 
     Notes
     =====
@@ -72,7 +75,7 @@ def ts_from_file(ts, filename):
     * Parameter file uses hashes (#) for comments
     * Missing parameters are set to empty strings ''
     """
-    param_list = np.genfromtxt(filename, delimiter=':', dtype=np.str, comments='#', missing_values='')
+    param_list = np.genfromtxt(param_filename, delimiter=':', dtype=np.str, comments='#', missing_values='')
     param_dict = {}
     for key, value in param_list:
         try:
@@ -87,6 +90,9 @@ def ts_from_file(ts, filename):
                 param_value = value.strip()
 
         param_dict[key.strip()] = param_value
+
+    param_dict['cal_rfi_mask'] = pickle.load(open(rfi_filename))
+    print param_dict['cal_rfi_mask']
 
     init_ts(ts, param_dict)
 

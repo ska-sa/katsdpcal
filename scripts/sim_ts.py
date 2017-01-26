@@ -2,7 +2,7 @@
 # ----------------------------------------------------------
 # Simulate the Telescope State from a file
 
-from katsdpcal import pipelineprocs, conf_dir
+from katsdpcal import pipelineprocs, param_dir
 from katsdpcal.simulator import init_simdata
 from katsdptelstate import ArgumentParser
 import os
@@ -31,11 +31,11 @@ param_file = opts.parameter_file
 if param_file == '':
     if ts.cbf_n_chans == 4096:
         param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
-        param_file = os.path.join(conf_dir,param_filename)
+        param_file = os.path.join(param_dir,param_filename)
         print 'Parameter file for 4k mode: {0}'.format(param_file,)
     else:
         param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
-        param_file = os.path.join(conf_dir,param_filename)
+        param_file = os.path.join(param_dir,param_filename)
         print 'Parameter file for 32k mode: {0}'.format(param_file,)
 pipelineprocs.ts_from_file(ts, param_file)
 

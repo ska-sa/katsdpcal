@@ -7,8 +7,9 @@ Calibration pipeline package for MeerKAT.
 
 # Config file location
 from pkg_resources import resource_filename
-conf_dir = resource_filename(__name__, 'conf/pipeline_params')
+param_dir = resource_filename(__name__, 'conf/pipeline_params')
 lsm_dir = resource_filename(__name__, 'conf/sky_models')
+rfi_dir = resource_filename(__name__, 'conf/rfi_masks')
 
 # force module to import pyrap before spead
 # (bug fix)

@@ -14,7 +14,7 @@ from katsdpcal.control import end_transmit
 from katsdpcal.report import make_cal_report
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
-from katsdpcal import conf_dir
+from katsdpcal import param_dir, rfi_dir
 
 import logging
 logger = logging.getLogger(__name__)
@@ -293,16 +293,22 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     if param_file == '':
         if ts.cbf_n_chans == 4096:
             param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
-            param_file = os.path.join(conf_dir,param_filename)
+            param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 4k mode: {0}'.format(param_file,))
+            rfi_filename = 'rfi_mask.pickle'
+            rfi_file = os.path.join(rfi_dir, rfi_filename)
+            logger.info('RFI mask file for 4k mode: {0}'.format(rfi_file,))
         else:
             param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
-            param_file = os.path.join(conf_dir,param_filename)
+            param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 32k mode: {0}'.format(param_file,))
+            rfi_filename = 'rfi_mask32K.pickle'
+            rfi_file = os.path.join(rfi_dir, rfi_filename)
+            logger.info('RFI mask file for 32k mode: {0}'.format(rfi_file,))
     else:
         logger.info('Parameter file: {0}'.format(param_file))
     logger.info('Inputting Telescope State parameters from parameter file.')
-    ts_from_file(ts, param_file)
+    ts_from_file(ts, param_file, rfi_file)
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
