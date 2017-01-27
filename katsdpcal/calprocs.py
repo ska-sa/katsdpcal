@@ -763,6 +763,29 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
     -------
     ksoln : delay, shape(num_pols, num_ants)
     """
+    # OVER THE TOP NOTE:
+    # This solver was written to deal with extreme gains, which can wrap many many times across the
+    # solution window, to the extent that solving for a per-channel per-antenna bandpass, then fitting a
+    # line to the per-antenna bandpass breaks down. It breaks down because the phase unwrapping is unreliable
+    # when the phases (a) wrap so extremely, and (b) are also noisy.
+    # This situation was adressed by first doing a coarse delay fit through an FFT, for each antenna to the
+    # reference antenna. Then the course delay is applied, and a secondary linear phase fit is performed with
+    # the corrected data. With the coarse delays removed there should be little, or minimal wrapping, and the
+    # unwrapping prior to the linear fit usually works.
+    # BUT:
+    # * Things fall over in the FFT if there are NaNs in the data - the NaNs propagate and everything becomes NaNs
+    #   There is a temporary fix for this below, but if there are chunks of NaNs this won't work (see below)
+    # * The coarse delays are calculated relative to the reference antenna. If we happen to choose a reference
+    #   antenna with a small delay relative to most other antennas then coarse fit delays are actually relatively
+    #   small and we don't have the desired effect of removing the wrapping.
+    #   ~~~~~if some of the delays are extreme, then we need to choose a reference antenna that has large delay
+    #   relative to other antennas~~~~~
+    #   Perhaps this could be done by looking through all of the FFT results, grouped by antenna, to find the
+    #   highest set of delays?
+    # * In the future world where not every delay fit needs to deal with extreme delay values, maybe we could 
+    #   separate out the bandpass-linear-phase-fit component of this algorithm, and use just that for delay
+    #   solutions we know won't be too extreme. Then this extreme delay solver could solve for the coarse delay 
+    #   then apply it and call the fine delay bandpass-linear-phase-fit solver.
 
     # -----------------------------------------------------
     # if channel sampling is specified, thin down the data and channel list
@@ -794,12 +817,14 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
         good_pol_data = pol_data[~bad_chan_mask]
         good_chans = chans[~bad_chan_mask]
         # NOTE: This removal of channels is not a proper fix for if there are a lot of NaNs. 
-        # In that case there will be large gaps in the data leaving to what the FFT below sees as phase jumps
-        # This removal of NaN channels is just a temporary fix for the case of a few bad channels, so that the 
-        # NaN's don't propagate and lead to NaNs throughout and NaN delay values
+        #   In that case there will be large gaps in the data leaving to what the FFT below sees as phase jumps
+        #   This removal of NaN channels is just a temporary fix for the case of a few bad channels, so that the
+        #   NaN's don't propagate and lead to NaNs throughout and NaN delay values
 
         # -----------------------------------------------------
         # FT to find visibility space delays
+        # NOTE: This is a bit inefficient at the moment as the FFT for al baselines is calculated but only
+        #  the baselines to the reference antenna are used for the coarse delay
         ft_vis = np.fft.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis),axis=0)
