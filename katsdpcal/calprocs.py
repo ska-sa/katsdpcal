@@ -775,11 +775,8 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
     # BUT:
     # * Things fall over in the FFT if there are NaNs in the data - the NaNs propagate and everything becomes NaNs
     #   There is a temporary fix for this below, but if there are chunks of NaNs this won't work (see below)
-    # * The coarse delays are calculated relative to the reference antenna. If we happen to choose a reference
-    #   antenna with a small delay relative to most other antennas then coarse fit delays are actually relatively
-    #   small and we don't have the desired effect of removing the wrapping.
-    #   ~~~~~if some of the delays are extreme, then we need to choose a reference antenna that has large delay
-    #   relative to other antennas~~~~~
+    # * This algorithm is most effective if the delays are of similar scales. How to ensure this is to choose
+    #   a reference antenna that has high delays on as many baselines as possible.
     #   Perhaps this could be done by looking through all of the FFT results, grouped by antenna, to find the
     #   highest set of delays?
     # * In the future world where not every delay fit needs to deal with extreme delay values, maybe we could 
