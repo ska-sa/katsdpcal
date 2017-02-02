@@ -7,7 +7,7 @@ setup (
     author = "Laura Richter",
     author_email = "laura@ska.ac.za",
     packages = find_packages(),
-    package_data={'': ['conf/pipeline_params/*', 'conf/sky_models/*']},
+    package_data={'': ['conf/*/*']},
     include_package_data = True,
     scripts = [
         "scripts/reduction_script.py",
