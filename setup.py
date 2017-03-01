@@ -4,8 +4,8 @@ from setuptools import setup, find_packages
 setup (
     name = "katsdpcal",
     description = "MeerKAT calibration pipeline",
-    author = "Laura Richter",
-    author_email = "laura@ska.ac.za",
+    maintainer = "Tom Mauch",
+    maintainer_email = "tmauch@ska.ac.za",
     packages = find_packages(),
     package_data={'': ['conf/*/*']},
     include_package_data = True,
