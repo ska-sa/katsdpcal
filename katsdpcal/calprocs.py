@@ -859,9 +859,9 @@ def k_fit(data,corrprod_lookup,chans=None,refant=0,chan_sample=1,**kwargs):
             A = np.array([good_chans, np.ones(len(good_chans))])
             delta_k[i] = np.linalg.lstsq(A.T,bp_phase)[0][0]/(2.*np.pi)
 
-        kdelay.append(np.squeeze(coarse_k + delta_k))
+        kdelay.append(coarse_k + delta_k)
 
-    return np.squeeze(kdelay)
+    return np.atleast_2d(kdelay)
 
 def kcross_fit(data,flags,chans=None,chan_ave=1):
     """
