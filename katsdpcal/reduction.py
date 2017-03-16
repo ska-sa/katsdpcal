@@ -139,11 +139,11 @@ def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
                 soln = calprocs.CalSolution('G', solval, soltime)
 
             if len(soln.values) > 0: solns_to_apply.append(s.interpolate(soln))
-            logger.info('{0} correction to be applied, shape {1}'.format(X,soln.values.shape))
+            logger.info("Loaded solution '{}' from Telescope State".format(soln))
 
         except KeyError:
             # TS doesn't yet contain 'X'
-            logger.info('No {0} correction present'.format(X,))
+            logger.info('No {} solutions found in Telescope State'.format(X))
 
     return solns_to_apply
 
@@ -313,7 +313,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # K solution
             pipeline_logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
             k_soln = s.k_sol(ts.cal_param_k_bchan,ts.cal_param_k_echan)
-            pipeline_logger.info('  - Saving K to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
             # ---------------------------------------
@@ -322,7 +322,7 @@ def pipeline(data, ts, task_name='pipeline'):
             # get K solutions to apply and interpolate it to scan timestamps
             solns_to_apply = get_solns_to_apply(s,ts,['K'],pipeline_logger)
             b_soln = s.b_sol(bp0_h,pre_apply=solns_to_apply)
-            pipeline_logger.info('  - Saving B to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
             ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
 
             # ---------------------------------------
@@ -335,7 +335,7 @@ def pipeline(data, ts, task_name='pipeline'):
             dumps_per_solint = np.ceil(scan_slice.stop-scan_slice.start-1)
             g_solint = dumps_per_solint*dump_period
             g_soln = s.g_sol(g_solint,g0_h,ts.cal_param_g_bchan,ts.cal_param_g_echan,pre_apply=solns_to_apply)
-            pipeline_logger.info('  - Saving G to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v,t in zip(g_soln.values,g_soln.times):
                 ts.add(g_soln.ts_solname,v,ts=t)
@@ -360,7 +360,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info('  - Saving K to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname,k_soln.values,ts=k_soln.times)
 
             # ---------------------------------------
@@ -394,7 +394,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
                 # ---------------------------------------
                 # update TS
-                pipeline_logger.info('  - Saving KCROSS to Telescope State')
+                pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(kcross_soln))
                 ts.add(kcross_soln.ts_solname,kcross_soln.values,ts=kcross_soln.times)
 
                 # ---------------------------------------
@@ -422,7 +422,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info('  - Saving B to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
             ts.add(b_soln.ts_solname,b_soln.values,ts=b_soln.times)
 
             # ---------------------------------------
@@ -445,7 +445,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info('  - Saving G to Telescope State')
+            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v,t in zip(g_soln.values,g_soln.times):
                 ts.add(g_soln.ts_solname,v,ts=t)

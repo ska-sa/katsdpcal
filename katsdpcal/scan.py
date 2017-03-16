@@ -215,7 +215,7 @@ class Scan(object):
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
-        self.logger.info('  - G solution interval: {0} s'.format(solint,))
+        self.logger.info('  - G solution interval: {} s ({} dumps)'.format(solint, dumps_per_solint))
         # determine channel range for fit
         if echan == 0: echan = None
         chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]

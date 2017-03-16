@@ -8,6 +8,7 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 import numpy as np
 import copy
 import katpoint
+import time
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1368,12 +1369,18 @@ def fake_vis(nants=7,gains=None,noise=None): #   (self,algorithm,delta=1e-3,nois
 #--------------------------------------------------------------------------------------------------
 
 class CalSolution(object):
-
+    """Calibration solution store."""
     def __init__(self, soltype, solvalues, soltimes):
         self.soltype = soltype
         self.values = solvalues
         self.times = soltimes
-        self.ts_solname =  'cal_product_{0}'.format(soltype,)
+        self.ts_solname = 'cal_product_{}'.format(soltype)
+
+    def __str__(self):
+        """String representation of calibration solution to help identify it."""
+        # Obtain human-friendly timestamp representing the centre of solutions
+        timestamp = time.strftime("%H:%M:%S", time.gmtime(np.mean(self.times)))
+        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 #--------------------------------------------------------------------------------------------------
 #--- General helper functions
