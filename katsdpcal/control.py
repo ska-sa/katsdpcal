@@ -25,19 +25,20 @@ class TaskLoggingAdapter(logging.LoggerAdapter):
 # Accumulator
 # ---------------------------------------------------------------------------------------
 
-def init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate):
+def init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate):
 
     class accumulator_control(control_task):
         """
         Task (Process or Thread) which accumutates data from SPEAD into numpy arrays
         """
 
-        def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate):
+        def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate):
             control_task.__init__(self)
 
             self.buffers = buffers
             self.telstate = telstate
             self.l0_endpoint = l0_endpoint
+            self.l0_interface_address = l0_interface_address
             self.scan_accumulator_conditions = scan_accumulator_conditions
             self.num_buffers = len(buffers)
 
@@ -73,7 +74,11 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
             rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host, max_size=9172)
+            if self.l0_interface_address is not None:
+                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port, max_size=9172,
+                                  interface_address=self.l0_interface_address)
+            else:
+                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host, max_size=9172)
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
@@ -320,7 +325,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             return array_index
 
-    return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, telstate)
+    return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate)
 
 # ---------------------------------------------------------------------------------------
 # Pipeline

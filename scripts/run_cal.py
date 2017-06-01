@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import manhole
+import netifaces
 
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
@@ -39,6 +40,12 @@ def log_dict(dictionary,ident='',braces=1):
         else:
             logger.info('{0}{1} = {2}'.format(ident,key,value))
 
+def get_interface_address(interface):
+    if interface is None:
+        return None
+    else:
+        return netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+
 def comma_list(type_):
     """Return a function which splits a string on commas and converts each element to
     `type_`."""
@@ -59,6 +66,7 @@ def parse_opts():
     parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the L0 data stream. Default from MC config')
     # also need bls ordering
     parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 spead stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument('--l0-spectral-interface', help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
     parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
     parser.add_argument('--l1_level', default=0, help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
@@ -217,7 +225,7 @@ def kill_shutdown():
     os.kill(os.getpid(), signal.SIGKILL)
 
 def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
-           l0_endpoint=':7200', l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
+           l0_endpoint=':7200', l0_interface=None, l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
            mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
@@ -245,6 +253,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
         True for autocorrelations included in the data, False for cross-correlations only
     l0_endpoint: endpoint
         Endpoint to listen to for L0 stream, default: ':7200'
+    l0_interface: str
+        Name of interface to subscribe to for L0, or None to let the OS decide
     l1_endpoint: endpoint
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
     l1_rate : float
@@ -359,7 +369,9 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     # get subarray ID
     subarray_id = ts['subarray_product_id'] if ts.has_key('subarray_product_id') else 'unknown_subarray'
 
-    logger.info('Receiving L0 data on port {0}'.format(l0_endpoint.port,))
+    logger.info('Receiving L0 data from {0} via {1}'.format(
+        l0_endpoint, 'default interface' if l0_interface is None else l0_interface))
+    l0_interface_address = get_interface_address(l0_interface)
     while not forced_shutdown:
         observation_log = '{0}_pipeline.log'.format(int(time.time()),)
         obs_log = setup_observation_logger(observation_log,log_path)
@@ -371,7 +383,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
         scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
 
         # Set up the accumulator
-        accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, ts)
+        accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, ts)
         # Set up the pipelines (one per buffer)
         pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
             l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
@@ -505,6 +517,7 @@ if __name__ == '__main__':
     run_threads(opts.telstate,
            cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask, 
            num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
-           l0_endpoint=opts.l0_spectral_spead[0], l1_endpoint=opts.l1_spectral_spead,
+           l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
+           l1_endpoint=opts.l1_spectral_spead,
            l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
            param_file=opts.parameter_file, report_path=opts.report_path, log_path=log_path, full_log=log_name)
