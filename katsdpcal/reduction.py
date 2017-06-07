@@ -230,15 +230,8 @@ def pipeline(data, ts, task_name='pipeline'):
         # start time, end time
         t0 = data['times'][scan_slice.start]
         t1 = data['times'][scan_slice.stop-1]
-
-        # if we only have one or two timestamps in the scan, ignore it
-        #  (a single timestamp can happen when there is no slew between tracks so we catch the first dump of the next track)
         n_times = scan_slice.stop - scan_slice.start
-        if n_times < 3: continue
 
-        # extract scan info from the TS
-        # add the dump period here to account for scan start and activity change being closely timed
-        scan_state = ts.get_range(activity_key,et=t0+dump_period)[0][0]
         #  target string contains: 'target name, tags, RA, DEC'
         target = ts.get_range(target_key,et=t0)[0][0]
         target_list = target.split(',')
@@ -255,6 +248,12 @@ def pipeline(data, ts, task_name='pipeline'):
             pipeline_logger.info('  Tags:   None')
             continue
         pipeline_logger.info('  Tags:       {0}'.format(taglist,))
+
+        # if we only have one or two timestamps in the scan, ignore it
+        #  (a single timestamp can happen when there is no slew between tracks so we catch the first dump of the next track)
+        if n_times < 3:
+            pipeline_logger.info('Scan too short (only 1 or 2 timestamps) - ignored')
+            continue
 
         # ---------------------------------------
         # set up scan
