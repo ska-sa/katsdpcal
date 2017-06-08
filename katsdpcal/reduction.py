@@ -62,7 +62,7 @@ def get_tracks(data, ts, dump_period):
     ------
     data : dict
         Data buffer
-    ts : :class:`katsdptelstate.TelescopeState` object
+    ts : :class:`katsdptelstate.TelescopeState`
         The telescope state associated with this pipeline
     dump_period : float
         Dump period in seconds
@@ -88,7 +88,7 @@ def get_tracks(data, ts, dump_period):
     # Convert sequence of flags into segments and return the ones that are True
     all_tracking = CategoricalData(tracking, range(num_dumps + 1))
     all_tracking.remove_repeats()
-    return [segment for segment, track in all_tracking.segments() if track]
+    return [segment for (segment, track) in all_tracking.segments() if track]
 
 
 def get_solns_to_apply(s,ts,sol_list,logger,time_range=[]):
