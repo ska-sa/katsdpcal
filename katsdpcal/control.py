@@ -73,12 +73,18 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
-            rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+            rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
+                             max_heaps=2, ring_heaps=1)
+            # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
+            # Then there are per-channel weights (4 bytes each).
+            heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
+            rx.set_memory_allocator(spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4))
+            rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
             if self.l0_interface_address is not None:
-                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port, max_size=9172,
+                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
                                   interface_address=self.l0_interface_address)
             else:
-                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host, max_size=9172)
+                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
