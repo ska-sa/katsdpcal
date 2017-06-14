@@ -9,7 +9,7 @@ import netifaces
 
 from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint
-from katsdpservices import ArgumentParser
+import katsdpservices
 
 from katsdpcal.control import init_accumulator_control, init_pipeline_control
 from katsdpcal.control import end_transmit
@@ -56,7 +56,7 @@ def comma_list(type_):
     return convert
 
 def parse_opts():
-    parser = ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
+    parser = katsdpservices.ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
     parser.add_argument('--buffer-maxsize', type=float, help='The amount of memory (in bytes) to allocate to each buffer.')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
