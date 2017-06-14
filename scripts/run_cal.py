@@ -8,7 +8,8 @@ import manhole
 import netifaces
 
 from katsdptelstate.telescope_state import TelescopeState
-from katsdptelstate import endpoint, ArgumentParser
+from katsdptelstate import endpoint
+import katsdpservices
 
 from katsdpcal.control import init_accumulator_control, init_pipeline_control
 from katsdpcal.control import end_transmit
@@ -55,7 +56,7 @@ def comma_list(type_):
     return convert
 
 def parse_opts():
-    parser = ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
+    parser = katsdpservices.ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
     parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
     parser.add_argument('--buffer-maxsize', type=float, help='The amount of memory (in bytes) to allocate to each buffer.')
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
@@ -90,28 +91,17 @@ def setup_logger(log_name,log_path='.'):
     log_name : str
         name of log file
     """
-    log_path = os.path.abspath(log_path)
+    katsdpservices.setup_logging()
 
     # logging to file
-    logging.basicConfig(filename='{0}/{1}'.format(log_path,log_name),
-                        format='%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',)
-    logging.Formatter.converter = time.gmtime
-    logger.setLevel(logging.INFO)
+    log_path = os.path.abspath(log_path)
+    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
+    formatter.datefmt = '%Y-%m-%d %H:%M:%S'
+    formatter.converter = time.gmtime
 
-    # logging to stdout
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    # set format for console use
-    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ - %(name)s - %(levelname)s - %(message)s')
-    formatter.datefmt='%Y-%m-%d %H:%M:%S'
-    formatter.converter = time.gmtime    
-    # tell the handler to use this format
-    console.setFormatter(formatter)
-    # add the handler to the root logger
-    logging.getLogger('').addHandler(console)
-    # set log level to INFO for katsdpcal module
-    #logging.getLogger('katsdpcal').setLevel(logging.INFO)
+    handler = logging.FileHandler('{0}/{1}'.format(log_path,log_name))
+    handler.setFormatter(formatter)
+    logging.getLogger('').addHandler(handler)
 
 def setup_observation_logger(log_name,log_path='.'):
     """
