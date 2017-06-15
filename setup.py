@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
-setup (
-    name = "katsdpcal",
-    description = "MeerKAT calibration pipeline",
-    maintainer = "Tom Mauch",
-    maintainer_email = "tmauch@ska.ac.za",
-    packages = find_packages(),
+setup(
+    name="katsdpcal",
+    description="MeerKAT calibration pipeline",
+    maintainer="Tom Mauch",
+    maintainer_email="tmauch@ska.ac.za",
+    packages=find_packages(),
     package_data={'': ['conf/*/*']},
-    include_package_data = True,
-    scripts = [
+    include_package_data=True,
+    scripts=[
         "scripts/reduction_script.py",
         "scripts/run_cal.py",
         "scripts/run_katsdpcal_sim.py",
@@ -27,9 +27,9 @@ setup (
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Astronomy",
     ],
-    platforms = [ "OS Independent" ],
+    platforms=["OS Independent"],
     keywords="kat kat7 meerkat ska",
-    zip_safe = False,
-    setup_requires = ["katversion"],
-    use_katversion = True
+    zip_safe=False,
+    setup_requires=["katversion"],
+    use_katversion=True
 )
