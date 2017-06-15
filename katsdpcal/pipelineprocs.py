@@ -75,7 +75,8 @@ def ts_from_file(ts, param_filename, rfi_filename=None):
     * Parameter file uses hashes (#) for comments
     * Missing parameters are set to empty strings ''
     """
-    param_list = np.genfromtxt(param_filename, delimiter=':', dtype=np.str, comments='#', missing_values='')
+    param_list = np.genfromtxt(param_filename, delimiter=':', dtype=np.str,
+                               comments='#', missing_values='')
     param_dict = {}
     for key, value in param_list:
         try:
@@ -146,7 +147,8 @@ def setup_ts(ts, logger=logger):
                 ts.delete('cal_preferred_refants')
                 ts.add('cal_preferred_refants', ts.cal_antlist)
             else:
-                logger.info('Preferred antenna list reduced to only include antennas in antenna mask:')
+                logger.info(
+                    'Preferred antenna list reduced to only include antennas in antenna mask:')
                 ts.delete('cal_preferred_refants')
                 ts.add('cal_preferred_refants', preferred)
             logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
@@ -159,7 +161,8 @@ def setup_ts(ts, logger=logger):
         if ts.cal_refant not in ts.cal_antlist:
             ts.delete('cal_refant')
             ts.add('cal_refant', ts.cal_preferred_refants[0])
-            logger.info('Requested reference antenna not present in subarray. Change to reference antenna: {0}'.format(ts.cal_refant,))
+            logger.info('Requested reference antenna not present in subarray. '
+                        'Change to reference antenna: {0}'.format(ts.cal_refant,))
 
 
 def csv_to_list_ts(ts, keyname):
@@ -198,7 +201,8 @@ def get_model(name, lsm_dir_list=[]):
     # default to check the current directory first
     lsm_dir_list.append('.')
 
-    # iterate through the list from the end so the model from the earliest directory in the list is used
+    # iterate through the list from the end so the model from the earliest
+    # directory in the list is used
     model_file = []
     for lsm_dir in reversed(lsm_dir_list):
         model_file_list = glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
@@ -208,14 +212,18 @@ def get_model(name, lsm_dir_list=[]):
         if len(model_file_list) == 1:
             model_file = model_file_list[0]
         elif len(model_file_list) > 1:
-            # if there are more than one model files for the source IN THE SAME DIRECTORY, raise an error
-            raise ValueError('More than one possible sky model file for {0}: {1}'.format(name, model_file_list))
+            # if there are more than one model files for the source IN THE SAME
+            # DIRECTORY, raise an error
+            raise ValueError(
+                'More than one possible sky model file for {0}: {1}'.format(name, model_file_list))
 
     # if there is not model file, return model components as None
     if model_file == []:
         model_components = None
     else:
-        model_dtype = [('tag','S4'),('name','S16'),('RA','S24'),('dRA','S8'),('DEC','S24'),('dDEC','S8'),
-        ('a0','f16'),('a1','f16'),('a2','f16'),('a3','f16'),('fq','f16'),('fu','f16'),('fv','f16')]
+        model_dtype = [('tag', 'S4'), ('name', 'S16'),
+                       ('RA', 'S24'), ('dRA', 'S8'), ('DEC', 'S24'), ('dDEC', 'S8'),
+                       ('a0', 'f16'), ('a1', 'f16'), ('a2', 'f16'), ('a3', 'f16'),
+                       ('fq', 'f16'), ('fu', 'f16'), ('fv', 'f16')]
         model_components = np.genfromtxt(model_file, delimiter=',', dtype=model_dtype)
     return model_components, model_file
