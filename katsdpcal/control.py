@@ -5,13 +5,12 @@ from . import recv
 from .reduction import pipeline
 from . import calprocs
 
-from katsdptelstate.telescope_state import TelescopeState
-
 import numpy as np
 import time
 
 import logging
 logger = logging.getLogger(__name__)
+
 
 class TaskLoggingAdapter(logging.LoggerAdapter):
     """
@@ -21,18 +20,22 @@ class TaskLoggingAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
 
+
 # ---------------------------------------------------------------------------------------
 # Accumulator
 # ---------------------------------------------------------------------------------------
 
-def init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate):
+def init_accumulator_control(control_method, control_task, buffers, buffer_shape,
+                             scan_accumulator_conditions, l0_endpoint, l0_interface_address,
+                             telstate):
 
     class accumulator_control(control_task):
         """
         Task (Process or Thread) which accumutates data from SPEAD into numpy arrays
         """
 
-        def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate):
+        def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions,
+                     l0_endpoint, l0_interface_address, telstate):
             control_task.__init__(self)
 
             self.buffers = buffers
@@ -69,7 +72,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             at random time.
             """
             # if we are usig multiprocessing, view ctypes array in numpy format
-            if 'multiprocessing' in str(control_method): self.buffers_to_numpy()
+            if 'multiprocessing' in str(control_method):
+                self.buffers_to_numpy()
 
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
@@ -88,28 +92,33 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
-            current_buffer=-1
+            current_buffer = -1
             while not self._stop.is_set():
-                #Increment the current buffer
-                current_buffer = (current_buffer+1)%self.num_buffers
+                # Increment the current buffer
+                current_buffer = (current_buffer + 1) % self.num_buffers
                 # ------------------------------------------------------------
-                # Loop through the buffers and send data to pipeline task when accumulation terminate conditions are met.
+                # Loop through the buffers and send data to pipeline task when
+                # accumulation terminate conditions are met.
 
                 self.scan_accumulator_conditions[current_buffer].acquire()
-                self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s' %(current_buffer, self.name,))
+                self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s',
+                                             current_buffer, self.name)
 
                 # accumulate data scan by scan into buffer arrays
-                self.accumulator_logger.info('max buffer length %d' %(self.max_length,))
-                self.accumulator_logger.info('accumulating into buffer %d' %(current_buffer,))
+                self.accumulator_logger.info('max buffer length %d', self.max_length)
+                self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
                 max_ind = self.accumulate(rx, current_buffer)
                 self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                 # awaken pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].notify()
-                self.accumulator_logger.info('scan_accumulator_condition %d notification sent by %s' %(current_buffer, self.name,))
+                self.accumulator_logger.info(
+                    'scan_accumulator_condition %d notification sent by %s',
+                    current_buffer, self.name)
                 # release pipeline task that was waiting for condition lock
                 self.scan_accumulator_conditions[current_buffer].release()
-                self.accumulator_logger.info('scan_accumulator_condition %d released by %s' %(current_buffer, self.name,))
+                self.accumulator_logger.info(
+                    'scan_accumulator_condition %d released by %s', current_buffer, self.name)
 
                 time.sleep(0.2)
 
@@ -127,7 +136,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             # set stop event
             self._stop.set()
             # stop SPEAD stream receival manually if the observation is still running
-            if not self.obs_finished(): self.capture_stop()
+            if not self.obs_finished():
+                self.capture_stop()
 
         def obs_finished(self):
             return self._obsend.is_set()
@@ -141,7 +151,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             """
             self.accumulator_logger.info('stop SPEAD receiver')
             # send the stop only to the local receiver
-            end_transmit('127.0.0.1',self.l0_endpoint.port)
+            end_transmit('127.0.0.1', self.l0_endpoint.port)
 
         def buffers_to_numpy(self):
             """
@@ -149,25 +159,30 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             """
 
             for current_buffer in self.buffers:
-                current_buffer['vis'] = np.frombuffer(current_buffer['vis'], dtype=np.float32).view(np.complex64)
+                current_buffer['vis'] = np.frombuffer(current_buffer['vis'],
+                                                      dtype=np.float32).view(np.complex64)
                 current_buffer['vis'].shape = self.buffer_shape
                 current_buffer['flags'] = np.frombuffer(current_buffer['flags'], dtype=np.uint8)
                 current_buffer['flags'].shape = self.buffer_shape
-                current_buffer['weights'] = np.frombuffer(current_buffer['weights'], dtype=np.float32)
+                current_buffer['weights'] = np.frombuffer(current_buffer['weights'],
+                                                          dtype=np.float32)
                 current_buffer['weights'].shape = self.buffer_shape
                 current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
-                current_buffer['max_index'] = np.frombuffer(current_buffer['max_index'], dtype=np.int32)
+                current_buffer['max_index'] = np.frombuffer(current_buffer['max_index'],
+                                                            dtype=np.int32)
 
         def set_ordering_parameters(self):
-            # determine re-ordering necessary to convert from supplied bls ordering to desired bls ordering
+            # determine re-ordering necessary to convert from supplied bls
+            # ordering to desired bls ordering
             antlist = self.telstate.cal_antlist
-            self.ordering, bls_order, pol_order = calprocs.get_reordering(antlist,self.telstate.sdp_l0_bls_ordering)
+            self.ordering, bls_order, pol_order = \
+                calprocs.get_reordering(antlist, self.telstate.sdp_l0_bls_ordering)
             # determine lookup list for baselines
             bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
             # save these to the TS for use in the pipeline/elsewhere
-            self.telstate.add('cal_bls_ordering',bls_order)
-            self.telstate.add('cal_pol_ordering',pol_order)
-            self.telstate.add('cal_bls_lookup',bls_lookup)
+            self.telstate.add('cal_bls_ordering', bls_order)
+            self.telstate.add('cal_pol_ordering', pol_order)
+            self.telstate.add('cal_bls_lookup', bls_lookup)
 
         def accumulate(self, rx, buffer_index):
             """
@@ -213,22 +228,27 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     self.accumulator_logger.info('==== empty stop packet received ====')
                     continue
 
-                # get sync time from TS, if it is present (if it isn't present, don't process this dump further)
-                if cbf_sync_time == None:
-                    if self.telstate.has_key('cbf_sync_time'):
+                # get sync time from TS, if it is present (if it isn't present,
+                # don't process this dump further)
+                if cbf_sync_time is None:
+                    if 'cbf_sync_time' in self.telstate:
                         cbf_sync_time = self.telstate.cbf_sync_time
                         self.accumulator_logger.info(' - set cbf_sync_time')
                     else:
-                        self.accumulator_logger.warning('cbf_sync_time absent from telescope state - ignoring dump')
+                        self.accumulator_logger.warning(
+                            'cbf_sync_time absent from telescope state - ignoring dump')
                         continue
 
                 # get activity and target tag from TS
                 data_ts = ig['timestamp'].value + cbf_sync_time
                 activity_full = []
-                if self.telstate.has_key(activity_key):
-                    activity_full = self.telstate.get_range(activity_key,et=data_ts,include_previous=True)
+                if activity_key in self.telstate:
+                    activity_full = self.telstate.get_range(
+                        activity_key, et=data_ts, include_previous=True)
                 if not activity_full:
-                    self.accumulator_logger.info('no activity recorded for reference antenna {0} - ignoring dump'.format(self.telstate.cal_refant,))
+                    self.accumulator_logger.info(
+                        'no activity recorded for reference antenna {0} - ignoring dump'.format(
+                            self.telstate.cal_refant,))
                     continue
                 activity, activity_time = activity_full[0]
 
@@ -237,55 +257,74 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     unsync_start_time = ig['timestamp'].value
                     prev_activity_time = activity_time
 
-                    # when data starts to flow, set the baseline ordering parameters for re-ordering the data
+                    # when data starts to flow, set the baseline ordering
+                    # parameters for re-ordering the data
                     self.set_ordering_parameters()
                     self.accumulator_logger.info(' - set pipeline data ordering parameters')
 
                     self.accumulator_logger.info('accumulating data from targets:')
 
                 # get target time from TS, if it is present (if it isn't present, set to unknown)
-                if self.telstate.has_key(target_key):
-                    target = self.telstate.get_range(target_key,et=data_ts,include_previous=True)[0][0]
-                    if target == '': target = 'unknown'
+                if target_key in self.telstate:
+                    target = self.telstate.get_range(target_key, et=data_ts,
+                                                     include_previous=True)[0][0]
+                    if target == '':
+                        target = 'unknown'
                 else:
-                    self.accumulator_logger.warning('target description {0} absent from telescope state'.format(target_key))
+                    self.accumulator_logger.warning(
+                        'target description {0} absent from telescope state'.format(target_key))
                     target = 'unknown'
                 # extract name and tags from target description string
                 target_split = target.split(',')
                 target_name = target_split[0]
-                target_tags = target_split[1] if len(target_split)>1 else 'unknown'
+                target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
                 if (target_name != prev_target_name) or start_flag:
                     # update source list if necessary
-                    target_list = self.telstate.get_range('cal_info_sources',st=0,return_format='recarray')['value'] if self.telstate.has_key('cal_info_sources') else []
-                    if not target_name in target_list: self.telstate.add('cal_info_sources',target_name,ts=data_ts)
+                    target_list = self.telstate.get_range(
+                        'cal_info_sources', st=0, return_format='recarray')['value'] \
+                        if 'cal_info_sources' in self.telstate else []
+                    if target_name not in target_list:
+                        self.telstate.add('cal_info_sources', target_name, ts=data_ts)
 
-                # print name of target and activity type, if activity has changed or start of accumulator
+                # print name of target and activity type, if activity has
+                # changed or start of accumulator
                 if start_flag or (activity_time != prev_activity_time):
-                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name,activity))
+                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name, activity))
                 start_flag = False
 
                 # increment the index indicating the position of the data in the buffer
                 array_index += 1
                 # reshape data and put into relevent arrays
-                data_buffer['vis'][array_index,:,:,:] = ig['correlator_data'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
-                data_buffer['flags'][array_index,:,:,:] = ig['flags'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                data_buffer['vis'][array_index, :, :, :] = \
+                    ig['correlator_data'].value[:, self.ordering].reshape(
+                        [self.nchan, self.npol, self.nbl])
+                data_buffer['flags'][array_index, :, :, :] = \
+                    ig['flags'].value[:, self.ordering].reshape([self.nchan, self.npol, self.nbl])
                 # if we are not receiving weights in the SPEAD stream, fake them
                 if 'weights' in ig.keys():
-                    data_buffer['weights'][array_index,:,:,:] = ig['weights'].value[:,self.ordering].reshape([self.nchan,self.npol,self.nbl])
+                    data_buffer['weights'][array_index, :, :, :] = \
+                        ig['weights'].value[:, self.ordering].reshape(
+                            [self.nchan, self.npol, self.nbl])
                 else:
-                    data_buffer['weights'][array_index,:,:,:] = np.empty([self.nchan,self.npol,self.nbl],dtype=np.float32)
+                    data_buffer['weights'][array_index, :, :, :] = \
+                        np.empty([self.nchan, self.npol, self.nbl], dtype=np.float32)
                 data_buffer['times'][array_index] = data_ts
 
                 # break if activity has changed (i.e. the activity time has changed)
-                #   unless previous scan was a target, in which case accumulate subsequent gain scan too
+                #   unless previous scan was a target, in which case accumulate
+                #   subsequent gain scan too
                 # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
                 ignore_states = ['slew', 'stop', 'unknown']
-                if (activity_time != prev_activity_time) and not np.any([ignore in prev_activity for ignore in ignore_states]) and ('unknown' not in target_tags) and ('target' not in prev_target_tags):
+                if (activity_time != prev_activity_time) \
+                        and not np.any([ignore in prev_activity for ignore in ignore_states]) \
+                        and ('unknown' not in target_tags) \
+                        and ('target' not in prev_target_tags):
                     self.accumulator_logger.info('Accumulation break - transition')
                     obs_end_flag = False
                     break
                 # beamformer special case
-                if (activity_time != prev_activity_time) and ('single_accumulation' in prev_target_tags):
+                if (activity_time != prev_activity_time) \
+                        and ('single_accumulation' in prev_target_tags):
                     self.accumulator_logger.info('Accumulation break - single scan accumulation')
                     obs_end_flag = False
                     break
@@ -293,7 +332,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # this is a temporary mock up of a natural break in the data stream
                 # will ultimately be provided by some sort of sensor
                 duration = ig['timestamp'].value - unsync_start_time
-                if duration>2000000:
+                if duration > 2000000:
                     self.accumulator_logger.info('Accumulate break due to duration')
                     obs_end_flag = False
                     break
@@ -310,13 +349,13 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             # if we exited the loop because it was the end of the SPEAD transmission
             if obs_end_flag:
-                if data_ts != None:
+                if data_ts is not None:
                     end_time = data_ts
                 else:
                     # no data_ts variable because no data has flowed
                     self.accumulator_logger.info(' --- no data flowed ---')
                     end_time = time.time()
-                self.telstate.add('cal_obs_end_time',end_time,ts=end_time)
+                self.telstate.add('cal_obs_end_time', end_time, ts=end_time)
                 self.accumulator_logger.info('Observation ended')
                 self._obsend.set()
 
@@ -331,13 +370,18 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             return array_index
 
-    return accumulator_control(control_method, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, telstate)
+    return accumulator_control(control_method, buffers, buffer_shape,
+                               scan_accumulator_conditions, l0_endpoint, l0_interface_address,
+                               telstate)
+
 
 # ---------------------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(control_method, control_task, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, \
+def init_pipeline_control(
+        control_method, control_task, data, data_shape,
+        scan_accumulator_condition, pipenum, l1_endpoint,
         l1_level, l1_rate, telstate):
 
     class pipeline_control(control_task):
@@ -345,11 +389,12 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
         Task (Process or Thread) which runs pipeline
         """
 
-        def __init__(self, control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_level, l1_rate, telstate):
+        def __init__(self, control_method, data, data_shape, scan_accumulator_condition,
+                     pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
             self.scan_accumulator_condition = scan_accumulator_condition
-            self.name = 'Pipeline_'+str(pipenum)
+            self.name = 'Pipeline_' + str(pipenum)
             self._stop = control_method.Event()
             self.telstate = telstate
             self.data_shape = data_shape
@@ -368,28 +413,30 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             # run until stop is set
             while not self._stop.is_set():
                 # acquire condition on data
-                self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
+                self.pipeline_logger.info('scan_accumulator_condition acquire by %s', self.name)
                 self.scan_accumulator_condition.acquire()
 
                 # release lock and wait for notify from accumulator
-                self.pipeline_logger.info('scan_accumulator_condition release and wait by %s' %(self.name,))
+                self.pipeline_logger.info(
+                    'scan_accumulator_condition release and wait by %s', self.name)
                 self.scan_accumulator_condition.wait()
 
                 if not self._stop.is_set():
                     # after notify from accumulator, condition lock re-aquired
-                    self.pipeline_logger.info('scan_accumulator_condition acquire by %s' %(self.name,))
+                    self.pipeline_logger.info('scan_accumulator_condition acquire by %s', self.name)
                     # run the pipeline
                     self.pipeline_logger.info('Pipeline run start on accumulated data')
 
                     # if we are usig multiprocessing, view ctypes array in numpy format
-                    if 'multiprocessing' in str(control_method): self.data_to_numpy()
+                    if 'multiprocessing' in str(control_method):
+                        self.data_to_numpy()
 
                     # run the pipeline
                     self.run_pipeline()
 
                 # release condition after pipeline run finished
                 self.scan_accumulator_condition.release()
-                self.pipeline_logger.info('scan_accumulator_condition release by %s' %(self.name,))
+                self.pipeline_logger.info('scan_accumulator_condition release by %s', self.name)
 
         def stop(self):
             self._stop.set()
@@ -416,16 +463,19 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
 
         def run_pipeline(self):
             # run pipeline calibration, if more than zero timestamps accumulated
-            target_slices = pipeline(self.data,self.telstate,task_name=self.name) if (self.data['max_index'][0] > 0) else []
+            target_slices = pipeline(self.data, self.telstate, task_name=self.name) \
+                if (self.data['max_index'][0] > 0) else []
 
             # send data to L1 SPEAD if necessary
             if self.l1_level != 0:
                 config = send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
-                tx = send.UdpStream(spead2.ThreadPool(),self.l1_endpoint.host,self.l1_endpoint.port,config)
+                tx = send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
+                                    self.l1_endpoint.port, config)
                 self.pipeline_logger.info('   Transmit L1 data')
                 # for streaming all of the data (not target only),
                 # use the highest index in the buffer that is filled with data
-                transmit_slices = [slice(0,self.data['max_index'][0]+1)] if self.l1_level == 2 else target_slices
+                transmit_slices = [slice(0, self.data['max_index'][0] + 1)] \
+                    if self.l1_level == 2 else target_slices
                 self.data_to_SPEAD(transmit_slices, tx)
                 self.pipeline_logger.info('   End transmit of L1 data')
 
@@ -442,14 +492,14 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
             ig = send.ItemGroup(flavour=flavour)
             # set up item group with items
             ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                 shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
+                        shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
             ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                 shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+                        shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
             # for now, just transmit flags as placeholder for weights
             ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                 shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+                        shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                 shape=(), dtype=None, format=[('f', 64)])
+                        shape=(), dtype=None, format=[('f', 64)])
 
             # transmit data
             for data_slice in target_slices:
@@ -461,7 +511,7 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                 scan_times = self.data['times'][data_slice]
 
                 # transmit data timestamp by timestamp
-                for i in range(len(scan_times)): # time axis
+                for i in range(len(scan_times)):  # time axis
                     # transmit timestamps, vis, flags and weights
                     ig['correlator_data'].value = scan_vis[i]
                     ig['flags'].value = scan_flags[i]
@@ -469,22 +519,27 @@ def init_pipeline_control(control_method, control_task, data, data_shape, scan_a
                     ig['timestamp'].value = scan_times[i]
                     tx.send_heap(ig.get_heap())
 
-    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition, pipenum, l1_endpoint, l1_level, l1_rate, telstate)
+    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition,
+                            pipenum, l1_endpoint, l1_level, l1_rate, telstate)
 
 # ---------------------------------------------------------------------------------------
 # SPEAD helper functions
 # ---------------------------------------------------------------------------------------
 
-def end_transmit(host,port):
+
+def end_transmit(host, port):
     """
     Send stop packet to spead stream tx
 
     Parameters
     ----------
-    spead_endpoint : endpoint to transmit to
+    host : str
+        host to transmit to
+    port : int
+        port to transmit to
     """
     config = send.StreamConfig(max_packet_size=8972)
-    tx = send.UdpStream(spead2.ThreadPool(),host,port,config)
+    tx = send.UdpStream(spead2.ThreadPool(), host, port, config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
     heap = send.Heap(flavour)
