@@ -1,10 +1,6 @@
-
 import os
-import shutil
 
 import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 from . import plotting
 
@@ -15,49 +11,56 @@ from docutils.core import publish_file
 
 import matplotlib.pylab as plt
 
-#--------------------------------------------------------------------------------------------------
-#--- CLASS :  rstReport
-#--------------------------------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
+# --------------------------------------------------------------------------------------------------
+# --- CLASS :  rstReport
+# --------------------------------------------------------------------------------------------------
 
 class rstReport(file):
     """
     RST style report
     """
 
-    def write_heading(self,heading,symbol):
+    def write_heading(self, heading, symbol):
         heading_len = len(heading)
-        self.writeln(symbol*heading_len)
+        self.writeln(symbol * heading_len)
         self.writeln(heading)
-        self.writeln(symbol*heading_len)
+        self.writeln(symbol * heading_len)
         self.write('\n')
 
-    def write_heading_0(self,heading):
-        self.write_heading(heading,'#')
+    def write_heading_0(self, heading):
+        self.write_heading(heading, '#')
 
-    def write_heading_1(self,heading):
-        self.write_heading(heading,'*')
+    def write_heading_1(self, heading):
+        self.write_heading(heading, '*')
 
-    def writeln(self,line=None):
-        if line is not None: self.write(line)
+    def writeln(self, line=None):
+        if line is not None:
+            self.write(line)
         self.write('\n')
 
-#--------------------------------------------------------------------------------------------------
-#--- FUNCTION :  Report writing functions
-#--------------------------------------------------------------------------------------------------
 
-def insert_fig(report,fig,name=None):
+# --------------------------------------------------------------------------------------------------
+# --- FUNCTION :  Report writing functions
+# --------------------------------------------------------------------------------------------------
+
+def insert_fig(report, fig, name=None):
     """
     Insert matplotlib figure into report
-    
+
     Parameters
     ----------
-    report : open report file to write to
-    fig    : matplitlib figure 
+    report : file-like
+        open report file to write to
+    fig : matplotlib figure
     """
-    if (name == None):
+    if name is None:
         name = str(fig)
     figname = "{}.png".format(name,)
-    fig.savefig(figname,bbox_inches='tight')
+    fig.savefig(figname, bbox_inches='tight')
     # closing the plot is necessary to relase the memory
     #  (this is a pylab issue)
     plt.close()
@@ -70,154 +73,185 @@ def insert_fig(report,fig,name=None):
     report.writeln(fig_text)
     report.writeln()
 
-def write_bullet_if_present(report,ts,var_text,var_name,transform=None):
+
+def write_bullet_if_present(report, ts, var_text, var_name, transform=None):
     """
     Write bullet point, if TescopeState key is present
 
     Parameters
     ----------
-    report : report file to write to
-    ts     : telescope state
-    var_text : bullet point description, string
-    var_name : telescope state key, string
-    transform : transform for applying to TelescopeState value before reporting, optional
+    report : file-like
+        report file to write to
+    ts : :class:`katsdptelstate.TelescopeState`
+        telescope state
+    var_text : str
+        bullet point description
+    var_name : str
+        telescope state key
+    transform : callable, optional
+        transform for applying to TelescopeState value before reporting
     """
-    ts_value = ts[var_name] if ts.has_key(var_name) else 'unknown'
+    ts_value = ts[var_name] if var_name in ts else 'unknown'
     if transform is not None:
         ts_value = transform(ts_value)
-    report.writeln('* {0}:  {1}'.format(var_text,ts_value))
+    report.writeln('* {0}:  {1}'.format(var_text, ts_value))
 
-def write_summary(report,ts,st=None,et=None):
+
+def write_summary(report, ts, st=None, et=None):
     """
     Write observation summary information to report
 
     Parameters
     ----------
-    report : report file to write to
-    ts     : telescope state
-    st     : start time for reporting parameters, seconds, float, optional
-    et     : end time for reporting parameters, seconds, float, optional
+    report : file-like
+        report file to write to
+    ts : :class:`katsdptelstate.TelescopeState`
+        telescope state
+    st : float, optional
+        start time for reporting parameters, seconds
+    et : float, optional
+        end time for reporting parameters, seconds
     """
     # write RST style bulletted list
-    report.writeln('* {0}:  {1}'.format('Start time',time.strftime("%x %X",time.gmtime(st))))
+    report.writeln('* {0}:  {1}'.format('Start time', time.strftime("%x %X", time.gmtime(st))))
 
     # telescope state values
-    write_bullet_if_present(report,ts,'Int time','sdp_l0_int_time')
-    write_bullet_if_present(report,ts,'Channels','cbf_n_chans')
-    write_bullet_if_present(report,ts,'Polarisation products','cbf_n_pols')
-    write_bullet_if_present(report,ts,'Antennas','cal_antlist',transform=len)
-    write_bullet_if_present(report,ts,'Antenna list','cal_antlist')
+    write_bullet_if_present(report, ts, 'Int time', 'sdp_l0_int_time')
+    write_bullet_if_present(report, ts, 'Channels', 'cbf_n_chans')
+    write_bullet_if_present(report, ts, 'Polarisation products', 'cbf_n_pols')
+    write_bullet_if_present(report, ts, 'Antennas', 'cal_antlist', transform=len)
+    write_bullet_if_present(report, ts, 'Antenna list', 'cal_antlist')
     report.writeln()
 
     report.writeln('Source list:')
     report.writeln()
     try:
-        target_list = ts.get_range('cal_info_sources',st=st,et=et,return_format='recarray')['value'] if ts.has_key('cal_info_sources') else []
+        target_list = \
+            ts.get_range('cal_info_sources', st=st, et=et, return_format='recarray')['value'] \
+            if 'cal_info_sources' in ts else []
         for target in target_list:
             report.writeln('* {0:s}'.format(target,))
     except AttributeError:
         # key not present
         report.writeln('* Unknown')
 
-    report.writeln()    
+    report.writeln()
 
-def write_table_timerow(report,colnames,times,data):
+
+def write_table_timerow(report, colnames, times, data):
     """
     Write RST style table to report, rows: time, columns: antenna
 
     Parameters
     ----------
-    report   : report file to write to
-    colnames : list of column names, list of string
-    times    : list of times (equates to number of rows in the table)
-    data     : table data, shape (time, columns)
+    report : file-like
+        report file to write to
+    colnames : list of str
+        list of column names
+    times : list
+        list of times (equates to number of rows in the table)
+    data
+        table data, shape (time, columns)
     """
     # create table header
     header = colnames[:]
-    header.insert(0,'time')
+    header.insert(0, 'time')
 
     n_entries = len(header)
     col_width = 30
-    col_header = '='*col_width+' '
+    col_header = '='*col_width + ' '
 
     # write table header
     report.writeln()
-    report.writeln(col_header*n_entries)
-    report.writeln(" ".join([h.ljust(col_width) for h in header])) 
-    report.writeln(col_header*n_entries)
+    report.writeln(col_header * n_entries)
+    report.writeln(" ".join([h.ljust(col_width) for h in header]))
+    report.writeln(col_header * n_entries)
 
-    timestrings = [time.strftime("%d %X",time.gmtime(t)) for t in times]
+    timestrings = [time.strftime("%d %X", time.gmtime(t)) for t in times]
 
     # add each time row to the table
-    for t, d in zip(timestrings,data):
-        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in np.atleast_1d(d)])
+    for t, d in zip(timestrings, data):
+        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width)
+                                for di in np.atleast_1d(d)])
         report.write("{}".format(t,).ljust(col_width+1))
-        report.writeln(data_string)  
+        report.writeln(data_string)
 
     # table footer
     report.writeln(col_header*n_entries)
     report.writeln()
 
-def write_table_timecol(report,antennas,times,data):
+
+def write_table_timecol(report, antennas, times, data):
     """
     Write RST style table to report, rows: antenna, columns: time
 
     Parameters
     ----------
-    report : report file to write to
-    antennas : list of antenna names, comma separated string, or single string of comma separated antenna names
-    times    : list of times (equates to number of columns in the table)
-    data     : table data, shape (time, antenna)
+    report : file-like
+        report file to write to
+    antennas : str or list
+        list of antenna names or single string of comma-separated antenna names
+    times : list
+        list of times (equates to number of columns in the table)
+    data
+        table data, shape (time, antenna)
     """
     n_entries = len(times) + 1
     col_width = 30
-    col_header = '='*col_width+' '
+    col_header = '='*col_width + ' '
 
     # create table header
-    timestrings = [time.strftime("%d %X",time.gmtime(t)) for t in times]
+    timestrings = [time.strftime("%d %X", time.gmtime(t)) for t in times]
     header = " ".join(["{}".format(t,).ljust(col_width) for t in timestrings])
     header = 'Ant'.ljust(col_width+1) + header
 
     # write table header
     report.writeln()
-    report.writeln(col_header*n_entries)
-    report.writeln(header) 
-    report.writeln(col_header*n_entries)
+    report.writeln(col_header * n_entries)
+    report.writeln(header)
+    report.writeln(col_header * n_entries)
 
     # add each antenna row to the table
     antlist = antennas if isinstance(antennas, list) else antennas.split(',')
-    for a, d in zip(antlist,data.T):
+    for a, d in zip(antlist, data.T):
         data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in d])
-        report.write(a.ljust(col_width+1))
-        report.writeln(data_string)  
+        report.write(a.ljust(col_width + 1))
+        report.writeln(data_string)
 
     # table footer
-    report.writeln(col_header*n_entries)
+    report.writeln(col_header * n_entries)
     report.writeln()
 
-def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
+
+def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
     """
     Creates pdf calibration pipeline report (from RST source),
-    using data from the Telescope State 
-    
+    using data from the Telescope State
+
     Parameters
     ----------
-    ts           : TelescopeState
-    report_path  : path where report will be created, string
-    project_name : ID associated with project, string, optional
-    st           : start time for reporting parameters, seconds, float, optional
-    et           : end time for reporting parameters, seconds, float, optional
+    ts : :class:`katsdptelstate.TelescopeState`
+        telescope state
+    report_path : str
+        path where report will be created
+    project_name : str, optional
+        ID associated with project
+    st : float, optional
+        start time for reporting parameters, seconds
+    et : float, optional
+        end time for reporting parameters, seconds
     """
 
-    if project_name == None:
+    if project_name is None:
         project_name = '{0}_unknown_project'.format(time.time())
 
-    if not report_path: report_path = '.'
+    if not report_path:
+        report_path = '.'
     project_dir = os.path.abspath(report_path)
     logger.info('Report compiling in directory {0}'.format(project_dir,))
     # change into project directory
     os.chdir(project_dir)
-    
+
     # --------------------------------------------------------------------
     # open report file
     report_file = 'calreport_{0}.rst'.format(project_name,)
@@ -232,7 +266,7 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_rst.write_heading_1('Observation summary')
     cal_rst.writeln('Observation: {0:s}'.format(project_name,))
     cal_rst.writeln()
-    write_summary(cal_rst,ts,st=st,et=et)
+    write_summary(cal_rst, ts, st=st, et=et)
 
     # --------------------------------------------------------------------
     # write RFI summary
@@ -240,22 +274,22 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_rst.writeln('Watch this space')
     cal_rst.writeln()
 
-    # --------------------------------------------------------------------    
+    # --------------------------------------------------------------------
     # add cal products to report
     antenna_mask = ts.antenna_mask
 
     logger.info('Calibration solution summary')
-    cal_list = ['K','KCROSS','B','G']
-    solns_exist = any(['cal_product_'+cal in ts.keys() for cal in cal_list])
+    cal_list = ['K', 'KCROSS', 'B', 'G']
+    solns_exist = any(['cal_product_' + cal in ts.keys() for cal in cal_list])
     if not solns_exist:
         logger.info(' - no calibration solutions')
 
     # ---------------------------------
     # delay
     cal = 'K'
-    cal_product = 'cal_product_'+cal
-    if ts.has_key(cal_product):
-        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
+    cal_product = 'cal_product_' + cal
+    if cal_product in ts:
+        product = ts.get_range(cal_product, st=st, et=et, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
 
@@ -268,23 +302,23 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             times = product['time']
 
             # convert delays to nano seconds
-            vals = 1e9*vals
+            vals = 1e9 * vals
 
             logger.info('  shape: {0}'.format(vals.shape,))
 
             # iterate through polarisation
             for p in range(vals.shape[-2]):
                 cal_rst.writeln('**POL {0}**'.format(p,))
-                kpol = vals[:,p,:]
-                logger.info('  pol{0} shape: {1}'.format(p,kpol.shape))
-                write_table_timecol(cal_rst,antenna_mask,times,kpol)
+                kpol = vals[:, p, :]
+                logger.info('  pol{0} shape: {1}'.format(p, kpol.shape))
+                write_table_timecol(cal_rst, antenna_mask, times, kpol)
 
     # ---------------------------------
     # cross pol delay
     cal = 'KCROSS'
     cal_product = 'cal_product_'+cal
-    if ts.has_key(cal_product):
-        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
+    if cal_product in ts:
+        product = ts.get_range(cal_product, st=st, et=et, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
 
@@ -300,14 +334,14 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             # convert delays to nano seconds
             vals = 1e9*vals
 
-            write_table_timerow(cal_rst,[cal],times,vals)
+            write_table_timerow(cal_rst, [cal], times, vals)
 
     # ---------------------------------
     # bandpass
     cal = 'B'
     cal_product = 'cal_product_'+cal
-    if ts.has_key(cal_product):
-        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
+    if cal_product in ts:
+        product = ts.get_range(cal_product, st=st, et=et, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
 
@@ -321,17 +355,17 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             logger.info('  shape: {0}'.format(vals.shape,))
 
             for ti in range(len(times)):
-                t = time.strftime("%Y %x %X",time.gmtime(times[ti]))
+                t = time.strftime("%Y %x %X", time.gmtime(times[ti]))
                 cal_rst.writeln('Time: {}'.format(t,))
                 plot = plotting.plot_bp_solns(vals[ti])
-                insert_fig(cal_rst,plot,name='{0}_{1}'.format(cal,str(ti)))
+                insert_fig(cal_rst, plot, name='{0}_{1}'.format(cal, str(ti)))
 
     # ---------------------------------
     # gain
     cal = 'G'
     cal_product = 'cal_product_'+cal
-    if ts.has_key(cal_product):
-        product = ts.get_range(cal_product,st=st,et=et,return_format='recarray')
+    if cal_product in ts:
+        product = ts.get_range(cal_product, st=st, et=et, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
 
@@ -348,10 +382,10 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
             # iterate through polarisation
             for p in range(vals.shape[-2]):
                 cal_rst.writeln('**POL {0}**'.format(p,))
-                gpol = vals[:,p,:]
-                logger.info('  pol{0} shape: {1}'.format(p,gpol.shape))
-                plot = plotting.plot_g_solns(times,gpol)
-                insert_fig(cal_rst,plot,name='{0}_P{1}'.format(cal,p))
+                gpol = vals[:, p, :]
+                logger.info('  pol{0} shape: {1}'.format(p, gpol.shape))
+                plot = plotting.plot_g_solns(times, gpol)
+                insert_fig(cal_rst, plot, name='{0}_P{1}'.format(cal, p))
 
     # --------------------------------------------------------------------
     # close off report
@@ -360,4 +394,5 @@ def make_cal_report(ts,report_path,project_name=None,st=None,et=None):
     cal_rst.close()
 
     # convert to html
-    publish_file(source_path=report_file,destination_path=report_file.replace('rst','html'),writer_name='html')
+    publish_file(source_path=report_file, destination_path=report_file.replace('rst', 'html'),
+                 writer_name='html')
