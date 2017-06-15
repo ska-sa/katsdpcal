@@ -5,9 +5,7 @@ import os
 import shutil
 import signal
 import manhole
-import netifaces
 
-from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint
 import katsdpservices
 
@@ -21,31 +19,28 @@ from katsdpcal import param_dir, rfi_dir
 import logging
 logger = logging.getLogger(__name__)
 
-def print_dict(dictionary,ident='',braces=1):
+
+def print_dict(dictionary, ident='', braces=1):
     """ Recursively prints nested dictionaries."""
 
     for key, value in dictionary.iteritems():
         if isinstance(value, dict):
-           print '{0}{1}{2}{3}'.format(ident,braces*'[',key,braces*']')
-           print_dict(value, ident+'  ', braces+1)
+            print '{0}{1}{2}{3}'.format(ident, braces * '[', key, braces * ']')
+            print_dict(value, ident+'  ', braces+1)
         else:
-           print '{0}{1} = {2}'.format(ident,key,value)
+            print '{0}{1} = {2}'.format(ident, key, value)
 
-def log_dict(dictionary,ident='',braces=1):
+
+def log_dict(dictionary, ident='', braces=1):
     """ Recursively logs nested dictionaries."""
 
     for key, value in dictionary.iteritems():
         if isinstance(value, dict):
-            logger.info('{0}{1}{2}{3}'.format(ident,braces*'[',key,braces*']'))
+            logger.info('{0}{1}{2}{3}'.format(ident, braces * '[', key, braces*']'))
             log_dict(value, ident+'  ', braces+1)
         else:
-            logger.info('{0}{1} = {2}'.format(ident,key,value))
+            logger.info('{0}{1} = {2}'.format(ident, key, value))
 
-def get_interface_address(interface):
-    if interface is None:
-        return None
-    else:
-        return netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
 
 def comma_list(type_):
     """Return a function which splits a string on commas and converts each element to
@@ -55,31 +50,68 @@ def comma_list(type_):
         return [type_(x) for x in arg.split(',')]
     return convert
 
+
 def parse_opts():
-    parser = katsdpservices.ArgumentParser(description = 'Set up and wait for spead stream to run the pipeline.')
-    parser.add_argument('--num-buffers', type=int, default=2, help='Specify the number of data buffers to use. default: 2')
-    parser.add_argument('--buffer-maxsize', type=float, help='The amount of memory (in bytes) to allocate to each buffer.')
-    parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
+    parser = katsdpservices.ArgumentParser(
+        description='Set up and wait for spead stream to run the pipeline.')
+    parser.add_argument(
+        '--num-buffers', type=int, default=2,
+        help='Specify the number of data buffers to use. default: 2')
+    parser.add_argument(
+        '--buffer-maxsize', type=float,
+        help='The amount of memory (in bytes) to allocate to each buffer.')
+    parser.add_argument(
+        '--no-auto', action='store_true',
+        help='Pipeline data DOESNT include autocorrelations '
+        + '[default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
     # note - the following lines extract various parameters from the MC config
-    parser.add_argument('--cbf-channels', type=int, help='The number of frequency channels in the visibility data. Default from MC config')
-    parser.add_argument('--cbf-pols', type=int, help='The number of polarisation products in the visibility data. Default from MC config')
-    parser.add_argument('--antenna-mask', type=comma_list(str), help='List of antennas in the L0 data stream. Default from MC config')
+    parser.add_argument(
+        '--cbf-channels', type=int,
+        help='The number of frequency channels in the visibility data. Default from MC config')
+    parser.add_argument(
+        '--cbf-pols', type=int,
+        help='The number of polarisation products in the visibility data. Default from MC config')
+    parser.add_argument(
+        '--antenna-mask', type=comma_list(str),
+        help='List of antennas in the L0 data stream. Default from MC config')
     # also need bls ordering
-    parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True), default=':7200', help='endpoints to listen for L0 spead stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
-    parser.add_argument('--l0-spectral-interface', help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
-    parser.add_argument('--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202', help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
-    parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
-    parser.add_argument('--l1_level', default=0, help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
-    parser.add_argument('--notthreading', action='store_false', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
+    parser.add_argument(
+        '--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True),
+        default=':7200',
+        help='endpoints to listen for L0 spead stream (including multicast IPs). '
+        + '[<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument(
+        '--l0-spectral-interface',
+        help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
+    parser.add_argument(
+        '--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202',
+        help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
+    parser.add_argument(
+        '--l1-rate', type=float, default=5e7,
+        help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
+    parser.add_argument(
+        '--l1_level', default=0,
+        help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
+    parser.add_argument(
+        '--notthreading', action='store_false',
+        help='Use threading to control pipeline and accumulator '
+        + '[default: False (to use multiprocessing)]')
     parser.set_defaults(notthreading=True)
-    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
-    parser.add_argument('--report-path', type=str, default='/var/kat/data', help='Path under which to save pipeline report. [default: /var/kat/data]')
-    parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
-    #parser.set_defaults(telstate='localhost')
+    parser.add_argument(
+        '--parameter-file', type=str, default='',
+        help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument(
+        '--report-path', type=str, default='/var/kat/data',
+        help='Path under which to save pipeline report. [default: /var/kat/data]')
+    parser.add_argument(
+        '--log-path', type=str, default=os.path.abspath('.'),
+        help='Path under which to save pipeline logs. [default: current directory]')
+    # parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-def setup_logger(log_name,log_path='.'):
+
+def setup_logger(log_name, log_path='.'):
     """
     Set up the pipeline logger.
     The logger writes to a pipeline.log file and to stdout.
@@ -95,15 +127,17 @@ def setup_logger(log_name,log_path='.'):
 
     # logging to file
     log_path = os.path.abspath(log_path)
-    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
+    formatter = logging.Formatter(
+        '%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
     formatter.datefmt = '%Y-%m-%d %H:%M:%S'
     formatter.converter = time.gmtime
 
-    handler = logging.FileHandler('{0}/{1}'.format(log_path,log_name))
+    handler = logging.FileHandler('{0}/{1}'.format(log_path, log_name))
     handler.setFormatter(formatter)
     logging.getLogger('').addHandler(handler)
 
-def setup_observation_logger(log_name,log_path='.'):
+
+def setup_observation_logger(log_name, log_path='.'):
     """
     Set up a pipeline logger to file.
 
@@ -116,16 +150,19 @@ def setup_observation_logger(log_name,log_path='.'):
 
     # logging to file
     # set format
-    formatter = logging.Formatter('%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
-    formatter.datefmt='%Y-%m-%d %H:%M:%S'
+    formatter = logging.Formatter(
+        '%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
+    formatter.datefmt = '%Y-%m-%d %H:%M:%S'
 
-    obs_log = logging.FileHandler('{0}/{1}'.format(log_path,log_name))
+    obs_log = logging.FileHandler('{0}/{1}'.format(log_path, log_name))
     obs_log.setFormatter(formatter)
     logging.getLogger('').addHandler(obs_log)
     return obs_log
 
+
 def stop_observation_logger(obs_log):
     logging.getLogger('').removeHandler(obs_log)
+
 
 def all_alive(process_list):
     """
@@ -142,6 +179,7 @@ def all_alive(process_list):
         alive = alive and process.is_alive()
     return alive
 
+
 def any_alive(process_list):
     """
     Check if any of the process in process list are alive and return True
@@ -157,7 +195,8 @@ def any_alive(process_list):
         alive = alive or process.is_alive()
     return alive
 
-def create_buffer_arrays(buffer_shape,mproc=True):
+
+def create_buffer_arrays(buffer_shape, mproc=True):
     """
     Create empty buffer record using specified dimensions
     """
@@ -166,33 +205,36 @@ def create_buffer_arrays(buffer_shape,mproc=True):
     else:
         return create_buffer_arrays_threading(buffer_shape)
 
+
 def create_buffer_arrays_multiprocessing(buffer_shape):
     """
     Create empty buffer record using specified dimensions,
     for multiprocessing shared memory appropriate buffers
     """
-    data={}
+    data = {}
     array_length = buffer_shape[0]
     buffer_size = reduce(lambda x, y: x*y, buffer_shape)
-    data['vis'] = control_method.RawArray(c_float, buffer_size*2) # times two for complex
+    data['vis'] = control_method.RawArray(c_float, buffer_size*2)  # times two for complex
     data['flags'] = control_method.RawArray(c_ubyte, buffer_size)
     data['weights'] = control_method.RawArray(c_float, buffer_size)
     data['times'] = control_method.RawArray(c_double, array_length)
     data['max_index'] = control_method.sharedctypes.RawArray(c_int, 1)
     return data
 
+
 def create_buffer_arrays_threading(buffer_shape):
     """
     Create empty buffer record using specified dimensions,
     for thread appropriat numpy buffers
     """
-    data={}
-    data['vis'] = np.empty(buffer_shape,dtype=np.complex64)
-    data['flags'] = np.empty(buffer_shape,dtype=np.uint8)
-    data['weights'] = np.empty(buffer_shape,dtype=np.float32)
-    data['times'] = np.empty(buffer_shape[0],dtype=np.float)
+    data = {}
+    data['vis'] = np.empty(buffer_shape, dtype=np.complex64)
+    data['flags'] = np.empty(buffer_shape, dtype=np.uint8)
+    data['weights'] = np.empty(buffer_shape, dtype=np.float32)
+    data['times'] = np.empty(buffer_shape[0], dtype=np.float)
     data['max_index'] = np.empty([0.0], dtype=np.int32)
     return data
+
 
 def force_shutdown(accumulator, pipelines):
     # forces pipeline threads to shut down
@@ -202,6 +244,7 @@ def force_shutdown(accumulator, pipelines):
     # to end long running reduction.pipeline function
     map(lambda x: x.terminate(), pipelines)
 
+
 def force_hard_shutdown(accumulator, pipelines):
     # forces pipeline threads to shut down
     #  - faster but dirtier than force_shutdown()
@@ -210,13 +253,17 @@ def force_hard_shutdown(accumulator, pipelines):
     # - aggressive kill needed for running pipeline
     map(lambda x: os.kill(x.pid, signal.SIGKILL), pipelines)
 
+
 def kill_shutdown():
     # brutal kill (for threading)
     os.kill(os.getpid(), signal.SIGKILL)
 
-def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer_maxsize=None, auto=True,
-           l0_endpoint=':7200', l0_interface=None, l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
-           mproc=True, param_file='', report_path='', log_path='.', full_log=None):
+
+def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
+                buffer_maxsize=None, auto=True,
+                l0_endpoint=':7200', l0_interface=None,
+                l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
+                mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
@@ -225,33 +272,33 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
 
     Inputs
     ======
-    ts: TelescopeState
+    ts : TelescopeState
         The telescope state, default: 'localhost' database 0
-    cbf_n_chans: int
+    cbf_n_chans : int
         The number of channels in the data stream
-    cbf_n_pols: int
+    cbf_n_pols : int
         The number of polarisations in the data stream
-    antenna_mask: list of strings
+    antenna_mask : list of strings
         List of antennas present in the data stream
-    num_buffers: int
+    num_buffers : int
         The number of buffers to use- this will create a pipeline thread for each buffer
         and an extra accumulator thread to read the spead stream.
-    buffer_maxsize: float
+    buffer_maxsize : float
         The maximum size of the buffer. Memory for each buffer will be allocated at first
         and then populated by the accumulator from the spead stream.
-    auto: bool
+    auto : bool
         True for autocorrelations included in the data, False for cross-correlations only
-    l0_endpoint: endpoint
+    l0_endpoint : endpoint
         Endpoint to listen to for L0 stream, default: ':7200'
-    l0_interface: str
+    l0_interface : str
         Name of interface to subscribe to for L0, or None to let the OS decide
-    l1_endpoint: endpoint
+    l1_endpoint : endpoint
         Destination endpoint for L1 stream, default: '127.0.0.1:7202'
     l1_rate : float
         Rate for L1 stream transmission, default 5e7
     l1_level : int
         Data to transmit to L1: 0 - none, 1 - target only, 2 - all
-    mproc: bool
+    mproc : bool
         True for control via multiprocessing, False for control via threading
     param_file : string
         File of default pipeline parameters
@@ -285,7 +332,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     if cbf_n_pols is not None:
         ts.add('cbf_n_pols', cbf_n_pols, immutable=True)
     elif 'cbf_n_pols' not in ts:
-        logger.warning('Number of polarisation inputs cbf_n_pols not set. Setting to default value 4')
+        logger.warning(
+            'Number of polarisation inputs cbf_n_pols not set. Setting to default value 4')
         ts.add('cbf_n_pols', 4, immutable=True)
 
     # initialise TS from default parameter file
@@ -312,8 +360,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
-        if keyval not in ['sdp_l0_bls_ordering','cbf_channel_freqs']:
-            logger.info('{0} : {1}'.format(keyval,ts[keyval]))
+        if keyval not in ['sdp_l0_bls_ordering', 'cbf_channel_freqs']:
+            logger.info('{0} : {1}'.format(keyval, ts[keyval]))
     logger.info('Telescope state config graph:')
     log_dict(ts.config)
 
@@ -326,14 +374,14 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
 
     # get buffer size
-    if buffer_maxsize != None:
-        ts.add('cal_buffer_size',buffer_maxsize)
+    if buffer_maxsize is not None:
+        ts.add('cal_buffer_size', buffer_maxsize)
     else:
-        if ts.has_key('cal_buffer_size'):
+        if 'cal_buffer_size' in ts:
             buffer_maxsize = ts['cal_buffer_size']
         else:
             buffer_maxsize = 20.0e9
-            ts.add('cal_buffer_size',buffer_maxsize)
+            ts.add('cal_buffer_size', buffer_maxsize)
 
     # buffer needs to include:
     #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
@@ -341,8 +389,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
     #   weights, shape(time,channel,baseline,pol), type float32 (4 bytes)
     #   time, shape(time), type float64 (8 bytes)
     # plus minimal extra for scan transition indices
-    scale_factor = 8. + 1. + 4. # vis + flags + weights
-    time_factor = 8. + 0.1 # time + 0.1 for good measure (indiced)
+    scale_factor = 8. + 1. + 4.  # vis + flags + weights
+    time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
     array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*ts.cbf_n_pols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Buffer size : {0} G'.format(buffer_maxsize/1.e9,))
@@ -350,21 +398,21 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
 
     # Set up empty buffers
     buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
-    buffers = [create_buffer_arrays(buffer_shape,mproc=mproc) for i in range(num_buffers)]
+    buffers = [create_buffer_arrays(buffer_shape, mproc=mproc) for i in range(num_buffers)]
 
     # account for forced shutdown possibilities
     #  due to SIGTERM, keyboard interrupt, or unknown error
     forced_shutdown = False
 
     # get subarray ID
-    subarray_id = ts['subarray_product_id'] if ts.has_key('subarray_product_id') else 'unknown_subarray'
+    subarray_id = ts['subarray_product_id'] if 'subarray_product_id' in ts else 'unknown_subarray'
 
     logger.info('Receiving L0 data from {0} via {1}'.format(
         l0_endpoint, 'default interface' if l0_interface is None else l0_interface))
-    l0_interface_address = get_interface_address(l0_interface)
+    l0_interface_address = katsdpservices.get_interface_address(l0_interface)
     while not forced_shutdown:
         observation_log = '{0}_pipeline.log'.format(int(time.time()),)
-        obs_log = setup_observation_logger(observation_log,log_path)
+        obs_log = setup_observation_logger(observation_log, log_path)
 
         logger.info('===========================')
         logger.info('   Starting new observation')
@@ -373,13 +421,17 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
         scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
 
         # Set up the accumulator
-        accumulator = init_accumulator_control(control_method, control_task, buffers, buffer_shape, scan_accumulator_conditions, l0_endpoint, l0_interface_address, ts)
+        accumulator = init_accumulator_control(control_method, control_task, buffers,
+                                               buffer_shape, scan_accumulator_conditions,
+                                               l0_endpoint, l0_interface_address, ts)
         # Set up the pipelines (one per buffer)
-        pipelines = [init_pipeline_control(control_method, control_task, buffers[i], buffer_shape, scan_accumulator_conditions[i], i, \
-            l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
+        pipelines = [init_pipeline_control(control_method, control_task,
+                     buffers[i], buffer_shape, scan_accumulator_conditions[i], i,
+                     l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
 
         try:
-            manhole.install(oneshot_on='USR1', locals={'ts':ts, 'accumulator':accumulator, 'pipelines':pipelines})
+            manhole.install(oneshot_on='USR1', locals={
+                'ts': ts, 'accumulator': accumulator, 'pipelines': pipelines})
         # allow remote debug connections and expose telescope state, accumulator and pipelines
         except manhole.AlreadyInstalled:
             pass
@@ -392,7 +444,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
 
         try:
             # run tasks until the observation has ended
-            while all_alive([accumulator]+pipelines) and not accumulator.obs_finished():
+            while all_alive([accumulator] + pipelines) and not accumulator.obs_finished():
                 time.sleep(0.1)
         except (KeyboardInterrupt, SystemExit):
             logger.info('Received interrupt! Quitting threads.')
@@ -405,7 +457,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
 
         # closing steps, if data transmission has stoped (skipped for forced early shutdown)
         if not forced_shutdown:
-            # Stop pipelines first so they recieve correct signal before accumulator acquires the condition
+            # Stop pipelines first so they recieve correct signal before
+            # accumulator acquires the condition
             map(lambda x: x.stop(), pipelines)
             logger.info('Pipelines stopped')
             # then stop accumulator (releasing conditions)
@@ -421,20 +474,21 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
             logger.info('Pipeline tasks closed')
 
             # get observation end time
-            if ts.has_key('cal_obs_end_time'):
+            if 'cal_obs_end_time' in ts:
                 obs_end = ts.cal_obs_end_time
             else:
                 logger.info('Unknown observation end time')
                 obs_end = time.time()
             # get observation name
             try:
-                obs_params = ts.get_range('obs_params',st=0,et=obs_end,return_format='recarray')
+                obs_params = ts.get_range('obs_params', st=0, et=obs_end, return_format='recarray')
                 obs_keys = obs_params['value']
                 obs_times = obs_params['time']
-                # choose most recent experiment id (last entry in the list), if there are more than one
+                # choose most recent experiment id (last entry in the list), if
+                # there are more than one
                 experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
                 experiment_id = eval(experiment_id_string.split()[-1])
-                obs_start = [t for x,t in zip(obs_keys,obs_times) if 'experiment_id' in x][-1]
+                obs_start = [t for x, t in zip(obs_keys, obs_times) if 'experiment_id' in x][-1]
             except (TypeError, KeyError, AttributeError):
                 # TypeError, KeyError because this isn't properly implimented yet
                 # AttributeError in case this key isnt in the telstate for whatever reason
@@ -442,9 +496,11 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
                 obs_start = None
 
             # make directory for this observation, for logs and report
-            if not report_path: report_path = '.'
+            if not report_path:
+                report_path = '.'
             report_path = os.path.abspath(report_path)
-            obs_dir = '{0}/{1}_{2}_{3}'.format(report_path,int(time.time()),subarray_id,experiment_id)
+            obs_dir = '{0}/{1}_{2}_{3}'.format(
+                report_path, int(time.time()), subarray_id, experiment_id)
             current_obs_dir = '{0}-current'.format(obs_dir,)
             try:
                 os.mkdir(current_obs_dir)
@@ -453,7 +509,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
 
             # create pipeline report (very basic at the moment)
             try:
-                make_cal_report(ts,current_obs_dir,experiment_id,st=obs_start,et=obs_end)
+                make_cal_report(ts, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
             except Exception, e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
@@ -461,20 +517,23 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2, buffer
                 # send L1 stop transmission
                 #   wait for a couple of secs before ending transmission
                 time.sleep(2.0)
-                end_transmit(l1_endpoint.host,l1_endpoint.port)
+                end_transmit(l1_endpoint.host, l1_endpoint.port)
                 logger.info('L1 stream ended')
 
             logger.info('   Observation ended')
             logger.info('===========================')
 
             # copy log of this observation into the report directory
-            shutil.move('{0}/{1}'.format(log_path,observation_log),'{0}/pipeline_{1}.log'.format(current_obs_dir,experiment_id))
+            shutil.move('{0}/{1}'.format(log_path, observation_log),
+                        '{0}/pipeline_{1}.log'.format(current_obs_dir, experiment_id))
             stop_observation_logger(obs_log)
-            if full_log != None:
-                shutil.copy('{0}/{1}'.format(log_path,full_log),'{0}/{1}'.format(current_obs_dir,full_log))
+            if full_log is not None:
+                shutil.copy('{0}/{1}'.format(log_path, full_log),
+                            '{0}/{1}'.format(current_obs_dir, full_log))
 
             # change report and log directory to final name for archiving
-            shutil.move(current_obs_dir,obs_dir)
+            shutil.move(current_obs_dir, obs_dir)
+
 
 if __name__ == '__main__':
 
@@ -483,7 +542,7 @@ if __name__ == '__main__':
     # set up logging
     log_name = 'pipeline.log'
     log_path = os.path.abspath(opts.log_path)
-    setup_logger(log_name,log_path)
+    setup_logger(log_name, log_path)
 
     # threading or multiprocessing imports
     if opts.notthreading is True:
@@ -504,10 +563,12 @@ if __name__ == '__main__':
     # mostly needed for Docker use since this process runs as PID 1
     # and does not get passed sigterm unless it has a custom listener
 
-    run_threads(opts.telstate,
-           cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask, 
-           num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
-           l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
-           l1_endpoint=opts.l1_spectral_spead,
-           l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
-           param_file=opts.parameter_file, report_path=opts.report_path, log_path=log_path, full_log=log_name)
+    run_threads(
+        opts.telstate,
+        cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
+        num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
+        l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
+        l1_endpoint=opts.l1_spectral_spead,
+        l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
+        param_file=opts.parameter_file,
+        report_path=opts.report_path, log_path=log_path, full_log=log_name)
