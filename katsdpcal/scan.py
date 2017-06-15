@@ -84,7 +84,8 @@ class Scan(object):
     nchan : int
         Number of frequency channels in the data.
     channel_freqs : list of float
-        List of frequencies corresponding to channels (or channel indices, in the absence of frequencies).
+        List of frequencies corresponding to channels (or channel indices, in
+        the absence of frequencies).
     npol : int
         Number of polarisations in the data.
     nant : int
@@ -103,12 +104,13 @@ class Scan(object):
         logger
     """
 
-    def __init__(self, data, time_slice, dump_period, nant, npol, bls_lookup, target, chans=None, ants=None, refant=0, array_position=None, corr='xc', logger=logger):
+    def __init__(self, data, time_slice, dump_period, nant, npol, bls_lookup, target,
+                 chans=None, ants=None, refant=0, array_position=None, corr='xc', logger=logger):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
         # if scan has explicitly been set up as a cross-correlation scan, select XC data only
-        # NOTE: This makes the asumption that the XC data are grouped at the beginning of the bl ordering,
-        #       Followed by the AC data.
+        # NOTE: This makes the asumption that the XC data are grouped at the
+        # beginning of the bl ordering, followed by the AC data.
         # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
         self.xc_mask = np.array([b0 != b1 for b0, b1 in bls_lookup])
         try:
@@ -182,7 +184,8 @@ class Scan(object):
         dumps_per_solint : number of dumps per solution interval
         """
 
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
+        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period,
+                                                                len(self.timestamps))
 
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
@@ -210,23 +213,29 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
-            self.modvis = self.apply(soln,origvis=False)
+            self.logger.info(
+                '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+            self.modvis = self.apply(soln, origvis=False)
 
         # set up solution interval
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period, len(self.timestamps))
-        self.logger.info('  - G solution interval: {} s ({} dumps)'.format(solint, dumps_per_solint))
+        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period,
+                                                                len(self.timestamps))
+        self.logger.info(
+            '  - G solution interval: {} s ({} dumps)'.format(solint, dumps_per_solint))
         # determine channel range for fit
-        if echan == 0: echan = None
+        if echan == 0:
+            echan = None
         chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
 
         # initialise and apply model, for if this scan target has an associated model
         self._init_model()
         fitvis = self._get_solver_model(chan_select=chan_slice)
 
-        # first averge in time over solution interval, for specified channel range (no averaging over channel)
-        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(fitvis, self.flags[chan_slice],
-                self.weights[chan_slice], dumps_per_solint, axis=0, times=self.timestamps)
+        # first averge in time over solution interval, for specified channel
+        # range (no averaging over channel)
+        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(
+            fitvis, self.flags[chan_slice],
+            self.weights[chan_slice], dumps_per_solint, axis=0, times=self.timestamps)
         # secondly, average channels
         ave_vis = calprocs.wavg(ave_vis, ave_flags, ave_weights, axis=1)
         # solve for gain
@@ -235,7 +244,7 @@ class Scan(object):
         return CalSolution('G', g_soln, ave_times)
 
     @logsolutiontime
-    def kcross_sol(self,bchan=1,echan=0,chan_ave=1,pre_apply=[]):
+    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[]):
         """
         Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
@@ -261,18 +270,24 @@ class Scan(object):
                 self.modvis = self.cross_vis
 
             for soln in pre_apply:
-                self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+                self.logger.info(
+                    '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
                 self.modvis = self.apply(soln, origvis=False)
 
             # average over all time, for specified channel range (no averaging over channel)
-            if echan == 0: echan = None
+            if echan == 0:
+                echan = None
             chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
-            ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(self.modvis[chan_slice], self.cross_flags[chan_slice], self.cross_weights[chan_slice], axis=0)
+            ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(
+                self.modvis[chan_slice], self.cross_flags[chan_slice],
+                self.cross_weights[chan_slice], axis=0)
 
             # solve for cross hand delay KCROSS
             # note that the kcross solver needs the flags because it averages the data
-            #  (strictly it should need weights too, but deal with that leter when weights are meaningful)
-            kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan], chan_ave=chan_ave)
+            #  (strictly it should need weights too, but deal with that leter
+            #  when weights are meaningful)
+            kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan],
+                                              chan_ave=chan_ave)
             return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
@@ -298,11 +313,13 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info(
+                '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
             self.modvis = self.apply(soln, origvis=False)
 
         # determine channel range for fit
-        if echan == 0: echan = None
+        if echan == 0:
+            echan = None
         chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
         # use specified channel range for frequencies
         k_freqs = self.channel_freqs[bchan:echan]
@@ -318,9 +335,11 @@ class Scan(object):
             fitvis = self._get_solver_model(chan_select=chan_slice)
 
         # average over all time, for specified channel range (no averaging over channel)
-        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags[chan_slice], self.weights[chan_slice], times=self.timestamps, axis=0)
+        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags[chan_slice], self.weights[chan_slice],
+                                          times=self.timestamps, axis=0)
         # fit for delay
-        k_soln = calprocs.k_fit(ave_vis, self.corrprod_lookup, k_freqs, self.refant, chan_sample=chan_sample)
+        k_soln = calprocs.k_fit(ave_vis, self.corrprod_lookup, k_freqs, self.refant,
+                                chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 
@@ -344,7 +363,8 @@ class Scan(object):
             self.modvis = self.vis
 
         for soln in pre_apply:
-            self.logger.info('  - Pre-apply {0} solution to {1}'.format(soln.soltype,self.target.name))
+            self.logger.info(
+                '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
             self.modvis = self.apply(soln, origvis=False)
 
         # initialise and apply model, for if this scan target has an associated model
@@ -352,7 +372,8 @@ class Scan(object):
         fitvis = self._get_solver_model()
 
         # first average in time
-        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags, self.weights, times=self.timestamps, axis=0)
+        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags, self.weights, times=self.timestamps,
+                                          axis=0)
         # solve for bandpass
         b_soln = calprocs.bp_fit(ave_vis, self.corrprod_lookup, bp0)
 
@@ -391,10 +412,12 @@ class Scan(object):
         outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
 
         # check solution and vis shapes are compatible
-        if solval.shape[-2] != outvis.shape[-2]: raise Exception('Polarisation axes do not match!')
+        if solval.shape[-2] != outvis.shape[-2]:
+            raise Exception('Polarisation axes do not match!')
 
         for cp in range(len(self.corrprod_lookup)):
-            outvis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]]*(solval[..., self.corrprod_lookup[cp][1]].conj())
+            outvis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]] \
+                * (solval[..., self.corrprod_lookup[cp][1]].conj())
 
         return outvis
 
@@ -409,13 +432,15 @@ class Scan(object):
         """
 
         for cp in range(len(self.corrprod_lookup)):
-            self.vis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]]*(solval[..., self.corrprod_lookup[cp][1]].conj())
+            self.vis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]] \
+                * (solval[..., self.corrprod_lookup[cp][1]].conj())
 
     def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
         if soln.soltype is 'G':
             # add empty channel dimension if necessary
-            full_sol = np.expand_dims(soln.values, axis=1) if len(soln.values.shape) < 4 else soln.values
+            full_sol = np.expand_dims(soln.values, axis=1) \
+                if len(soln.values.shape) < 4 else soln.values
             return self._apply(full_sol, origvis=origvis, inplace=inplace)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
@@ -468,15 +493,18 @@ class Scan(object):
         """
         Creates models from raw model parameters. *** models are currently unpolarised ***
 
-        Models are currently implimented for three cases:
+        Models are currently implemented for three cases:
         * A - Point source at the phase centre, no spectral slope -- model is a scalar
-        * B - Point source at the phase centre, with spectral slope -- model is an array of fluxes of shape (nchan)
-        * C - Complex model requiring calculation via uvw coordinates -- model is an array of the same shape as self.vis
+        * B - Point source at the phase centre, with spectral slope -- model is
+              an array of fluxes of shape (nchan)
+        * C - Complex model requiring calculation via uvw coordinates -- model
+              is an array of the same shape as self.vis
 
         Inputs
         ======
         max_offset : float
-            The difference in positon away from the phase centre for a point to be considered at the phase centre [arcseconds]
+            The difference in positon away from the phase centre for a point to
+            be considered at the phase centre [arcseconds]
             Default: 8 (= meerkat beam)
         timestamps: array of floats
             Timestamps (optional, only necessary for complex models)
@@ -484,38 +512,57 @@ class Scan(object):
         # phase centre position
         ra0, dec0 = self.target.radec()
         # position of first source
-        first_source = katpoint.construct_radec_target(self.model_raw_params[0]['RA'].item(),self.model_raw_params[0]['DEC'].item())
-        position_offset = self.target.separation(first_source, antenna=katpoint.Antenna(self.array_position))
+        first_source = katpoint.construct_radec_target(self.model_raw_params[0]['RA'].item(),
+                                                       self.model_raw_params[0]['DEC'].item())
+        position_offset = self.target.separation(first_source,
+                                                 antenna=katpoint.Antenna(self.array_position))
 
         # deal with easy case first - single point at the phase centre
-        if (self.model_raw_params.size == 1) and (position_offset < calprocs.arcsec_to_rad(max_offset)):
-                if (('a1' not in self.model_raw_params.dtype.names or self.model_raw_params['a1'] == 0) and
-                    ('a2' not in self.model_raw_params.dtype.names or self.model_raw_params['a2'] == 0) and
-                    ('a3' not in self.model_raw_params.dtype.names or self.model_raw_params['a3'] == 0)):
-                    #### CASE A - Point source as the phase centre, no spectral slope ####
-                    # spectral index is zero
-                    self.model = np.array([10.**self.model_raw_params['a0'].item()])
-                    self.logger.info('     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(self.model[0],))
-                else:
-                    #### CASE B - Point source at the phase centre, with spectral slope ####
-                    source_coefs = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
-                    # full spectral model
-                    # katpoint.FluxDensityModel needs upper and lower limits of applicability of the model.
-                    #   we make the assumptions that models provided will apply to our data so ignore this functionality by
-                    #   using frequency range 0 -- 100 GHz (==100e3 MHz)
-                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-                    # katsdpcal flux model parameters referenced to GHz, not MHz (so use frequencies in GHz)
-                    self.model = source_flux.flux_density(self.channel_freqs/1.0e9)[np.newaxis,:,np.newaxis,np.newaxis]
-                    self.logger.info('     Model: single point source, spectral model, average flux over {0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(self.channel_freqs[0]/1.e9, self.channel_freqs[-1]/1.e9, np.mean(self.model)))
-        #### CASE C - Complex model requiring calculation via uvw coordinates ####
+        if (self.model_raw_params.size == 1) \
+                and (position_offset < calprocs.arcsec_to_rad(max_offset)):
+            if (('a1' not in self.model_raw_params.dtype.names
+                 or self.model_raw_params['a1'] == 0) and
+                ('a2' not in self.model_raw_params.dtype.names
+                 or self.model_raw_params['a2'] == 0) and
+                ('a3' not in self.model_raw_params.dtype.names
+                 or self.model_raw_params['a3'] == 0)):
+                # CASE A - Point source as the phase centre, no spectral slope
+                # spectral index is zero
+                self.model = np.array([10.**self.model_raw_params['a0'].item()])
+                self.logger.info(
+                    '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
+                        self.model[0],))
+            else:
+                # CASE B - Point source at the phase centre, with spectral slope
+                source_coefs = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
+                # full spectral model
+                # katpoint.FluxDensityModel needs upper and lower limits of
+                # applicability of the model.
+                #   we make the assumptions that models provided will apply to
+                #   our data so ignore this functionality by using frequency
+                #   range 0 -- 100 GHz (==100e3 MHz)
+                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
+                # katsdpcal flux model parameters referenced to GHz, not MHz
+                # (so use frequencies in GHz)
+                self.model = source_flux.flux_density(
+                    self.channel_freqs / 1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
+                self.logger.info(
+                    '     Model: single point source, spectral model, average flux over '
+                    '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
+                        self.channel_freqs[0] / 1.e9, self.channel_freqs[-1] / 1.e9,
+                        np.mean(self.model)))
+        # CASE C - Complex model requiring calculation via uvw coordinates ####
         # If not one of the simple cases above, make a proper full model
         else:
-            self.logger.info('     Model: {0} point sources'.format(len(np.atleast_1d(self.model_raw_params)),))
+            self.logger.info(
+                '     Model: {0} point sources'.format(len(np.atleast_1d(self.model_raw_params)),))
 
             # calculate uvw, if it hasn't already been calculated
             if self.uvw is None:
-                wl = light_speed/self.channel_freqs
-                self.uvw = calprocs.calc_uvw_wave(self.target, self.timestamps, self.corrprod_lookup, self.antenna_descriptions, wl, self.array_position)
+                wl = light_speed / self.channel_freqs
+                self.uvw = calprocs.calc_uvw_wave(
+                    self.target, self.timestamps, self.corrprod_lookup,
+                    self.antenna_descriptions, wl, self.array_position)
 
             # set up model visibility
             complexmodel = np.zeros_like(self.vis)
@@ -524,19 +571,28 @@ class Scan(object):
             for source in np.atleast_1d(self.model_raw_params):
                 # source spectral flux
                 source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
-                # katpoint.FluxDensityModel needs upper and lower limits of applicability of the model.
-                #   we make the assumptions that models provided will apply to our data so ignore this functionality by
-                #   using frequency range 0 -- 100 GHz (==100e3 MHz)
+                # katpoint.FluxDensityModel needs upper and lower limits of
+                # applicability of the model. we make the assumptions that
+                # models provided will apply to our data so ignore this
+                # functionality by using frequency range
+                # 0 -- 100 GHz (==100e3 MHz)
                 source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-                # katsdpcal flux model parameters referenced to GHz, not MHz (so use frequencies in GHz)
+                # katsdpcal flux model parameters referenced to GHz, not MHz
+                # (so use frequencies in GHz)
                 #   currently using the same flux model for both polarisations
-                S = source_flux.flux_density(self.channel_freqs/1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
+                S = source_flux.flux_density(
+                    self.channel_freqs / 1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
                 # source position
-                source_position = katpoint.construct_radec_target(source['RA'].item(),source['DEC'].item())
-                l, m = self.target.sphere_to_plane(*source_position.radec(), projection_type='SIN', coord_system='radec')
+                source_position = katpoint.construct_radec_target(source['RA'].item(),
+                                                                  source['DEC'].item())
+                l, m = self.target.sphere_to_plane(
+                    *source_position.radec(), projection_type='SIN', coord_system='radec')
                 # the axis awkwardness is to allow appropriate broadcasting
                 #    this may be a ***terrible*** way to do this - will see!
-                complexmodel += S*(np.exp(2.*np.pi*1j*(self.uvw[0]*l + self.uvw[1]*m + self.uvw[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis, :])
+                complexmodel += \
+                    S * (np.exp(2. * np.pi * 1j
+                         * (self.uvw[0]*l + self.uvw[1]*m
+                            + self.uvw[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis, :])
             self.model = complexmodel
         return
 
@@ -548,7 +604,8 @@ class Scan(object):
         Inputs
         ======
         max_offset : float
-            The difference in positon away from the phase centre for a point to be considered at the phase centre [arcseconds]
+            The difference in positon away from the phase centre for a point to
+            be considered at the phase centre [arcseconds]
             Default: 8 (= meerkat beam)
         """
         # if models parameters have not been set for the scan, return unity model
@@ -580,16 +637,18 @@ class Scan(object):
            * self.modvis divided by the model, over the selected channel range
 
         """
-        if chan_select is None: chan_select = slice(None)
+        if chan_select is None:
+            chan_select = slice(None)
         if self.model is None:
             return self.modvis[chan_select]
         else:
             # for single element model, divide through selected channels by model
             if len(self.model.shape) < 2:
-                return self.modvis[chan_select]/self.model
+                return self.modvis[chan_select] / self.model
             # for model with empty channel axis, divide through selected channels by model
             elif (self.model.shape[1] == 1):
-                return self.modvis[chan_select]/self.model
+                return self.modvis[chan_select] / self.model
             else:
-                # for full model, divide through selected channels by same channel selection in the model
-                return self.modvis[chan_select]/self.model[chan_select]
+                # for full model, divide through selected channels by same
+                # channel selection in the model
+                return self.modvis[chan_select] / self.model[chan_select]
