@@ -220,7 +220,9 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             ig.add_item(id=None, name='flags', description="Flags for visibilities",
                         shape=flags.shape, dtype=flags.dtype)
             ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                        shape=weights.shape, dtype=weights.dtype)
+                        shape=weights.shape, dtype=np.uint8)
+            ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
+                        shape=(weights.shape[0],), dtype=np.float32)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                         shape=(), dtype=None, format=[('f', 64)])
 
@@ -266,7 +268,13 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             # transmit vis, flags and weights, timestamp
             ig['correlator_data'].value = correlator_data
             ig['flags'].value = flags
-            ig['weights'].value = weights
+            weights_channel = np.require(np.max(weights, axis=1), dtype=np.float32) / np.float32(255)
+            # Avoid divide-by-zero issues if all the weights are zero
+            weights_channel = np.maximum(weights_channel, np.float32(2.0**-96))
+            scaled_weights = np.round(weights / weights_channel[:, np.newaxis] * np.float32(255))
+            scaled_weights = scaled_weights.astype(np.uint8)
+            ig['weights_channel'].value = weights_channel
+            ig['weights'].value = scaled_weights
             ig['timestamp'].value = timestamp
             # send all of the descriptors with every heap
             tx.send_heap(ig.get_heap(descriptors='all'))
@@ -730,12 +738,15 @@ def h5_tx_data(h5data, ts, tx, max_scans):
 
         # transmit the data from this scan, timestamp by timestamp
         scan_data = h5data.vis[:]
-        scan_flags = h5data.flags[:]
-        scan_weights = np.ones_like(scan_data)
+        # Hack to get around h5data.flags returning a bool of selected flags
+        flags_indexer = h5data.flags
+        flags_indexer.transforms = []
+        scan_flags = flags_indexer[:]
+        scan_weights = h5data.weights
 
-        # set up item group, ising info from first data item
+        # set up item group, using info from first data item
         if 'correlator_data' not in ig:
-            h5data.setup_ig(ig, scan_data[0], scan_flags[0], scan_flags[0])
+            h5data.setup_ig(ig, scan_data[0], scan_flags[0], scan_weights[0])
 
         # transmit data timestamp by timestamp
         for i in range(scan_data.shape[0]):  # time axis

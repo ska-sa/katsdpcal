@@ -184,6 +184,42 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.telstate.add('cal_pol_ordering', pol_order)
             self.telstate.add('cal_bls_lookup', bls_lookup)
 
+        @classmethod
+        def _update_buffer(cls, out, l0, ordering):
+            """Copy values from an item group to the accumulation buffer.
+
+            The input has a single dimension representing both baseline and
+            polarisation, while the output has separate dimensions. There can
+            be an arbitrary permutation (given by `ordering`) of the
+            pol-baselines.
+
+            This is equivalent to
+
+            .. code:: python
+                out[:] = l0[:, ordering].reshape(out.shape)
+
+            but more efficient as it does not construct a temporary array.
+
+            It is required that the output can be reshaped to collapse the
+            pol and baseline dimensions. Being C-contiguous is sufficient for
+            this.
+
+            Parameters
+            ----------
+            out : :class:`np.ndarray`
+                Output array, shape (nchans, npols, nbls)
+            l0 : :class:`np.ndarray`
+                Input array, shape (nchans, npols * nbls)
+            ordering:
+                Indices into l0's last dimension to permute them before
+                reshaping into separate polarisation and baseline dimensions.
+            """
+            # Assign to .shape instead of using reshape so that an exception
+            # is raised if a view cannot be created (see np.reshape).
+            out_view = out.view()
+            out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
+            np.take(l0, ordering, axis=1, out=out_view)
+
         def accumulate(self, rx, buffer_index):
             """
             Accumulates spead data into arrays
@@ -295,19 +331,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 # increment the index indicating the position of the data in the buffer
                 array_index += 1
                 # reshape data and put into relevent arrays
-                data_buffer['vis'][array_index, :, :, :] = \
-                    ig['correlator_data'].value[:, self.ordering].reshape(
-                        [self.nchan, self.npol, self.nbl])
-                data_buffer['flags'][array_index, :, :, :] = \
-                    ig['flags'].value[:, self.ordering].reshape([self.nchan, self.npol, self.nbl])
-                # if we are not receiving weights in the SPEAD stream, fake them
-                if 'weights' in ig.keys():
-                    data_buffer['weights'][array_index, :, :, :] = \
-                        ig['weights'].value[:, self.ordering].reshape(
-                            [self.nchan, self.npol, self.nbl])
-                else:
-                    data_buffer['weights'][array_index, :, :, :] = \
-                        np.empty([self.nchan, self.npol, self.nbl], dtype=np.float32)
+                self._update_buffer(data_buffer['vis'][array_index],
+                                    ig['correlator_data'].value, self.ordering)
+                self._update_buffer(data_buffer['flags'][array_index],
+                                    ig['flags'].value, self.ordering)
+                weights_channel = ig['weights_channel'].value[:, np.newaxis]
+                weights = ig['weights'].value
+                self._update_buffer(data_buffer['weights'][array_index],
+                                    weights * weights_channel, self.ordering)
                 data_buffer['times'][array_index] = data_ts
 
                 # break if activity has changed (i.e. the activity time has changed)
