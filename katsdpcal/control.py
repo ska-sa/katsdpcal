@@ -7,6 +7,7 @@ from . import calprocs
 
 import numpy as np
 import time
+import mmap
 
 import logging
 logger = logging.getLogger(__name__)
@@ -19,6 +20,21 @@ class TaskLoggingAdapter(logging.LoggerAdapter):
     """
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
+
+
+def shared_empty(shape, dtype):
+    """
+    Allocate a numpy array from shared memory. The contents are undefined.
+
+    .. note:: This only works on UNIX-like systems, not Windows.
+    """
+    dtype = np.dtype(dtype)
+    items = int(np.product(shape))
+    n_bytes = items * dtype.itemsize
+    raw = mmap.mmap(-1, n_bytes, mmap.MAP_SHARED)
+    array = np.frombuffer(raw, dtype)
+    array.shape = shape
+    return array
 
 
 # ---------------------------------------------------------------------------------------
@@ -71,10 +87,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
              Task (Process or Thread) run method. Append random vis to the vis list
             at random time.
             """
-            # if we are usig multiprocessing, view ctypes array in numpy format
-            if 'multiprocessing' in str(control_method):
-                self.buffers_to_numpy()
-
             # Initialise SPEAD receiver
             self.accumulator_logger.info('Initializing SPEAD receiver')
             rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
@@ -152,24 +164,6 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.accumulator_logger.info('stop SPEAD receiver')
             # send the stop only to the local receiver
             end_transmit('127.0.0.1', self.l0_endpoint.port)
-
-        def buffers_to_numpy(self):
-            """
-            View ctype data buffers as numpy arrays
-            """
-
-            for current_buffer in self.buffers:
-                current_buffer['vis'] = np.frombuffer(current_buffer['vis'],
-                                                      dtype=np.float32).view(np.complex64)
-                current_buffer['vis'].shape = self.buffer_shape
-                current_buffer['flags'] = np.frombuffer(current_buffer['flags'], dtype=np.uint8)
-                current_buffer['flags'].shape = self.buffer_shape
-                current_buffer['weights'] = np.frombuffer(current_buffer['weights'],
-                                                          dtype=np.float32)
-                current_buffer['weights'].shape = self.buffer_shape
-                current_buffer['times'] = np.frombuffer(current_buffer['times'], dtype=np.float64)
-                current_buffer['max_index'] = np.frombuffer(current_buffer['max_index'],
-                                                            dtype=np.int32)
 
         def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls
@@ -390,13 +384,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                 self.accumulator_logger.info('Observation ended')
                 self._obsend.set()
 
-            if 'multiprocessing' in str(control_method):
-                # multiprocessing case
-                data_buffer['max_index'][0] = array_index
-            else:
-                # threading case
-                data_buffer['max_index'] = np.atleast_1d(np.array(array_index))
-
+            data_buffer['max_index'][0] = array_index
             self.accumulator_logger.info('Accumulation ended')
 
             return array_index
@@ -458,10 +446,6 @@ def init_pipeline_control(
                     # run the pipeline
                     self.pipeline_logger.info('Pipeline run start on accumulated data')
 
-                    # if we are usig multiprocessing, view ctypes array in numpy format
-                    if 'multiprocessing' in str(control_method):
-                        self.data_to_numpy()
-
                     # run the pipeline
                     self.run_pipeline()
 
@@ -474,23 +458,6 @@ def init_pipeline_control(
 
         def stopped(self):
             return self._stop.is_set()
-
-        def data_to_numpy(self):
-            """
-            Convert data buffer from ctypes to numpy arrays
-            """
-            # note - this sometimes causes a harmless (but irritating) PEP 3118 runtime warning
-            self.data['vis'] = np.ctypeslib.as_array(self.data['vis']).view(np.complex64)
-            self.data['vis'].shape = self.data_shape
-
-            self.data['flags'] = np.ctypeslib.as_array(self.data['flags'])
-            self.data['flags'].shape = self.data_shape
-
-            self.data['weights'] = np.ctypeslib.as_array(self.data['weights'])
-            self.data['weights'].shape = self.data_shape
-
-            self.data['times'] = np.ctypeslib.as_array(self.data['times'])
-            self.data['max_index'] = np.ctypeslib.as_array(self.data['max_index'])
 
         def run_pipeline(self):
             # run pipeline calibration, if more than zero timestamps accumulated

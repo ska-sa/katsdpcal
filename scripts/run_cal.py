@@ -9,7 +9,7 @@ import manhole
 from katsdptelstate import endpoint
 import katsdpservices
 
-from katsdpcal.control import init_accumulator_control, init_pipeline_control
+from katsdpcal.control import init_accumulator_control, init_pipeline_control, shared_empty
 from katsdpcal.control import end_transmit
 from katsdpcal.report import make_cal_report
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
@@ -200,39 +200,17 @@ def create_buffer_arrays(buffer_shape, mproc=True):
     """
     Create empty buffer record using specified dimensions
     """
-    if mproc is True:
-        return create_buffer_arrays_multiprocessing(buffer_shape)
+    if mproc:
+        factory = shared_empty
     else:
-        return create_buffer_arrays_threading(buffer_shape)
-
-
-def create_buffer_arrays_multiprocessing(buffer_shape):
-    """
-    Create empty buffer record using specified dimensions,
-    for multiprocessing shared memory appropriate buffers
-    """
+        factory = np.empty
     data = {}
-    array_length = buffer_shape[0]
-    buffer_size = reduce(lambda x, y: x*y, buffer_shape)
-    data['vis'] = control_method.RawArray(c_float, buffer_size*2)  # times two for complex
-    data['flags'] = control_method.RawArray(c_ubyte, buffer_size)
-    data['weights'] = control_method.RawArray(c_float, buffer_size)
-    data['times'] = control_method.RawArray(c_double, array_length)
-    data['max_index'] = control_method.sharedctypes.RawArray(c_int, 1)
-    return data
-
-
-def create_buffer_arrays_threading(buffer_shape):
-    """
-    Create empty buffer record using specified dimensions,
-    for thread appropriat numpy buffers
-    """
-    data = {}
-    data['vis'] = np.empty(buffer_shape, dtype=np.complex64)
-    data['flags'] = np.empty(buffer_shape, dtype=np.uint8)
-    data['weights'] = np.empty(buffer_shape, dtype=np.float32)
-    data['times'] = np.empty(buffer_shape[0], dtype=np.float)
-    data['max_index'] = np.empty([0.0], dtype=np.int32)
+    data['vis'] = factory(buffer_shape, dtype=np.complex64)
+    data['flags'] = factory(buffer_shape, dtype=np.uint8)
+    data['weights'] = factory(buffer_shape, dtype=np.float32)
+    data['times'] = factory(buffer_shape[0], dtype=np.float)
+    data['max_index'] = factory([1], dtype=np.int32)
+    data['max_index'][0] = 0
     return data
 
 
@@ -549,7 +527,6 @@ if __name__ == '__main__':
         logger.info("Using multiprocessing")
         import multiprocessing as control_method
         from multiprocessing import Process as control_task
-        from ctypes import c_ubyte, c_double, c_int, c_float
     else:
         logger.info("Using threading")
         import threading as control_method
