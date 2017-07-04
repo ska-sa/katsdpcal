@@ -9,6 +9,7 @@ from time import time
 
 import katpoint
 from scipy.constants import c as light_speed
+import scipy.interpolate
 
 import logging
 logger = logging.getLogger(__name__)
@@ -475,8 +476,10 @@ class Scan(object):
             # case of only one solution value being interpolated
             return self.inf_interpolate(solns)
         else:
-            real_interp = calprocs.interp_extrap_1d(timestamps, values.real, kind='linear', axis=0)
-            imag_interp = calprocs.interp_extrap_1d(timestamps, values.imag, kind='linear', axis=0)
+            real_interp = scipy.interpolate.interp1d(
+                timestamps, values.real, kind='linear', axis=0, fill_value='extrapolate')
+            imag_interp = scipy.interpolate.interp1d(
+                timestamps, values.imag, kind='linear', axis=0, fill_value='extrapolate')
 
             interp_solns = real_interp(self.timestamps) + 1.0j*imag_interp(self.timestamps)
             return CalSolution(solns.soltype, interp_solns, self.timestamps)

@@ -31,5 +31,10 @@ setup(
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
     setup_requires=["katversion"],
+    install_requires=[
+        "numpy>=1.8", "scipy>=0.17", "manhole",
+        "katpoint", "katdal", "katsdptelstate", "spead2"
+    ],
+    tests_require=["nose"],
     use_katversion=True
 )

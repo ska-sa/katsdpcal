@@ -727,67 +727,6 @@ def solint_from_nominal(solint, dump_period, num_times):
 
 
 # --------------------------------------------------------------------------------------------------
-# --- Interpolation
-# --------------------------------------------------------------------------------------------------
-
-class interp_extrap_1d(scipy.interpolate.interp1d):
-    """
-    Subclasses the scipy.interpolate interp1d to be able to extrapolate
-    Extrapolated points are just == to edge interpolated values
-
-    scipy.interpolate interpolates a 1-D function.
-
-    `x` and `y` are arrays of values used to approximate some function f:
-    ``y = f(x)``.  This class returns a function whose call method uses
-    interpolation to find the value of new points.
-
-    Parameters
-    ----------
-    x : (N,) array_like
-        A 1-D array of real values.
-    y : (...,N,...) array_like
-        A N-D array of real values. The length of `y` along the interpolation
-        axis must be equal to the length of `x`.
-    kind : str or int, optional
-        Specifies the kind of interpolation as a string
-        ('linear', 'nearest', 'zero', 'slinear', 'quadratic, 'cubic'
-        where 'slinear', 'quadratic' and 'cubic' refer to a spline
-        interpolation of first, second or third order) or as an integer
-        specifying the order of the spline interpolator to use.
-        Default is 'linear'.
-    axis : int, optional
-        Specifies the axis of `y` along which to interpolate.
-        Interpolation defaults to the last axis of `y`.
-    copy : bool, optional
-        If True, the class makes internal copies of x and y.
-        If False, references to `x` and `y` are used. The default is to copy.
-    assume_sorted : bool, optional
-        If False, values of `x` can be in any order and they are sorted first.
-        If True, `x` has to be an array of monotonically increasing values.
-
-    Methods
-    -------
-    __call__
-
-    """
-
-    def __call__(cls, x, **kwds):
-        x_new = copy.copy(x)
-        # for input x values that are less than the lowest value of the
-        # interpolation function x-range, set them to the lowest value
-        x_new[x_new < cls.x[0]] = cls.x[0]
-        # likewise, for input x values that are greater than the greatest value
-        # of the interpolation function x-range, set them to the highest
-        # value
-        x_new[x_new > cls.x[-1]] = cls.x[-1]
-        # this is a sneaky way to force extrapolated y values to be the same as
-        # the y exterior values of the interpolation range by setting the
-        # x-values outside to the interpolation range to the same values as the
-        # x exterior values of the interpolation range
-        return scipy.interpolate.interp1d.__call__(cls, x_new, **kwds)
-
-
-# --------------------------------------------------------------------------------------------------
 # --- Baseline ordering
 # --------------------------------------------------------------------------------------------------
 
