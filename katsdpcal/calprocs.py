@@ -303,10 +303,6 @@ def g_from_K(chans, K):
     return g_array
 
 
-def nanAve(x, axis=0):
-    return np.nansum(x, axis=axis) / np.sum(~np.isnan(x), axis=axis)
-
-
 def ants_from_xcbl(bl):
     """
     Returns the number of antennas calculated from the number of cross-correlation baselines
