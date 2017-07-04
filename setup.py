@@ -10,7 +10,6 @@ setup(
     package_data={'': ['conf/*/*']},
     include_package_data=True,
     scripts=[
-        "scripts/reduction_script.py",
         "scripts/run_cal.py",
         "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
