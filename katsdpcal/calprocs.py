@@ -204,7 +204,7 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=1.0, ref_ant=0,
         baselines or antenna pairs on the last dimension
     num_ants : int
         Number of antennas
-    corrprod_lookup : numpy array of int, array of shape (N, 2)
+    corrprod_lookup : numpy array of int, shape (N, 2)
         First and second antenna indices associated with visibilities
     weights : float or array of float, shape (M, ..., N), optional
         Visibility weights (positive real numbers)
