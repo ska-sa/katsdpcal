@@ -3,7 +3,6 @@
 # Simulate the data stream from a file
 
 from katsdpcal.simulator import init_simdata
-from katsdptelstate.telescope_state import TelescopeState
 from katsdptelstate import endpoint, ArgumentParser
 
 def parse_opts():

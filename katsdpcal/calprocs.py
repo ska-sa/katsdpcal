@@ -303,30 +303,8 @@ def g_from_K(chans, K):
     return g_array
 
 
-def ants_from_xcbl(bl):
-    """
-    Returns the number of antennas calculated from the number of cross-correlation baselines
-    """
-    return int((1 + np.sqrt(1 + 8 * bl)) / 2)
-
-
-def ants_from_allbl(bl):
-    """
-    Returns the number of antennas calculated from the number of
-    cross-correlation and auto-correlation baselines.
-    """
-    return int((np.sqrt(1 + 8 * bl) - 1) / 2)
-
-
 def ants_from_bllist(bllist):
     return len(set([item for sublist in bllist for item in sublist]))
-
-
-def xcbl_from_ants(a):
-    """
-    Returns the number of cross-correlation baselines calculated from the number of antennas
-    """
-    return a * (a - 1) / 2
 
 
 def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
