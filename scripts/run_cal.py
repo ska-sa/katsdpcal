@@ -2,16 +2,14 @@
 import numpy as np
 import time
 import os
-import shutil
 import signal
 import manhole
 
 from katsdptelstate import endpoint
 import katsdpservices
 
-from katsdpcal.control import init_accumulator_control, init_pipeline_control, shared_empty
-from katsdpcal.control import end_transmit
-from katsdpcal.report import make_cal_report
+from katsdpcal.control import (
+    init_accumulator_control, init_pipeline_control, init_report_writer, shared_empty)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -137,33 +135,6 @@ def setup_logger(log_name, log_path='.'):
     logging.getLogger('').addHandler(handler)
 
 
-def setup_observation_logger(log_name, log_path='.'):
-    """
-    Set up a pipeline logger to file.
-
-    Inputs
-    ======
-    log_path : str
-        path in which log file will be written
-    """
-    log_path = os.path.abspath(log_path)
-
-    # logging to file
-    # set format
-    formatter = logging.Formatter(
-        '%(asctime)s.%(msecs)03dZ %(name)-24s %(levelname)-8s %(message)s')
-    formatter.datefmt = '%Y-%m-%d %H:%M:%S'
-
-    obs_log = logging.FileHandler('{0}/{1}'.format(log_path, log_name))
-    obs_log.setFormatter(formatter)
-    logging.getLogger('').addHandler(obs_log)
-    return obs_log
-
-
-def stop_observation_logger(obs_log):
-    logging.getLogger('').removeHandler(obs_log)
-
-
 def all_alive(process_list):
     """
     Check if all of the process in process list are alive and return True
@@ -198,13 +169,14 @@ def create_buffer_arrays(buffer_shape, mproc=True):
     return data
 
 
-def force_shutdown(accumulator, pipelines):
-    # forces pipeline threads to shut down
-    accumulator.stop()
-    accumulator.join()
-    # pipeline needs to be terminated, rather than stopped,
-    # to end long running reduction.pipeline function
-    map(lambda x: x.terminate(), pipelines)
+def force_shutdown(accumulator, pipelines, report_writer):
+    # Kill off all the tasks. This is done in reverse order, to avoid
+    # triggering a report writing only to kill it half-way.
+    # TODO: this may need to become semi-graceful at some point, so avoid
+    # corrupting an in-progress report.
+    for task in [report_writer] + pipelines + [accumulator]:
+        task.terminate()
+        task.join()
 
 
 def kill_shutdown():
@@ -357,16 +329,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
     #  due to SIGTERM, keyboard interrupt, or unknown error
     forced_shutdown = False
 
-    # get subarray ID
-    subarray_id = ts['subarray_product_id'] if 'subarray_product_id' in ts else 'unknown_subarray'
-
     logger.info('Receiving L0 data from {0} via {1}'.format(
         l0_endpoint, 'default interface' if l0_interface is None else l0_interface))
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
     while not forced_shutdown:
-        observation_log = '{0}_pipeline.log'.format(int(time.time()),)
-        obs_log = setup_observation_logger(observation_log, log_path)
-
         logger.info('===========================')
         logger.info('   Starting new observation')
 
@@ -375,6 +341,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         accum_pipeline_queues = [control_method.Queue() for i in range(num_buffers)]
         # signalled when the pipeline is finished with a buffer
         pipeline_accum_sems = [control_method.Semaphore(value=1) for i in range(num_buffers)]
+        # signalled by pipelines when they shut down
+        pipeline_report_queue = control_method.Queue()
 
         # Set up the accumulator
         accumulator = init_accumulator_control(control_method, control_task, buffers,
@@ -382,10 +350,15 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
                                                accum_pipeline_queues, pipeline_accum_sems,
                                                l0_endpoint, l0_interface_address, ts)
         # Set up the pipelines (one per buffer)
-        pipelines = [init_pipeline_control(control_method, control_task,
-                     buffers[i], buffer_shape,
-                     accum_pipeline_queues[i], pipeline_accum_sems[i], i,
-                     l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
+        pipelines = [init_pipeline_control(
+            control_method, control_task,
+            buffers[i], buffer_shape,
+            accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, i,
+            l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
+        # Set up the report writer
+        report_writer = init_report_writer(
+            control_method, control_task, pipeline_report_queue, ts, num_buffers,
+            l1_endpoint, l1_level, report_path, log_path, full_log)
 
         try:
             manhole.install(oneshot_on='USR1', locals={
@@ -394,9 +367,9 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         except manhole.AlreadyInstalled:
             pass
 
-        # Start the pipeline threads
+        # Start the tasks
+        report_writer.start()
         map(lambda x: x.start(), pipelines)
-        # Start the accumulator thread
         accumulator.start()
         logger.info('Waiting for L0 data')
 
@@ -407,77 +380,16 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
             for pipeline in pipelines:
                 pipeline.join()
             logger.info('Pipelines stopped')
+            report_writer.join()
+            logger.info('Report writer stopped')
         except (KeyboardInterrupt, SystemExit):
             logger.info('Received interrupt! Quitting threads.')
-            force_shutdown(accumulator, pipelines) if mproc else kill_shutdown()
+            force_shutdown(accumulator, pipelines, report_writer) if mproc else kill_shutdown()
             forced_shutdown = True
-        except Exception, e:
-            logger.error('Unknown error: {}'.format(e))
-            force_shutdown(accumulator, pipelines)
+        except Exception as e:
+            logger.error('Unknown error: %s', e, exc_info=True)
+            force_shutdown(accumulator, pipelines, report_writer)
             forced_shutdown = True
-
-        # closing steps, if data transmission has stoped (skipped for forced early shutdown)
-        if not forced_shutdown:
-            # get observation end time
-            if 'cal_obs_end_time' in ts:
-                obs_end = ts.cal_obs_end_time
-            else:
-                logger.info('Unknown observation end time')
-                obs_end = time.time()
-            # get observation name
-            try:
-                obs_params = ts.get_range('obs_params', st=0, et=obs_end, return_format='recarray')
-                obs_keys = obs_params['value']
-                obs_times = obs_params['time']
-                # choose most recent experiment id (last entry in the list), if
-                # there are more than one
-                experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
-                experiment_id = eval(experiment_id_string.split()[-1])
-                obs_start = [t for x, t in zip(obs_keys, obs_times) if 'experiment_id' in x][-1]
-            except (TypeError, KeyError, AttributeError):
-                # TypeError, KeyError because this isn't properly implemented yet
-                # AttributeError in case this key isnt in the telstate for whatever reason
-                experiment_id = '{0}_unknown_project'.format(int(time.time()),)
-                obs_start = None
-
-            # make directory for this observation, for logs and report
-            if not report_path:
-                report_path = '.'
-            report_path = os.path.abspath(report_path)
-            obs_dir = '{0}/{1}_{2}_{3}'.format(
-                report_path, int(time.time()), subarray_id, experiment_id)
-            current_obs_dir = '{0}-current'.format(obs_dir,)
-            try:
-                os.mkdir(current_obs_dir)
-            except OSError:
-                logger.warning('Experiment ID directory {} already exits'.format(current_obs_dir,))
-
-            # create pipeline report (very basic at the moment)
-            try:
-                make_cal_report(ts, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
-            except Exception as e:
-                logger.info('Report generation failed: {0}'.format(e,))
-
-            if l1_level != 0:
-                # send L1 stop transmission
-                #   wait for a couple of secs before ending transmission
-                time.sleep(2.0)
-                end_transmit(l1_endpoint.host, l1_endpoint.port)
-                logger.info('L1 stream ended')
-
-            logger.info('   Observation ended')
-            logger.info('===========================')
-
-            # copy log of this observation into the report directory
-            shutil.move('{0}/{1}'.format(log_path, observation_log),
-                        '{0}/pipeline_{1}.log'.format(current_obs_dir, experiment_id))
-            stop_observation_logger(obs_log)
-            if full_log is not None:
-                shutil.copy('{0}/{1}'.format(log_path, full_log),
-                            '{0}/{1}'.format(current_obs_dir, full_log))
-
-            # change report and log directory to final name for archiving
-            shutil.move(current_obs_dir, obs_dir)
 
 
 if __name__ == '__main__':
@@ -493,6 +405,7 @@ if __name__ == '__main__':
     if opts.notthreading is True:
         logger.info("Using multiprocessing")
         import multiprocessing as control_method
+
         class control_task(control_method.Process):
             def start(self):
                 # Block SIGINT while spawning the child, so that the child

@@ -3,12 +3,15 @@ from . import send
 from . import recv
 
 from .reduction import pipeline
+from .report import make_cal_report
 from . import calprocs
 
 import numpy as np
 import time
 import mmap
 import threading
+import os
+import shutil
 
 import logging
 logger = logging.getLogger(__name__)
@@ -50,9 +53,7 @@ def shared_empty(shape, dtype):
 # Accumulator
 # ---------------------------------------------------------------------------------------
 
-def init_accumulator_control(control_method, control_task, buffers, buffer_shape,
-                             accum_pipeline_queues, pipeline_accum_sems,
-                             l0_endpoint, l0_interface_address, telstate):
+def init_accumulator_control(control_method, control_task, *args, **kwargs):
 
     class accumulator_control(control_task):
         """
@@ -383,19 +384,14 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
             return array_index
 
-    return accumulator_control(control_method, buffers, buffer_shape,
-                               accum_pipeline_queues, pipeline_accum_sems,
-                               l0_endpoint, l0_interface_address, telstate)
+    return accumulator_control(control_method, *args, **kwargs)
 
 
 # ---------------------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(
-        control_method, control_task, data, data_shape,
-        accum_pipeline_queue, pipeline_accum_sem, pipenum, l1_endpoint,
-        l1_level, l1_rate, telstate):
+def init_pipeline_control(control_method, control_task, *args, **kwargs):
 
     class pipeline_control(control_task):
         """
@@ -403,12 +399,13 @@ def init_pipeline_control(
         """
 
         def __init__(self, control_method, data, data_shape,
-                     accum_pipeline_queue, pipeline_accum_sem,
+                     accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue,
                      pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
             self.accum_pipeline_queue = accum_pipeline_queue
             self.pipeline_accum_sem = pipeline_accum_sem
+            self.pipeline_report_queue = pipeline_report_queue
             self.name = 'Pipeline_' + str(pipenum)
             self.telstate = telstate
             self.data_shape = data_shape
@@ -425,21 +422,24 @@ def init_pipeline_control(
             """
 
             # run until stop event received
-            while True:
-                self.pipeline_logger.info('waiting for next event (%s)', self.name)
-                event = self.accum_pipeline_queue.get()
-                if isinstance(event, BufferReadyEvent):
-                    self.pipeline_logger.info('buffer acquired by %s', self.name)
-                    # run the pipeline
-                    self.run_pipeline()
-                    # release condition after pipeline run finished
-                    self.pipeline_accum_sem.release()
-                    self.pipeline_logger.info('pipeline_accum_sem release by %s', self.name)
-                elif isinstance(event, StopEvent):
-                    self.pipeline_logger.info('stop received by %s', self.name)
-                    break
-                else:
-                    self.pipeline_logger.error('unknown event type %r by %s', event, self.name)
+            try:
+                while True:
+                    self.pipeline_logger.info('waiting for next event (%s)', self.name)
+                    event = self.accum_pipeline_queue.get()
+                    if isinstance(event, BufferReadyEvent):
+                        self.pipeline_logger.info('buffer acquired by %s', self.name)
+                        # run the pipeline
+                        self.run_pipeline()
+                        # release condition after pipeline run finished
+                        self.pipeline_accum_sem.release()
+                        self.pipeline_logger.info('pipeline_accum_sem release by %s', self.name)
+                    elif isinstance(event, StopEvent):
+                        self.pipeline_logger.info('stop received by %s', self.name)
+                        break
+                    else:
+                        self.pipeline_logger.error('unknown event type %r by %s', event, self.name)
+            finally:
+                self.pipeline_report_queue.put(StopEvent())
 
         def run_pipeline(self):
             # run pipeline calibration, if more than zero timestamps accumulated
@@ -499,9 +499,91 @@ def init_pipeline_control(
                     ig['timestamp'].value = scan_times[i]
                     tx.send_heap(ig.get_heap())
 
-    return pipeline_control(control_method, data, data_shape,
-                            accum_pipeline_queue, pipeline_accum_sem,
-                            pipenum, l1_endpoint, l1_level, l1_rate, telstate)
+    return pipeline_control(control_method, *args, **kwargs)
+
+
+# ---------------------------------------------------------------------------------------
+# Report writer
+# ---------------------------------------------------------------------------------------
+
+def report_writer(pipeline_report_queue, telstate, num_pipelines,
+                  l1_endpoint, l1_level,
+                  report_path, log_path, full_log):
+    report_logger = TaskLoggingAdapter(logger, {'connid': 'report_writer'})
+    remain = num_pipelines
+    while remain > 0:
+        event = pipeline_report_queue.get()
+        assert isinstance(event, StopEvent)
+        remain -= 1
+    report_logger.info('Last pipeline has finished, starting report')
+    # get observation end time
+    now = time.time()
+    try:
+        obs_end = telstate.cal_obs_end_time
+    except KeyError:
+        report_logger.info('Unknown observation end time')
+        obs_end = now
+    # get subarray ID
+    subarray_id = telstate.get('subarray_product_id', 'unknown_subarray')
+
+    # get observation name
+    try:
+        obs_params = telstate.get_range('obs_params', st=0, et=obs_end,
+                                        return_format='recarray')
+        obs_keys = obs_params['value']
+        obs_times = obs_params['time']
+        # choose most recent experiment id (last entry in the list), if
+        # there are more than one
+        experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
+        experiment_id = eval(experiment_id_string.split()[-1])
+        obs_start = [t for x, t in zip(obs_keys, obs_times) if 'experiment_id' in x][-1]
+    except (TypeError, KeyError, AttributeError):
+        # TypeError, KeyError because this isn't properly implemented yet
+        # AttributeError in case this key isnt in the telstate for whatever reason
+        experiment_id = '{0}_unknown_project'.format(int(now))
+        obs_start = None
+
+    # make directory for this observation, for logs and report
+    if not report_path:
+        report_path = '.'
+    report_path = os.path.abspath(report_path)
+    obs_dir = '{0}/{1}_{2}_{3}'.format(
+        report_path, int(now), subarray_id, experiment_id)
+    current_obs_dir = '{0}-current'.format(obs_dir)
+    try:
+        os.mkdir(current_obs_dir)
+    except OSError:
+        report_logger.warning('Experiment ID directory {} already exists'.format(current_obs_dir))
+
+    # create pipeline report (very basic at the moment)
+    try:
+        make_cal_report(telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
+    except Exception as e:
+        report_logger.info('Report generation failed: %s', e, exc_info=True)
+
+    if l1_level != 0:
+        # send L1 stop transmission
+        #   wait for a couple of secs before ending transmission, because
+        #   it's a separate kernel socket and hence unordered with respect
+        #   to the sockets used by the pipelines (TODO: share a socket).
+        time.sleep(2.0)
+        end_transmit(l1_endpoint.host, l1_endpoint.port)
+        report_logger.info('L1 stream ended')
+
+    report_logger.info('   Observation ended')
+    report_logger.info('===========================')
+
+    if full_log is not None:
+        shutil.copy('{0}/{1}'.format(log_path, full_log),
+                    '{0}/{1}'.format(current_obs_dir, full_log))
+
+    # change report and log directory to final name for archiving
+    shutil.move(current_obs_dir, obs_dir)
+
+
+def init_report_writer(control_method, control_task, *args, **kwargs):
+    return control_task(target=report_writer, name='report_writer',
+                        args=args, kwargs=kwargs)
 
 # ---------------------------------------------------------------------------------------
 # SPEAD helper functions
