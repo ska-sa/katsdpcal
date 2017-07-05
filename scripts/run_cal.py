@@ -180,22 +180,6 @@ def all_alive(process_list):
     return alive
 
 
-def any_alive(process_list):
-    """
-    Check if any of the process in process list are alive and return True
-    if any are, False otherwise.
-
-    Inputs
-    ======
-    process_list:  list of multpirocessing.Process objects
-    """
-
-    alive = False
-    for process in process_list:
-        alive = alive or process.is_alive()
-    return alive
-
-
 def create_buffer_arrays(buffer_shape, mproc=True):
     """
     Create empty buffer record using specified dimensions
@@ -221,15 +205,6 @@ def force_shutdown(accumulator, pipelines):
     # pipeline needs to be terminated, rather than stopped,
     # to end long running reduction.pipeline function
     map(lambda x: x.terminate(), pipelines)
-
-
-def force_hard_shutdown(accumulator, pipelines):
-    # forces pipeline threads to shut down
-    #  - faster but dirtier than force_shutdown()
-    accumulator.terminate()
-    # terminating accumulator leaves hanging wait in pipeline
-    # - aggressive kill needed for running pipeline
-    map(lambda x: os.kill(x.pid, signal.SIGKILL), pipelines)
 
 
 def kill_shutdown():
@@ -395,16 +370,21 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         logger.info('===========================')
         logger.info('   Starting new observation')
 
-        # set up conditions for the buffers
-        scan_accumulator_conditions = [control_method.Condition() for i in range(num_buffers)]
+        # set up inter-task synchronisation primitives.
+        # passed events to indicate buffer transfer, end-of-observation, or stop
+        accum_pipeline_queues = [control_method.Queue() for i in range(num_buffers)]
+        # signalled when the pipeline is finished with a buffer
+        pipeline_accum_sems = [control_method.Semaphore(value=1) for i in range(num_buffers)]
 
         # Set up the accumulator
         accumulator = init_accumulator_control(control_method, control_task, buffers,
-                                               buffer_shape, scan_accumulator_conditions,
+                                               buffer_shape,
+                                               accum_pipeline_queues, pipeline_accum_sems,
                                                l0_endpoint, l0_interface_address, ts)
         # Set up the pipelines (one per buffer)
         pipelines = [init_pipeline_control(control_method, control_task,
-                     buffers[i], buffer_shape, scan_accumulator_conditions[i], i,
+                     buffers[i], buffer_shape,
+                     accum_pipeline_queues[i], pipeline_accum_sems[i], i,
                      l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
 
         try:
@@ -420,37 +400,24 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         accumulator.start()
         logger.info('Waiting for L0 data')
 
+        # wait until the everything has shut down
         try:
-            # run tasks until the observation has ended
-            while all_alive([accumulator] + pipelines) and not accumulator.obs_finished():
-                time.sleep(0.1)
+            accumulator.join()
+            logger.info('Accumulator stopped')
+            for pipeline in pipelines:
+                pipeline.join()
+            logger.info('Pipelines stopped')
         except (KeyboardInterrupt, SystemExit):
             logger.info('Received interrupt! Quitting threads.')
             force_shutdown(accumulator, pipelines) if mproc else kill_shutdown()
             forced_shutdown = True
         except Exception, e:
-            logger.error('Unknown error: {}'.formax(e,))
+            logger.error('Unknown error: {}'.format(e))
             force_shutdown(accumulator, pipelines)
             forced_shutdown = True
 
         # closing steps, if data transmission has stoped (skipped for forced early shutdown)
         if not forced_shutdown:
-            # Stop pipelines first so they recieve correct signal before
-            # accumulator acquires the condition
-            map(lambda x: x.stop(), pipelines)
-            logger.info('Pipelines stopped')
-            # then stop accumulator (releasing conditions)
-            accumulator.stop_release()
-            logger.info('Accumulator stopped')
-
-            # join tasks
-            accumulator.join()
-            logger.info('Accumulator task closed')
-            # wait till all pipeline runs finish then join
-            while any_alive(pipelines):
-                map(lambda x: x.join(), pipelines)
-            logger.info('Pipeline tasks closed')
-
             # get observation end time
             if 'cal_obs_end_time' in ts:
                 obs_end = ts.cal_obs_end_time
@@ -468,7 +435,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
                 experiment_id = eval(experiment_id_string.split()[-1])
                 obs_start = [t for x, t in zip(obs_keys, obs_times) if 'experiment_id' in x][-1]
             except (TypeError, KeyError, AttributeError):
-                # TypeError, KeyError because this isn't properly implimented yet
+                # TypeError, KeyError because this isn't properly implemented yet
                 # AttributeError in case this key isnt in the telstate for whatever reason
                 experiment_id = '{0}_unknown_project'.format(int(time.time()),)
                 obs_start = None
@@ -488,7 +455,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
             # create pipeline report (very basic at the moment)
             try:
                 make_cal_report(ts, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
-            except Exception, e:
+            except Exception as e:
                 logger.info('Report generation failed: {0}'.format(e,))
 
             if l1_level != 0:
@@ -526,19 +493,29 @@ if __name__ == '__main__':
     if opts.notthreading is True:
         logger.info("Using multiprocessing")
         import multiprocessing as control_method
-        from multiprocessing import Process as control_task
+        class control_task(control_method.Process):
+            def start(self):
+                # Block SIGINT while spawning the child, so that the child
+                # won't get a KeyboardInterrupt if Ctrl-C is pressed. There
+                # is a race condition where a Ctrl-C while in this function
+                # would be lost, but since SIGINT is only intended for
+                # interactive use, the user can just push it again. With Python
+                # 3 it would be possible to fix this with
+                # signal.pthread_sigmask to block rather than ignore the
+                # signal.
+                orig = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                super(control_task, self).start()
+                signal.signal(signal.SIGINT, orig)
     else:
         logger.info("Using threading")
-        import threading as control_method
-        from threading import Thread as control_task
+        import multiprocessing.dummy as control_method
+        from multiprocessing.dummy import Process as control_task
 
     def force_exit(_signo=None, _stack_frame=None):
         logger.info("Exiting katsdpcal on SIGTERM")
         raise SystemExit
 
     signal.signal(signal.SIGTERM, force_exit)
-    # mostly needed for Docker use since this process runs as PID 1
-    # and does not get passed sigterm unless it has a custom listener
 
     run_threads(
         opts.telstate,

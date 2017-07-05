@@ -8,6 +8,7 @@ from . import calprocs
 import numpy as np
 import time
 import mmap
+import threading
 
 import logging
 logger = logging.getLogger(__name__)
@@ -20,6 +21,14 @@ class TaskLoggingAdapter(logging.LoggerAdapter):
     """
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
+
+
+class StopEvent(object):
+    """Gracefully shutdown requested"""
+
+
+class BufferReadyEvent(object):
+    """Indicates to the pipeline that the buffer is ready for it."""
 
 
 def shared_empty(shape, dtype):
@@ -42,15 +51,16 @@ def shared_empty(shape, dtype):
 # ---------------------------------------------------------------------------------------
 
 def init_accumulator_control(control_method, control_task, buffers, buffer_shape,
-                             scan_accumulator_conditions, l0_endpoint, l0_interface_address,
-                             telstate):
+                             accum_pipeline_queues, pipeline_accum_sems,
+                             l0_endpoint, l0_interface_address, telstate):
 
     class accumulator_control(control_task):
         """
         Task (Process or Thread) which accumutates data from SPEAD into numpy arrays
         """
 
-        def __init__(self, control_method, buffers, buffer_shape, scan_accumulator_conditions,
+        def __init__(self, control_method, buffers, buffer_shape,
+                     accum_pipeline_queues, pipeline_accum_sems,
                      l0_endpoint, l0_interface_address, telstate):
             control_task.__init__(self)
 
@@ -58,12 +68,13 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.telstate = telstate
             self.l0_endpoint = l0_endpoint
             self.l0_interface_address = l0_interface_address
-            self.scan_accumulator_conditions = scan_accumulator_conditions
+            self.accum_pipeline_queues = accum_pipeline_queues
+            self.pipeline_accum_sems = pipeline_accum_sems
             self.num_buffers = len(buffers)
 
             self.name = 'Accumulator'
             self._stop = control_method.Event()
-            self._obsend = control_method.Event()
+            self._obsend = False
 
             # flag for switching capture to the alternate buffer
             self._switch_buffer = False
@@ -91,79 +102,62 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             self.accumulator_logger.info('Initializing SPEAD receiver')
             rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
                              max_heaps=2, ring_heaps=1)
-            # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
-            # Then there are per-channel weights (4 bytes each).
-            heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
-            rx.set_memory_allocator(spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4))
-            rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
-            if self.l0_interface_address is not None:
-                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
-                                  interface_address=self.l0_interface_address)
-            else:
-                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
+            self.accumulator_logger.info('Starting stopper thread')
+            stop_thread = threading.Thread(target=self._stop_rx, name='stopper', args=(rx,))
+            stop_thread.start()
+            try:
+                # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
+                # Then there are per-channel weights (4 bytes each).
+                heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
+                rx.set_memory_allocator(spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4))
+                rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
+                if self.l0_interface_address is not None:
+                    rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
+                                      interface_address=self.l0_interface_address)
+                else:
+                    rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
 
-            # Increment between buffers, filling and releasing iteratively
-            # Initialise current buffer counter
-            current_buffer = -1
-            while not self._stop.is_set():
-                # Increment the current buffer
-                current_buffer = (current_buffer + 1) % self.num_buffers
-                # ------------------------------------------------------------
-                # Loop through the buffers and send data to pipeline task when
-                # accumulation terminate conditions are met.
+                # Increment between buffers, filling and releasing iteratively
+                # Initialise current buffer counter
+                current_buffer = -1
+                while not self._stop.is_set() and not self._obsend:
+                    # Increment the current buffer
+                    current_buffer = (current_buffer + 1) % self.num_buffers
+                    # ------------------------------------------------------------
+                    # Loop through the buffers and send data to pipeline task when
+                    # accumulation terminate conditions are met.
 
-                self.scan_accumulator_conditions[current_buffer].acquire()
-                self.accumulator_logger.info('scan_accumulator_condition %d acquired by %s',
-                                             current_buffer, self.name)
+                    self.pipeline_accum_sems[current_buffer].acquire()
+                    self.accumulator_logger.info('pipeline_accum_sems[%d] acquired by %s',
+                                                 current_buffer, self.name)
 
-                # accumulate data scan by scan into buffer arrays
-                self.accumulator_logger.info('max buffer length %d', self.max_length)
-                self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
-                max_ind = self.accumulate(rx, current_buffer)
-                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
+                    # accumulate data scan by scan into buffer arrays
+                    self.accumulator_logger.info('max buffer length %d', self.max_length)
+                    self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
+                    max_ind = self.accumulate(rx, current_buffer)
+                    self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
-                # awaken pipeline task that was waiting for condition lock
-                self.scan_accumulator_conditions[current_buffer].notify()
-                self.accumulator_logger.info(
-                    'scan_accumulator_condition %d notification sent by %s',
-                    current_buffer, self.name)
-                # release pipeline task that was waiting for condition lock
-                self.scan_accumulator_conditions[current_buffer].release()
-                self.accumulator_logger.info(
-                    'scan_accumulator_condition %d released by %s', current_buffer, self.name)
+                    # awaken pipeline task that is waiting for the buffer
+                    self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
+                    self.accumulator_logger.info(
+                        'accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
+            finally:
+                self._stop.set()   # Ensure that the stopper thread can shut down
+                stop_thread.join()
+                rx.stop()
+                for q in self.accum_pipeline_queues:
+                    q.put(StopEvent())
 
-                time.sleep(0.2)
-
-        def stop_release(self):
-            # stop accumulator
-            self.stop()
-            # close off scan_accumulator_conditions
-            #  - necessary for closing pipeline task which may be waiting on condition
-            for scan_accumulator in self.scan_accumulator_conditions:
-                scan_accumulator.acquire()
-                scan_accumulator.notify()
-                scan_accumulator.release()
+        def _stop_rx(self, rx):
+            """Function run on a separate thread which stops the receiver when
+            the master asks us to stop.
+            """
+            self._stop.wait()
+            rx.stop()
 
         def stop(self):
-            # set stop event
+            """Called by the master to do a graceful stop on the accumulator."""
             self._stop.set()
-            # stop SPEAD stream receival manually if the observation is still running
-            if not self.obs_finished():
-                self.capture_stop()
-
-        def obs_finished(self):
-            return self._obsend.is_set()
-
-        def stopped(self):
-            return self._stop.is_set()
-
-        def capture_stop(self):
-            """
-            Send stop packed to force shut down of SPEAD receiver
-            """
-            self.accumulator_logger.info('stop SPEAD receiver')
-            # send the stop only to the local receiver
-            end_transmit('127.0.0.1', self.l0_endpoint.port)
 
         def set_ordering_parameters(self):
             # determine re-ordering necessary to convert from supplied bls
@@ -382,7 +376,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
                     end_time = time.time()
                 self.telstate.add('cal_obs_end_time', end_time, ts=end_time)
                 self.accumulator_logger.info('Observation ended')
-                self._obsend.set()
+                self._obsend = True
 
             data_buffer['max_index'][0] = array_index
             self.accumulator_logger.info('Accumulation ended')
@@ -390,8 +384,8 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
             return array_index
 
     return accumulator_control(control_method, buffers, buffer_shape,
-                               scan_accumulator_conditions, l0_endpoint, l0_interface_address,
-                               telstate)
+                               accum_pipeline_queues, pipeline_accum_sems,
+                               l0_endpoint, l0_interface_address, telstate)
 
 
 # ---------------------------------------------------------------------------------------
@@ -400,7 +394,7 @@ def init_accumulator_control(control_method, control_task, buffers, buffer_shape
 
 def init_pipeline_control(
         control_method, control_task, data, data_shape,
-        scan_accumulator_condition, pipenum, l1_endpoint,
+        accum_pipeline_queue, pipeline_accum_sem, pipenum, l1_endpoint,
         l1_level, l1_rate, telstate):
 
     class pipeline_control(control_task):
@@ -408,13 +402,14 @@ def init_pipeline_control(
         Task (Process or Thread) which runs pipeline
         """
 
-        def __init__(self, control_method, data, data_shape, scan_accumulator_condition,
+        def __init__(self, control_method, data, data_shape,
+                     accum_pipeline_queue, pipeline_accum_sem,
                      pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
-            self.scan_accumulator_condition = scan_accumulator_condition
+            self.accum_pipeline_queue = accum_pipeline_queue
+            self.pipeline_accum_sem = pipeline_accum_sem
             self.name = 'Pipeline_' + str(pipenum)
-            self._stop = control_method.Event()
             self.telstate = telstate
             self.data_shape = data_shape
             self.l1_level = l1_level
@@ -429,35 +424,22 @@ def init_pipeline_control(
             Task (Process or Thread) run method. Runs pipeline
             """
 
-            # run until stop is set
-            while not self._stop.is_set():
-                # acquire condition on data
-                self.pipeline_logger.info('scan_accumulator_condition acquire by %s', self.name)
-                self.scan_accumulator_condition.acquire()
-
-                # release lock and wait for notify from accumulator
-                self.pipeline_logger.info(
-                    'scan_accumulator_condition release and wait by %s', self.name)
-                self.scan_accumulator_condition.wait()
-
-                if not self._stop.is_set():
-                    # after notify from accumulator, condition lock re-aquired
-                    self.pipeline_logger.info('scan_accumulator_condition acquire by %s', self.name)
-                    # run the pipeline
-                    self.pipeline_logger.info('Pipeline run start on accumulated data')
-
+            # run until stop event received
+            while True:
+                self.pipeline_logger.info('waiting for next event (%s)', self.name)
+                event = self.accum_pipeline_queue.get()
+                if isinstance(event, BufferReadyEvent):
+                    self.pipeline_logger.info('buffer acquired by %s', self.name)
                     # run the pipeline
                     self.run_pipeline()
-
-                # release condition after pipeline run finished
-                self.scan_accumulator_condition.release()
-                self.pipeline_logger.info('scan_accumulator_condition release by %s', self.name)
-
-        def stop(self):
-            self._stop.set()
-
-        def stopped(self):
-            return self._stop.is_set()
+                    # release condition after pipeline run finished
+                    self.pipeline_accum_sem.release()
+                    self.pipeline_logger.info('pipeline_accum_sem release by %s', self.name)
+                elif isinstance(event, StopEvent):
+                    self.pipeline_logger.info('stop received by %s', self.name)
+                    break
+                else:
+                    self.pipeline_logger.error('unknown event type %r by %s', event, self.name)
 
         def run_pipeline(self):
             # run pipeline calibration, if more than zero timestamps accumulated
@@ -517,7 +499,8 @@ def init_pipeline_control(
                     ig['timestamp'].value = scan_times[i]
                     tx.send_heap(ig.get_heap())
 
-    return pipeline_control(control_method, data, data_shape, scan_accumulator_condition,
+    return pipeline_control(control_method, data, data_shape,
+                            accum_pipeline_queue, pipeline_accum_sem,
                             pipenum, l1_endpoint, l1_level, l1_rate, telstate)
 
 # ---------------------------------------------------------------------------------------
