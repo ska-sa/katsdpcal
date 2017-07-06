@@ -172,7 +172,7 @@ def create_buffer_arrays(buffer_shape, mproc=True):
 def force_shutdown(accumulator, pipelines, report_writer):
     # Kill off all the tasks. This is done in reverse order, to avoid
     # triggering a report writing only to kill it half-way.
-    # TODO: this may need to become semi-graceful at some point, so avoid
+    # TODO: this may need to become semi-graceful at some point, to avoid
     # corrupting an in-progress report.
     for task in [report_writer] + pipelines + [accumulator]:
         task.terminate()
