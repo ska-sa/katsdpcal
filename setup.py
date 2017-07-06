@@ -31,5 +31,6 @@ setup(
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
     setup_requires=["katversion"],
+    install_requires=["trollius"],
     use_katversion=True
 )

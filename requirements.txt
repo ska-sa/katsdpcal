@@ -4,6 +4,7 @@ cycler==0.9.0           # for matplotlib
 Cython                  # for h5py
 docutils
 fakeredis
+futures                 # for trollius
 h5py
 kaptan==0.5.8           # for tmuxp
 libtmux==0.6.0
@@ -22,6 +23,7 @@ redis
 scipy
 six
 spead2
+trollius
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
