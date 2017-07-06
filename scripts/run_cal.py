@@ -4,11 +4,18 @@ import time
 import os
 import signal
 import manhole
+
 import trollius
 from trollius import From
+import tornado.gen
+from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
 
 from katsdptelstate import endpoint
 import katsdpservices
+import katsdpservices.asyncio
+
+import katcp
+from katcp.kattypes import request, return_reply
 
 from katsdpcal.control import (
     Accumulator, init_pipeline_control, init_report_writer, shared_empty)
@@ -116,7 +123,10 @@ def parse_opts():
     parser.add_argument(
         '--log-path', type=str, default=os.path.abspath('.'),
         help='Path under which to save pipeline logs. [default: current directory]')
-    # parser.set_defaults(telstate='localhost')
+    parser.add_argument(
+        '--port', '-p', type=int, default=2048, help='katcp host port [%(default)s]')
+    parser.add_argument(
+        '--host', '-a', type=str, default='', help='katcp host address [all hosts]')
     return parser.parse_args()
 
 
@@ -164,6 +174,7 @@ def create_buffer_arrays(buffer_shape, mproc=True):
     return data
 
 
+@trollius.coroutine
 def force_shutdown(accumulator, pipelines, report_writer):
     # Kill off all the tasks. This is done in reverse order, to avoid
     # triggering a report writing only to kill it half-way.
@@ -172,7 +183,7 @@ def force_shutdown(accumulator, pipelines, report_writer):
     for task in [report_writer] + pipelines:
         task.terminate()
         task.join()
-    accumulator.stop()
+    yield From(accumulator.stop(force=True))
 
 
 def kill_shutdown():
@@ -180,18 +191,47 @@ def kill_shutdown():
     os.kill(os.getpid(), signal.SIGKILL)
 
 
-def force_exit():
-    logger.info("Exiting katsdpcal on SIGTERM")
-    raise SystemExit
+@trollius.coroutine
+def graceful_shutdown(accumulator, pipelines, report_writer):
+    yield From(accumulator.stop())
+    logger.info('Accumulator stopped')
+    for pipeline in pipelines:
+        pipeline.join()
+    logger.info('Pipelines stopped')
+    report_writer.join()
+    logger.info('Report writer stopped')
 
 
-def graceful_exit(accumulator):
-    logger.info('Graceful exit requested')
-    accumulator.stop()
+class CalDeviceServer(katcp.server.AsyncDeviceServer):
+    def __init__(self, accumulator, *args, **kwargs):
+        self.accumulator = accumulator
+        super(CalDeviceServer, self).__init__(*args, **kwargs)
+
+    def setup_sensors(self):
+        pass    # TODO
+
+    @request()
+    @return_reply()
+    def request_capture_init(self, msg):
+        """Start an observation"""
+        if self.accumulator.capturing:
+            return ('fail', 'capture already in progress')
+        self.accumulator.capture_init()
+        return ('ok',)
+
+    @request()
+    @return_reply()
+    @tornado.gen.coroutine
+    def request_capture_done(self, msg):
+        """Stop the current observation"""
+        if not self.accumulator.capturing:
+            raise tornado.gen.Return(('fail', 'no capture in progress'))
+        yield katsdpservices.asyncio.to_tornado_future(self.accumulator.capture_done())
+        raise tornado.gen.Return(('ok',))
 
 
 @trollius.coroutine
-def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
+def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
                 buffer_maxsize=None, auto=True,
                 l0_endpoint=':7200', l0_interface=None,
                 l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
@@ -212,6 +252,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         The number of polarisations in the data stream
     antenna_mask : list of strings
         List of antennas present in the data stream
+    host : str
+        Bind hostname for katcp server
+    port : int
+        Bind port for katcp server
     num_buffers : int
         The number of buffers to use- this will create a pipeline thread for each buffer
         and an extra accumulator thread to read the spead stream.
@@ -385,31 +429,39 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
     report_writer.start()
     map(lambda x: x.start(), pipelines)
 
+    ioloop = AsyncIOMainLoop()
+    ioloop.install()
+    server = CalDeviceServer(accumulator, host, port)
+    ioloop.add_callback(server.start)
+
     # Now install the signal handlers (which won't be inherited).
     loop = trollius.get_event_loop()
-    loop.add_signal_handler(signal.SIGTERM, force_exit)
-    loop.add_signal_handler(signal.SIGINT, graceful_exit, accumulator)
+    shutdown_force = trollius.Future()
+    def signal_handler(result):
+        shutdown_force.set_result(result)
+        loop.remove_signal_handler(signal.SIGTERM)
+        loop.remove_signal_handler(signal.SIGINT)
+    loop.add_signal_handler(signal.SIGTERM, signal_handler, True)
+    loop.add_signal_handler(signal.SIGINT, signal_handler, False)
     logger.info('katsdpcal started')
 
     # Run the accumulator, then wait for everything to shut down
     try:
-        yield From(accumulator.run())
-        logger.info('Accumulator stopped')
-        for pipeline in pipelines:
-            pipeline.join()
-        logger.info('Pipelines stopped')
-        report_writer.join()
-        logger.info('Report writer stopped')
-        return
-    except SystemExit:
-        logger.info('Received interrupt! Quitting threads.')
+        yield From(shutdown_force)
     except Exception as e:
         logger.error('Unknown error: %s', e, exc_info=True)
+        if not shutdown_force.done():
+            shutdown_force.set_result(True)
 
-    if mproc:
-        force_shutdown(accumulator, pipelines, report_writer)
+    yield From(to_asyncio_future(server.stop()))
+    logger.info('Server stopped')
+    if shutdown_force.result():
+        if mproc:
+            yield From(force_shutdown(accumulator, pipelines, report_writer))
+        else:
+            kill_shutdown()
     else:
-        kill_shutdown()
+        yield From(graceful_shutdown(accumulator, pipelines, report_writer))
 
 
 @trollius.coroutine
@@ -429,6 +481,7 @@ def main():
     yield From(run_threads(
         opts.telstate,
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
+        host=opts.host, port=opts.port,
         num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
         l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
         l1_endpoint=opts.l1_spectral_spead,
@@ -439,3 +492,4 @@ def main():
 
 if __name__ == '__main__':
     trollius.get_event_loop().run_until_complete(main())
+    trollius.get_event_loop().close()

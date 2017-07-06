@@ -15,6 +15,7 @@ import shutil
 from collections import Counter
 import trollius
 from trollius import From, Return
+import concurrent.futures
 
 import logging
 logger = logging.getLogger(__name__)
@@ -75,11 +76,13 @@ class Accumulator(object):
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
-        self._stop = False
         self._rx = None
+        self._run_future = None
         # First and last timestamps in observation
         self._obs_start = None
         self._obs_end = None
+        # Unique number given to each observation
+        self._index = 0
 
         # Get data shape
         self.buffer_shape = buffer_shape
@@ -88,45 +91,25 @@ class Accumulator(object):
         self.npol = buffer_shape[2]
         self.nbl = buffer_shape[3]
 
-    @trollius.coroutine
-    def run(self):
-        """Run the accumulator. This is a coroutine"""
-        try:
-            # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
-            # Then there are per-channel weights (4 bytes each).
-            heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
-            self._thread_pool = spead2.ThreadPool()
-            self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
-            index = 0
-            while not self._stop:
-                yield From(self._run_observation(index))
-                index += 1
-        finally:
-            for q in self.accum_pipeline_queues:
-                q.put(StopEvent())
+        # Allocate storage and thread pool for receiver
+        # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
+        # Then there are per-channel weights (4 bytes each).
+        heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
+        self._thread_pool = spead2.ThreadPool()
+        self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
+
+        # Thread for doing blocking waits, to avoid stalling the asyncio event loop
+        self._executor = concurrent.futures.ThreadPoolExecutor(1)
+
+    @property
+    def capturing(self):
+        return self._rx is not None
 
     @trollius.coroutine
     def _run_observation(self, index):
         """Runs for a single observation i.e., until a stop heap is received."""
-        logger.info('===========================')
-        logger.info('   Starting new observation')
-        self._obs_start = None
-        self._obs_end = None
-        # Initialise SPEAD receiver
-        logger.info('Initializing SPEAD receiver')
-        self._rx = rx = spead2.recv.trollius.Stream(
-            self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
-            max_heaps=2, ring_heaps=1)
         try:
-            rx.set_memory_allocator(self._memory_pool)
-            rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
-            if self.l0_interface_address is not None:
-                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
-                                  interface_address=self.l0_interface_address)
-            else:
-                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
-            logger.info('reader added')
-
+            rx = self._rx
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
             current_buffer = -1
@@ -139,7 +122,8 @@ class Accumulator(object):
                 # accumulation terminate conditions are met.
 
                 logger.info('waiting for pipeline_accum_sems[%d]', current_buffer)
-                self.pipeline_accum_sems[current_buffer].acquire()
+                yield From(trollius.get_event_loop().run_in_executor(
+                    self._executor, self.pipeline_accum_sems[current_buffer].acquire))
                 logger.info('pipeline_accum_sems[%d] acquired by %s',
                             current_buffer, self.name)
 
@@ -152,9 +136,7 @@ class Accumulator(object):
                 # awaken pipeline task that is waiting for the buffer
                 self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
                 logger.info('accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
-        finally:
-            rx.stop()
-            self._rx = None
+
             # Tell the pipelines that the observation ended, but only if there
             # was something to work on.
             if self._obs_end is not None:
@@ -163,12 +145,69 @@ class Accumulator(object):
             else:
                 logger.info(' --- no data flowed ---')
             logger.info('Observation ended')
+        except trollius.CancelledError:
+            logger.info('Observation cancelled')
+        except Exception as error:
+            logger.error('Exception in capture: %s', error, exc_info=True)
+        finally:
+            rx.stop()
 
-    def stop(self):
-        """Called by the master to do a graceful stop on the accumulator."""
-        self._stop = True
-        if self._rx is not None:
-            self._rx.stop()
+    def capture_init(self):
+        assert self._rx is None, "observation already running"
+        assert self._run_future is None
+        logger.info('===========================')
+        logger.info('   Starting new observation')
+        self._obs_start = None
+        self._obs_end = None
+        # Initialise SPEAD receiver
+        logger.info('Initializing SPEAD receiver')
+        rx = spead2.recv.trollius.Stream(
+            self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
+            max_heaps=2, ring_heaps=1)
+        rx.set_memory_allocator(self._memory_pool)
+        rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
+        if self.l0_interface_address is not None:
+            rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
+                              interface_address=self.l0_interface_address)
+        else:
+            rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
+        logger.info('reader added')
+        self._rx = rx
+        self._run_future = trollius.ensure_future(self._run_observation(self._index))
+        self._index += 1
+
+    @trollius.coroutine
+    def capture_done(self):
+        assert self._rx is not None, "observation not running"
+        self._rx.stop()
+        future = self._run_future
+        yield From(future)
+        # Protect against another observation having started while we waited to
+        # be woken up again.
+        if self._run_future is future:
+            logger.info('Joined with _run_observation')
+            self._run_future = None
+            self._rx = None
+
+    @trollius.coroutine
+    def stop(self, force=False):
+        """Shuts down the accumulator.
+
+        If `force` is true, this assumes that the pipelines have already been
+        terminated, and it does not try to wake them up; otherwise it sends
+        them stop events.
+        """
+        if force:
+            # Ensure that the semaphores aren't blocked, even if the pipelines
+            # have been terminated without releasing the buffers.
+            for sem in self.pipeline_accum_sems:
+                sem.release()
+        if self._run_future is not None:
+            yield From(self.capture_done())
+        if not force:
+            for q in self.accum_pipeline_queues:
+                q.put(StopEvent())
+        self._executor.shutdown()
 
     def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls

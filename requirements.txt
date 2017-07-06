@@ -1,4 +1,7 @@
 argcomplete==1.0.0      # for tmuxp
+backports-abc           # for tornado
+backports.ssl-match-hostname  # for tornado
+certifi                 # for tornado
 colorama==0.3.7         # for libtmux
 cycler==0.9.0           # for matplotlib
 Cython                  # for h5py
@@ -7,12 +10,15 @@ fakeredis
 futures                 # for trollius
 h5py
 kaptan==0.5.8           # for tmuxp
+katcp
 libtmux==0.6.0
 manhole
 matplotlib==1.5.1
 netifaces
 numpy
 pkginfo
+ply                     # for katcp
+ProxyTypes              # for katcp
 pyephem
 pyparsing==2.0.7        # for matplotlib
 python-casacore==2.0.0
@@ -21,8 +27,10 @@ pytz==2015.7            # for matplotlib
 PyYAML==3.11
 redis
 scipy
+singledispatch          # for tornado
 six
 spead2
+tornado                 # for katcp
 trollius
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
