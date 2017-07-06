@@ -20,15 +20,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def print_dict(dictionary, ident='', braces=1):
-    """ Recursively prints nested dictionaries."""
+class TaskLogFormatter(logging.Formatter):
+    """Injects the thread/process name into log messages.
 
-    for key, value in dictionary.iteritems():
-        if isinstance(value, dict):
-            print '{0}{1}{2}{3}'.format(ident, braces * '[', key, braces * ']')
-            print_dict(value, ident+'  ', braces+1)
-        else:
-            print '{0}{1} = {2}'.format(ident, key, value)
+    This must be subclassed to provide the TASKNAME property.
+    """
+    def __init__(self, fmt=None, datefmt=None):
+        if fmt is None:
+            fmt = '%(message)s'
+        fmt = fmt.replace('%(message)s', '[%(' + self.TASKNAME + ')s] %(message)s')
+        super(TaskLogFormatter, self).__init__(fmt, datefmt)
+
+
+class ProcessLogFormatter(TaskLogFormatter):
+    TASKNAME = 'processName'
+
+
+class ThreadLogFormatter(TaskLogFormatter):
+    TASKNAME = 'threadName'
 
 
 def log_dict(dictionary, ident='', braces=1):
@@ -116,8 +125,8 @@ def setup_logger(log_name, log_path='.'):
     Set up the pipeline logger.
     The logger writes to a pipeline.log file and to stdout.
 
-    Inputs
-    ======
+    Parameters
+    ----------
     log_path : str
         path in which log file will be written
     log_name : str
@@ -423,7 +432,12 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
 def main():
     opts = parse_opts()
 
-    # set up logging
+    # set up logging. The Formatter class is replaced so that all log messages
+    # show the process/thread name.
+    if opts.notthreading:
+        logging.Formatter = ProcessLogFormatter
+    else:
+        logging.Formatter = ThreadLogFormatter
     log_name = 'pipeline.log'
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)

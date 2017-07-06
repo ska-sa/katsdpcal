@@ -20,15 +20,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class TaskLoggingAdapter(logging.LoggerAdapter):
-    """
-    This example adapter expects the passed in dict-like object to have a
-    'connid' key, whose value in brackets is prepended to the log message.
-    """
-    def process(self, msg, kwargs):
-        return '[%s] %s' % (self.extra['connid'], msg), kwargs
-
-
 class ObservationEndEvent(object):
     """An observation has finished upstream"""
     def __init__(self, index, end_time):
@@ -92,9 +83,6 @@ class Accumulator(object):
         #   will be set when data starts to flow
         self.ordering = None
 
-        # set up logging adapter for the task
-        self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
-
     @trollius.coroutine
     def run(self):
         """Run the accumulator. This is a coroutine"""
@@ -115,10 +103,10 @@ class Accumulator(object):
     @trollius.coroutine
     def _run_observation(self, index):
         """Runs for a single observation i.e., until a stop heap is received."""
-        self.accumulator_logger.info('===========================')
-        self.accumulator_logger.info('   Starting new observation')
+        logger.info('===========================')
+        logger.info('   Starting new observation')
         # Initialise SPEAD receiver
-        self.accumulator_logger.info('Initializing SPEAD receiver')
+        logger.info('Initializing SPEAD receiver')
         self._rx = rx = spead2.recv.trollius.Stream(
             self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
             max_heaps=2, ring_heaps=1)
@@ -130,7 +118,7 @@ class Accumulator(object):
                                   interface_address=self.l0_interface_address)
             else:
                 rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
-            self.accumulator_logger.info('reader added')
+            logger.info('reader added')
 
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
@@ -143,22 +131,20 @@ class Accumulator(object):
                 # Loop through the buffers and send data to pipeline task when
                 # accumulation terminate conditions are met.
 
-                self.accumulator_logger.info('waiting for pipeline_accum_sems[%d]',
-                                             current_buffer)
+                logger.info('waiting for pipeline_accum_sems[%d]', current_buffer)
                 self.pipeline_accum_sems[current_buffer].acquire()
-                self.accumulator_logger.info('pipeline_accum_sems[%d] acquired by %s',
-                                             current_buffer, self.name)
+                logger.info('pipeline_accum_sems[%d] acquired by %s',
+                            current_buffer, self.name)
 
                 # accumulate data scan by scan into buffer arrays
-                self.accumulator_logger.info('max buffer length %d', self.max_length)
-                self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
+                logger.info('max buffer length %d', self.max_length)
+                logger.info('accumulating into buffer %d', current_buffer)
                 max_ind, end_time = yield From(self.accumulate(rx, current_buffer))
-                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
+                logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                 # awaken pipeline task that is waiting for the buffer
                 self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
-                self.accumulator_logger.info(
-                    'accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
+                logger.info('accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
         finally:
             rx.stop()
             self._rx = None
@@ -266,7 +252,7 @@ class Accumulator(object):
         # receive SPEAD stream
         ig = spead2.ItemGroup()
 
-        self.accumulator_logger.info('waiting to start accumulating data')
+        logger.info('waiting to start accumulating data')
         while True:
             try:
                 heap = yield From(rx.get())
@@ -274,7 +260,7 @@ class Accumulator(object):
                 break
             ig.update(heap)
             if len(ig.keys()) < 1:
-                self.accumulator_logger.info('==== empty stop packet received ====')
+                logger.info('==== empty stop packet received ====')
                 continue
 
             # get sync time from TS, if it is present (if it isn't present,
@@ -282,10 +268,9 @@ class Accumulator(object):
             if cbf_sync_time is None:
                 if 'cbf_sync_time' in self.telstate:
                     cbf_sync_time = self.telstate.cbf_sync_time
-                    self.accumulator_logger.info(' - set cbf_sync_time')
+                    logger.info(' - set cbf_sync_time')
                 else:
-                    self.accumulator_logger.warning(
-                        'cbf_sync_time absent from telescope state - ignoring dump')
+                    logger.warning('cbf_sync_time absent from telescope state - ignoring dump')
                     continue
 
             # get activity and target tag from TS
@@ -295,9 +280,8 @@ class Accumulator(object):
                 activity_full = self.telstate.get_range(
                     activity_key, et=data_ts, include_previous=True)
             if not activity_full:
-                self.accumulator_logger.info(
-                    'no activity recorded for reference antenna {0} - ignoring dump'.format(
-                        self.telstate.cal_refant,))
+                logger.info('no activity recorded for reference antenna {0} - ignoring dump'.format(
+                    self.telstate.cal_refant))
                 continue
             activity, activity_time = activity_full[0]
 
@@ -309,9 +293,8 @@ class Accumulator(object):
                 # when data starts to flow, set the baseline ordering
                 # parameters for re-ordering the data
                 self.set_ordering_parameters()
-                self.accumulator_logger.info(' - set pipeline data ordering parameters')
-
-                self.accumulator_logger.info('accumulating data from targets:')
+                logger.info(' - set pipeline data ordering parameters')
+                logger.info('accumulating data from targets:')
 
             # get target time from TS, if it is present (if it isn't present, set to unknown)
             if target_key in self.telstate:
@@ -320,7 +303,7 @@ class Accumulator(object):
                 if target == '':
                     target = 'unknown'
             else:
-                self.accumulator_logger.warning(
+                logger.warning(
                     'target description {0} absent from telescope state'.format(target_key))
                 target = 'unknown'
             # extract name and tags from target description string
@@ -338,7 +321,7 @@ class Accumulator(object):
             # print name of target and activity type, if activity has
             # changed or start of accumulator
             if start_flag or (activity_time != prev_activity_time):
-                self.accumulator_logger.info(' - {0} ({1})'.format(target_name, activity))
+                logger.info(' - {0} ({1})'.format(target_name, activity))
             start_flag = False
 
             # increment the index indicating the position of the data in the buffer
@@ -363,13 +346,13 @@ class Accumulator(object):
                     and not np.any([ignore in prev_activity for ignore in ignore_states]) \
                     and ('unknown' not in target_tags) \
                     and ('target' not in prev_target_tags):
-                self.accumulator_logger.info('Accumulation break - transition')
+                logger.info('Accumulation break - transition')
                 obs_end_flag = False
                 break
             # beamformer special case
             if (activity_time != prev_activity_time) \
                     and ('single_accumulation' in prev_target_tags):
-                self.accumulator_logger.info('Accumulation break - single scan accumulation')
+                logger.info('Accumulation break - single scan accumulation')
                 obs_end_flag = False
                 break
 
@@ -377,12 +360,12 @@ class Accumulator(object):
             # will ultimately be provided by some sort of sensor
             duration = ig['timestamp'].value - unsync_start_time
             if duration > 2000000:
-                self.accumulator_logger.info('Accumulate break due to duration')
+                logger.info('Accumulate break due to duration')
                 obs_end_flag = False
                 break
             # end accumulation if maximum array size has been accumulated
             if array_index >= self.max_length - 1:
-                self.accumulator_logger.info('Accumulate break - buffer size limit')
+                logger.info('Accumulate break - buffer size limit')
                 obs_end_flag = False
                 break
 
@@ -398,12 +381,12 @@ class Accumulator(object):
                 end_time = data_ts
             else:
                 # no data_ts variable because no data has flowed
-                self.accumulator_logger.info(' --- no data flowed ---')
+                logger.info(' --- no data flowed ---')
                 end_time = time.time()
-            self.accumulator_logger.info('Observation ended')
+            logger.info('Observation ended')
 
         data_buffer['max_index'][0] = array_index
-        self.accumulator_logger.info('Accumulation ended')
+        logger.info('Accumulation ended')
         raise Return((array_index, end_time))
 
 
@@ -433,9 +416,6 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
             self.l1_rate = l1_rate
             self.l1_endpoint = l1_endpoint
 
-            # set up logging adapter for the task
-            self.pipeline_logger = TaskLoggingAdapter(logger, {'connid': self.name})
-
         def run(self):
             """
             Task (Process or Thread) run method. Runs pipeline
@@ -444,22 +424,22 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
             # run until stop event received
             try:
                 while True:
-                    self.pipeline_logger.info('waiting for next event (%s)', self.name)
+                    logger.info('waiting for next event (%s)', self.name)
                     event = self.accum_pipeline_queue.get()
                     if isinstance(event, BufferReadyEvent):
-                        self.pipeline_logger.info('buffer acquired by %s', self.name)
+                        logger.info('buffer acquired by %s', self.name)
                         # run the pipeline
                         self.run_pipeline()
                         # release condition after pipeline run finished
                         self.pipeline_accum_sem.release()
-                        self.pipeline_logger.info('pipeline_accum_sem release by %s', self.name)
+                        logger.info('pipeline_accum_sem release by %s', self.name)
                     elif isinstance(event, ObservationEndEvent):
                         self.pipeline_report_queue.put(event)
                     elif isinstance(event, StopEvent):
-                        self.pipeline_logger.info('stop received by %s', self.name)
+                        logger.info('stop received by %s', self.name)
                         break
                     else:
-                        self.pipeline_logger.error('unknown event type %r by %s', event, self.name)
+                        logger.error('unknown event type %r by %s', event, self.name)
             finally:
                 self.pipeline_report_queue.put(StopEvent())
 
@@ -473,13 +453,13 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
                 config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
                 tx = spead2.send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
                                            self.l1_endpoint.port, config)
-                self.pipeline_logger.info('   Transmit L1 data')
+                logger.info('   Transmit L1 data')
                 # for streaming all of the data (not target only),
                 # use the highest index in the buffer that is filled with data
                 transmit_slices = [slice(0, self.data['max_index'][0] + 1)] \
                     if self.l1_level == 2 else target_slices
                 self.data_to_SPEAD(transmit_slices, tx)
-                self.pipeline_logger.info('   End transmit of L1 data')
+                logger.info('   End transmit of L1 data')
 
         def data_to_SPEAD(self, target_slices, tx):
             """
@@ -528,8 +508,7 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
 # Report writer
 # ---------------------------------------------------------------------------------------
 
-def write_report(report_logger, obs_end, telstate,
-                 l1_endpoint, l1_level, report_path, log_path, full_log):
+def write_report(obs_end, telstate, l1_endpoint, l1_level, report_path, log_path, full_log):
     now = time.time()
     # get subarray ID
     subarray_id = telstate.get('subarray_product_id', 'unknown_subarray')
@@ -560,13 +539,13 @@ def write_report(report_logger, obs_end, telstate,
     try:
         os.mkdir(current_obs_dir)
     except OSError:
-        report_logger.warning('Experiment ID directory {} already exists'.format(current_obs_dir))
+        logger.warning('Experiment ID directory {} already exists'.format(current_obs_dir))
 
     # create pipeline report (very basic at the moment)
     try:
         make_cal_report(telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
     except Exception as e:
-        report_logger.info('Report generation failed: %s', e, exc_info=True)
+        logger.info('Report generation failed: %s', e, exc_info=True)
 
     if l1_level != 0:
         # send L1 stop transmission
@@ -575,10 +554,10 @@ def write_report(report_logger, obs_end, telstate,
         #   to the sockets used by the pipelines (TODO: share a socket).
         time.sleep(2.0)
         end_transmit(l1_endpoint.host, l1_endpoint.port)
-        report_logger.info('L1 stream ended')
+        logger.info('L1 stream ended')
 
-    report_logger.info('   Observation ended')
-    report_logger.info('===========================')
+    logger.info('   Observation ended')
+    logger.info('===========================')
 
     if full_log is not None:
         shutil.copy('{0}/{1}'.format(log_path, full_log),
@@ -591,7 +570,6 @@ def write_report(report_logger, obs_end, telstate,
 def report_writer(pipeline_report_queue, telstate, num_pipelines,
                   l1_endpoint, l1_level,
                   report_path, log_path, full_log):
-    report_logger = TaskLoggingAdapter(logger, {'connid': 'report_writer'})
     remain = num_pipelines            # Number of pipelines still running
     observation_hits = Counter()      # Number of pipelines finished with each observation
     while True:
@@ -603,13 +581,13 @@ def report_writer(pipeline_report_queue, telstate, num_pipelines,
         elif isinstance(event, ObservationEndEvent):
             observation_hits[event.index] += 1
             if observation_hits[event.index] == num_pipelines:
-                report_logger.info('Starting report number %d', event.index)
-                write_report(report_logger, event.end_time, telstate,
+                logger.info('Starting report number %d', event.index)
+                write_report(event.end_time, telstate,
                              l1_endpoint, l1_level, report_path, log_path, full_log)
                 del observation_hits[event.index]
         else:
-            report_logger.error('unknown event type %r', event)
-    report_logger.info('Last pipeline has finished, exiting')
+            logger.error('unknown event type %r', event)
+    logger.info('Last pipeline has finished, exiting')
 
 
 def init_report_writer(control_method, control_task, *args, **kwargs):

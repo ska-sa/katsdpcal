@@ -19,16 +19,7 @@ from katdal.h5datav3 import SENSOR_PROPS
 logger = logging.getLogger(__name__)
 
 
-class ThreadLoggingAdapter(logging.LoggerAdapter):
-    """
-    Logging adaptor which prepends a bracketed string to the log message.
-    The string is passed via a 'connid' key.
-    """
-    def process(self, msg, kwargs):
-        return '[%s] %s' % (self.extra['connid'], msg), kwargs
-
-
-def rfi(s, thresholds, av_blocks, pipeline_logger):
+def rfi(s, thresholds, av_blocks):
     """
     Place holder for RFI detection algorithms to come.
 
@@ -41,14 +32,12 @@ def rfi(s, thresholds, av_blocks, pipeline_logger):
     av_blocks : list of int, shape(N-1, 2)
         List of block sizes to average over from the second iteration, in the
         form [time_block, channel_block]
-    pipeline_logger : logger
-        logger
     """
     total_size = np.multiply.reduce(s.flags.shape) / 100.
-    pipeline_logger.info('  - Start flags: {0:.3f}%'.format(
+    logger.info('  - Start flags: {0:.3f}%'.format(
         np.sum(s.flags.view(np.bool)) / total_size,))
     threshold_avg_flagging(s.vis, s.flags, thresholds, blocks=av_blocks, transform=np.abs)
-    pipeline_logger.info('  - New flags:   {0:.3f}%'.format(
+    logger.info('  - New flags:   {0:.3f}%'.format(
         np.sum(s.flags.view(np.bool)) / total_size,))
 
 
@@ -88,7 +77,7 @@ def get_tracks(data, ts, dump_period):
     return [segment for (segment, track) in all_tracking.segments() if track]
 
 
-def get_solns_to_apply(s, ts, sol_list, logger, time_range=[]):
+def get_solns_to_apply(s, ts, sol_list, time_range=[]):
     """
     For a given scan, extract and interpolate specified calibration solutions
     from TelescopeState.
@@ -182,10 +171,6 @@ def pipeline(data, ts, task_name='pipeline'):
     """
 
     # ----------------------------------------------------------
-    # set up logging adapter for the pipeline thread/process
-    pipeline_logger = ThreadLoggingAdapter(logger, {'connid': task_name})
-
-    # ----------------------------------------------------------
     # set up timing file
     # at the moment this is re-made every scan! fix later!
     # timing_file = 'timing.txt'
@@ -204,7 +189,7 @@ def pipeline(data, ts, task_name='pipeline'):
     try:
         dump_period = ts.sdp_l0_int_time
     except:
-        pipeline_logger.warning(
+        logger.warning(
             'Parameter sdp_l0_int_time not present in TS. Will be derived from data.')
         dump_period = data['times'][1] - data['times'][0]
 
@@ -245,34 +230,34 @@ def pipeline(data, ts, task_name='pipeline'):
         target = ts.get_range(target_key, et=t0)[0][0]
         target_list = target.split(',')
         target_name = target_list[0]
-        pipeline_logger.info('-----------------------------------')
-        pipeline_logger.info('Target: {0}'.format(target_name,))
-        pipeline_logger.info('  Timestamps: {0}'.format(n_times,))
-        pipeline_logger.info('  Time:       {0} - {1}'.format(
+        logger.info('-----------------------------------')
+        logger.info('Target: {0}'.format(target_name,))
+        logger.info('  Timestamps: {0}'.format(n_times,))
+        logger.info('  Time:       {0} - {1}'.format(
             time.strftime("%H:%M:%S", time.gmtime(t0)), time.strftime("%H:%M:%S", time.gmtime(t1))))
 
         # if there are no tags, don't process this scan
         if len(target_list) > 1:
             taglist = target_list[1].split()
         else:
-            pipeline_logger.info('  Tags:   None')
+            logger.info('  Tags:   None')
             continue
-        pipeline_logger.info('  Tags:       {0}'.format(taglist,))
+        logger.info('  Tags:       {0}'.format(taglist,))
 
         # if we only have one or two timestamps in the scan, ignore it
         # (a single timestamp can happen when there is no slew between tracks
         # so we catch the first dump of the next track).
         if n_times < 3:
-            pipeline_logger.info('Scan too short (only 1 or 2 timestamps) - ignored')
+            logger.info('Scan too short (only 1 or 2 timestamps) - ignored')
             continue
 
         # ---------------------------------------
         # set up scan
         s = Scan(data, scan_slice, dump_period, n_ants, n_pols, ts.cal_bls_lookup, target,
                  chans=ts.cal_channel_freqs, ants=ts.cal_antlist_description,
-                 refant=refant_ind, array_position=ts.cal_array_position, logger=pipeline_logger)
+                 refant=refant_ind, array_position=ts.cal_array_position, logger=logger)
         if s.xc_mask.size == 0:
-            pipeline_logger.info('No XC data - no processing performed.')
+            logger.info('No XC data - no processing performed.')
             continue
 
         # Do we have a model for this source?
@@ -284,8 +269,8 @@ def pipeline(data, ts, task_name='pipeline'):
             if model_params is not None:
                 s.add_model(model_params)
                 ts.add(model_key, model_params, immutable=True)
-                pipeline_logger.info('   Model file: {0}'.format(model_file,))
-        pipeline_logger.debug('Model parameters for source {0}: {1}'.format(
+                logger.info('   Model file: {0}'.format(model_file,))
+        logger.debug('Model parameters for source {0}: {1}'.format(
             target_name, s.model_raw_params))
 
         # do we have an rfi mask? In which case, apply it
@@ -295,8 +280,8 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # ---------------------------------------
         # initial RFI flagging
-        pipeline_logger.info('Preliminary flagging')
-        rfi(s, [3.0, 3.0, 2.0, 1.6], [[3, 1], [3, 5], [3, 8]], pipeline_logger)
+        logger.info('Preliminary flagging')
+        rfi(s, [3.0, 3.0, 2.0, 1.6], [[3, 1], [3, 5], [3, 8]])
 
         # run_t0 = time.time()
 
@@ -306,32 +291,32 @@ def pipeline(data, ts, task_name='pipeline'):
         if any('bfcal' in k for k in taglist):
             # ---------------------------------------
             # K solution
-            pipeline_logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
+            logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
             k_soln = s.k_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan)
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
 
             # ---------------------------------------
             # B solution
-            pipeline_logger.info('Solving for B on beamformer calibrator {0}'.format(target_name,))
+            logger.info('Solving for B on beamformer calibrator {0}'.format(target_name,))
             # get K solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K'], pipeline_logger)
+            solns_to_apply = get_solns_to_apply(s, ts, ['K'])
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
             ts.add(b_soln.ts_solname, b_soln.values, ts=b_soln.times)
 
             # ---------------------------------------
             # G solution
-            pipeline_logger.info('Solving for G on beamformer calibrator {0}'.format(target_name,))
+            logger.info('Solving for G on beamformer calibrator {0}'.format(target_name,))
             # get B solutions to apply and interpolate them to scan timestamps along with K
-            solns_to_apply.extend(get_solns_to_apply(s, ts, ['B'], pipeline_logger))
+            solns_to_apply.extend(get_solns_to_apply(s, ts, ['B']))
 
             # use single solution interval
             dumps_per_solint = np.ceil(scan_slice.stop - scan_slice.start - 1)
             g_solint = dumps_per_solint * dump_period
             g_soln = s.g_sol(g_solint, g0_h, ts.cal_param_g_bchan, ts.cal_param_g_echan,
                              pre_apply=solns_to_apply)
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v, t in zip(g_soln.values, g_soln.times):
                 ts.add(g_soln.ts_solname, v, ts=t)
@@ -344,7 +329,7 @@ def pipeline(data, ts, task_name='pipeline'):
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------
             # preliminary G solution
-            pipeline_logger.info('Solving for preliminary G on delay calibrator {0}'.format(
+            logger.info('Solving for preliminary G on delay calibrator {0}'.format(
                 target_name,))
             # solve and interpolate to scan timestamps
             pre_g_soln = s.g_sol(k_solint, g0_h, ts.cal_param_k_bchan, ts.cal_param_k_echan)
@@ -352,13 +337,13 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # K solution
-            pipeline_logger.info('Solving for K on delay calibrator {0}'.format(target_name,))
+            logger.info('Solving for K on delay calibrator {0}'.format(target_name,))
             k_soln = s.k_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan, k_chan_sample,
                              pre_apply=[g_to_apply])
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
 
             # ---------------------------------------
@@ -368,17 +353,17 @@ def pipeline(data, ts, task_name='pipeline'):
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
             if n_pols < 4:
-                pipeline_logger.info('Cant solve for KCROSS without four polarisation products')
+                logger.info('Cant solve for KCROSS without four polarisation products')
             else:
                 # ---------------------------------------
                 # get K solutions to apply and interpolate them to scan timestamps
                 pre_apply_solns = ['K', 'B']
-                solns_to_apply = get_solns_to_apply(s, ts, pre_apply_solns, pipeline_logger)
+                solns_to_apply = get_solns_to_apply(s, ts, pre_apply_solns)
                 # solns_to_apply.append(g_to_apply)
 
                 # ---------------------------------------
                 # preliminary G solution
-                pipeline_logger.info(
+                logger.info(
                     'Solving for preliminary G on KCROSS calibrator {0}'.format(target_name,))
                 # solve (pre-applying given solutions)
                 pre_g_soln = s.g_sol(k_solint, g0_h, pre_apply=solns_to_apply)
@@ -388,14 +373,14 @@ def pipeline(data, ts, task_name='pipeline'):
 
                 # ---------------------------------------
                 # KCROSS solution
-                pipeline_logger.info(
+                logger.info(
                     'Solving for KCROSS on cross-hand delay calibrator {0}'.format(target_name,))
                 kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
                                            ts.cal_param_kcross_chanave, pre_apply=solns_to_apply)
 
                 # ---------------------------------------
                 # update TS
-                pipeline_logger.info(
+                logger.info(
                     "  - Saving solution '{}' to Telescope State".format(kcross_soln))
                 ts.add(kcross_soln.ts_solname, kcross_soln.values, ts=kcross_soln.times)
 
@@ -407,11 +392,11 @@ def pipeline(data, ts, task_name='pipeline'):
         if any('bpcal' in k for k in taglist):
             # ---------------------------------------
             # get K solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K'], pipeline_logger)
+            solns_to_apply = get_solns_to_apply(s, ts, ['K'])
 
             # ---------------------------------------
             # Preliminary G solution
-            pipeline_logger.info(
+            logger.info(
                 'Solving for preliminary G on bandpass calibrator {0}'.format(target_name,))
             # solve and interpolate to scan timestamps
             pre_g_soln = s.g_sol(bp_solint, g0_h, pre_apply=solns_to_apply)
@@ -419,13 +404,13 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # B solution
-            pipeline_logger.info('Solving for B on bandpass calibrator {0}'.format(target_name,))
+            logger.info('Solving for B on bandpass calibrator {0}'.format(target_name,))
             solns_to_apply.append(g_to_apply)
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
             ts.add(b_soln.ts_solname, b_soln.values, ts=b_soln.times)
 
             # ---------------------------------------
@@ -436,11 +421,11 @@ def pipeline(data, ts, task_name='pipeline'):
         if any('gaincal' in k for k in taglist):
             # ---------------------------------------
             # get K and B solutions to apply and interpolate them to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B'], pipeline_logger)
+            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B'])
 
             # ---------------------------------------
             # G solution
-            pipeline_logger.info('Solving for G on gain calibrator {0}'.format(target_name,))
+            logger.info('Solving for G on gain calibrator {0}'.format(target_name,))
             # set up solution interval: just solve for two intervals per G scan
             # (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop-scan_slice.start-1)/2.0)
@@ -450,7 +435,7 @@ def pipeline(data, ts, task_name='pipeline'):
 
             # ---------------------------------------
             # update TS
-            pipeline_logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
+            logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v, t in zip(g_soln.values, g_soln.times):
                 ts.add(g_soln.ts_solname, v, ts=t)
@@ -462,12 +447,12 @@ def pipeline(data, ts, task_name='pipeline'):
         # TARGET
         if any('target' in k for k in taglist):
             # ---------------------------------------
-            pipeline_logger.info(
+            logger.info(
                 'Applying calibration solutions to target {0}:'.format(target_name,))
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'], pipeline_logger,
+            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
             # apply solutions
             for soln in solns_to_apply:
@@ -477,7 +462,7 @@ def pipeline(data, ts, task_name='pipeline'):
             target_slices.append(scan_slice)
 
             # flag calibrated target
-            pipeline_logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi(s, [3.0, 3.0, 2.0], [[3, 1], [5, 8]], pipeline_logger)
+            logger.info('Flagging calibrated target {0}'.format(target_name,))
+            rfi(s, [3.0, 3.0, 2.0], [[3, 1], [5, 8]])
 
     return target_slices
