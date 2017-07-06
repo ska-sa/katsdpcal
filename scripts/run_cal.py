@@ -146,22 +146,6 @@ def setup_logger(log_name, log_path='.'):
     logging.getLogger('').addHandler(handler)
 
 
-def all_alive(process_list):
-    """
-    Check if all of the process in process list are alive and return True
-    if they are or False if they are not.
-
-    Inputs
-    ======
-    process_list:  list of multpirocessing.Process objects
-    """
-
-    alive = True
-    for process in process_list:
-        alive = alive and process.is_alive()
-    return alive
-
-
 def create_buffer_arrays(buffer_shape, mproc=True):
     """
     Create empty buffer record using specified dimensions
