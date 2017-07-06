@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 class ObservationEndEvent(object):
     """An observation has finished upstream"""
-    def __init__(self, index, end_time):
+    def __init__(self, index, start_time, end_time):
         self.index = index
+        self.start_time = start_time
         self.end_time = end_time
 
 
@@ -68,9 +69,17 @@ class Accumulator(object):
         self.pipeline_accum_sems = pipeline_accum_sems
         self.num_buffers = len(buffers)
 
+        # Extract useful parameters from telescope state
+        self.cbf_sync_time = self.telstate.cbf_sync_time
+        self.sdp_l0_int_time = self.telstate.sdp_l0_int_time
+        self.set_ordering_parameters()
+
         self.name = 'Accumulator'
         self._stop = False
         self._rx = None
+        # First and last timestamps in observation
+        self._obs_start = None
+        self._obs_end = None
 
         # Get data shape
         self.buffer_shape = buffer_shape
@@ -78,10 +87,6 @@ class Accumulator(object):
         self.nchan = buffer_shape[1]
         self.npol = buffer_shape[2]
         self.nbl = buffer_shape[3]
-
-        # baseline ordering, to use in re-ordering the data
-        #   will be set when data starts to flow
-        self.ordering = None
 
     @trollius.coroutine
     def run(self):
@@ -105,6 +110,8 @@ class Accumulator(object):
         """Runs for a single observation i.e., until a stop heap is received."""
         logger.info('===========================')
         logger.info('   Starting new observation')
+        self._obs_start = None
+        self._obs_end = None
         # Initialise SPEAD receiver
         logger.info('Initializing SPEAD receiver')
         self._rx = rx = spead2.recv.trollius.Stream(
@@ -123,8 +130,8 @@ class Accumulator(object):
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
             current_buffer = -1
-            end_time = None
-            while end_time is None:
+            obs_stopped = False
+            while not obs_stopped:
                 # Increment the current buffer
                 current_buffer = (current_buffer + 1) % self.num_buffers
                 # ------------------------------------------------------------
@@ -139,8 +146,8 @@ class Accumulator(object):
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length %d', self.max_length)
                 logger.info('accumulating into buffer %d', current_buffer)
-                max_ind, end_time = yield From(self.accumulate(rx, current_buffer))
-                logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
+                max_ind, obs_stopped = yield From(self.accumulate(rx, current_buffer))
+                logger.info('Accumulated {0} timestamps'.format(max_ind+1))
 
                 # awaken pipeline task that is waiting for the buffer
                 self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
@@ -148,8 +155,14 @@ class Accumulator(object):
         finally:
             rx.stop()
             self._rx = None
-            for q in self.accum_pipeline_queues:
-                q.put(ObservationEndEvent(index, end_time))
+            # Tell the pipelines that the observation ended, but only if there
+            # was something to work on.
+            if self._obs_end is not None:
+                for q in self.accum_pipeline_queues:
+                    q.put(ObservationEndEvent(index, self._obs_start, self._obs_end))
+            else:
+                logger.info(' --- no data flowed ---')
+            logger.info('Observation ended')
 
     def stop(self):
         """Called by the master to do a graceful stop on the accumulator."""
@@ -224,8 +237,8 @@ class Accumulator(object):
         -------
         array_index : int
             Last filled position in buffer
-        end_time : float
-            End time of the observation, or ``None`` if the observation is still going
+        obs_stopped : bool
+            Whether the return was due to stream stopping
         """
 
         start_flag = True
@@ -243,11 +256,7 @@ class Accumulator(object):
         target_key = '{0}_target'.format(self.telstate.cal_refant,)
         activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
 
-        obs_end_flag = True
-
-        # sensor parameters which will be set from telescope state when data starts to flow
-        cbf_sync_time = None
-        data_ts = None
+        obs_stopped = False
 
         # receive SPEAD stream
         ig = spead2.ItemGroup()
@@ -257,52 +266,43 @@ class Accumulator(object):
             try:
                 heap = yield From(rx.get())
             except spead2.Stopped:
+                obs_stopped = True
                 break
             ig.update(heap)
             if len(ig.keys()) < 1:
-                logger.info('==== empty stop packet received ====')
+                logger.info('==== empty heap received ====')
                 continue
 
-            # get sync time from TS, if it is present (if it isn't present,
-            # don't process this dump further)
-            if cbf_sync_time is None:
-                if 'cbf_sync_time' in self.telstate:
-                    cbf_sync_time = self.telstate.cbf_sync_time
-                    logger.info(' - set cbf_sync_time')
-                else:
-                    logger.warning('cbf_sync_time absent from telescope state - ignoring dump')
-                    continue
-
             # get activity and target tag from TS
-            data_ts = ig['timestamp'].value + cbf_sync_time
+            data_ts = ig['timestamp'].value + self.cbf_sync_time
+            if self._obs_start is None:
+                self._obs_start = data_ts - 0.5 * self.sdp_l0_int_time
+            self._obs_end = data_ts + 0.5 * self.sdp_l0_int_time
             activity_full = []
-            if activity_key in self.telstate:
+            try:
                 activity_full = self.telstate.get_range(
                     activity_key, et=data_ts, include_previous=True)
+            except KeyError:
+                pass
             if not activity_full:
                 logger.info('no activity recorded for reference antenna {0} - ignoring dump'.format(
                     self.telstate.cal_refant))
                 continue
             activity, activity_time = activity_full[0]
 
-            # if this is the first scan of the observation, set up some values
+            # if this is the first scan of the batch, set up some values
             if start_flag:
                 unsync_start_time = ig['timestamp'].value
                 prev_activity_time = activity_time
-
-                # when data starts to flow, set the baseline ordering
-                # parameters for re-ordering the data
-                self.set_ordering_parameters()
-                logger.info(' - set pipeline data ordering parameters')
                 logger.info('accumulating data from targets:')
 
             # get target time from TS, if it is present (if it isn't present, set to unknown)
-            if target_key in self.telstate:
+            try:
                 target = self.telstate.get_range(target_key, et=data_ts,
                                                  include_previous=True)[0][0]
                 if target == '':
                     target = 'unknown'
-            else:
+            except KeyError:
                 logger.warning(
                     'target description {0} absent from telescope state'.format(target_key))
                 target = 'unknown'
@@ -312,9 +312,11 @@ class Accumulator(object):
             target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
             if (target_name != prev_target_name) or start_flag:
                 # update source list if necessary
-                target_list = self.telstate.get_range(
-                    'cal_info_sources', st=0, return_format='recarray')['value'] \
-                    if 'cal_info_sources' in self.telstate else []
+                try:
+                    target_list = self.telstate.get_range(
+                        'cal_info_sources', st=0, return_format='recarray')['value']
+                except KeyError:
+                    target_list = []
                 if target_name not in target_list:
                     self.telstate.add('cal_info_sources', target_name, ts=data_ts)
 
@@ -347,13 +349,11 @@ class Accumulator(object):
                     and ('unknown' not in target_tags) \
                     and ('target' not in prev_target_tags):
                 logger.info('Accumulation break - transition')
-                obs_end_flag = False
                 break
             # beamformer special case
             if (activity_time != prev_activity_time) \
                     and ('single_accumulation' in prev_target_tags):
                 logger.info('Accumulation break - single scan accumulation')
-                obs_end_flag = False
                 break
 
             # this is a temporary mock up of a natural break in the data stream
@@ -361,12 +361,10 @@ class Accumulator(object):
             duration = ig['timestamp'].value - unsync_start_time
             if duration > 2000000:
                 logger.info('Accumulate break due to duration')
-                obs_end_flag = False
                 break
             # end accumulation if maximum array size has been accumulated
             if array_index >= self.max_length - 1:
                 logger.info('Accumulate break - buffer size limit')
-                obs_end_flag = False
                 break
 
             prev_activity = activity
@@ -374,20 +372,9 @@ class Accumulator(object):
             prev_target_tags = target_tags
             prev_target_name = target_name
 
-        # if we exited the loop because it was the end of the SPEAD transmission
-        end_time = None
-        if obs_end_flag:
-            if data_ts is not None:
-                end_time = data_ts
-            else:
-                # no data_ts variable because no data has flowed
-                logger.info(' --- no data flowed ---')
-                end_time = time.time()
-            logger.info('Observation ended')
-
         data_buffer['max_index'][0] = array_index
         logger.info('Accumulation ended')
-        raise Return((array_index, end_time))
+        raise Return((array_index, obs_stopped))
 
 
 # ---------------------------------------------------------------------------------------
@@ -508,7 +495,8 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
 # Report writer
 # ---------------------------------------------------------------------------------------
 
-def write_report(obs_end, telstate, l1_endpoint, l1_level, report_path, log_path, full_log):
+def write_report(obs_start, obs_end, telstate,
+                 l1_endpoint, l1_level, report_path, log_path, full_log):
     now = time.time()
     # get subarray ID
     subarray_id = telstate.get('subarray_product_id', 'unknown_subarray')
@@ -522,12 +510,10 @@ def write_report(obs_end, telstate, l1_endpoint, l1_level, report_path, log_path
         # there are more than one
         experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
         experiment_id = eval(experiment_id_string.split()[-1])
-        obs_start = [t for x, t in zip(obs_keys, obs_times) if 'experiment_id' in x][-1]
     except (TypeError, KeyError, AttributeError):
         # TypeError, KeyError because this isn't properly implemented yet
         # AttributeError in case this key isnt in the telstate for whatever reason
         experiment_id = '{0}_unknown_project'.format(int(now))
-        obs_start = None
 
     # make directory for this observation, for logs and report
     if not report_path:
@@ -582,7 +568,7 @@ def report_writer(pipeline_report_queue, telstate, num_pipelines,
             observation_hits[event.index] += 1
             if observation_hits[event.index] == num_pipelines:
                 logger.info('Starting report number %d', event.index)
-                write_report(event.end_time, telstate,
+                write_report(event.start_time, event.end_time, telstate,
                              l1_endpoint, l1_level, report_path, log_path, full_log)
                 del observation_hits[event.index]
         else:
