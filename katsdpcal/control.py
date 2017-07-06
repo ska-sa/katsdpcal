@@ -12,6 +12,7 @@ import mmap
 import threading
 import os
 import shutil
+from collections import Counter
 
 import logging
 logger = logging.getLogger(__name__)
@@ -26,8 +27,15 @@ class TaskLoggingAdapter(logging.LoggerAdapter):
         return '[%s] %s' % (self.extra['connid'], msg), kwargs
 
 
+class ObservationEndEvent(object):
+    """An observation has finished upstream"""
+    def __init__(self, index, end_time):
+        self.index = index
+        self.end_time = end_time
+
+
 class StopEvent(object):
-    """Gracefully shutdown requested"""
+    """Graceful shutdown requested"""
 
 
 class BufferReadyEvent(object):
@@ -75,10 +83,8 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
 
             self.name = 'Accumulator'
             self._stop = control_method.Event()
-            self._obsend = False
-
-            # flag for switching capture to the alternate buffer
-            self._switch_buffer = False
+            self._rx = None
+            self._rx_lock = threading.Lock()   # Protects the _rx reference
 
             # Get data shape
             self.buffer_shape = buffer_shape
@@ -95,39 +101,61 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
             self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
 
         def run(self):
-            """
-             Task (Process or Thread) run method. Append random vis to the vis list
-            at random time.
-            """
-            # Initialise SPEAD receiver
-            self.accumulator_logger.info('Initializing SPEAD receiver')
-            rx = recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
-                             max_heaps=2, ring_heaps=1)
+            """Run the accumulator (called in a child thread/process)"""
             self.accumulator_logger.info('Starting stopper thread')
-            stop_thread = threading.Thread(target=self._stop_rx, name='stopper', args=(rx,))
+            stop_thread = threading.Thread(target=self._stop_rx, name='stopper')
             stop_thread.start()
             try:
                 # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
                 # Then there are per-channel weights (4 bytes each).
                 heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
-                rx.set_memory_allocator(spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4))
+                self._thread_pool = spead2.ThreadPool()
+                self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
+                index = 0
+                while not self._stop.is_set():
+                    self._run_observation(index)
+                    index += 1
+            finally:
+                self._stop.set()   # Ensure that the stopper thread can shut down
+                stop_thread.join()
+                for q in self.accum_pipeline_queues:
+                    q.put(StopEvent())
+
+        def _run_observation(self, index):
+            """Runs for a single observation i.e., until a stop heap is received."""
+            self.accumulator_logger.info('===========================')
+            self.accumulator_logger.info('   Starting new observation')
+            # Initialise SPEAD receiver
+            self.accumulator_logger.info('Initializing SPEAD receiver')
+            rx = recv.Stream(self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
+                                   max_heaps=2, ring_heaps=1)
+            with self._rx_lock:
+                self._rx = rx
+            if self._stop.is_set():
+                return
+            try:
+                rx.set_memory_allocator(self._memory_pool)
                 rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
                 if self.l0_interface_address is not None:
                     rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
                                       interface_address=self.l0_interface_address)
                 else:
                     rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
+                self.accumulator_logger.info('reader added')
 
                 # Increment between buffers, filling and releasing iteratively
                 # Initialise current buffer counter
                 current_buffer = -1
-                while not self._stop.is_set() and not self._obsend:
+                end_time = None
+                while end_time is None:
                     # Increment the current buffer
                     current_buffer = (current_buffer + 1) % self.num_buffers
                     # ------------------------------------------------------------
                     # Loop through the buffers and send data to pipeline task when
                     # accumulation terminate conditions are met.
 
+                    self.accumulator_logger.info('waiting for pipeline_accum_sems[%d]',
+                                                 current_buffer)
                     self.pipeline_accum_sems[current_buffer].acquire()
                     self.accumulator_logger.info('pipeline_accum_sems[%d] acquired by %s',
                                                  current_buffer, self.name)
@@ -135,7 +163,7 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
                     # accumulate data scan by scan into buffer arrays
                     self.accumulator_logger.info('max buffer length %d', self.max_length)
                     self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
-                    max_ind = self.accumulate(rx, current_buffer)
+                    max_ind, end_time = self.accumulate(rx, current_buffer)
                     self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
 
                     # awaken pipeline task that is waiting for the buffer
@@ -143,18 +171,18 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
                     self.accumulator_logger.info(
                         'accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
             finally:
-                self._stop.set()   # Ensure that the stopper thread can shut down
-                stop_thread.join()
                 rx.stop()
                 for q in self.accum_pipeline_queues:
-                    q.put(StopEvent())
+                    q.put(ObservationEndEvent(index, end_time))
 
-        def _stop_rx(self, rx):
+        def _stop_rx(self):
             """Function run on a separate thread which stops the receiver when
             the master asks us to stop.
             """
             self._stop.wait()
-            rx.stop()
+            with self._rx_lock:
+                if self._rx is not None:
+                    self._rx.stop()
 
         def stop(self):
             """Called by the master to do a graceful stop on the accumulator."""
@@ -219,7 +247,15 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
                correlator_data
                flags
                weights
+               weights_channel
                timestamp
+
+            Returns
+            -------
+            array_index : int
+                Last filled position in buffer
+            end_time : float
+                End time of the observation, or ``None`` if the observation is still going
             """
 
             start_flag = True
@@ -368,6 +404,7 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
                 prev_target_name = target_name
 
             # if we exited the loop because it was the end of the SPEAD transmission
+            end_time = None
             if obs_end_flag:
                 if data_ts is not None:
                     end_time = data_ts
@@ -375,14 +412,12 @@ def init_accumulator_control(control_method, control_task, *args, **kwargs):
                     # no data_ts variable because no data has flowed
                     self.accumulator_logger.info(' --- no data flowed ---')
                     end_time = time.time()
-                self.telstate.add('cal_obs_end_time', end_time, ts=end_time)
                 self.accumulator_logger.info('Observation ended')
-                self._obsend = True
 
             data_buffer['max_index'][0] = array_index
             self.accumulator_logger.info('Accumulation ended')
 
-            return array_index
+            return array_index, end_time
 
     return accumulator_control(control_method, *args, **kwargs)
 
@@ -433,6 +468,8 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
                         # release condition after pipeline run finished
                         self.pipeline_accum_sem.release()
                         self.pipeline_logger.info('pipeline_accum_sem release by %s', self.name)
+                    elif isinstance(event, ObservationEndEvent):
+                        self.pipeline_report_queue.put(event)
                     elif isinstance(event, StopEvent):
                         self.pipeline_logger.info('stop received by %s', self.name)
                         break
@@ -506,26 +543,11 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
 # Report writer
 # ---------------------------------------------------------------------------------------
 
-def report_writer(pipeline_report_queue, telstate, num_pipelines,
-                  l1_endpoint, l1_level,
-                  report_path, log_path, full_log):
-    report_logger = TaskLoggingAdapter(logger, {'connid': 'report_writer'})
-    remain = num_pipelines
-    while remain > 0:
-        event = pipeline_report_queue.get()
-        assert isinstance(event, StopEvent)
-        remain -= 1
-    report_logger.info('Last pipeline has finished, starting report')
-    # get observation end time
+def write_report(report_logger, obs_end, telstate,
+                 l1_endpoint, l1_level, report_path, log_path, full_log):
     now = time.time()
-    try:
-        obs_end = telstate.cal_obs_end_time
-    except KeyError:
-        report_logger.info('Unknown observation end time')
-        obs_end = now
     # get subarray ID
     subarray_id = telstate.get('subarray_product_id', 'unknown_subarray')
-
     # get observation name
     try:
         obs_params = telstate.get_range('obs_params', st=0, et=obs_end,
@@ -579,6 +601,30 @@ def report_writer(pipeline_report_queue, telstate, num_pipelines,
 
     # change report and log directory to final name for archiving
     shutil.move(current_obs_dir, obs_dir)
+
+
+def report_writer(pipeline_report_queue, telstate, num_pipelines,
+                  l1_endpoint, l1_level,
+                  report_path, log_path, full_log):
+    report_logger = TaskLoggingAdapter(logger, {'connid': 'report_writer'})
+    remain = num_pipelines            # Number of pipelines still running
+    observation_hits = Counter()      # Number of pipelines finished with each observation
+    while True:
+        event = pipeline_report_queue.get()
+        if isinstance(event, StopEvent):
+            remain -= 1
+            if remain == 0:
+                break
+        elif isinstance(event, ObservationEndEvent):
+            observation_hits[event.index] += 1
+            if observation_hits[event.index] == num_pipelines:
+                report_logger.info('Starting report number %d', event.index)
+                write_report(report_logger, event.end_time, telstate,
+                             l1_endpoint, l1_level, report_path, log_path, full_log)
+                del observation_hits[event.index]
+        else:
+            report_logger.error('unknown event type %r', event)
+    report_logger.info('Last pipeline has finished, exiting')
 
 
 def init_report_writer(control_method, control_task, *args, **kwargs):
