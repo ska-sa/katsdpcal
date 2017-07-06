@@ -4,12 +4,14 @@ import time
 import os
 import signal
 import manhole
+import trollius
+from trollius import From
 
 from katsdptelstate import endpoint
 import katsdpservices
 
 from katsdpcal.control import (
-    init_accumulator_control, init_pipeline_control, init_report_writer, shared_empty)
+    Accumulator, init_pipeline_control, init_report_writer, shared_empty)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -174,9 +176,10 @@ def force_shutdown(accumulator, pipelines, report_writer):
     # triggering a report writing only to kill it half-way.
     # TODO: this may need to become semi-graceful at some point, to avoid
     # corrupting an in-progress report.
-    for task in [report_writer] + pipelines + [accumulator]:
+    for task in [report_writer] + pipelines:
         task.terminate()
         task.join()
+    accumulator.stop()
 
 
 def kill_shutdown():
@@ -184,11 +187,17 @@ def kill_shutdown():
     os.kill(os.getpid(), signal.SIGKILL)
 
 
-def force_exit(_signo=None, _stack_frame=None):
+def force_exit():
     logger.info("Exiting katsdpcal on SIGTERM")
     raise SystemExit
 
 
+def graceful_exit(accumulator):
+    logger.info('Graceful exit requested')
+    accumulator.stop()
+
+
+@trollius.coroutine
 def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
                 buffer_maxsize=None, auto=True,
                 l0_endpoint=':7200', l0_interface=None,
@@ -242,6 +251,14 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
     logger.info('   - antenna mask: {0}'.format(antenna_mask,))
     logger.info('   - number of channels: {0}'.format(cbf_n_chans,))
     logger.info('   - number of polarisation products: {0}'.format(cbf_n_pols,))
+
+    # threading or multiprocessing imports
+    if mproc:
+        logger.info("Using multiprocessing")
+        import multiprocessing
+    else:
+        logger.info("Using threading")
+        import multiprocessing.dummy as multiprocessing
 
     # extract data shape parameters
     #   argument parser traversed TS config to find these
@@ -336,26 +353,26 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
 
     # set up inter-task synchronisation primitives.
     # passed events to indicate buffer transfer, end-of-observation, or stop
-    accum_pipeline_queues = [control_method.Queue() for i in range(num_buffers)]
+    accum_pipeline_queues = [multiprocessing.Queue() for i in range(num_buffers)]
     # signalled when the pipeline is finished with a buffer
-    pipeline_accum_sems = [control_method.Semaphore(value=1) for i in range(num_buffers)]
+    pipeline_accum_sems = [multiprocessing.Semaphore(value=1) for i in range(num_buffers)]
     # signalled by pipelines when they shut down
-    pipeline_report_queue = control_method.Queue()
+    pipeline_report_queue = multiprocessing.Queue()
 
     # Set up the accumulator
-    accumulator = init_accumulator_control(control_method, control_task, buffers,
-                                           buffer_shape,
-                                           accum_pipeline_queues, pipeline_accum_sems,
-                                           l0_endpoint, l0_interface_address, ts)
+    accumulator = Accumulator(multiprocessing, buffers,
+                              buffer_shape,
+                              accum_pipeline_queues, pipeline_accum_sems,
+                              l0_endpoint, l0_interface_address, ts)
     # Set up the pipelines (one per buffer)
     pipelines = [init_pipeline_control(
-        control_method, control_task,
+        multiprocessing, multiprocessing.Process,
         buffers[i], buffer_shape,
         accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, i,
         l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
     # Set up the report writer
     report_writer = init_report_writer(
-        control_method, control_task, pipeline_report_queue, ts, num_buffers,
+        multiprocessing, multiprocessing.Process, pipeline_report_queue, ts, num_buffers,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # allow remote debug connections and expose telescope state and tasks
@@ -371,22 +388,19 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    # Start the tasks
+    # Start the child tasks
     report_writer.start()
     map(lambda x: x.start(), pipelines)
-    accumulator.start()
 
     # Now install the signal handlers (which won't be inherited).
-    def graceful_exit(signo, frame):
-        logger.info('Graceful exit requested')
-        accumulator.stop()
-    signal.signal(signal.SIGTERM, force_exit)
-    signal.signal(signal.SIGINT, graceful_exit)
+    loop = trollius.get_event_loop()
+    loop.add_signal_handler(signal.SIGTERM, force_exit)
+    loop.add_signal_handler(signal.SIGINT, graceful_exit, accumulator)
     logger.info('katsdpcal started')
 
-    # wait until the everything has shut itself down
+    # Run the accumulator, then wait for everything to shut down
     try:
-        accumulator.join()
+        yield From(accumulator.run())
         logger.info('Accumulator stopped')
         for pipeline in pipelines:
             pipeline.join()
@@ -405,8 +419,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, num_buffers=2,
         kill_shutdown()
 
 
-if __name__ == '__main__':
-
+@trollius.coroutine
+def main():
     opts = parse_opts()
 
     # set up logging
@@ -414,30 +428,7 @@ if __name__ == '__main__':
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)
 
-    # threading or multiprocessing imports
-    if opts.notthreading is True:
-        logger.info("Using multiprocessing")
-        import multiprocessing as control_method
-
-        class control_task(control_method.Process):
-            def start(self):
-                # Block SIGINT while spawning the child, so that the child
-                # won't get a KeyboardInterrupt if Ctrl-C is pressed. There
-                # is a race condition where a Ctrl-C while in this function
-                # would be lost, but since SIGINT is only intended for
-                # interactive use, the user can just push it again. With Python
-                # 3 it would be possible to fix this with
-                # signal.pthread_sigmask to block rather than ignore the
-                # signal.
-                orig = signal.signal(signal.SIGINT, signal.SIG_IGN)
-                super(control_task, self).start()
-                signal.signal(signal.SIGINT, orig)
-    else:
-        logger.info("Using threading")
-        import multiprocessing.dummy as control_method
-        from multiprocessing.dummy import Process as control_task
-
-    run_threads(
+    yield From(run_threads(
         opts.telstate,
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
         num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
@@ -445,4 +436,8 @@ if __name__ == '__main__':
         l1_endpoint=opts.l1_spectral_spead,
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
         param_file=opts.parameter_file,
-        report_path=opts.report_path, log_path=log_path, full_log=log_name)
+        report_path=opts.report_path, log_path=log_path, full_log=log_name))
+
+
+if __name__ == '__main__':
+    trollius.get_event_loop().run_until_complete(main())

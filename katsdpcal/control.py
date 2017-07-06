@@ -1,6 +1,6 @@
-from . import spead2
-from . import send
-from . import recv
+import spead2
+import spead2.recv.trollius
+import spead2.send
 
 from .reduction import pipeline
 from .report import make_cal_report
@@ -13,6 +13,8 @@ import threading
 import os
 import shutil
 from collections import Counter
+import trollius
+from trollius import From, Return
 
 import logging
 logger = logging.getLogger(__name__)
@@ -61,365 +63,348 @@ def shared_empty(shape, dtype):
 # Accumulator
 # ---------------------------------------------------------------------------------------
 
-def init_accumulator_control(control_method, control_task, *args, **kwargs):
+class Accumulator(object):
+    """Manages accumulation of L0 data into buffers"""
 
-    class accumulator_control(control_task):
-        """
-        Task (Process or Thread) which accumutates data from SPEAD into numpy arrays
-        """
+    def __init__(self, control_method, buffers, buffer_shape,
+                 accum_pipeline_queues, pipeline_accum_sems,
+                 l0_endpoint, l0_interface_address, telstate):
+        self.buffers = buffers
+        self.telstate = telstate
+        self.l0_endpoint = l0_endpoint
+        self.l0_interface_address = l0_interface_address
+        self.accum_pipeline_queues = accum_pipeline_queues
+        self.pipeline_accum_sems = pipeline_accum_sems
+        self.num_buffers = len(buffers)
 
-        def __init__(self, control_method, buffers, buffer_shape,
-                     accum_pipeline_queues, pipeline_accum_sems,
-                     l0_endpoint, l0_interface_address, telstate):
-            control_task.__init__(self)
+        self.name = 'Accumulator'
+        self._stop = False
+        self._rx = None
 
-            self.buffers = buffers
-            self.telstate = telstate
-            self.l0_endpoint = l0_endpoint
-            self.l0_interface_address = l0_interface_address
-            self.accum_pipeline_queues = accum_pipeline_queues
-            self.pipeline_accum_sems = pipeline_accum_sems
-            self.num_buffers = len(buffers)
+        # Get data shape
+        self.buffer_shape = buffer_shape
+        self.max_length = buffer_shape[0]
+        self.nchan = buffer_shape[1]
+        self.npol = buffer_shape[2]
+        self.nbl = buffer_shape[3]
 
-            self.name = 'Accumulator'
-            self._stop = control_method.Event()
+        # baseline ordering, to use in re-ordering the data
+        #   will be set when data starts to flow
+        self.ordering = None
+
+        # set up logging adapter for the task
+        self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
+
+    @trollius.coroutine
+    def run(self):
+        """Run the accumulator. This is a coroutine"""
+        try:
+            # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
+            # Then there are per-channel weights (4 bytes each).
+            heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
+            self._thread_pool = spead2.ThreadPool()
+            self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
+            index = 0
+            while not self._stop:
+                yield From(self._run_observation(index))
+                index += 1
+        finally:
+            for q in self.accum_pipeline_queues:
+                q.put(StopEvent())
+
+    @trollius.coroutine
+    def _run_observation(self, index):
+        """Runs for a single observation i.e., until a stop heap is received."""
+        self.accumulator_logger.info('===========================')
+        self.accumulator_logger.info('   Starting new observation')
+        # Initialise SPEAD receiver
+        self.accumulator_logger.info('Initializing SPEAD receiver')
+        self._rx = rx = spead2.recv.trollius.Stream(
+            self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
+            max_heaps=2, ring_heaps=1)
+        try:
+            rx.set_memory_allocator(self._memory_pool)
+            rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
+            if self.l0_interface_address is not None:
+                rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
+                                  interface_address=self.l0_interface_address)
+            else:
+                rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
+            self.accumulator_logger.info('reader added')
+
+            # Increment between buffers, filling and releasing iteratively
+            # Initialise current buffer counter
+            current_buffer = -1
+            end_time = None
+            while end_time is None:
+                # Increment the current buffer
+                current_buffer = (current_buffer + 1) % self.num_buffers
+                # ------------------------------------------------------------
+                # Loop through the buffers and send data to pipeline task when
+                # accumulation terminate conditions are met.
+
+                self.accumulator_logger.info('waiting for pipeline_accum_sems[%d]',
+                                             current_buffer)
+                self.pipeline_accum_sems[current_buffer].acquire()
+                self.accumulator_logger.info('pipeline_accum_sems[%d] acquired by %s',
+                                             current_buffer, self.name)
+
+                # accumulate data scan by scan into buffer arrays
+                self.accumulator_logger.info('max buffer length %d', self.max_length)
+                self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
+                max_ind, end_time = yield From(self.accumulate(rx, current_buffer))
+                self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
+
+                # awaken pipeline task that is waiting for the buffer
+                self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
+                self.accumulator_logger.info(
+                    'accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
+        finally:
+            rx.stop()
             self._rx = None
-            self._rx_lock = threading.Lock()   # Protects the _rx reference
+            for q in self.accum_pipeline_queues:
+                q.put(ObservationEndEvent(index, end_time))
 
-            # Get data shape
-            self.buffer_shape = buffer_shape
-            self.max_length = buffer_shape[0]
-            self.nchan = buffer_shape[1]
-            self.npol = buffer_shape[2]
-            self.nbl = buffer_shape[3]
+    def stop(self):
+        """Called by the master to do a graceful stop on the accumulator."""
+        self._stop = True
+        if self._rx is not None:
+            self._rx.stop()
 
-            # baseline ordering, to use in re-ordering the data
-            #   will be set when data starts to flow
-            self.ordering = None
+    def set_ordering_parameters(self):
+        # determine re-ordering necessary to convert from supplied bls
+        # ordering to desired bls ordering
+        antlist = self.telstate.cal_antlist
+        self.ordering, bls_order, pol_order = \
+            calprocs.get_reordering(antlist, self.telstate.sdp_l0_bls_ordering)
+        # determine lookup list for baselines
+        bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
+        # save these to the TS for use in the pipeline/elsewhere
+        self.telstate.add('cal_bls_ordering', bls_order)
+        self.telstate.add('cal_pol_ordering', pol_order)
+        self.telstate.add('cal_bls_lookup', bls_lookup)
 
-            # set up logging adapter for the task
-            self.accumulator_logger = TaskLoggingAdapter(logger, {'connid': self.name})
+    @classmethod
+    def _update_buffer(cls, out, l0, ordering):
+        """Copy values from an item group to the accumulation buffer.
 
-        def run(self):
-            """Run the accumulator (called in a child thread/process)"""
-            self.accumulator_logger.info('Starting stopper thread')
-            stop_thread = threading.Thread(target=self._stop_rx, name='stopper')
-            stop_thread.start()
+        The input has a single dimension representing both baseline and
+        polarisation, while the output has separate dimensions. There can
+        be an arbitrary permutation (given by `ordering`) of the
+        pol-baselines.
+
+        This is equivalent to
+
+        .. code:: python
+            out[:] = l0[:, ordering].reshape(out.shape)
+
+        but more efficient as it does not construct a temporary array.
+
+        It is required that the output can be reshaped to collapse the
+        pol and baseline dimensions. Being C-contiguous is sufficient for
+        this.
+
+        Parameters
+        ----------
+        out : :class:`np.ndarray`
+            Output array, shape (nchans, npols, nbls)
+        l0 : :class:`np.ndarray`
+            Input array, shape (nchans, npols * nbls)
+        ordering:
+            Indices into l0's last dimension to permute them before
+            reshaping into separate polarisation and baseline dimensions.
+        """
+        # Assign to .shape instead of using reshape so that an exception
+        # is raised if a view cannot be created (see np.reshape).
+        out_view = out.view()
+        out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
+        np.take(l0, ordering, axis=1, out=out_view)
+
+    @trollius.coroutine
+    def accumulate(self, rx, buffer_index):
+        """
+        Accumulates spead data into arrays
+           till **TBD** metadata indicates scan has stopped, or
+           till array reaches max buffer size
+
+        SPEAD item groups contain:
+           correlator_data
+           flags
+           weights
+           weights_channel
+           timestamp
+
+        Returns
+        -------
+        array_index : int
+            Last filled position in buffer
+        end_time : float
+            End time of the observation, or ``None`` if the observation is still going
+        """
+
+        start_flag = True
+        array_index = -1
+
+        prev_activity = 'none'
+        prev_activity_time = 0.
+        prev_target_tags = 'none'
+        prev_target_name = 'none'
+
+        # set data buffer for writing
+        data_buffer = self.buffers[buffer_index]
+
+        # get names of activity and target TS keys, using TS reference antenna
+        target_key = '{0}_target'.format(self.telstate.cal_refant,)
+        activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
+
+        obs_end_flag = True
+
+        # sensor parameters which will be set from telescope state when data starts to flow
+        cbf_sync_time = None
+        data_ts = None
+
+        # receive SPEAD stream
+        ig = spead2.ItemGroup()
+
+        self.accumulator_logger.info('waiting to start accumulating data')
+        while True:
             try:
-                # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
-                # Then there are per-channel weights (4 bytes each).
-                heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
-                self._thread_pool = spead2.ThreadPool()
-                self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
-                index = 0
-                while not self._stop.is_set():
-                    self._run_observation(index)
-                    index += 1
-            finally:
-                self._stop.set()   # Ensure that the stopper thread can shut down
-                stop_thread.join()
-                for q in self.accum_pipeline_queues:
-                    q.put(StopEvent())
+                heap = yield From(rx.get())
+            except spead2.Stopped:
+                break
+            ig.update(heap)
+            if len(ig.keys()) < 1:
+                self.accumulator_logger.info('==== empty stop packet received ====')
+                continue
 
-        def _run_observation(self, index):
-            """Runs for a single observation i.e., until a stop heap is received."""
-            self.accumulator_logger.info('===========================')
-            self.accumulator_logger.info('   Starting new observation')
-            # Initialise SPEAD receiver
-            self.accumulator_logger.info('Initializing SPEAD receiver')
-            rx = recv.Stream(self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
-                                   max_heaps=2, ring_heaps=1)
-            with self._rx_lock:
-                self._rx = rx
-            if self._stop.is_set():
-                return
-            try:
-                rx.set_memory_allocator(self._memory_pool)
-                rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
-                if self.l0_interface_address is not None:
-                    rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
-                                      interface_address=self.l0_interface_address)
-                else:
-                    rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
-                self.accumulator_logger.info('reader added')
-
-                # Increment between buffers, filling and releasing iteratively
-                # Initialise current buffer counter
-                current_buffer = -1
-                end_time = None
-                while end_time is None:
-                    # Increment the current buffer
-                    current_buffer = (current_buffer + 1) % self.num_buffers
-                    # ------------------------------------------------------------
-                    # Loop through the buffers and send data to pipeline task when
-                    # accumulation terminate conditions are met.
-
-                    self.accumulator_logger.info('waiting for pipeline_accum_sems[%d]',
-                                                 current_buffer)
-                    self.pipeline_accum_sems[current_buffer].acquire()
-                    self.accumulator_logger.info('pipeline_accum_sems[%d] acquired by %s',
-                                                 current_buffer, self.name)
-
-                    # accumulate data scan by scan into buffer arrays
-                    self.accumulator_logger.info('max buffer length %d', self.max_length)
-                    self.accumulator_logger.info('accumulating into buffer %d', current_buffer)
-                    max_ind, end_time = self.accumulate(rx, current_buffer)
-                    self.accumulator_logger.info('Accumulated {0} timestamps'.format(max_ind+1,))
-
-                    # awaken pipeline task that is waiting for the buffer
-                    self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
-                    self.accumulator_logger.info(
-                        'accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
-            finally:
-                rx.stop()
-                for q in self.accum_pipeline_queues:
-                    q.put(ObservationEndEvent(index, end_time))
-
-        def _stop_rx(self):
-            """Function run on a separate thread which stops the receiver when
-            the master asks us to stop.
-            """
-            self._stop.wait()
-            with self._rx_lock:
-                if self._rx is not None:
-                    self._rx.stop()
-
-        def stop(self):
-            """Called by the master to do a graceful stop on the accumulator."""
-            self._stop.set()
-
-        def set_ordering_parameters(self):
-            # determine re-ordering necessary to convert from supplied bls
-            # ordering to desired bls ordering
-            antlist = self.telstate.cal_antlist
-            self.ordering, bls_order, pol_order = \
-                calprocs.get_reordering(antlist, self.telstate.sdp_l0_bls_ordering)
-            # determine lookup list for baselines
-            bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
-            # save these to the TS for use in the pipeline/elsewhere
-            self.telstate.add('cal_bls_ordering', bls_order)
-            self.telstate.add('cal_pol_ordering', pol_order)
-            self.telstate.add('cal_bls_lookup', bls_lookup)
-
-        @classmethod
-        def _update_buffer(cls, out, l0, ordering):
-            """Copy values from an item group to the accumulation buffer.
-
-            The input has a single dimension representing both baseline and
-            polarisation, while the output has separate dimensions. There can
-            be an arbitrary permutation (given by `ordering`) of the
-            pol-baselines.
-
-            This is equivalent to
-
-            .. code:: python
-                out[:] = l0[:, ordering].reshape(out.shape)
-
-            but more efficient as it does not construct a temporary array.
-
-            It is required that the output can be reshaped to collapse the
-            pol and baseline dimensions. Being C-contiguous is sufficient for
-            this.
-
-            Parameters
-            ----------
-            out : :class:`np.ndarray`
-                Output array, shape (nchans, npols, nbls)
-            l0 : :class:`np.ndarray`
-                Input array, shape (nchans, npols * nbls)
-            ordering:
-                Indices into l0's last dimension to permute them before
-                reshaping into separate polarisation and baseline dimensions.
-            """
-            # Assign to .shape instead of using reshape so that an exception
-            # is raised if a view cannot be created (see np.reshape).
-            out_view = out.view()
-            out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
-            np.take(l0, ordering, axis=1, out=out_view)
-
-        def accumulate(self, rx, buffer_index):
-            """
-            Accumulates spead data into arrays
-               till **TBD** metadata indicates scan has stopped, or
-               till array reaches max buffer size
-
-            SPEAD item groups contain:
-               correlator_data
-               flags
-               weights
-               weights_channel
-               timestamp
-
-            Returns
-            -------
-            array_index : int
-                Last filled position in buffer
-            end_time : float
-                End time of the observation, or ``None`` if the observation is still going
-            """
-
-            start_flag = True
-            array_index = -1
-
-            prev_activity = 'none'
-            prev_activity_time = 0.
-            prev_target_tags = 'none'
-            prev_target_name = 'none'
-
-            # set data buffer for writing
-            data_buffer = self.buffers[buffer_index]
-
-            # get names of activity and target TS keys, using TS reference antenna
-            target_key = '{0}_target'.format(self.telstate.cal_refant,)
-            activity_key = '{0}_activity'.format(self.telstate.cal_refant,)
-
-            obs_end_flag = True
-
-            # sensor parameters which will be set from telescope state when data starts to flow
-            cbf_sync_time = None
-            data_ts = None
-
-            # receive SPEAD stream
-            ig = spead2.ItemGroup()
-
-            self.accumulator_logger.info('waiting to start accumulating data')
-            for heap in rx:
-                ig.update(heap)
-                if len(ig.keys()) < 1:
-                    self.accumulator_logger.info('==== empty stop packet received ====')
-                    continue
-
-                # get sync time from TS, if it is present (if it isn't present,
-                # don't process this dump further)
-                if cbf_sync_time is None:
-                    if 'cbf_sync_time' in self.telstate:
-                        cbf_sync_time = self.telstate.cbf_sync_time
-                        self.accumulator_logger.info(' - set cbf_sync_time')
-                    else:
-                        self.accumulator_logger.warning(
-                            'cbf_sync_time absent from telescope state - ignoring dump')
-                        continue
-
-                # get activity and target tag from TS
-                data_ts = ig['timestamp'].value + cbf_sync_time
-                activity_full = []
-                if activity_key in self.telstate:
-                    activity_full = self.telstate.get_range(
-                        activity_key, et=data_ts, include_previous=True)
-                if not activity_full:
-                    self.accumulator_logger.info(
-                        'no activity recorded for reference antenna {0} - ignoring dump'.format(
-                            self.telstate.cal_refant,))
-                    continue
-                activity, activity_time = activity_full[0]
-
-                # if this is the first scan of the observation, set up some values
-                if start_flag:
-                    unsync_start_time = ig['timestamp'].value
-                    prev_activity_time = activity_time
-
-                    # when data starts to flow, set the baseline ordering
-                    # parameters for re-ordering the data
-                    self.set_ordering_parameters()
-                    self.accumulator_logger.info(' - set pipeline data ordering parameters')
-
-                    self.accumulator_logger.info('accumulating data from targets:')
-
-                # get target time from TS, if it is present (if it isn't present, set to unknown)
-                if target_key in self.telstate:
-                    target = self.telstate.get_range(target_key, et=data_ts,
-                                                     include_previous=True)[0][0]
-                    if target == '':
-                        target = 'unknown'
+            # get sync time from TS, if it is present (if it isn't present,
+            # don't process this dump further)
+            if cbf_sync_time is None:
+                if 'cbf_sync_time' in self.telstate:
+                    cbf_sync_time = self.telstate.cbf_sync_time
+                    self.accumulator_logger.info(' - set cbf_sync_time')
                 else:
                     self.accumulator_logger.warning(
-                        'target description {0} absent from telescope state'.format(target_key))
-                    target = 'unknown'
-                # extract name and tags from target description string
-                target_split = target.split(',')
-                target_name = target_split[0]
-                target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
-                if (target_name != prev_target_name) or start_flag:
-                    # update source list if necessary
-                    target_list = self.telstate.get_range(
-                        'cal_info_sources', st=0, return_format='recarray')['value'] \
-                        if 'cal_info_sources' in self.telstate else []
-                    if target_name not in target_list:
-                        self.telstate.add('cal_info_sources', target_name, ts=data_ts)
+                        'cbf_sync_time absent from telescope state - ignoring dump')
+                    continue
 
-                # print name of target and activity type, if activity has
-                # changed or start of accumulator
-                if start_flag or (activity_time != prev_activity_time):
-                    self.accumulator_logger.info(' - {0} ({1})'.format(target_name, activity))
-                start_flag = False
+            # get activity and target tag from TS
+            data_ts = ig['timestamp'].value + cbf_sync_time
+            activity_full = []
+            if activity_key in self.telstate:
+                activity_full = self.telstate.get_range(
+                    activity_key, et=data_ts, include_previous=True)
+            if not activity_full:
+                self.accumulator_logger.info(
+                    'no activity recorded for reference antenna {0} - ignoring dump'.format(
+                        self.telstate.cal_refant,))
+                continue
+            activity, activity_time = activity_full[0]
 
-                # increment the index indicating the position of the data in the buffer
-                array_index += 1
-                # reshape data and put into relevent arrays
-                self._update_buffer(data_buffer['vis'][array_index],
-                                    ig['correlator_data'].value, self.ordering)
-                self._update_buffer(data_buffer['flags'][array_index],
-                                    ig['flags'].value, self.ordering)
-                weights_channel = ig['weights_channel'].value[:, np.newaxis]
-                weights = ig['weights'].value
-                self._update_buffer(data_buffer['weights'][array_index],
-                                    weights * weights_channel, self.ordering)
-                data_buffer['times'][array_index] = data_ts
-
-                # break if activity has changed (i.e. the activity time has changed)
-                #   unless previous scan was a target, in which case accumulate
-                #   subsequent gain scan too
-                # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-                ignore_states = ['slew', 'stop', 'unknown']
-                if (activity_time != prev_activity_time) \
-                        and not np.any([ignore in prev_activity for ignore in ignore_states]) \
-                        and ('unknown' not in target_tags) \
-                        and ('target' not in prev_target_tags):
-                    self.accumulator_logger.info('Accumulation break - transition')
-                    obs_end_flag = False
-                    break
-                # beamformer special case
-                if (activity_time != prev_activity_time) \
-                        and ('single_accumulation' in prev_target_tags):
-                    self.accumulator_logger.info('Accumulation break - single scan accumulation')
-                    obs_end_flag = False
-                    break
-
-                # this is a temporary mock up of a natural break in the data stream
-                # will ultimately be provided by some sort of sensor
-                duration = ig['timestamp'].value - unsync_start_time
-                if duration > 2000000:
-                    self.accumulator_logger.info('Accumulate break due to duration')
-                    obs_end_flag = False
-                    break
-                # end accumulation if maximum array size has been accumulated
-                if array_index >= self.max_length - 1:
-                    self.accumulator_logger.info('Accumulate break - buffer size limit')
-                    obs_end_flag = False
-                    break
-
-                prev_activity = activity
+            # if this is the first scan of the observation, set up some values
+            if start_flag:
+                unsync_start_time = ig['timestamp'].value
                 prev_activity_time = activity_time
-                prev_target_tags = target_tags
-                prev_target_name = target_name
 
-            # if we exited the loop because it was the end of the SPEAD transmission
-            end_time = None
-            if obs_end_flag:
-                if data_ts is not None:
-                    end_time = data_ts
-                else:
-                    # no data_ts variable because no data has flowed
-                    self.accumulator_logger.info(' --- no data flowed ---')
-                    end_time = time.time()
-                self.accumulator_logger.info('Observation ended')
+                # when data starts to flow, set the baseline ordering
+                # parameters for re-ordering the data
+                self.set_ordering_parameters()
+                self.accumulator_logger.info(' - set pipeline data ordering parameters')
 
-            data_buffer['max_index'][0] = array_index
-            self.accumulator_logger.info('Accumulation ended')
+                self.accumulator_logger.info('accumulating data from targets:')
 
-            return array_index, end_time
+            # get target time from TS, if it is present (if it isn't present, set to unknown)
+            if target_key in self.telstate:
+                target = self.telstate.get_range(target_key, et=data_ts,
+                                                 include_previous=True)[0][0]
+                if target == '':
+                    target = 'unknown'
+            else:
+                self.accumulator_logger.warning(
+                    'target description {0} absent from telescope state'.format(target_key))
+                target = 'unknown'
+            # extract name and tags from target description string
+            target_split = target.split(',')
+            target_name = target_split[0]
+            target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
+            if (target_name != prev_target_name) or start_flag:
+                # update source list if necessary
+                target_list = self.telstate.get_range(
+                    'cal_info_sources', st=0, return_format='recarray')['value'] \
+                    if 'cal_info_sources' in self.telstate else []
+                if target_name not in target_list:
+                    self.telstate.add('cal_info_sources', target_name, ts=data_ts)
 
-    return accumulator_control(control_method, *args, **kwargs)
+            # print name of target and activity type, if activity has
+            # changed or start of accumulator
+            if start_flag or (activity_time != prev_activity_time):
+                self.accumulator_logger.info(' - {0} ({1})'.format(target_name, activity))
+            start_flag = False
+
+            # increment the index indicating the position of the data in the buffer
+            array_index += 1
+            # reshape data and put into relevent arrays
+            self._update_buffer(data_buffer['vis'][array_index],
+                                ig['correlator_data'].value, self.ordering)
+            self._update_buffer(data_buffer['flags'][array_index],
+                                ig['flags'].value, self.ordering)
+            weights_channel = ig['weights_channel'].value[:, np.newaxis]
+            weights = ig['weights'].value
+            self._update_buffer(data_buffer['weights'][array_index],
+                                weights * weights_channel, self.ordering)
+            data_buffer['times'][array_index] = data_ts
+
+            # break if activity has changed (i.e. the activity time has changed)
+            #   unless previous scan was a target, in which case accumulate
+            #   subsequent gain scan too
+            # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
+            ignore_states = ['slew', 'stop', 'unknown']
+            if (activity_time != prev_activity_time) \
+                    and not np.any([ignore in prev_activity for ignore in ignore_states]) \
+                    and ('unknown' not in target_tags) \
+                    and ('target' not in prev_target_tags):
+                self.accumulator_logger.info('Accumulation break - transition')
+                obs_end_flag = False
+                break
+            # beamformer special case
+            if (activity_time != prev_activity_time) \
+                    and ('single_accumulation' in prev_target_tags):
+                self.accumulator_logger.info('Accumulation break - single scan accumulation')
+                obs_end_flag = False
+                break
+
+            # this is a temporary mock up of a natural break in the data stream
+            # will ultimately be provided by some sort of sensor
+            duration = ig['timestamp'].value - unsync_start_time
+            if duration > 2000000:
+                self.accumulator_logger.info('Accumulate break due to duration')
+                obs_end_flag = False
+                break
+            # end accumulation if maximum array size has been accumulated
+            if array_index >= self.max_length - 1:
+                self.accumulator_logger.info('Accumulate break - buffer size limit')
+                obs_end_flag = False
+                break
+
+            prev_activity = activity
+            prev_activity_time = activity_time
+            prev_target_tags = target_tags
+            prev_target_name = target_name
+
+        # if we exited the loop because it was the end of the SPEAD transmission
+        end_time = None
+        if obs_end_flag:
+            if data_ts is not None:
+                end_time = data_ts
+            else:
+                # no data_ts variable because no data has flowed
+                self.accumulator_logger.info(' --- no data flowed ---')
+                end_time = time.time()
+            self.accumulator_logger.info('Observation ended')
+
+        data_buffer['max_index'][0] = array_index
+        self.accumulator_logger.info('Accumulation ended')
+        raise Return((array_index, end_time))
 
 
 # ---------------------------------------------------------------------------------------
@@ -485,9 +470,9 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
 
             # send data to L1 SPEAD if necessary
             if self.l1_level != 0:
-                config = send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
-                tx = send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
-                                    self.l1_endpoint.port, config)
+                config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
+                tx = spead2.send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
+                                           self.l1_endpoint.port, config)
                 self.pipeline_logger.info('   Transmit L1 data')
                 # for streaming all of the data (not target only),
                 # use the highest index in the buffer that is filled with data
@@ -506,7 +491,7 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
             """
             # create SPEAD item group
             flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            ig = send.ItemGroup(flavour=flavour)
+            ig = spead2.send.ItemGroup(flavour=flavour)
             # set up item group with items
             ig.add_item(id=None, name='correlator_data', description="Visibilities",
                         shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
@@ -647,11 +632,11 @@ def end_transmit(host, port):
     port : int
         port to transmit to
     """
-    config = send.StreamConfig(max_packet_size=8972)
-    tx = send.UdpStream(spead2.ThreadPool(), host, port, config)
+    config = spead2.send.StreamConfig(max_packet_size=8972)
+    tx = spead2.send.UdpStream(spead2.ThreadPool(), host, port, config)
 
     flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-    heap = send.Heap(flavour)
+    heap = spead2.send.Heap(flavour)
     heap.add_end()
 
     tx.send_heap(heap)
