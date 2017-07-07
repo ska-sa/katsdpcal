@@ -19,6 +19,7 @@ import tornado.gen
 import katsdpservices.asyncio
 import concurrent.futures
 
+import katsdpcal
 from .reduction import pipeline
 from .report import make_cal_report
 from . import calprocs
@@ -655,6 +656,9 @@ def end_transmit(host, port):
 # ---------------------------------------------------------------------------------------
 
 class CalDeviceServer(katcp.server.AsyncDeviceServer):
+    VERSION_INFO = ('katsdpcal-api', 2, 0)
+    BUILD_INFO = ('katsdpcal',) + tuple(katsdpcal.__version__.split('.', 1)) + ('',)
+
     def __init__(self, accumulator, *args, **kwargs):
         self.accumulator = accumulator
         super(CalDeviceServer, self).__init__(*args, **kwargs)
