@@ -75,6 +75,65 @@ def shared_empty(shape, dtype):
     return array
 
 
+class Task(object):
+    """Base class for tasks (threads or processes).
+
+    It manages katcp sensors that are sent back to the master process over a
+    :class:`multiprocessing.Queue`. It is intended to be subclassed to provide
+    :meth:`get_sensors` and :meth:`run` methods.
+
+    Parameters
+    ----------
+    task_class : type
+        Either :class:`multiprocessing.Process` or an equivalent class such as
+        :class:`multiprocessing.dummy.Process`.
+    master_queue : :class:`multiprocessing.Queue`
+        Queue for sending sensor updates to the master.
+    name : str, optional
+        Name for the task
+
+    Attributes
+    ----------
+    master_queue : :class:`multiprocessing.Queue`
+        Queue passed to the constructor
+    sensors : dict
+        Dictionary of :class:`katcp.Sensor`s. This is only guaranteed to be
+        present inside the child process.
+    """
+
+    def __init__(self, task_class, master_queue, name=None):
+        self.master_queue = master_queue
+        self._process = task_class(target=_run_task, name=name, args=(self,))
+        self.sensors = None
+        # Expose assorted methods from the base class
+        for key in ['start', 'terminate', 'join', 'name', 'is_alive']:
+            if hasattr(self._process, key):
+                setattr(self, key, getattr(self._process, key))
+
+    def _run(self):
+        sensors = self.get_sensors()
+        observer = QueueObserver(self.master_queue)
+        for sensor in sensors:
+            sensor.attach(observer)
+        self.sensors = {sensor.name: sensor for sensor in sensors}
+        self.run()
+
+    def get_sensors(self):
+        """Get list of katcp sensors.
+
+        The sensors should be instantiated when this function is called, not
+        cached.
+        """
+        return []
+
+
+def _run_task(task):
+    """Free function wrapping the Task runner. It needs to be free because
+    bound instancemethods can't be pickled for multiprocessing.
+    """
+    task._run()
+
+
 # ---------------------------------------------------------------------------------------
 # Accumulator
 # ---------------------------------------------------------------------------------------
@@ -482,234 +541,242 @@ class Accumulator(object):
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(control_task, *args, **kwargs):
+class Pipeline(Task):
+    """
+    Task (Process or Thread) which runs pipeline
+    """
 
-    class PipelineControl(control_task):
+    def __init__(self, task_class, data, data_shape,
+                 accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue, master_queue,
+                 pipenum, l1_endpoint, l1_level, l1_rate, telstate):
+        super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline_' + str(pipenum))
+        self.data = data
+        self.accum_pipeline_queue = accum_pipeline_queue
+        self.pipeline_accum_sem = pipeline_accum_sem
+        self.pipeline_report_queue = pipeline_report_queue
+        self.telstate = telstate
+        self.data_shape = data_shape
+        self.l1_level = l1_level
+        self.l1_rate = l1_rate
+        self.l1_endpoint = l1_endpoint
+
+    def get_sensors(self):
+        return [
+            katcp.Sensor.float(
+                'pipeline-last-time',
+                'time taken to process the most recent buffer',
+                unit='s'),
+            katcp.Sensor.integer(
+                'pipeline-last-slots',
+                'number of slots filled in the most recent buffer')
+        ]
+
+    def run(self):
         """
-        Task (Process or Thread) which runs pipeline
+        Task (Process or Thread) run method. Runs pipeline
         """
 
-        def __init__(self, data, data_shape,
-                     accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue, master_queue,
-                     pipenum, l1_endpoint, l1_level, l1_rate, telstate):
-            control_task.__init__(self)
-            self.data = data
-            self.accum_pipeline_queue = accum_pipeline_queue
-            self.pipeline_accum_sem = pipeline_accum_sem
-            self.pipeline_report_queue = pipeline_report_queue
-            self.master_queue = master_queue
-            self.name = 'Pipeline_' + str(pipenum)
-            self.telstate = telstate
-            self.data_shape = data_shape
-            self.l1_level = l1_level
-            self.l1_rate = l1_rate
-            self.l1_endpoint = l1_endpoint
+        # run until stop event received
+        try:
+            while True:
+                logger.info('waiting for next event (%s)', self.name)
+                event = self.accum_pipeline_queue.get()
+                if isinstance(event, BufferReadyEvent):
+                    logger.info('buffer acquired by %s', self.name)
+                    # run the pipeline
+                    start_time = time.time()
+                    self.run_pipeline()
+                    end_time = time.time()
+                    elapsed = end_time - start_time
+                    self.sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
+                    self.sensors['pipeline-last-slots'].set_value(
+                        self.data['max_index'][0] + 1, timestamp=end_time)
+                    # release condition after pipeline run finished
+                    self.pipeline_accum_sem.release()
+                    logger.info('pipeline_accum_sem release by %s', self.name)
+                elif isinstance(event, ObservationEndEvent):
+                    self.pipeline_report_queue.put(event)
+                elif isinstance(event, StopEvent):
+                    logger.info('stop received by %s', self.name)
+                    break
+                else:
+                    logger.error('unknown event type %r by %s', event, self.name)
+        finally:
+            self.pipeline_report_queue.put(StopEvent())
 
-        def get_sensors(self):
-            # Set up sensors
-            sensors = [
-                katcp.Sensor.float(
-                    'pipeline-last-time',
-                    'time taken to process the most recent buffer',
-                    unit='s'),
-                katcp.Sensor.integer(
-                    'pipeline-last-slots',
-                    'number of slots filled in the most recent buffer')
-            ]
-            return {sensor.name: sensor for sensor in sensors}
+    def run_pipeline(self):
+        # run pipeline calibration, if more than zero timestamps accumulated
+        target_slices = pipeline(self.data, self.telstate, task_name=self.name) \
+            if (self.data['max_index'][0] > 0) else []
 
-        def run(self):
-            """
-            Task (Process or Thread) run method. Runs pipeline
-            """
+        # send data to L1 SPEAD if necessary
+        if self.l1_level != 0:
+            config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
+            tx = spead2.send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
+                                       self.l1_endpoint.port, config)
+            logger.info('   Transmit L1 data')
+            # for streaming all of the data (not target only),
+            # use the highest index in the buffer that is filled with data
+            transmit_slices = [slice(0, self.data['max_index'][0] + 1)] \
+                if self.l1_level == 2 else target_slices
+            self.data_to_spead(transmit_slices, tx)
+            logger.info('   End transmit of L1 data')
 
-            # arrange to forward sensor updates to the master
-            sensors = self.get_sensors()
-            observer = QueueObserver(self.master_queue)
-            for sensor in sensors.itervalues():
-                sensor.attach(observer)
-            # run until stop event received
-            try:
-                while True:
-                    logger.info('waiting for next event (%s)', self.name)
-                    event = self.accum_pipeline_queue.get()
-                    if isinstance(event, BufferReadyEvent):
-                        logger.info('buffer acquired by %s', self.name)
-                        # run the pipeline
-                        start_time = time.time()
-                        self.run_pipeline()
-                        end_time = time.time()
-                        elapsed = end_time - start_time
-                        sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
-                        sensors['pipeline-last-slots'].set_value(
-                            self.data['max_index'][0] + 1, timestamp=end_time)
-                        # release condition after pipeline run finished
-                        self.pipeline_accum_sem.release()
-                        logger.info('pipeline_accum_sem release by %s', self.name)
-                    elif isinstance(event, ObservationEndEvent):
-                        self.pipeline_report_queue.put(event)
-                    elif isinstance(event, StopEvent):
-                        logger.info('stop received by %s', self.name)
-                        break
-                    else:
-                        logger.error('unknown event type %r by %s', event, self.name)
-            finally:
-                self.pipeline_report_queue.put(StopEvent())
+    def data_to_spead(self, target_slices, tx):
+        """
+        Sends data to SPEAD stream
 
-        def run_pipeline(self):
-            # run pipeline calibration, if more than zero timestamps accumulated
-            target_slices = pipeline(self.data, self.telstate, task_name=self.name) \
-                if (self.data['max_index'][0] > 0) else []
+        Inputs:
+        target_slices : list of slices
+            slices for target scans in the data buffer
+        """
+        # create SPEAD item group
+        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+        ig = spead2.send.ItemGroup(flavour=flavour)
+        # set up item group with items
+        ig.add_item(id=None, name='correlator_data', description="Visibilities",
+                    shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
+        ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                    shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+        # for now, just transmit flags as placeholder for weights
+        ig.add_item(id=None, name='weights', description="Weights for visibilities",
+                    shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+        ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                    shape=(), dtype=None, format=[('f', 64)])
 
-            # send data to L1 SPEAD if necessary
-            if self.l1_level != 0:
-                config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
-                tx = spead2.send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
-                                           self.l1_endpoint.port, config)
-                logger.info('   Transmit L1 data')
-                # for streaming all of the data (not target only),
-                # use the highest index in the buffer that is filled with data
-                transmit_slices = [slice(0, self.data['max_index'][0] + 1)] \
-                    if self.l1_level == 2 else target_slices
-                self.data_to_spead(transmit_slices, tx)
-                logger.info('   End transmit of L1 data')
-
-        def data_to_spead(self, target_slices, tx):
-            """
-            Sends data to SPEAD stream
-
-            Inputs:
-            target_slices : list of slices
-                slices for target scans in the data buffer
-            """
-            # create SPEAD item group
-            flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
-            ig = spead2.send.ItemGroup(flavour=flavour)
-            # set up item group with items
-            ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                        shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
-            ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                        shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+        # transmit data
+        for data_slice in target_slices:
+            # get data for this scan, from the slice
+            scan_vis = self.data['vis'][data_slice]
+            scan_flags = self.data['flags'][data_slice]
             # for now, just transmit flags as placeholder for weights
-            ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                        shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
-            ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                        shape=(), dtype=None, format=[('f', 64)])
+            scan_weights = self.data['flags'][data_slice]
+            scan_times = self.data['times'][data_slice]
 
-            # transmit data
-            for data_slice in target_slices:
-                # get data for this scan, from the slice
-                scan_vis = self.data['vis'][data_slice]
-                scan_flags = self.data['flags'][data_slice]
-                # for now, just transmit flags as placeholder for weights
-                scan_weights = self.data['flags'][data_slice]
-                scan_times = self.data['times'][data_slice]
-
-                # transmit data timestamp by timestamp
-                for i in range(len(scan_times)):  # time axis
-                    # transmit timestamps, vis, flags and weights
-                    ig['correlator_data'].value = scan_vis[i]
-                    ig['flags'].value = scan_flags[i]
-                    ig['weights'].value = scan_weights[i]
-                    ig['timestamp'].value = scan_times[i]
-                    tx.send_heap(ig.get_heap())
-
-    return PipelineControl(*args, **kwargs)
+            # transmit data timestamp by timestamp
+            for i in range(len(scan_times)):  # time axis
+                # transmit timestamps, vis, flags and weights
+                ig['correlator_data'].value = scan_vis[i]
+                ig['flags'].value = scan_flags[i]
+                ig['weights'].value = scan_weights[i]
+                ig['timestamp'].value = scan_times[i]
+                tx.send_heap(ig.get_heap())
 
 
 # ---------------------------------------------------------------------------------------
 # Report writer
 # ---------------------------------------------------------------------------------------
 
-def write_report(obs_start, obs_end, telstate,
-                 l1_endpoint, l1_level, report_path, log_path, full_log):
-    now = time.time()
-    # get subarray ID
-    subarray_id = telstate.get('subarray_product_id', 'unknown_subarray')
-    # get observation name
-    try:
-        obs_params = telstate.get_range('obs_params', st=0, et=obs_end,
-                                        return_format='recarray')
-        obs_keys = obs_params['value']
-        # choose most recent experiment id (last entry in the list), if
-        # there are more than one
-        experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
-        experiment_id = eval(experiment_id_string.split()[-1])
-    except (TypeError, KeyError, AttributeError):
-        # TypeError, KeyError because this isn't properly implemented yet
-        # AttributeError in case this key isnt in the telstate for whatever reason
-        experiment_id = '{0}_unknown_project'.format(int(now))
+class ReportWriter(Task):
+    def __init__(self, task_class, pipeline_report_queue, master_queue,
+                 telstate, num_pipelines,
+                 l1_endpoint, l1_level,
+                 report_path, log_path, full_log):
+        super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
+        if not report_path:
+            report_path = '.'
+        report_path = os.path.abspath(report_path)
+        self.pipeline_report_queue = pipeline_report_queue
+        self.telstate = telstate
+        self.num_pipelines = num_pipelines
+        self.l1_endpoint = l1_endpoint
+        self.l1_level = l1_level
+        self.report_path = report_path
+        self.log_path = log_path
+        self.full_log = full_log
+        # get subarray ID
+        self.subarray_id = self.telstate.get('subarray_product_id', 'unknown_subarray')
 
-    # make directory for this observation, for logs and report
-    if not report_path:
-        report_path = '.'
-    report_path = os.path.abspath(report_path)
-    obs_dir = '{0}/{1}_{2}_{3}'.format(
-        report_path, int(now), subarray_id, experiment_id)
-    current_obs_dir = '{0}-current'.format(obs_dir)
-    try:
-        os.mkdir(current_obs_dir)
-    except OSError:
-        logger.warning('Experiment ID directory %s already exists', current_obs_dir)
+    def get_sensors(self):
+        return [
+            katcp.Sensor.integer(
+                'reports-written', 'Number of calibration reports written',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.float(
+                'report-last-time', 'Elapsed time to generate most recent report',
+                unit='s')
+        ]
 
-    # create pipeline report (very basic at the moment)
-    try:
-        make_cal_report(telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
-    except Exception as error:
-        logger.info('Report generation failed: %s', error, exc_info=True)
+    def write_report(self, obs_start, obs_end):
+        now = time.time()
+        # get observation name
+        try:
+            obs_params = self.telstate.get_range('obs_params', st=0, et=obs_end,
+                                                 return_format='recarray')
+            obs_keys = obs_params['value']
+            # choose most recent experiment id (last entry in the list), if
+            # there are more than one
+            experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
+            experiment_id = eval(experiment_id_string.split()[-1])
+        except (TypeError, KeyError, AttributeError):
+            # TypeError, KeyError because this isn't properly implemented yet
+            # AttributeError in case this key isnt in the telstate for whatever reason
+            experiment_id = '{0}_unknown_project'.format(int(now))
 
-    if l1_level != 0:
-        # send L1 stop transmission
-        #   wait for a couple of secs before ending transmission, because
-        #   it's a separate kernel socket and hence unordered with respect
-        #   to the sockets used by the pipelines (TODO: share a socket).
-        time.sleep(2.0)
-        end_transmit(l1_endpoint.host, l1_endpoint.port)
-        logger.info('L1 stream ended')
+        # make directory for this observation, for logs and report
+        obs_dir = '{0}/{1}_{2}_{3}'.format(
+            self.report_path, int(now), self.subarray_id, experiment_id)
+        current_obs_dir = '{0}-current'.format(obs_dir)
+        try:
+            os.mkdir(current_obs_dir)
+        except OSError:
+            logger.warning('Experiment ID directory %s already exists', current_obs_dir)
 
-    logger.info('   Observation ended')
-    logger.info('===========================')
+        # create pipeline report (very basic at the moment)
+        try:
+            make_cal_report(self.telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
+        except Exception as error:
+            logger.info('Report generation failed: %s', error, exc_info=True)
 
-    if full_log is not None:
-        shutil.copy('{0}/{1}'.format(log_path, full_log),
-                    '{0}/{1}'.format(current_obs_dir, full_log))
+        if self.l1_level != 0:
+            # send L1 stop transmission
+            #   wait for a couple of secs before ending transmission, because
+            #   it's a separate kernel socket and hence unordered with respect
+            #   to the sockets used by the pipelines (TODO: share a socket).
+            time.sleep(2.0)
+            end_transmit(self.l1_endpoint.host, self.l1_endpoint.port)
+            logger.info('L1 stream ended')
 
-    # change report and log directory to final name for archiving
-    shutil.move(current_obs_dir, obs_dir)
-    logger.info('Moved observation report to %s', obs_dir)
+        logger.info('   Observation ended')
+        logger.info('===========================')
 
+        if self.full_log is not None:
+            shutil.copy('{0}/{1}'.format(self.log_path, self.full_log),
+                        '{0}/{1}'.format(current_obs_dir, self.full_log))
 
-def report_writer(pipeline_report_queue, telstate, num_pipelines,
-                  l1_endpoint, l1_level,
-                  report_path, log_path, full_log):
-    remain = num_pipelines            # Number of pipelines still running
-    observation_hits = Counter()      # Number of pipelines finished with each observation
-    while True:
-        event = pipeline_report_queue.get()
-        if isinstance(event, StopEvent):
-            remain -= 1
-            if remain == 0:
-                break
-        elif isinstance(event, ObservationEndEvent):
-            observation_hits[event.index] += 1
-            if observation_hits[event.index] == num_pipelines:
-                logger.info('Starting report number %d', event.index)
-                write_report(event.start_time, event.end_time, telstate,
-                             l1_endpoint, l1_level, report_path, log_path, full_log)
-                del observation_hits[event.index]
-        else:
-            logger.error('unknown event type %r', event)
-    logger.info('Last pipeline has finished, exiting')
+        # change report and log directory to final name for archiving
+        shutil.move(current_obs_dir, obs_dir)
+        logger.info('Moved observation report to %s', obs_dir)
 
+    def run(self):
+        remain = self.num_pipelines       # Number of pipelines still running
+        observation_hits = Counter()      # Number of pipelines finished with each observation
+        reports_sensor = self.sensors['reports-written']
+        report_time_sensor = self.sensors['report-last-time']
+        while True:
+            event = self.pipeline_report_queue.get()
+            if isinstance(event, StopEvent):
+                remain -= 1
+                if remain == 0:
+                    break
+            elif isinstance(event, ObservationEndEvent):
+                observation_hits[event.index] += 1
+                if observation_hits[event.index] == self.num_pipelines:
+                    logger.info('Starting report number %d', event.index)
+                    start_time = time.time()
+                    self.write_report(event.start_time, event.end_time)
+                    end_time = time.time()
+                    del observation_hits[event.index]
+                    reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
+                    report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
+            else:
+                logger.error('unknown event type %r', event)
+        logger.info('Last pipeline has finished, exiting')
 
-def init_report_writer(control_task, *args, **kwargs):
-    return control_task(target=report_writer, name='report_writer',
-                        args=args, kwargs=kwargs)
 
 # ---------------------------------------------------------------------------------------
 # SPEAD helper functions
 # ---------------------------------------------------------------------------------------
-
 
 def end_transmit(host, port):
     """
@@ -747,6 +814,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     def setup_sensors(self):
         for sensor in self.accumulator.sensors.values():
             self.add_sensor(sensor)
+        # Other sensors get added from run_cal.py.
 
     @request()
     @return_reply()

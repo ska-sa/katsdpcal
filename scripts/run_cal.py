@@ -15,7 +15,7 @@ from katsdptelstate import endpoint
 import katsdpservices
 
 from katsdpcal.control import (
-    Accumulator, init_pipeline_control, init_report_writer, shared_empty,
+    Accumulator, Pipeline, ReportWriter, shared_empty,
     CalDeviceServer, SensorReadingEvent)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
@@ -388,13 +388,13 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     master_queue = multiprocessing.Queue()
 
     # Set up the pipelines (one per buffer)
-    pipelines = [init_pipeline_control(
+    pipelines = [Pipeline(
         multiprocessing.Process, buffers[i], buffer_shape,
         accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, master_queue,
         i, l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
     # Set up the report writer
-    report_writer = init_report_writer(
-        multiprocessing.Process, pipeline_report_queue, ts, num_buffers,
+    report_writer = ReportWriter(
+        multiprocessing.Process, pipeline_report_queue, master_queue, ts, num_buffers,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
@@ -440,7 +440,9 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     logger.info('katsdpcal started')
 
     # Start forwarding the events from the master queue
-    for sensor in pipelines[0].get_sensors().itervalues():
+    for sensor in pipelines[0].get_sensors():
+        server.add_sensor(sensor)
+    for sensor in report_writer.get_sensors():
         server.add_sensor(sensor)
     executor = concurrent.futures.ThreadPoolExecutor(1)
     asyncio_queue = trollius.Queue()
