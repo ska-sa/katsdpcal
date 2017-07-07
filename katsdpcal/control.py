@@ -1,3 +1,10 @@
+import time
+import mmap
+import os
+import shutil
+import logging
+from collections import Counter
+
 import spead2
 import spead2.recv.trollius
 import spead2.send
@@ -5,24 +12,18 @@ import spead2.send
 import katcp
 from katcp.kattypes import request, return_reply
 
-from .reduction import pipeline
-from .report import make_cal_report
-from . import calprocs
-
 import numpy as np
-import time
-import mmap
-import threading
-import os
-import shutil
-from collections import Counter
 import trollius
 from trollius import From, Return
 import tornado.gen
 import katsdpservices.asyncio
 import concurrent.futures
 
-import logging
+from .reduction import pipeline
+from .report import make_cal_report
+from . import calprocs
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +65,7 @@ def shared_empty(shape, dtype):
 class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
-    def __init__(self, control_method, buffers, buffer_shape,
+    def __init__(self, buffers, buffer_shape,
                  accum_pipeline_queues, pipeline_accum_sems,
                  l0_endpoint, l0_interface_address, telstate):
         self.buffers = buffers
@@ -136,7 +137,7 @@ class Accumulator(object):
                 logger.info('max buffer length %d', self.max_length)
                 logger.info('accumulating into buffer %d', current_buffer)
                 max_ind, obs_stopped = yield From(self.accumulate(rx, current_buffer))
-                logger.info('Accumulated {0} timestamps'.format(max_ind+1))
+                logger.info('Accumulated %d timestamps', max_ind+1)
 
                 # awaken pipeline task that is waiting for the buffer
                 self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
@@ -347,8 +348,7 @@ class Accumulator(object):
                 if target == '':
                     target = 'unknown'
             except KeyError:
-                logger.warning(
-                    'target description {0} absent from telescope state'.format(target_key))
+                logger.warning('target description %s absent from telescope state', target_key)
                 target = 'unknown'
             # extract name and tags from target description string
             target_split = target.split(',')
@@ -367,7 +367,7 @@ class Accumulator(object):
             # print name of target and activity type, if activity has
             # changed or start of accumulator
             if start_flag or (activity_time != prev_activity_time):
-                logger.info(' - {0} ({1})'.format(target_name, activity))
+                logger.info(' - %s (%s)', target_name, activity)
             start_flag = False
 
             # increment the index indicating the position of the data in the buffer
@@ -425,14 +425,14 @@ class Accumulator(object):
 # Pipeline
 # ---------------------------------------------------------------------------------------
 
-def init_pipeline_control(control_method, control_task, *args, **kwargs):
+def init_pipeline_control(control_task, *args, **kwargs):
 
-    class pipeline_control(control_task):
+    class PipelineControl(control_task):
         """
         Task (Process or Thread) which runs pipeline
         """
 
-        def __init__(self, control_method, data, data_shape,
+        def __init__(self, data, data_shape,
                      accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue,
                      pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
@@ -489,10 +489,10 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
                 # use the highest index in the buffer that is filled with data
                 transmit_slices = [slice(0, self.data['max_index'][0] + 1)] \
                     if self.l1_level == 2 else target_slices
-                self.data_to_SPEAD(transmit_slices, tx)
+                self.data_to_spead(transmit_slices, tx)
                 logger.info('   End transmit of L1 data')
 
-        def data_to_SPEAD(self, target_slices, tx):
+        def data_to_spead(self, target_slices, tx):
             """
             Sends data to SPEAD stream
 
@@ -532,7 +532,7 @@ def init_pipeline_control(control_method, control_task, *args, **kwargs):
                     ig['timestamp'].value = scan_times[i]
                     tx.send_heap(ig.get_heap())
 
-    return pipeline_control(control_method, *args, **kwargs)
+    return PipelineControl(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------------------
@@ -549,7 +549,6 @@ def write_report(obs_start, obs_end, telstate,
         obs_params = telstate.get_range('obs_params', st=0, et=obs_end,
                                         return_format='recarray')
         obs_keys = obs_params['value']
-        obs_times = obs_params['time']
         # choose most recent experiment id (last entry in the list), if
         # there are more than one
         experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
@@ -569,13 +568,13 @@ def write_report(obs_start, obs_end, telstate,
     try:
         os.mkdir(current_obs_dir)
     except OSError:
-        logger.warning('Experiment ID directory {} already exists'.format(current_obs_dir))
+        logger.warning('Experiment ID directory %s already exists', current_obs_dir)
 
     # create pipeline report (very basic at the moment)
     try:
         make_cal_report(telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
-    except Exception as e:
-        logger.info('Report generation failed: %s', e, exc_info=True)
+    except Exception as error:
+        logger.info('Report generation failed: %s', error, exc_info=True)
 
     if l1_level != 0:
         # send L1 stop transmission
@@ -621,7 +620,7 @@ def report_writer(pipeline_report_queue, telstate, num_pipelines,
     logger.info('Last pipeline has finished, exiting')
 
 
-def init_report_writer(control_method, control_task, *args, **kwargs):
+def init_report_writer(control_task, *args, **kwargs):
     return control_task(target=report_writer, name='report_writer',
                         args=args, kwargs=kwargs)
 

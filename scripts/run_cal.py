@@ -1,9 +1,10 @@
 #! /usr/bin/env python
-import numpy as np
 import time
 import os
 import signal
+import logging
 import manhole
+import numpy as np
 
 import trollius
 from trollius import From
@@ -19,7 +20,7 @@ from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,10 +49,10 @@ def log_dict(dictionary, ident='', braces=1):
 
     for key, value in dictionary.iteritems():
         if isinstance(value, dict):
-            logger.info('{0}{1}{2}{3}'.format(ident, braces * '[', key, braces*']'))
+            logger.info('%s%s%s%s', ident, braces * '[', key, braces * ']')
             log_dict(value, ident+'  ', braces+1)
         else:
-            logger.info('{0}{1} = {2}'.format(ident, key, value))
+            logger.info('%s%s = %s', ident, key, value)
 
 
 def comma_list(type_):
@@ -253,9 +254,9 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     """
 
     logger.info('Pipeline system input parameters')
-    logger.info('   - antenna mask: {0}'.format(antenna_mask,))
-    logger.info('   - number of channels: {0}'.format(cbf_n_chans,))
-    logger.info('   - number of polarisation products: {0}'.format(cbf_n_pols,))
+    logger.info('   - antenna mask: %s', antenna_mask)
+    logger.info('   - number of channels: %d', cbf_n_chans)
+    logger.info('   - number of polarisation products: %d', cbf_n_pols)
 
     # threading or multiprocessing imports
     if mproc:
@@ -273,7 +274,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
         raise RuntimeError("No antenna_mask set.")
     if len(ts.antenna_mask) < 4:
         # if we have less than four antennas, no katsdpcal necessary
-        logger.info('Only {0} antenna present - stopping katsdpcal'.format(len(ts.antenna_mask,)))
+        logger.info('Only %d antenna(s) present - stopping katsdpcal', len(ts.antenna_mask))
         return
 
     # deal with required input parameters
@@ -294,26 +295,26 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
         if ts.cbf_n_chans == 4096:
             param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
             param_file = os.path.join(param_dir, param_filename)
-            logger.info('Parameter file for 4k mode: {0}'.format(param_file,))
+            logger.info('Parameter file for 4k mode: %s', param_file)
             rfi_filename = 'rfi_mask.pickle'
             rfi_file = os.path.join(rfi_dir, rfi_filename)
-            logger.info('RFI mask file for 4k mode: {0}'.format(rfi_file,))
+            logger.info('RFI mask file for 4k mode: %s', rfi_file)
         else:
             param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
             param_file = os.path.join(param_dir, param_filename)
-            logger.info('Parameter file for 32k mode: {0}'.format(param_file,))
+            logger.info('Parameter file for 32k mode: %s', param_file)
             rfi_filename = 'rfi_mask32K.pickle'
             rfi_file = os.path.join(rfi_dir, rfi_filename)
-            logger.info('RFI mask file for 32k mode: {0}'.format(rfi_file,))
+            logger.info('RFI mask file for 32k mode: %s', rfi_file)
     else:
-        logger.info('Parameter file: {0}'.format(param_file))
+        logger.info('Parameter file: %s', param_file)
     logger.info('Inputting Telescope State parameters from parameter file.')
     ts_from_file(ts, param_file, rfi_file)
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
         if keyval not in ['sdp_l0_bls_ordering', 'cbf_channel_freqs']:
-            logger.info('{0} : {1}'.format(keyval, ts[keyval]))
+            logger.info('%s : %s', keyval, ts[keyval])
     logger.info('Telescope state config graph:')
     log_dict(ts.config)
 
@@ -345,15 +346,15 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
     array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*ts.cbf_n_pols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
-    logger.info('Buffer size : {0} G'.format(buffer_maxsize/1.e9,))
-    logger.info('Max length of buffer array : {0}'.format(array_length,))
+    logger.info('Buffer size : %f GB', buffer_maxsize / 1e9)
+    logger.info('Max length of buffer array : %d', array_length)
 
     # Set up empty buffers
     buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
     buffers = [create_buffer_arrays(buffer_shape, mproc=mproc) for i in range(num_buffers)]
 
-    logger.info('Receiving L0 data from {0} via {1}'.format(
-        l0_endpoint, 'default interface' if l0_interface is None else l0_interface))
+    logger.info('Receiving L0 data from %s via %s',
+                l0_endpoint, 'default interface' if l0_interface is None else l0_interface)
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
 
     # set up inter-task synchronisation primitives.
@@ -365,19 +366,17 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     pipeline_report_queue = multiprocessing.Queue()
 
     # Set up the accumulator
-    accumulator = Accumulator(multiprocessing, buffers,
-                              buffer_shape,
+    accumulator = Accumulator(buffers, buffer_shape,
                               accum_pipeline_queues, pipeline_accum_sems,
                               l0_endpoint, l0_interface_address, ts)
     # Set up the pipelines (one per buffer)
     pipelines = [init_pipeline_control(
-        multiprocessing, multiprocessing.Process,
-        buffers[i], buffer_shape,
+        multiprocessing.Process, buffers[i], buffer_shape,
         accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, i,
         l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
     # Set up the report writer
     report_writer = init_report_writer(
-        multiprocessing, multiprocessing.Process, pipeline_report_queue, ts, num_buffers,
+        multiprocessing.Process, pipeline_report_queue, ts, num_buffers,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # allow remote debug connections and expose telescope state and tasks
@@ -395,7 +394,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
 
     # Start the child tasks
     report_writer.start()
-    map(lambda x: x.start(), pipelines)
+    for pipeline in pipelines:
+        pipeline.start()
 
     ioloop = AsyncIOMainLoop()
     ioloop.install()
@@ -405,6 +405,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     # Now install the signal handlers (which won't be inherited).
     loop = trollius.get_event_loop()
     shutdown_force = trollius.Future()
+
     def signal_handler(result):
         shutdown_force.set_result(result)
         loop.remove_signal_handler(signal.SIGTERM)
@@ -416,8 +417,8 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     # Run the accumulator, then wait for everything to shut down
     try:
         yield From(shutdown_force)
-    except Exception as e:
-        logger.error('Unknown error: %s', e, exc_info=True)
+    except Exception as error:
+        logger.error('Unknown error: %s', error, exc_info=True)
         if not shutdown_force.done():
             shutdown_force.set_result(True)
 
