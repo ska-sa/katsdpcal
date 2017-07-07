@@ -456,11 +456,13 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     yield From(to_asyncio_future(server.stop()))
     logger.info('Server stopped')
     if shutdown_force.result():
+        logger.warn('Forced shutdown - data may be lost')
         if mproc:
             yield From(force_shutdown(accumulator, pipelines, report_writer))
         else:
             kill_shutdown()
     else:
+        logger.info('Shutting down threads gracefully')
         yield From(graceful_shutdown(accumulator, pipelines, report_writer))
 
 

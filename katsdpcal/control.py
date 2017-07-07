@@ -590,6 +590,7 @@ def write_report(obs_start, obs_end, telstate,
 
     # change report and log directory to final name for archiving
     shutil.move(current_obs_dir, obs_dir)
+    logger.info('Moved observation report to %s', obs_dir)
 
 
 def report_writer(pipeline_report_queue, telstate, num_pipelines,
