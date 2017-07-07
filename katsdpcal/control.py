@@ -2,6 +2,9 @@ import spead2
 import spead2.recv.trollius
 import spead2.send
 
+import katcp
+from katcp.kattypes import request, return_reply
+
 from .reduction import pipeline
 from .report import make_cal_report
 from . import calprocs
@@ -15,6 +18,8 @@ import shutil
 from collections import Counter
 import trollius
 from trollius import From, Return
+import tornado.gen
+import katsdpservices.asyncio
 import concurrent.futures
 
 import logging
@@ -644,3 +649,35 @@ def end_transmit(host, port):
     heap.add_end()
 
     tx.send_heap(heap)
+
+
+# ---------------------------------------------------------------------------------------
+# Device server
+# ---------------------------------------------------------------------------------------
+
+class CalDeviceServer(katcp.server.AsyncDeviceServer):
+    def __init__(self, accumulator, *args, **kwargs):
+        self.accumulator = accumulator
+        super(CalDeviceServer, self).__init__(*args, **kwargs)
+
+    def setup_sensors(self):
+        pass    # TODO
+
+    @request()
+    @return_reply()
+    def request_capture_init(self, msg):
+        """Start an observation"""
+        if self.accumulator.capturing:
+            return ('fail', 'capture already in progress')
+        self.accumulator.capture_init()
+        return ('ok',)
+
+    @request()
+    @return_reply()
+    @tornado.gen.coroutine
+    def request_capture_done(self, msg):
+        """Stop the current observation"""
+        if not self.accumulator.capturing:
+            raise tornado.gen.Return(('fail', 'no capture in progress'))
+        yield katsdpservices.asyncio.to_tornado_future(self.accumulator.capture_done())
+        raise tornado.gen.Return(('ok',))

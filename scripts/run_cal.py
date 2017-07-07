@@ -7,18 +7,14 @@ import manhole
 
 import trollius
 from trollius import From
-import tornado.gen
 from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
 
 from katsdptelstate import endpoint
 import katsdpservices
-import katsdpservices.asyncio
-
-import katcp
-from katcp.kattypes import request, return_reply
 
 from katsdpcal.control import (
-    Accumulator, init_pipeline_control, init_report_writer, shared_empty)
+    Accumulator, init_pipeline_control, init_report_writer, shared_empty,
+    CalDeviceServer)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -200,34 +196,6 @@ def graceful_shutdown(accumulator, pipelines, report_writer):
     logger.info('Pipelines stopped')
     report_writer.join()
     logger.info('Report writer stopped')
-
-
-class CalDeviceServer(katcp.server.AsyncDeviceServer):
-    def __init__(self, accumulator, *args, **kwargs):
-        self.accumulator = accumulator
-        super(CalDeviceServer, self).__init__(*args, **kwargs)
-
-    def setup_sensors(self):
-        pass    # TODO
-
-    @request()
-    @return_reply()
-    def request_capture_init(self, msg):
-        """Start an observation"""
-        if self.accumulator.capturing:
-            return ('fail', 'capture already in progress')
-        self.accumulator.capture_init()
-        return ('ok',)
-
-    @request()
-    @return_reply()
-    @tornado.gen.coroutine
-    def request_capture_done(self, msg):
-        """Stop the current observation"""
-        if not self.accumulator.capturing:
-            raise tornado.gen.Return(('fail', 'no capture in progress'))
-        yield katsdpservices.asyncio.to_tornado_future(self.accumulator.capture_done())
-        raise tornado.gen.Return(('ok',))
 
 
 @trollius.coroutine
