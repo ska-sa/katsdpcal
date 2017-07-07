@@ -44,6 +44,22 @@ class BufferReadyEvent(object):
     """Indicates to the pipeline that the buffer is ready for it."""
 
 
+class SensorReadingEvent(object):
+    """An update to a sensor sent to the master"""
+    def __init__(self, name, reading):
+        self.name = name
+        self.reading = reading
+
+
+class QueueObserver(object):
+    """katcp Sensor observer that forwards updates to a queue"""
+    def __init__(self, queue):
+        self._queue = queue
+
+    def update(self, sensor, reading):
+        self._queue.put(SensorReadingEvent(sensor.name, reading))
+
+
 def shared_empty(shape, dtype):
     """
     Allocate a numpy array from shared memory. The contents are undefined.
@@ -474,13 +490,14 @@ def init_pipeline_control(control_task, *args, **kwargs):
         """
 
         def __init__(self, data, data_shape,
-                     accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue,
+                     accum_pipeline_queue, pipeline_accum_sem, pipeline_report_queue, master_queue,
                      pipenum, l1_endpoint, l1_level, l1_rate, telstate):
             control_task.__init__(self)
             self.data = data
             self.accum_pipeline_queue = accum_pipeline_queue
             self.pipeline_accum_sem = pipeline_accum_sem
             self.pipeline_report_queue = pipeline_report_queue
+            self.master_queue = master_queue
             self.name = 'Pipeline_' + str(pipenum)
             self.telstate = telstate
             self.data_shape = data_shape
@@ -488,11 +505,29 @@ def init_pipeline_control(control_task, *args, **kwargs):
             self.l1_rate = l1_rate
             self.l1_endpoint = l1_endpoint
 
+        def get_sensors(self):
+            # Set up sensors
+            sensors = [
+                katcp.Sensor.float(
+                    'pipeline-last-time',
+                    'time taken to process the most recent buffer',
+                    unit='s'),
+                katcp.Sensor.integer(
+                    'pipeline-last-slots',
+                    'number of slots filled in the most recent buffer')
+            ]
+            return {sensor.name: sensor for sensor in sensors}
+
         def run(self):
             """
             Task (Process or Thread) run method. Runs pipeline
             """
 
+            # arrange to forward sensor updates to the master
+            sensors = self.get_sensors()
+            observer = QueueObserver(self.master_queue)
+            for sensor in sensors.itervalues():
+                sensor.attach(observer)
             # run until stop event received
             try:
                 while True:
@@ -501,7 +536,13 @@ def init_pipeline_control(control_task, *args, **kwargs):
                     if isinstance(event, BufferReadyEvent):
                         logger.info('buffer acquired by %s', self.name)
                         # run the pipeline
+                        start_time = time.time()
                         self.run_pipeline()
+                        end_time = time.time()
+                        elapsed = end_time - start_time
+                        sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
+                        sensors['pipeline-last-slots'].set_value(
+                            self.data['max_index'][0] + 1, timestamp=end_time)
                         # release condition after pipeline run finished
                         self.pipeline_accum_sem.release()
                         logger.info('pipeline_accum_sem release by %s', self.name)

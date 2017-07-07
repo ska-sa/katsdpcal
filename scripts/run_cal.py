@@ -9,13 +9,14 @@ import numpy as np
 import trollius
 from trollius import From
 from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
+import concurrent.futures
 
 from katsdptelstate import endpoint
 import katsdpservices
 
 from katsdpcal.control import (
     Accumulator, init_pipeline_control, init_report_writer, shared_empty,
-    CalDeviceServer)
+    CalDeviceServer, SensorReadingEvent)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -199,6 +200,25 @@ def graceful_shutdown(accumulator, pipelines, report_writer):
     logger.info('Report writer stopped')
 
 
+class ShutdownEvent(object):
+    """The user has requested a shutdown. This is similar to a StopEvent,
+    but indicates the type of shutdown."""
+    def __init__(self, force):
+        self.force = force
+
+
+def queue_forward(mp_queue, asyncio_queue, loop):
+    """Forwards from a multiprocessing.Queue to a trollius.Queue. This is run
+    in a separate thread, since the multiprocessing queue accesses are blocking.
+    """
+    while True:
+        event = mp_queue.get()
+        logger.debug('Received event %r', event)
+        loop.call_soon_threadsafe(asyncio_queue.put_nowait, event)
+        if isinstance(event, ShutdownEvent):
+            break
+
+
 @trollius.coroutine
 def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
                 buffer_maxsize=None, auto=True,
@@ -362,69 +382,100 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     accum_pipeline_queues = [multiprocessing.Queue() for i in range(num_buffers)]
     # signalled when the pipeline is finished with a buffer
     pipeline_accum_sems = [multiprocessing.Semaphore(value=1) for i in range(num_buffers)]
-    # signalled by pipelines when they shut down
+    # signalled by pipelines when they shut down or finish an observation
     pipeline_report_queue = multiprocessing.Queue()
+    # other tasks send up sensor updates
+    master_queue = multiprocessing.Queue()
 
-    # Set up the accumulator
-    accumulator = Accumulator(buffers, buffer_shape,
-                              accum_pipeline_queues, pipeline_accum_sems,
-                              l0_endpoint, l0_interface_address, ts)
     # Set up the pipelines (one per buffer)
     pipelines = [init_pipeline_control(
         multiprocessing.Process, buffers[i], buffer_shape,
-        accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, i,
-        l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
+        accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, master_queue,
+        i, l1_endpoint, l1_level, l1_rate, ts) for i in range(num_buffers)]
     # Set up the report writer
     report_writer = init_report_writer(
         multiprocessing.Process, pipeline_report_queue, ts, num_buffers,
         l1_endpoint, l1_level, report_path, log_path, full_log)
-
-    # allow remote debug connections and expose telescope state and tasks
-    manhole.install(oneshot_on='USR1', locals={
-        'ts': ts,
-        'accumulator': accumulator,
-        'pipelines': pipelines,
-        'report_writer': report_writer})
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
     # pressing Ctrl-C in a terminal will only deliver SIGINT to the parent.
     # There is a small window here where pressing Ctrl-C will have no effect at
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-
     # Start the child tasks
     report_writer.start()
     for pipeline in pipelines:
         pipeline.start()
+
+    # Set up the accumulator. This is done after the other processes are
+    # started, because it creates a ThreadPoolExecutor, and threads and fork()
+    # don't play nicely together.
+    accumulator = Accumulator(buffers, buffer_shape,
+                              accum_pipeline_queues, pipeline_accum_sems,
+                              l0_endpoint, l0_interface_address, ts)
 
     ioloop = AsyncIOMainLoop()
     ioloop.install()
     server = CalDeviceServer(accumulator, host, port)
     ioloop.add_callback(server.start)
 
+    # allow remote debug connections and expose telescope state and tasks
+    manhole.install(oneshot_on='USR1', locals={
+        'ts': ts,
+        'accumulator': accumulator,
+        'pipelines': pipelines,
+        'report_writer': report_writer,
+        'server': server
+    })
+
     # Now install the signal handlers (which won't be inherited).
     loop = trollius.get_event_loop()
-    shutdown_force = trollius.Future()
 
-    def signal_handler(result):
-        shutdown_force.set_result(result)
+    def signal_handler(force):
         loop.remove_signal_handler(signal.SIGTERM)
         loop.remove_signal_handler(signal.SIGINT)
+        master_queue.put(ShutdownEvent(force))
     loop.add_signal_handler(signal.SIGTERM, signal_handler, True)
     loop.add_signal_handler(signal.SIGINT, signal_handler, False)
     logger.info('katsdpcal started')
 
-    # Run the accumulator, then wait for everything to shut down
+    # Start forwarding the events from the master queue
+    for sensor in pipelines[0].get_sensors().itervalues():
+        server.add_sensor(sensor)
+    executor = concurrent.futures.ThreadPoolExecutor(1)
+    asyncio_queue = trollius.Queue()
+    queue_forward_task = loop.run_in_executor(
+        executor, queue_forward, master_queue, asyncio_queue, loop)
+
+    # Process incoming events.
+    shutdown_force = True
     try:
-        yield From(shutdown_force)
+        while True:
+            event = yield From(asyncio_queue.get())
+            if isinstance(event, ShutdownEvent):
+                shutdown_force = event.force
+                break
+            elif isinstance(event, SensorReadingEvent):
+                try:
+                    sensor = server.get_sensor(event.name)
+                except ValueError:
+                    logger.warn('Received update for unknown sensor %s', event.name)
+                else:
+                    sensor.set(event.reading.timestamp,
+                               event.reading.status,
+                               event.reading.value)
+            else:
+                logger.warn('Unknown event %r', event)
     except Exception as error:
         logger.error('Unknown error: %s', error, exc_info=True)
-        if not shutdown_force.done():
-            shutdown_force.set_result(True)
+        master_queue.put(ShutdownEvent(True))   # Ensure that queue_forward_task can exit
 
+    yield From(queue_forward_task)
+    logger.info('Joined queue_forward_task')
+    executor.shutdown()
     yield From(to_asyncio_future(server.stop()))
     logger.info('Server stopped')
-    if shutdown_force.result():
+    if shutdown_force:
         logger.warn('Forced shutdown - data may be lost')
         if mproc:
             yield From(force_shutdown(accumulator, pipelines, report_writer))
