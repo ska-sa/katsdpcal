@@ -108,6 +108,32 @@ class Accumulator(object):
         # Thread for doing blocking waits, to avoid stalling the asyncio event loop
         self._executor = concurrent.futures.ThreadPoolExecutor(1)
 
+        # Sensors for the katcp server to report
+        sensors = [
+            katcp.Sensor.boolean(
+                'accumulator-capturing',
+                'whether an observation is in progress',
+                default=False, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'accumulator-observations',
+                'number of observations completed by the accumulator',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'accumulator-batches',
+                'number of batches completed by the accumulator',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.float(
+                'accumulator-buffer-filled',
+                'fraction of buffer that the current accumulation has written to',
+                params=(0.0, 1.0),
+                default=0.0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.float(
+                'accumulator-last-wait',
+                'time the accumulator had to wait for a free buffer',
+                unit='s')
+        ]
+        self.sensors = {sensor.name: sensor for sensor in sensors}
+
     @property
     def capturing(self):
         return self._rx is not None
@@ -121,6 +147,8 @@ class Accumulator(object):
             # Initialise current buffer counter
             current_buffer = -1
             obs_stopped = False
+            batches_sensor = self.sensors['accumulator-batches']
+            wait_sensor = self.sensors['accumulator-last-wait']
             while not obs_stopped:
                 # Increment the current buffer
                 current_buffer = (current_buffer + 1) % self.num_buffers
@@ -129,16 +157,21 @@ class Accumulator(object):
                 # accumulation terminate conditions are met.
 
                 logger.info('waiting for pipeline_accum_sems[%d]', current_buffer)
-                yield From(trollius.get_event_loop().run_in_executor(
+                loop = trollius.get_event_loop()
+                now = loop.time()
+                yield From(loop.run_in_executor(
                     self._executor, self.pipeline_accum_sems[current_buffer].acquire))
-                logger.info('pipeline_accum_sems[%d] acquired by %s',
-                            current_buffer, self.name)
+                elapsed = loop.time() - now
+                logger.info('pipeline_accum_sems[%d] acquired by %s (%.3fs)',
+                            current_buffer, self.name, elapsed)
+                wait_sensor.set_value(elapsed)
 
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length %d', self.max_length)
                 logger.info('accumulating into buffer %d', current_buffer)
                 max_ind, obs_stopped = yield From(self.accumulate(rx, current_buffer))
                 logger.info('Accumulated %d timestamps', max_ind+1)
+                batches_sensor.set_value(batches_sensor.value() + 1)
 
                 # awaken pipeline task that is waiting for the buffer
                 self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
@@ -149,6 +182,8 @@ class Accumulator(object):
             if self._obs_end is not None:
                 for q in self.accum_pipeline_queues:
                     q.put(ObservationEndEvent(index, self._obs_start, self._obs_end))
+                obs_sensor = self.sensors['accumulator-observations']
+                obs_sensor.set_value(obs_sensor.value() + 1)
             else:
                 logger.info(' --- no data flowed ---')
             logger.info('Observation ended')
@@ -182,6 +217,7 @@ class Accumulator(object):
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
         self._index += 1
+        self.sensors['accumulator-capturing'].set_value(True)
 
     @trollius.coroutine
     def capture_done(self):
@@ -195,6 +231,7 @@ class Accumulator(object):
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
+            self.sensors['accumulator-capturing'].set_value(False)
 
     @trollius.coroutine
     def stop(self, force=False):
@@ -289,6 +326,8 @@ class Accumulator(object):
 
         start_flag = True
         array_index = -1
+        fill_sensor = self.sensors['accumulator-buffer-filled']
+        fill_sensor.set_value(0.0)
 
         prev_activity = 'none'
         prev_activity_time = 0.
@@ -383,6 +422,7 @@ class Accumulator(object):
             self._update_buffer(data_buffer['weights'][array_index],
                                 weights * weights_channel, self.ordering)
             data_buffer['times'][array_index] = data_ts
+            fill_sensor.set_value((array_index + 1.0) / self.max_length)
 
             # break if activity has changed (i.e. the activity time has changed)
             #   unless previous scan was a target, in which case accumulate
@@ -664,7 +704,8 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
-        pass    # TODO
+        for sensor in self.accumulator.sensors.values():
+            self.add_sensor(sensor)
 
     @request()
     @return_reply()
