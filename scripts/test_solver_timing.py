@@ -9,8 +9,6 @@ from argparse import ArgumentParser
 import numpy as np
 import time
 
-ALGORITHMS = ['adi','adi_nonnumpy','schwardt','adi_schwardt']
-
 def average_timer(n,func,*args,**kwargs):
     beg_ts = time.time()
     for ni in range(n):
@@ -19,9 +17,9 @@ def average_timer(n,func,*args,**kwargs):
     print("{0: .4f}".format((end_ts - beg_ts)/n,))
 
 def parse_opts():
-    parser = ArgumentParser(description = 'Simulate SPEAD data stream from H5 file')    
+    parser = ArgumentParser(description='Benchmark StEFcal implementation')
 
-    parser.add_argument('-n', '--niter', type=int, default=100, help='Numer of iterations for timer.')
+    parser.add_argument('-n', '--niter', type=int, default=100, help='Number of iterations for timer.')
     parser.add_argument('--file', type=str, default='', help='File for simulated data (H5).')
     parser.add_argument('--nants', type=int, default=7, help='Number of antennas for simulated array (if no file is provided).')
     parser.add_argument('--nchans', type=int, default=1, help='Number of channels for simulated array (if no file is provided).')
@@ -65,7 +63,4 @@ else:
 niter = opts.niter
 print("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*43))
 
-# time each algorithm
-for algorithm in ALGORITHMS:
-    print 'Algorithm {0: <14}:'.format(algorithm,),
-    average_timer(niter, calprocs.g_fit, vis_av, bls_lookup, algorithm=algorithm, conv_thresh=0.01)
+average_timer(niter, calprocs.g_fit, vis_av, bls_lookup, conv_thresh=0.01)
