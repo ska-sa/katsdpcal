@@ -21,7 +21,7 @@ print "Open file"
 simdata = init_simdata(opts.file)
 
 print "Clear TS."
-simdata.clear_ts(ts)
+ts.clear()
 
 print "Add to and override TS data from simulator."
 simdata.setup_ts(ts)
