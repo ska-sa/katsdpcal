@@ -46,8 +46,17 @@ class ThreadLogFormatter(TaskLogFormatter):
 
 
 def log_dict(dictionary, ident='', braces=1):
-    """ Recursively logs nested dictionaries."""
+    """Recursively logs nested dictionaries.
 
+    Parameters
+    ----------
+    dictionary : dict
+        Dictionary to print
+    ident : str
+        indentation string
+    braces : int
+        number of braces to surround item with
+    """
     for key, value in dictionary.iteritems():
         if isinstance(value, dict):
             logger.info('%s%s%s%s', ident, braces * '[', key, braces * ']')
@@ -184,19 +193,19 @@ def queue_forward(mp_queue, asyncio_queue, loop):
 
 
 @trollius.coroutine
-def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
-                buffer_maxsize=None, auto=True,
-                l0_endpoint=':7200', l0_interface=None,
-                l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
-                mproc=True, param_file='', report_path='', log_path='.', full_log=None):
+def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
+        buffer_maxsize=None, auto=True,
+        l0_endpoint=':7200', l0_interface=None,
+        l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
+        mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
     Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
     This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
     extra accumulator thread the reads data from the spead stream into each buffer
     seen by the pipeline.
 
-    Inputs
-    ======
+    Parameters
+    ----------
     ts : TelescopeState
         The telescope state, default: 'localhost' database 0
     cbf_n_chans : int
@@ -297,6 +306,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     # telescope state logs for debugging
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
+        # don't print out the really long telescope state key values
         if keyval not in ['sdp_l0_bls_ordering', 'cbf_channel_freqs']:
             logger.info('%s : %s', keyval, ts[keyval])
     logger.info('Telescope state config graph:')
@@ -459,7 +469,7 @@ def main():
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)
 
-    yield From(run_threads(
+    yield From(run(
         opts.telstate,
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
         host=opts.host, port=opts.port,

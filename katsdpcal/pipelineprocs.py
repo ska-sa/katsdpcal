@@ -14,42 +14,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
-# --- Telescope State interactions
+# --- General pipeline interactions
 # -------------------------------------------------------------------------------------------------
 
 
-def clear_ts(ts):
-    """
-    Clear the TS.
-
-    Inputs
-    ======
-    ts: Telescope State
-    """
-    try:
-        for key in ts.keys():
-            ts.delete(key)
-    except AttributeError:
-        # the Telescope State is empty
-        pass
-
-
-def init_ts(ts, param_dict, clear=False):
+def init_ts(ts, param_dict):
     """
     Initialises the telescope state from parameter dictionary.
     Parameters from the parameter dictionary are only added to the TS the
     the parameter is not already in the TS.
 
-    Inputs
-    ======
-    ts : Telescope State
-    param_dict : dictionary of parameters
-    clear : clear ts before initialising
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope State
+    param_dict : dict
+        dictionary of parameters
     """
-
-    if clear:
-        # start with empty Telescope State
-        clear_ts(ts)
 
     # populate ts with parameters
     #   parameter only added if it is missing from the TS
@@ -63,14 +44,17 @@ def ts_from_file(ts, param_filename, rfi_filename=None):
     Initialises the telescope state from parameter file.
     Note: parameters will be returned as ints, floats or strings (not lists)
 
-    Inputs
-    ======
-    ts : Telescope State
-    param_filename : parameter file, text file
-    rfi_filename : RFI mask file, pickle, optional
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope State
+    param_filename : str
+        parameter file, text file
+    rfi_filename : str, optional
+        RFI mask file, pickle
 
     Notes
-    =====
+    -----
     * Parameter file uses colons (:) for delimiters
     * Parameter file uses hashes (#) for comments
     * Missing parameters are set to empty strings ''
@@ -104,13 +88,15 @@ def setup_ts(ts, logger=logger):
     In general, the calibration parameters are mutable.
     Only subarray characteristics (e.g. antenna_mask) are immutable.
 
-    Inputs
-    ======
-    ts : Telescope State
-    logger : logger
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope State
+    logger : :class:`logging.Logger`
+        logger
 
     Notes
-    =====
+    -----
     Assumed starting ts entries:
     antenna_mask
 
@@ -167,13 +153,14 @@ def setup_ts(ts, logger=logger):
 
 def csv_to_list_ts(ts, keyname):
     """
-    Cange Telescope State entry for immutable key from csv string to list of strings
+    Change Telescope State entry for immutable key from csv string to list of strings
 
-    Inputs
-    ======
-    ts : Telescope State
-    keyval : key to change
-
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope State
+    keyname : str
+        key to change
     """
     if isinstance(ts[keyname], str):
         keyvallist = [val.strip() for val in ts[keyname].split(',')]
@@ -186,15 +173,19 @@ def get_model(name, lsm_dir_list=[]):
     Get a sky model from a text file.
     The name of the text file must incorporate the name of the source.
 
-    Inputs
-    ======
-    name : name of source, string
-    lsm_dir : directory containing the source model txt file
+    Parameters
+    ----------
+    name : str
+        name of source
+    lsm_dir_list : list
+        search path for the source model txt file
 
     Returns
-    =======
-    model_components : numpy recarray of sky model component parameters
-    model_file : name of model component file used
+    -------
+    model_components : :class:`numpy.recarray`
+        sky model component parameters
+    model_file : str
+        name of model component file used
     """
     if not isinstance(lsm_dir_list, list):
         lsm_dir_list = [lsm_dir_list]

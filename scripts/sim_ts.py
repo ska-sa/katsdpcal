@@ -17,11 +17,11 @@ def parse_opts():
 opts = parse_opts()
 ts = opts.telstate
 
-print "Clear TS."
-pipelineprocs.clear_ts(ts)
-
 print "Open file"
 simdata = init_simdata(opts.file)
+
+print "Clear TS."
+simdata.clear_ts(ts)
 
 print "Add to and override TS data from simulator."
 simdata.setup_ts(ts)
@@ -40,4 +40,3 @@ if param_file == '':
 pipelineprocs.ts_from_file(ts, param_file)
 
 print "Done."
-

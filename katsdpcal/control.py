@@ -347,7 +347,7 @@ class Accumulator(object):
             calprocs.get_reordering(antlist, self.telstate.sdp_l0_bls_ordering)
         # determine lookup list for baselines
         bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
-        # save these to the TS for use in the pipeline/elsewhere
+        # save these to the telescope state for use in the pipeline/elsewhere
         self.telstate.add('cal_bls_ordering', bls_order)
         self.telstate.add('cal_pol_ordering', pol_order)
         self.telstate.add('cal_bls_lookup', bls_lookup)
@@ -391,9 +391,11 @@ class Accumulator(object):
     @trollius.coroutine
     def accumulate(self, rx, buffer_index):
         """
-        Accumulates spead data into arrays
-           till **TBD** metadata indicates scan has stopped, or
-           till array reaches max buffer size
+        Accumulates spead data into arrays, until accumulation end condition is reached:
+         * case 1 -- actitivy change (unless gain cal following target)
+         * case 2 -- beamformer phase up ended
+         * case 3 -- buffer capacity limit reached
+         * case 4 -- time limit reached (may be replaced later?)
 
         SPEAD item groups contain:
            correlator_data
@@ -401,6 +403,13 @@ class Accumulator(object):
            weights
            weights_channel
            timestamp
+
+        Parameters
+        ----------
+        rx : :class:`spead2.recv.trollius.Stream`
+            Receiver for L0 stream
+        buffer_index : int
+            Index into :attr:`buffers` for current buffer
 
         Returns
         -------
@@ -444,7 +453,7 @@ class Accumulator(object):
                 logger.info('==== empty heap received ====')
                 continue
 
-            # get activity and target tag from TS
+            # get activity and target tag from telescope state
             data_ts = ig['timestamp'].value + self.cbf_sync_time
             if self._obs_start is None:
                 self._obs_start = data_ts - 0.5 * self.sdp_l0_int_time
@@ -467,7 +476,8 @@ class Accumulator(object):
                 prev_activity_time = activity_time
                 logger.info('accumulating data from targets:')
 
-            # get target time from TS, if it is present (if it isn't present, set to unknown)
+            # get target time from telescope state, if it is present (if it
+            # isn't present, set to unknown)
             try:
                 target = self.telstate.get_range(target_key, et=data_ts,
                                                  include_previous=True)[0][0]
@@ -510,10 +520,11 @@ class Accumulator(object):
             data_buffer['times'][array_index] = data_ts
             fill_sensor.set_value((array_index + 1.0) / self.max_length)
 
-            # break if activity has changed (i.e. the activity time has changed)
+            # **************** ACCUMULATOR BREAK CONDITIONS ****************
+            # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
+            # CASE 1 -- break if activity has changed (i.e. the activity time has changed)
             #   unless previous scan was a target, in which case accumulate
             #   subsequent gain scan too
-            # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
             ignore_states = ['slew', 'stop', 'unknown']
             if (activity_time != prev_activity_time) \
                     and not np.any([ignore in prev_activity for ignore in ignore_states]) \
@@ -521,21 +532,23 @@ class Accumulator(object):
                     and ('target' not in prev_target_tags):
                 logger.info('Accumulation break - transition')
                 break
-            # beamformer special case
+
+            # CASE 2 -- beamformer special case
             if (activity_time != prev_activity_time) \
                     and ('single_accumulation' in prev_target_tags):
                 logger.info('Accumulation break - single scan accumulation')
                 break
 
-            # this is a temporary mock up of a natural break in the data stream
-            # will ultimately be provided by some sort of sensor
+            # CASE 3 -- end accumulation if maximum array size has been accumulated
+            if array_index >= self.max_length - 1:
+                logger.info('Accumulate break - buffer size limit')
+                break
+
+            # CASE 4 -- temporary mock up of a natural break in the data stream
+            # may ultimately be provided by some sort of sensor?
             duration = ig['timestamp'].value - unsync_start_time
             if duration > 2000000:
                 logger.info('Accumulate break due to duration')
-                break
-            # end accumulation if maximum array size has been accumulated
-            if array_index >= self.max_length - 1:
-                logger.info('Accumulate break - buffer size limit')
                 break
 
             prev_activity = activity
@@ -635,11 +648,14 @@ class Pipeline(Task):
 
     def data_to_spead(self, target_slices, tx):
         """
-        Sends data to SPEAD stream
+        Transmits data as SPEAD stream
 
-        Inputs:
+        Parameters
+        ----------
         target_slices : list of slices
             slices for target scans in the data buffer
+        tx : :class:`spead2.send.UdpStream'
+            SPEAD transmitter
         """
         # create SPEAD item group
         flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
