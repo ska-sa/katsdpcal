@@ -12,6 +12,7 @@ from .calprocs import get_reordering_nopol
 
 import katdal
 import katpoint
+import katcp
 
 import numpy as np
 import time
@@ -83,13 +84,14 @@ def get_antdesc_relative(names, diameters, positions):
     return antdesc
 
 
-def init_simdata(file_name, wait=0.0, **kwargs):
+def init_simdata(file_name, server=None, wait=0.0, **kwargs):
     """
     Initialise simulated data class, using either H5 or MS files for simulation.
 
     Parameters
     ----------
     file_name : name of H5 or MS file, string
+    server    : katcp server for cal
     wait      : pause between sending heaps (potentially necessary to rate limit simulator transmit)
 
     Returns
@@ -111,6 +113,8 @@ def init_simdata(file_name, wait=0.0, **kwargs):
         ----------
         file_name : str
             Name of MS file, string
+        server : :class:`katsdptelstate.endpoint.Endpoint`
+            Katcp server for cal
         wait : float
             Pause between sending heaps (potentially necessary to rate-limit
             simulator transmit).
@@ -121,9 +125,34 @@ def init_simdata(file_name, wait=0.0, **kwargs):
             Pause between sending heaps (potentially necessary to rate-limit
             simulator transmit).
         """
-        def __init__(self, file_name, wait=wait, **kwargs):
+        def __init__(self, file_name, server=None, wait=wait, **kwargs):
             data_class.__init__(self, file_name, **kwargs)
+            if server is not None:
+                self.client = katcp.BlockingClient(server.host, server.port)
+                self.client.start()
+            else:
+                self.client = None
             self.wait = wait
+
+        def capture_init(self):
+            if self.client is not None:
+                self.client.wait_connected()
+                reply, informs = self.client.blocking_request(katcp.Message.request('capture-init'))
+                if not reply.reply_ok():
+                    raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
+
+        def capture_done(self):
+            if self.client is not None:
+                self.client.wait_protocol(10)
+                reply, informs = self.client.blocking_request(katcp.Message.request('capture-done'))
+                if not reply.reply_ok():
+                    raise RuntimeError('capture-done failed: {}'.format(reply.arguments[1]))
+
+        def close(self):
+            if self.client is not None:
+                self.client.stop()
+                self.client.join()
+                self.client = None
 
         def setup_ts(self, ts):
             """
@@ -319,7 +348,7 @@ def init_simdata(file_name, wait=0.0, **kwargs):
                             bchan=bchan, echan=echan)
 
     # ---------------------------------------------------------------------------------------------
-    return SimData(file_name, **kwargs)
+    return SimData(file_name, server, **kwargs)
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
