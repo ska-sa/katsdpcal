@@ -16,7 +16,7 @@ import katsdpservices
 
 from katsdpcal.control import (
     Accumulator, Pipeline, ReportWriter, shared_empty,
-    CalDeviceServer, SensorReadingEvent)
+    CalDeviceServer, SensorReadingEvent, StopEvent)
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -172,41 +172,6 @@ def create_buffer_arrays(buffer_shape, mproc=True):
     return data
 
 
-@trollius.coroutine
-def force_shutdown(accumulator, pipelines, report_writer):
-    # Kill off all the tasks. This is done in reverse order, to avoid
-    # triggering a report writing only to kill it half-way.
-    # TODO: this may need to become semi-graceful at some point, to avoid
-    # corrupting an in-progress report.
-    for task in [report_writer] + pipelines:
-        task.terminate()
-        task.join()
-    yield From(accumulator.stop(force=True))
-
-
-def kill_shutdown():
-    # brutal kill (for threading)
-    os.kill(os.getpid(), signal.SIGKILL)
-
-
-@trollius.coroutine
-def graceful_shutdown(accumulator, pipelines, report_writer):
-    yield From(accumulator.stop())
-    logger.info('Accumulator stopped')
-    for pipeline in pipelines:
-        pipeline.join()
-    logger.info('Pipelines stopped')
-    report_writer.join()
-    logger.info('Report writer stopped')
-
-
-class ShutdownEvent(object):
-    """The user has requested a shutdown. This is similar to a StopEvent,
-    but indicates the type of shutdown."""
-    def __init__(self, force):
-        self.force = force
-
-
 def queue_forward(mp_queue, asyncio_queue, loop):
     """Forwards from a multiprocessing.Queue to a trollius.Queue. This is run
     in a separate thread, since the multiprocessing queue accesses are blocking.
@@ -215,7 +180,7 @@ def queue_forward(mp_queue, asyncio_queue, loop):
         event = mp_queue.get()
         logger.debug('Received event %r', event)
         loop.call_soon_threadsafe(asyncio_queue.put_nowait, event)
-        if isinstance(event, ShutdownEvent):
+        if isinstance(event, StopEvent):
             break
 
 
@@ -402,10 +367,11 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     # There is a small window here where pressing Ctrl-C will have no effect at
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    # Start the child tasks
-    report_writer.start()
-    for pipeline in pipelines:
-        pipeline.start()
+    # Start the child tasks.
+    for task in [report_writer] + pipelines:
+        if not mproc:
+            task.daemon = True    # Make sure it doesn't prevent process exit
+        task.start()
 
     # Set up the accumulator. This is done after the other processes are
     # started, because it creates a ThreadPoolExecutor, and threads and fork()
@@ -416,7 +382,7 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
 
     ioloop = AsyncIOMainLoop()
     ioloop.install()
-    server = CalDeviceServer(accumulator, host, port)
+    server = CalDeviceServer(accumulator, pipelines, report_writer, master_queue, host, port)
     ioloop.add_callback(server.start)
 
     # allow remote debug connections and expose telescope state and tasks
@@ -431,12 +397,15 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
     # Now install the signal handlers (which won't be inherited).
     loop = trollius.get_event_loop()
 
-    def signal_handler(force):
-        loop.remove_signal_handler(signal.SIGTERM)
-        loop.remove_signal_handler(signal.SIGINT)
-        master_queue.put(ShutdownEvent(force))
-    loop.add_signal_handler(signal.SIGTERM, signal_handler, True)
-    loop.add_signal_handler(signal.SIGINT, signal_handler, False)
+    def signal_handler(signum, force):
+        loop.remove_signal_handler(signum)
+        # If we were asked to do a graceful shutdown, the next attempt should
+        # be to try a hard kill, before going back to the default handler.
+        if not force:
+            loop.add_signal_handler(signum, signal_handler, signum, True)
+        trollius.ensure_future(server.shutdown(force=force))
+    loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM, True)
+    loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT, False)
     logger.info('katsdpcal started')
 
     # Start forwarding the events from the master queue
@@ -450,12 +419,10 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
         executor, queue_forward, master_queue, asyncio_queue, loop)
 
     # Process incoming events.
-    shutdown_force = True
     try:
         while True:
             event = yield From(asyncio_queue.get())
-            if isinstance(event, ShutdownEvent):
-                shutdown_force = event.force
+            if isinstance(event, StopEvent):
                 break
             elif isinstance(event, SensorReadingEvent):
                 try:
@@ -470,22 +437,13 @@ def run_threads(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffe
                 logger.warn('Unknown event %r', event)
     except Exception as error:
         logger.error('Unknown error: %s', error, exc_info=True)
-        master_queue.put(ShutdownEvent(True))   # Ensure that queue_forward_task can exit
+        yield From(server.shutdown(True))       # Ensure that queue_forward_task can exit
 
     yield From(queue_forward_task)
     logger.info('Joined queue_forward_task')
     executor.shutdown()
     yield From(to_asyncio_future(server.stop()))
     logger.info('Server stopped')
-    if shutdown_force:
-        logger.warn('Forced shutdown - data may be lost')
-        if mproc:
-            yield From(force_shutdown(accumulator, pipelines, report_writer))
-        else:
-            kill_shutdown()
-    else:
-        logger.info('Shutting down threads gracefully')
-        yield From(graceful_shutdown(accumulator, pipelines, report_writer))
 
 
 @trollius.coroutine

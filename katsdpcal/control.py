@@ -126,6 +126,14 @@ class Task(object):
         """
         return []
 
+    @property
+    def daemon(self):
+        return self._process.daemon
+
+    @daemon.setter
+    def daemon(self, value):
+        self._process.daemon = value
+
 
 def _run_task(task):
     """Free function wrapping the Task runner. It needs to be free because
@@ -326,7 +334,10 @@ class Accumulator(object):
         if not force:
             for q in self.accum_pipeline_queues:
                 q.put(StopEvent())
-        self._executor.shutdown()
+        self.accum_pipeline_queues = []    # Make safe for concurrent calls to stop
+        if self._executor is not None:
+            self._executor.shutdown()
+            self._executor = None
 
     def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls
@@ -804,11 +815,15 @@ def end_transmit(host, port):
 # ---------------------------------------------------------------------------------------
 
 class CalDeviceServer(katcp.server.AsyncDeviceServer):
-    VERSION_INFO = ('katsdpcal-api', 2, 0)
+    VERSION_INFO = ('katsdpcal-api', 1, 0)
     BUILD_INFO = ('katsdpcal',) + tuple(katsdpcal.__version__.split('.', 1)) + ('',)
 
-    def __init__(self, accumulator, *args, **kwargs):
+    def __init__(self, accumulator, pipelines, report_writer, master_queue, *args, **kwargs):
         self.accumulator = accumulator
+        self.pipelines = pipelines
+        self.report_writer = report_writer
+        self.master_queue = master_queue
+        self._stopping = False
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
@@ -822,6 +837,8 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         """Start an observation"""
         if self.accumulator.capturing:
             return ('fail', 'capture already in progress')
+        if self._stopping:
+            return ('fail', 'server is shutting down')
         self.accumulator.capture_init()
         return ('ok',)
 
@@ -834,3 +851,37 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             raise tornado.gen.Return(('fail', 'no capture in progress'))
         yield katsdpservices.asyncio.to_tornado_future(self.accumulator.capture_done())
         raise tornado.gen.Return(('ok',))
+
+    @trollius.coroutine
+    def shutdown(self, force=False):
+        """Shut down the children and prevent any new captures being started.
+
+        The device server is left in place.
+        """
+        loop = trollius.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            self._stopping = True
+            if force:
+                logger.warn('Forced shutdown - data may be lost')
+            else:
+                logger.info('Shutting down gracefully')
+            if not force:
+                yield From(self.accumulator.stop())
+                logger.info('Accumulator stopped')
+                for task in self.pipelines:
+                    yield From(loop.run_in_executor(executor, task.join))
+                logger.info('Pipelines stopped')
+                yield From(loop.run_in_executor(executor, self.report_writer.join))
+                logger.info('Report writer stopped')
+            elif hasattr(self.report_writer, 'terminate'):
+                # Kill off all the tasks. This is done in reverse order, to avoid
+                # triggering a report writing only to kill it half-way.
+                # TODO: this may need to become semi-graceful at some point, to avoid
+                # corrupting an in-progress report.
+                for task in [self.report_writer] + self.pipelines:
+                    task.terminate()
+                    yield From(loop.run_in_executor(executor, task.join))
+                yield From(self.accumulator.stop(force=True))
+            else:
+                logger.warn('Cannot force kill tasks, because they are threads')
+        self.master_queue.put(StopEvent())
