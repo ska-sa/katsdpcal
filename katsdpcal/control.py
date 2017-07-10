@@ -860,7 +860,10 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     def setup_sensors(self):
         for sensor in self.accumulator.sensors.values():
             self.add_sensor(sensor)
-        # Other sensors get added from run_cal.py.
+        for sensor in self.pipelines[0].get_sensors():
+            self.add_sensor(sensor)
+        for sensor in self.report_writer.get_sensors():
+            self.add_sensor(sensor)
 
     @request()
     @return_reply()
@@ -916,3 +919,92 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             else:
                 logger.warn('Cannot force kill tasks, because they are threads')
         self.master_queue.put(StopEvent())
+
+    def _queue_forward(self, asyncio_queue, loop):
+        """Forwards from the master_queue multiprocessing.Queue to a
+        trollius.Queue. This is run in a separate thread, since the
+        multiprocessing queue accesses are blocking.
+        """
+        while True:
+            event = self.master_queue.get()
+            logger.debug('Received event %r', event)
+            loop.call_soon_threadsafe(asyncio_queue.put_nowait, event)
+            if isinstance(event, StopEvent):
+                break
+
+    @trollius.coroutine
+    def run_queue(self):
+        """Process all events sent to the master queue, until stopped by :meth:`shutdown`."""
+        loop = trollius.get_event_loop()
+        queue = trollius.Queue()
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            queue_forward_task = loop.run_in_executor(executor, self._queue_forward, queue, loop)
+            try:
+                while True:
+                    event = yield From(queue.get())
+                    if isinstance(event, StopEvent):
+                        break
+                    elif isinstance(event, SensorReadingEvent):
+                        try:
+                            sensor = self.get_sensor(event.name)
+                        except ValueError:
+                            logger.warn('Received update for unknown sensor %s', event.name)
+                        else:
+                            sensor.set(event.reading.timestamp,
+                                       event.reading.status,
+                                       event.reading.value)
+                    else:
+                        logger.warn('Unknown event %r', event)
+            finally:
+                if not self._stopping:
+                    yield From(self.shutdown(True))   # Ensures that queue_forward_task completes
+                yield From(queue_forward_task)
+                logger.info('Joined queue_forward_task')
+
+
+def create_server(use_multiprocessing, host, port, buffers, buffer_shape,
+                  l0_endpoint, l0_interface_address,
+                  l1_endpoint, l1_level, l1_rate, telstate,
+                  report_path, log_path, full_log):
+    # threading or multiprocessing imports
+    if use_multiprocessing:
+        logger.info("Using multiprocessing")
+        import multiprocessing
+    else:
+        logger.info("Using threading")
+        import multiprocessing.dummy as multiprocessing
+
+    num_buffers = len(buffers)
+    # set up inter-task synchronisation primitives.
+    # passed events to indicate buffer transfer, end-of-observation, or stop
+    accum_pipeline_queues = [multiprocessing.Queue() for i in range(num_buffers)]
+    # signalled when the pipeline is finished with a buffer
+    pipeline_accum_sems = [multiprocessing.Semaphore(value=1) for i in range(num_buffers)]
+    # signalled by pipelines when they shut down or finish an observation
+    pipeline_report_queue = multiprocessing.Queue()
+    # other tasks send up sensor updates
+    master_queue = multiprocessing.Queue()
+
+    # Set up the pipelines (one per buffer)
+    pipelines = [Pipeline(
+        multiprocessing.Process, buffers[i], buffer_shape,
+        accum_pipeline_queues[i], pipeline_accum_sems[i], pipeline_report_queue, master_queue,
+        i, l1_endpoint, l1_level, l1_rate, telstate) for i in range(num_buffers)]
+    # Set up the report writer
+    report_writer = ReportWriter(
+        multiprocessing.Process, pipeline_report_queue, master_queue, telstate, num_buffers,
+        l1_endpoint, l1_level, report_path, log_path, full_log)
+
+    # Start the child tasks.
+    for task in [report_writer] + pipelines:
+        if not use_multiprocessing:
+            task.daemon = True    # Make sure it doesn't prevent process exit
+        task.start()
+
+    # Set up the accumulator. This is done after the other processes are
+    # started, because it creates a ThreadPoolExecutor, and threads and fork()
+    # don't play nicely together.
+    accumulator = Accumulator(buffers, buffer_shape,
+                              accum_pipeline_queues, pipeline_accum_sems,
+                              l0_endpoint, l0_interface_address, telstate)
+    return CalDeviceServer(accumulator, pipelines, report_writer, master_queue, host, port)
