@@ -108,10 +108,9 @@ def parse_opts():
         '--l1_level', default=0,
         help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
     parser.add_argument(
-        '--notthreading', action='store_false',
+        '--threading', action='store_true',
         help='Use threading to control pipeline and accumulator '
-        + '[default: False (to use multiprocessing)]')
-    parser.set_defaults(notthreading=True)
+        + '[default: use multiprocessing]')
     parser.add_argument(
         '--parameter-file', type=str, default='',
         help='Default pipeline parameter file (will be over written by TelescopeState.')
@@ -452,10 +451,10 @@ def main():
 
     # set up logging. The Formatter class is replaced so that all log messages
     # show the process/thread name.
-    if opts.notthreading:
-        logging.Formatter = ProcessLogFormatter
-    else:
+    if opts.threading:
         logging.Formatter = ThreadLogFormatter
+    else:
+        logging.Formatter = ProcessLogFormatter
     log_name = 'pipeline.log'
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)
@@ -467,7 +466,7 @@ def main():
         num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
         l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
         l1_endpoint=opts.l1_spectral_spead,
-        l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=opts.notthreading,
+        l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
         param_file=opts.parameter_file,
         report_path=opts.report_path, log_path=log_path, full_log=log_name))
 

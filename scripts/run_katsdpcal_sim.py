@@ -43,8 +43,8 @@ def parse_args():
     parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
-    parser.add_argument('--notthreading', action='store_true', help='Use threading to control pipeline and accumulator [default: False (to use multiprocessing)]')
-    parser.set_defaults(notthreading=False)
+    parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: use multiprocessing]')
+    parser.set_defaults(threading=False)
     return parser.parse_args()
 
 def create_pane(sname,tmserver,keep_session=False):
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     time.sleep(10.0)
 
     # start pipeline running in tmux pane
-    threading_option = '--notthreading' if opts.notthreading else ''
+    threading_option = '--threading' if opts.threading else ''
     no_auto = '--no-auto' if opts.no_auto else ''
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
