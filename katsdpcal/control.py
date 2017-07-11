@@ -173,6 +173,8 @@ class Accumulator(object):
         self._obs_end = None
         # Unique number given to each observation
         self._index = 0
+        # Next buffer index for accumulation
+        self._current_buffer = -1
 
         # Get data shape
         self.buffer_shape = buffer_shape
@@ -232,38 +234,38 @@ class Accumulator(object):
             rx = self._rx
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
-            current_buffer = -1
             obs_stopped = False
             batches_sensor = self.sensors['accumulator-batches']
             wait_sensor = self.sensors['accumulator-last-wait']
             while not obs_stopped:
                 # Increment the current buffer
-                current_buffer = (current_buffer + 1) % self.num_buffers
+                self._current_buffer = (self._current_buffer + 1) % self.num_buffers
                 # ------------------------------------------------------------
                 # Loop through the buffers and send data to pipeline task when
                 # accumulation terminate conditions are met.
 
-                logger.info('waiting for pipeline_accum_sems[%d]', current_buffer)
+                logger.info('waiting for pipeline_accum_sems[%d]', self._current_buffer)
                 loop = trollius.get_event_loop()
                 now = loop.time()
                 yield From(loop.run_in_executor(
-                    self._executor, self.pipeline_accum_sems[current_buffer].acquire))
+                    self._executor, self.pipeline_accum_sems[self._current_buffer].acquire))
                 elapsed = loop.time() - now
                 logger.info('pipeline_accum_sems[%d] acquired by %s (%.3fs)',
-                            current_buffer, self.name, elapsed)
+                            self._current_buffer, self.name, elapsed)
                 wait_status = katcp.Sensor.NOMINAL if elapsed < 1.0 else katcp.Sensor.WARN
                 wait_sensor.set_value(elapsed, status=wait_status)
 
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length %d', self.max_length)
-                logger.info('accumulating into buffer %d', current_buffer)
-                max_ind, obs_stopped = yield From(self.accumulate(rx, current_buffer))
+                logger.info('accumulating into buffer %d', self._current_buffer)
+                max_ind, obs_stopped = yield From(self.accumulate(rx, self._current_buffer))
                 logger.info('Accumulated %d timestamps', max_ind+1)
                 batches_sensor.set_value(batches_sensor.value() + 1)
 
                 # awaken pipeline task that is waiting for the buffer
-                self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
-                logger.info('accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
+                self.accum_pipeline_queues[self._current_buffer].put(BufferReadyEvent())
+                logger.info('accum_pipeline_queues[%d] updated by %s',
+                            self._current_buffer, self.name)
 
             # Tell the pipelines that the observation ended, but only if there
             # was something to work on.
