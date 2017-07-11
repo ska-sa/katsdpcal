@@ -705,7 +705,9 @@ class ReportWriter(Task):
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'report-last-time', 'Elapsed time to generate most recent report',
-                unit='s')
+                unit='s'),
+            katcp.Sensor.string(
+                'report-last-path', 'Directory containing the most recent report')
         ]
 
     def write_report(self, obs_start, obs_end):
@@ -758,12 +760,14 @@ class ReportWriter(Task):
         # change report and log directory to final name for archiving
         shutil.move(current_obs_dir, obs_dir)
         logger.info('Moved observation report to %s', obs_dir)
+        return obs_dir
 
     def run(self):
         remain = self.num_pipelines       # Number of pipelines still running
         observation_hits = Counter()      # Number of pipelines finished with each observation
         reports_sensor = self.sensors['reports-written']
         report_time_sensor = self.sensors['report-last-time']
+        report_path_sensor = self.sensors['report-last-path']
         while True:
             event = self.pipeline_report_queue.get()
             if isinstance(event, StopEvent):
@@ -775,11 +779,12 @@ class ReportWriter(Task):
                 if observation_hits[event.index] == self.num_pipelines:
                     logger.info('Starting report number %d', event.index)
                     start_time = time.time()
-                    self.write_report(event.start_time, event.end_time)
+                    obs_dir = self.write_report(event.start_time, event.end_time)
                     end_time = time.time()
                     del observation_hits[event.index]
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
+                    report_path_sensor.set_value(obs_dir, timestamp=end_time)
             else:
                 logger.error('unknown event type %r', event)
         logger.info('Last pipeline has finished, exiting')
