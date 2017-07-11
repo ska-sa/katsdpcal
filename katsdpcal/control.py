@@ -541,14 +541,14 @@ class Accumulator(object):
 
             # CASE 3 -- end accumulation if maximum array size has been accumulated
             if array_index >= self.max_length - 1:
-                logger.info('Accumulate break - buffer size limit')
+                logger.warn('Accumulate break - buffer size limit')
                 break
 
             # CASE 4 -- temporary mock up of a natural break in the data stream
             # may ultimately be provided by some sort of sensor?
             duration = ig['timestamp'].value - unsync_start_time
             if duration > 2000000:
-                logger.info('Accumulate break due to duration')
+                logger.warn('Accumulate break due to duration')
                 break
 
             prev_activity = activity
@@ -753,7 +753,7 @@ class ReportWriter(Task):
         try:
             make_cal_report(self.telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
         except Exception as error:
-            logger.info('Report generation failed: %s', error, exc_info=True)
+            logger.warn('Report generation failed: %s', error, exc_info=True)
 
         if self.l1_level != 0:
             # send L1 stop transmission
