@@ -530,7 +530,7 @@ class Accumulator(object):
                     and not np.any([ignore in prev_activity for ignore in ignore_states]) \
                     and ('unknown' not in target_tags) \
                     and ('target' not in prev_target_tags):
-                logger.info('Accumulation break - transition')
+                logger.info('Accumulation break - transition %s -> %s', prev_activity, activity)
                 break
 
             # CASE 2 -- beamformer special case
@@ -541,7 +541,7 @@ class Accumulator(object):
 
             # CASE 3 -- end accumulation if maximum array size has been accumulated
             if array_index >= self.max_length - 1:
-                logger.warn('Accumulate break - buffer size limit')
+                logger.warn('Accumulate break - buffer size limit %d', self.max_length)
                 break
 
             # CASE 4 -- temporary mock up of a natural break in the data stream
