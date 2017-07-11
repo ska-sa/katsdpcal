@@ -251,7 +251,8 @@ class Accumulator(object):
                 elapsed = loop.time() - now
                 logger.info('pipeline_accum_sems[%d] acquired by %s (%.3fs)',
                             current_buffer, self.name, elapsed)
-                wait_sensor.set_value(elapsed)
+                wait_status = katcp.Sensor.NOMINAL if elapsed < 1.0 else katcp.Sensor.WARN
+                wait_sensor.set_value(elapsed, status=wait_status)
 
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length %d', self.max_length)
