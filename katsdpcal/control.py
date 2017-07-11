@@ -194,7 +194,7 @@ class Accumulator(object):
         # Sensors for the katcp server to report
         sensors = [
             katcp.Sensor.boolean(
-                'accumulator-capturing',
+                'accumulator-capture-active',
                 'whether an observation is in progress',
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
@@ -300,7 +300,7 @@ class Accumulator(object):
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
         self._index += 1
-        self.sensors['accumulator-capturing'].set_value(True)
+        self.sensors['accumulator-capture-active'].set_value(True)
 
     @trollius.coroutine
     def capture_done(self):
@@ -314,7 +314,7 @@ class Accumulator(object):
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
-            self.sensors['accumulator-capturing'].set_value(False)
+            self.sensors['accumulator-capture-active'].set_value(False)
 
     @trollius.coroutine
     def stop(self, force=False):
