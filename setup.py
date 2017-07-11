@@ -10,7 +10,6 @@ setup(
     package_data={'': ['conf/*/*']},
     include_package_data=True,
     scripts=[
-        "scripts/reduction_script.py",
         "scripts/run_cal.py",
         "scripts/run_katsdpcal_sim.py",
         "scripts/sim_l1_receive.py",
@@ -31,6 +30,10 @@ setup(
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
     setup_requires=["katversion"],
-    install_requires=["trollius"],
+    install_requires=[
+        "numpy>=1.8", "scipy>=0.17", "manhole", "trollius",
+        "katpoint", "katdal", "katsdptelstate", "spead2"
+    ],
+    tests_require=["nose"],
     use_katversion=True
 )
