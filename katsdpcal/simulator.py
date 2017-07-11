@@ -136,7 +136,7 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
 
         def capture_init(self):
             if self.client is not None:
-                self.client.wait_connected()
+                self.client.wait_protocol()
                 reply, informs = self.client.blocking_request(katcp.Message.request('capture-init'))
                 if not reply.reply_ok():
                     raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))

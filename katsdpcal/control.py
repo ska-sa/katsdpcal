@@ -173,6 +173,8 @@ class Accumulator(object):
         self._obs_end = None
         # Unique number given to each observation
         self._index = 0
+        # Next buffer index for accumulation
+        self._current_buffer = -1
 
         # Get data shape
         self.buffer_shape = buffer_shape
@@ -194,7 +196,7 @@ class Accumulator(object):
         # Sensors for the katcp server to report
         sensors = [
             katcp.Sensor.boolean(
-                'accumulator-capturing',
+                'accumulator-capture-active',
                 'whether an observation is in progress',
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
@@ -204,6 +206,10 @@ class Accumulator(object):
             katcp.Sensor.integer(
                 'accumulator-batches',
                 'number of batches completed by the accumulator',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'accumulator-input-heaps',
+                'number of L0 heaps received',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'accumulator-buffer-filled',
@@ -228,37 +234,38 @@ class Accumulator(object):
             rx = self._rx
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
-            current_buffer = -1
             obs_stopped = False
             batches_sensor = self.sensors['accumulator-batches']
             wait_sensor = self.sensors['accumulator-last-wait']
             while not obs_stopped:
                 # Increment the current buffer
-                current_buffer = (current_buffer + 1) % self.num_buffers
+                self._current_buffer = (self._current_buffer + 1) % self.num_buffers
                 # ------------------------------------------------------------
                 # Loop through the buffers and send data to pipeline task when
                 # accumulation terminate conditions are met.
 
-                logger.info('waiting for pipeline_accum_sems[%d]', current_buffer)
+                logger.info('waiting for pipeline_accum_sems[%d]', self._current_buffer)
                 loop = trollius.get_event_loop()
                 now = loop.time()
                 yield From(loop.run_in_executor(
-                    self._executor, self.pipeline_accum_sems[current_buffer].acquire))
+                    self._executor, self.pipeline_accum_sems[self._current_buffer].acquire))
                 elapsed = loop.time() - now
                 logger.info('pipeline_accum_sems[%d] acquired by %s (%.3fs)',
-                            current_buffer, self.name, elapsed)
-                wait_sensor.set_value(elapsed)
+                            self._current_buffer, self.name, elapsed)
+                wait_status = katcp.Sensor.NOMINAL if elapsed < 1.0 else katcp.Sensor.WARN
+                wait_sensor.set_value(elapsed, status=wait_status)
 
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length %d', self.max_length)
-                logger.info('accumulating into buffer %d', current_buffer)
-                max_ind, obs_stopped = yield From(self.accumulate(rx, current_buffer))
+                logger.info('accumulating into buffer %d', self._current_buffer)
+                max_ind, obs_stopped = yield From(self.accumulate(rx, self._current_buffer))
                 logger.info('Accumulated %d timestamps', max_ind+1)
                 batches_sensor.set_value(batches_sensor.value() + 1)
 
                 # awaken pipeline task that is waiting for the buffer
-                self.accum_pipeline_queues[current_buffer].put(BufferReadyEvent())
-                logger.info('accum_pipeline_queues[%d] updated by %s', current_buffer, self.name)
+                self.accum_pipeline_queues[self._current_buffer].put(BufferReadyEvent())
+                logger.info('accum_pipeline_queues[%d] updated by %s',
+                            self._current_buffer, self.name)
 
             # Tell the pipelines that the observation ended, but only if there
             # was something to work on.
@@ -300,7 +307,8 @@ class Accumulator(object):
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
         self._index += 1
-        self.sensors['accumulator-capturing'].set_value(True)
+        self.sensors['accumulator-capture-active'].set_value(True)
+        self.sensors['accumulator-input-heaps'].set_value(0)
 
     @trollius.coroutine
     def capture_done(self):
@@ -314,7 +322,7 @@ class Accumulator(object):
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
-            self.sensors['accumulator-capturing'].set_value(False)
+            self.sensors['accumulator-capture-active'].set_value(False)
 
     @trollius.coroutine
     def stop(self, force=False):
@@ -423,6 +431,7 @@ class Accumulator(object):
         array_index = -1
         fill_sensor = self.sensors['accumulator-buffer-filled']
         fill_sensor.set_value(0.0)
+        heaps_sensor = self.sensors['accumulator-input-heaps']
 
         prev_activity = 'none'
         prev_activity_time = 0.
@@ -519,6 +528,7 @@ class Accumulator(object):
                                 weights * weights_channel, self.ordering)
             data_buffer['times'][array_index] = data_ts
             fill_sensor.set_value((array_index + 1.0) / self.max_length)
+            heaps_sensor.set_value(heaps_sensor.value() + 1)
 
             # **************** ACCUMULATOR BREAK CONDITIONS ****************
             # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
@@ -721,7 +731,9 @@ class ReportWriter(Task):
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'report-last-time', 'Elapsed time to generate most recent report',
-                unit='s')
+                unit='s'),
+            katcp.Sensor.string(
+                'report-last-path', 'Directory containing the most recent report')
         ]
 
     def write_report(self, obs_start, obs_end):
@@ -774,12 +786,14 @@ class ReportWriter(Task):
         # change report and log directory to final name for archiving
         shutil.move(current_obs_dir, obs_dir)
         logger.info('Moved observation report to %s', obs_dir)
+        return obs_dir
 
     def run(self):
         remain = self.num_pipelines       # Number of pipelines still running
         observation_hits = Counter()      # Number of pipelines finished with each observation
         reports_sensor = self.sensors['reports-written']
         report_time_sensor = self.sensors['report-last-time']
+        report_path_sensor = self.sensors['report-last-path']
         while True:
             event = self.pipeline_report_queue.get()
             if isinstance(event, StopEvent):
@@ -791,11 +805,12 @@ class ReportWriter(Task):
                 if observation_hits[event.index] == self.num_pipelines:
                     logger.info('Starting report number %d', event.index)
                     start_time = time.time()
-                    self.write_report(event.start_time, event.end_time)
+                    obs_dir = self.write_report(event.start_time, event.end_time)
                     end_time = time.time()
                     del observation_hits[event.index]
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
+                    report_path_sensor.set_value(obs_dir, timestamp=end_time)
             else:
                 logger.error('unknown event type %r', event)
         logger.info('Last pipeline has finished, exiting')
