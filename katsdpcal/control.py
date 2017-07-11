@@ -205,6 +205,10 @@ class Accumulator(object):
                 'accumulator-batches',
                 'number of batches completed by the accumulator',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'accumulator-input-heaps',
+                'number of L0 heaps received',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'accumulator-buffer-filled',
                 'fraction of buffer that the current accumulation has written to',
@@ -301,6 +305,7 @@ class Accumulator(object):
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
         self._index += 1
         self.sensors['accumulator-capture-active'].set_value(True)
+        self.sensors['accumulator-input-heaps'].set_value(0)
 
     @trollius.coroutine
     def capture_done(self):
@@ -414,6 +419,7 @@ class Accumulator(object):
         array_index = -1
         fill_sensor = self.sensors['accumulator-buffer-filled']
         fill_sensor.set_value(0.0)
+        heaps_sensor = self.sensors['accumulator-input-heaps']
 
         prev_activity = 'none'
         prev_activity_time = 0.
@@ -509,6 +515,7 @@ class Accumulator(object):
                                 weights * weights_channel, self.ordering)
             data_buffer['times'][array_index] = data_ts
             fill_sensor.set_value((array_index + 1.0) / self.max_length)
+            heaps_sensor.set_value(heaps_sensor.value() + 1)
 
             # break if activity has changed (i.e. the activity time has changed)
             #   unless previous scan was a target, in which case accumulate
