@@ -47,7 +47,7 @@ class rstReport(file):
 # --- FUNCTION :  Report writing functions
 # --------------------------------------------------------------------------------------------------
 
-def insert_fig(report, fig, name=None):
+def insert_fig(report_path, report, fig, name=None):
     """
     Insert matplotlib figure into report
 
@@ -59,8 +59,8 @@ def insert_fig(report, fig, name=None):
     """
     if name is None:
         name = str(fig)
-    figname = "{}.png".format(name,)
-    fig.savefig(figname, bbox_inches='tight')
+    figname = "{}.png".format(name)
+    fig.savefig(os.path.join(report_path, figname), bbox_inches='tight')
     # closing the plot is necessary to relase the memory
     #  (this is a pylab issue)
     plt.close()
@@ -248,13 +248,12 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
     if not report_path:
         report_path = '.'
     project_dir = os.path.abspath(report_path)
-    logger.info('Report compiling in directory {0}'.format(project_dir,))
-    # change into project directory
-    os.chdir(project_dir)
+    logger.info('Report compiling in directory {0}'.format(project_dir))
 
     # --------------------------------------------------------------------
     # open report file
-    report_file = 'calreport_{0}.rst'.format(project_name,)
+    report_file = 'calreport_{0}.rst'.format(project_name)
+    report_file = os.path.join(project_dir, report_file)
     cal_rst = rstReport(report_file, 'w')
 
     # --------------------------------------------------------------------
@@ -264,7 +263,7 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
     # --------------------------------------------------------------------
     # write observation summary info
     cal_rst.write_heading_1('Observation summary')
-    cal_rst.writeln('Observation: {0:s}'.format(project_name,))
+    cal_rst.writeln('Observation: {0:s}'.format(project_name))
     cal_rst.writeln()
     write_summary(cal_rst, ts, st=st, et=et)
 
@@ -358,7 +357,7 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
                 t = time.strftime("%Y %x %X", time.gmtime(times[ti]))
                 cal_rst.writeln('Time: {}'.format(t,))
                 plot = plotting.plot_bp_solns(vals[ti])
-                insert_fig(cal_rst, plot, name='{0}_{1}'.format(cal, str(ti)))
+                insert_fig(report_path, cal_rst, plot, name='{0}_{1}'.format(cal, str(ti)))
 
     # ---------------------------------
     # gain
@@ -385,7 +384,7 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
                 gpol = vals[:, p, :]
                 logger.info('  pol{0} shape: {1}'.format(p, gpol.shape))
                 plot = plotting.plot_g_solns(times, gpol)
-                insert_fig(cal_rst, plot, name='{0}_P{1}'.format(cal, p))
+                insert_fig(report_path, cal_rst, plot, name='{0}_P{1}'.format(cal, p))
 
     # --------------------------------------------------------------------
     # close off report

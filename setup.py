@@ -35,6 +35,6 @@ setup(
         "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
         "spead2"
     ],
-    tests_require=["nose"],
+    tests_require=["mock", "nose"],
     use_katversion=True
 )

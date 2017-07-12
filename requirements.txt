@@ -10,7 +10,6 @@ fakeredis
 futures                 # for trollius
 h5py
 kaptan==0.5.8           # for tmuxp
-katcp
 libtmux==0.6.0
 manhole
 matplotlib==1.5.1
@@ -32,6 +31,7 @@ six
 spead2
 tornado                 # for katcp
 trollius
+git+ssh://git@github.com/ska-sa/katcp    # Needs features not present in 0.6.1
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices

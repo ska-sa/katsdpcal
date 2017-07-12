@@ -9,12 +9,11 @@ import numpy as np
 import trollius
 from trollius import From
 from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
-import concurrent.futures
 
 from katsdptelstate import endpoint
 import katsdpservices
 
-from katsdpcal.control import create_server, shared_empty
+from katsdpcal.control import create_server, create_buffer_arrays
 from katsdpcal.pipelineprocs import ts_from_file, setup_ts
 
 from katsdpcal import param_dir, rfi_dir
@@ -158,24 +157,6 @@ def setup_logger(log_name, log_path='.'):
     handler = logging.FileHandler('{0}/{1}'.format(log_path, log_name))
     handler.setFormatter(formatter)
     logging.getLogger('').addHandler(handler)
-
-
-def create_buffer_arrays(buffer_shape, mproc=True):
-    """
-    Create empty buffer record using specified dimensions
-    """
-    if mproc:
-        factory = shared_empty
-    else:
-        factory = np.empty
-    data = {}
-    data['vis'] = factory(buffer_shape, dtype=np.complex64)
-    data['flags'] = factory(buffer_shape, dtype=np.uint8)
-    data['weights'] = factory(buffer_shape, dtype=np.float32)
-    data['times'] = factory(buffer_shape[0], dtype=np.float)
-    data['max_index'] = factory([1], dtype=np.int32)
-    data['max_index'][0] = 0
-    return data
 
 
 @trollius.coroutine
@@ -325,7 +306,7 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
 
     # Set up empty buffers
     buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
-    buffers = [create_buffer_arrays(buffer_shape, mproc=mproc) for i in range(num_buffers)]
+    buffers = [create_buffer_arrays(buffer_shape, mproc) for i in range(num_buffers)]
 
     logger.info('Receiving L0 data from %s via %s',
                 l0_endpoint, 'default interface' if l0_interface is None else l0_interface)
@@ -337,7 +318,7 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    server = create_server(mproc, host, port, buffers, buffer_shape,
+    server = create_server(mproc, host, port, buffers,
                            l0_endpoint, l0_interface_address,
                            l1_endpoint, l1_level, l1_rate, ts,
                            report_path, log_path, full_log)
@@ -364,7 +345,10 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
     logger.info('katsdpcal started')
 
     # Run until shutdown
-    yield From(server.run_queue())
+    yield From(server.join())
+    # If we were shut down by a katcp request, give a bit of time for the reply
+    # to be sent, just to avoid getting warnings.
+    yield From(trollius.sleep(0.01))
     yield From(to_asyncio_future(server.stop()))
     logger.info('Server stopped')
 
