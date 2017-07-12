@@ -31,7 +31,7 @@ six
 spead2
 tornado                 # for katcp
 trollius
-git+ssh://git@github.com/ska-sa/katcp    # Needs features not present in 0.6.1
+git+ssh://git@github.com/ska-sa/katcp-python#egg=katcp    # Needs features not present in 0.6.1
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
