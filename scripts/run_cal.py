@@ -22,24 +22,21 @@ from katsdpcal import param_dir, rfi_dir
 logger = logging.getLogger(__name__)
 
 
-class TaskLogFormatter(logging.Formatter):
-    """Injects the thread/process name into log messages.
+def adapt_formatter(taskname):
+    """Monkey-patches logging.Formatter to inject the task name into the format string.
 
-    This must be subclassed to provide the TASKNAME property.
+    Parameters
+    ----------
+    taskname : {processName, threadName}
+        The property name to inject
     """
-    def __init__(self, fmt=None, datefmt=None):
+    def new_init(self, fmt=None, datefmt=None):
         if fmt is None:
             fmt = '%(message)s'
-        fmt = fmt.replace('%(message)s', '[%(' + self.TASKNAME + ')s] %(message)s')
-        super(TaskLogFormatter, self).__init__(fmt, datefmt)
-
-
-class ProcessLogFormatter(TaskLogFormatter):
-    TASKNAME = 'processName'
-
-
-class ThreadLogFormatter(TaskLogFormatter):
-    TASKNAME = 'threadName'
+        fmt = fmt.replace('%(message)s', '[%(' + taskname + ')s] %(message)s')
+        old_init(self, fmt, datefmt)
+    old_init = logging.Formatter.__init__
+    logging.Formatter.__init__ = new_init
 
 
 def log_dict(dictionary, ident='', braces=1):
@@ -361,9 +358,9 @@ def main():
     # set up logging. The Formatter class is replaced so that all log messages
     # show the process/thread name.
     if opts.threading:
-        logging.Formatter = ThreadLogFormatter
+        adapt_formatter('threadName')
     else:
-        logging.Formatter = ProcessLogFormatter
+        adapt_formatter('processName')
     log_name = 'pipeline.log'
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)
