@@ -18,7 +18,6 @@ netifaces
 numpy
 pkginfo
 ply                     # for katcp
-ProxyTypes              # for katcp
 pyephem
 pyparsing==2.0.7        # for matplotlib
 python-casacore==2.0.0
