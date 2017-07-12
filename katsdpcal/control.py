@@ -984,6 +984,16 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                 else:
                     logger.warn('Unknown event %r', event)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # When used as a context manager, a server will ensure its child
+        # processes are killed.
+        for task in [self.report_writer] + self.pipelines:
+            if task.is_alive() and hasattr(task, 'terminate'):
+                task.terminate()
+
 
 def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
     """
@@ -1037,15 +1047,24 @@ def create_server(use_multiprocessing, host, port, buffers,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # Start the child tasks.
-    for task in [report_writer] + pipelines:
-        if not use_multiprocessing:
-            task.daemon = True    # Make sure it doesn't prevent process exit
-        task.start()
+    running_tasks = []
+    try:
+        for task in [report_writer] + pipelines:
+            if not use_multiprocessing:
+                task.daemon = True    # Make sure it doesn't prevent process exit
+            task.start()
+            running_tasks.append(task)
 
-    # Set up the accumulator. This is done after the other processes are
-    # started, because it creates a ThreadPoolExecutor, and threads and fork()
-    # don't play nicely together.
-    accumulator = Accumulator(buffers,
-                              accum_pipeline_queues, pipeline_accum_sems,
-                              l0_endpoint, l0_interface_address, telstate)
-    return CalDeviceServer(accumulator, pipelines, report_writer, master_queue, host, port)
+        # Set up the accumulator. This is done after the other processes are
+        # started, because it creates a ThreadPoolExecutor, and threads and fork()
+        # don't play nicely together.
+        accumulator = Accumulator(buffers,
+                                  accum_pipeline_queues, pipeline_accum_sems,
+                                  l0_endpoint, l0_interface_address, telstate)
+        return CalDeviceServer(accumulator, pipelines, report_writer, master_queue, host, port)
+    except Exception:
+        for task in running_tasks:
+            if hasattr(task, 'terminate'):
+                task.terminate()
+                task.join()
+        raise

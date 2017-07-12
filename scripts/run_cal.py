@@ -322,35 +322,36 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
                            l0_endpoint, l0_interface_address,
                            l1_endpoint, l1_level, l1_rate, ts,
                            report_path, log_path, full_log)
-    ioloop.add_callback(server.start)
+    with server:
+        ioloop.add_callback(server.start)
 
-    # allow remote debug connections and expose telescope state and tasks
-    manhole.install(oneshot_on='USR1', locals={
-        'ts': ts,
-        'server': server
-    })
+        # allow remote debug connections and expose telescope state and tasks
+        manhole.install(oneshot_on='USR1', locals={
+            'ts': ts,
+            'server': server
+        })
 
-    # Now install the signal handlers (which won't be inherited).
-    loop = trollius.get_event_loop()
+        # Now install the signal handlers (which won't be inherited).
+        loop = trollius.get_event_loop()
 
-    def signal_handler(signum, force):
-        loop.remove_signal_handler(signum)
-        # If we were asked to do a graceful shutdown, the next attempt should
-        # be to try a hard kill, before going back to the default handler.
-        if not force:
-            loop.add_signal_handler(signum, signal_handler, signum, True)
-        trollius.ensure_future(server.shutdown(force=force))
-    loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM, True)
-    loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT, False)
-    logger.info('katsdpcal started')
+        def signal_handler(signum, force):
+            loop.remove_signal_handler(signum)
+            # If we were asked to do a graceful shutdown, the next attempt should
+            # be to try a hard kill, before going back to the default handler.
+            if not force:
+                loop.add_signal_handler(signum, signal_handler, signum, True)
+            trollius.ensure_future(server.shutdown(force=force))
+        loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM, True)
+        loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT, False)
+        logger.info('katsdpcal started')
 
-    # Run until shutdown
-    yield From(server.join())
-    # If we were shut down by a katcp request, give a bit of time for the reply
-    # to be sent, just to avoid getting warnings.
-    yield From(trollius.sleep(0.01))
-    yield From(to_asyncio_future(server.stop()))
-    logger.info('Server stopped')
+        # Run until shutdown
+        yield From(server.join())
+        # If we were shut down by a katcp request, give a bit of time for the reply
+        # to be sent, just to avoid getting warnings.
+        yield From(trollius.sleep(0.01))
+        yield From(to_asyncio_future(server.stop()))
+        logger.info('Server stopped')
 
 
 @trollius.coroutine
