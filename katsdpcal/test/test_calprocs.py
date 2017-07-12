@@ -1,6 +1,11 @@
 """Tests for the calprocs module."""
 
 import unittest
+import time
+
+import numpy as np
+
+from katsdpcal.calprocs import fake_vis, stefcal
 
 
 class TestCalprocs(unittest.TestCase):
@@ -13,14 +18,12 @@ class TestCalprocs(unittest.TestCase):
         ----------
         nants     : number of antennas to use in the simulation, int
         delta     : limit to assess gains as equal, float
-        noise     : whether to use noise in the simulation, boolean
+        noise     : amount of noise to use noise in the simulation, optional
         """
-        from katsdpcal.calprocs import fake_vis
-        vis, bl_ant_list, gains = fake_vis(nants, noise=noise)
+        rs = np.random.RandomState(seed=1)
+        vis, bl_ant_list, gains = fake_vis(nants, noise=noise, random_state=rs)
         # solve for gains
-        import numpy as np
         vis_and_conj = np.hstack((vis, vis.conj()))
-        from katsdpcal.calprocs import stefcal
         calc_gains = stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
                              ref_ant=0, init_gain=None)
         for i in range(len(gains)):
@@ -32,7 +35,7 @@ class TestCalprocs(unittest.TestCase):
 
     def test_stefcal_noise(self):
         """Check that stefcal calculates gains correct to within 1e-3, on noisy data"""
-        self._test_stefcal(noise=1e-3)
+        self._test_stefcal(noise=1e-4)
 
     def _test_stefcal_timing(self, ntimes=200, nants=7, nchans=1, noise=None):
         """Time comparisons of the stefcal algorithms. Simulates data and solves for gains.
@@ -44,15 +47,12 @@ class TestCalprocs(unittest.TestCase):
         nchans : number of channel to use in the simulation, int
         noise  : whether to use noise in the simulation, boolean
         """
-        import time
-        import numpy as np
-        from katsdpcal.calprocs import fake_vis
-        from katsdpcal.calprocs import stefcal
 
         elapsed = 0.0
 
+        rs = np.random.RandomState(seed=1)
         for i in range(ntimes):
-            vis, bl_ant_list, gains = fake_vis(nants, noise=noise)
+            vis, bl_ant_list, gains = fake_vis(nants, noise=noise, random_state=rs)
             # add channel dimension, if required
             if nchans > 1:
                 vis = np.repeat(vis[:, np.newaxis], nchans, axis=1).T

@@ -948,7 +948,7 @@ def get_bls_lookup(antlist, bls_ordering):
 # --- Simulation
 # --------------------------------------------------------------------------------------------------
 
-def fake_vis(nants=7, gains=None, noise=None):
+def fake_vis(nants=7, gains=None, noise=None, random_state=None):
     """Create fake point source visibilities, corrupted by given or random gains"""
     # create antenna lists
     antlist = range(nants)
@@ -966,8 +966,10 @@ def fake_vis(nants=7, gains=None, noise=None):
     list2 = np.hstack([list2, antlist])
 
     # create fake gains, if gains are not given as input
+    if random_state is None:
+        random_state = np.random
     if gains is None:
-        gains = np.random.random(nants)
+        gains = random_state.random_sample(nants)
 
     # create fake corrupted visibilities
     nbl = nants * (nants + 1) / 2
@@ -977,7 +979,7 @@ def fake_vis(nants=7, gains=None, noise=None):
         vis[(list1 == i) & (list2 == j)] *= gains[i] * gains[j]
     # if requested, corrupt vis with noise
     if noise is not None:
-        vis_noise = (np.random.random(vis.shape) - 0.5) * noise
+        vis_noise = random_state.standard_normal(vis.shape) * noise
         vis = vis + vis_noise
 
     # return useful info
