@@ -6,6 +6,7 @@ from .calprocs import CalSolution
 import numpy as np
 import copy
 from time import time
+import functools
 
 import katpoint
 from scipy.constants import c as light_speed
@@ -161,6 +162,7 @@ class Scan(object):
         """
         Decorator to log time duration of solver functions
         """
+        @functools.wraps(f)
         def timed(*args, **kw):
             ts = time()
             result = f(*args, **kw)
