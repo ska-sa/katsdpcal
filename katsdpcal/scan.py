@@ -378,48 +378,18 @@ class Scan(object):
         solval : multiplicative solution values to be applied to visibility data
         """
 
-        if inplace is True:
-            self._apply_inplace(solval)
-            return
-        else:
-            return self._apply_newvis(solval, origvis=origvis)
-
-    def _apply_newvis(self, solval, origvis=True):
-        """
-        Applies calibration solutions.
-        Must already be interpolated to either full time or full frequency.
-
-        Parameters
-        ----------
-        solval : multiplicative solution values to be applied to visibility data
-                 ndarray, shape (time, chan, pol, ant) where time and chan are optional
-        """
-
-        outvis = copy.deepcopy(self.vis) if origvis else copy.deepcopy(self.modvis)
-
+        invis = self.vis if origvis else self.modvis
+        outvis = invis if inplace else None
         # check solution and vis shapes are compatible
-        if solval.shape[-2] != outvis.shape[-2]:
+        if solval.shape[-2] != invis.shape[-2]:
             raise Exception('Polarisation axes do not match!')
+        outvis = None
 
-        for cp in range(len(self.corrprod_lookup)):
-            outvis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]] \
-                * (solval[..., self.corrprod_lookup[cp][1]].conj())
-
-        return outvis
-
-    def _apply_inplace(self, solval):
-        """
-        Applies calibration solutions.
-        Must already be interpolated to either full time or full frequency.
-
-        Parameters
-        ----------
-        solval : multiplicative solution values to be applied to visibility data
-        """
-
-        for cp in range(len(self.corrprod_lookup)):
-            self.vis[..., cp] /= solval[..., self.corrprod_lookup[cp][0]] \
-                * (solval[..., self.corrprod_lookup[cp][1]].conj())
+        inv_solval = np.reciprocal(solval)
+        index0 = [cp[0] for cp in self.corrprod_lookup]
+        index1 = [cp[1] for cp in self.corrprod_lookup]
+        correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
+        return np.multiply(invis, correction, out=outvis)
 
     def apply(self, soln, origvis=True, inplace=False):
         # set up more complex interpolation methods later
