@@ -5,10 +5,19 @@ import time
 
 import numpy as np
 
-from katsdpcal.calprocs import fake_vis, stefcal
+from katsdpcal.calprocs import fake_vis, stefcal, solint_from_nominal
 
 
 class TestCalprocs(unittest.TestCase):
+    def test_solint_from_nominal(self):
+        # requested interval shorter than dump
+        self.assertEqual((4.0, 1), solint_from_nominal(0.5, 4.0, 6))
+        # requested interval longer than scan
+        self.assertEqual((24.0, 6), solint_from_nominal(100.0, 4.0, 6))
+        # adjust interval to evenly divide the scan
+        self.assertEqual((28.0, 7), solint_from_nominal(32.0, 4.0, 28))
+        # no way to adjust interval to evenly divide the scan
+        self.assertEqual((32.0, 8), solint_from_nominal(29.0, 4.0, 31))
 
     def _test_stefcal(self, nants=7, delta=1e-3, noise=None):
         """Check that specified stefcal calculates gains correct to within

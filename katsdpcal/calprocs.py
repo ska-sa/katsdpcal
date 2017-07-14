@@ -692,38 +692,29 @@ def solint_from_nominal(solint, dump_period, num_times):
     dumps_per_solint : number of dump periods in a solution interval
     """
 
-    # case of solution interval that is shorter than dump time
     if dump_period > solint:
-        return dump_period, 1.0
-    # case of solution interval that is longer than scan
-    if dump_period * num_times < solint:
-        return solint, np.round(solint / dump_period)
+        # case of solution interval that is shorter than dump time
+        dumps_per_solint = 1
+    elif dump_period * num_times < solint:
+        # case of solution interval that is longer than scan
+        dumps_per_solint = num_times
+    else:
+        # requested number of dumps per nominal solution interval
+        req_dumps_per_solint = solint / dump_period
 
-    # number of dumps per nominal solution interval
-    dumps_per_solint = np.round(solint / dump_period)
+        # range for searching: nominal solint +-20%
+        dumps_per_solint_low = int(np.round(req_dumps_per_solint * 0.8))
+        dumps_per_solint_high = int(np.round(req_dumps_per_solint * 1.2))
+        solint_check_range = np.arange(dumps_per_solint_low, dumps_per_solint_high).astype(np.int)
 
-    # range for searching: nominal solint +-20%
-    delta_dumps_per_solint = int(dumps_per_solint * 0.2)
-    solint_check_range = range(-delta_dumps_per_solint, delta_dumps_per_solint + 1)
+        # compute size of final partial interval (in dumps)
+        tail = (num_times - 1) % solint_check_range + 1
 
-    smallest_inc = np.empty(len(solint_check_range))
-    for i, s in enumerate(solint_check_range):
-        # solution intervals across the total time range
-        intervals = num_times / (dumps_per_solint + s)
-        # the size of the final fractional solution interval
-        if int(intervals) == 0:
-            smallest_inc[i] = 0
-        else:
-            smallest_inc[i] = intervals % int(intervals)
-
-    # choose a solint to minimise the final fractional solution interval
-    solint_index = np.where(smallest_inc == max(smallest_inc))[0][0]
-    logger.debug('solint index: {0}'.format(solint_index,))
-    nsolint = solint+solint_check_range[solint_index]
-    # calculate new dumps per solints
-    dumps_per_solint = np.round(nsolint / dump_period)
-
-    return nsolint, dumps_per_solint
+        # choose a solint to minimise the final fractional solution interval
+        solint_index = np.argmax(tail)
+        logger.debug('solint index: {0}'.format(solint_index,))
+        dumps_per_solint = solint_check_range[solint_index]
+    return dumps_per_solint * dump_period, dumps_per_solint
 
 
 # --------------------------------------------------------------------------------------------------
