@@ -588,15 +588,8 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-
-    if flags.dtype is np.uint8:
-        fg = flags.view(np.bool)
-    elif np.issubdtype(flags.dtype, bool):
-        fg = flags
-    else:
-        raise TypeError('Incompatible flag type!')
-
-    vis = np.nansum(data * weights * (~fg), axis=axis) / np.nansum(weights * (~fg), axis=axis)
+    flagged_weights = np.where(flags, 0.0, weights)
+    vis = np.nansum(data * flagged_weights, axis=axis) / np.nansum(flagged_weights, axis=axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
@@ -620,9 +613,11 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     av_sig     : sigma of weighted data
     """
 
-    av_sig = np.nanstd(data * weights * (~flags))
-    av_data = np.nansum(data * weights * (~flags), axis=axis) \
-        / np.nansum(weights * (~flags), axis=axis)
+    flagged_weights = np.where(flags, 0.0, weights)
+    weighted_data = data * flagged_weights
+    av_sig = np.nanstd(weighted_data)
+    av_data = np.nansum(weighted_data, axis=axis) \
+        / np.nansum(flagged_weights, axis=axis)
     av_flags = np.nansum(flags, axis=axis) > flags.shape[0] * threshold
 
     # fake weights for now
