@@ -6,6 +6,7 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
 import numpy as np
+import scipy.fftpack
 import copy
 import katpoint
 import time
@@ -256,7 +257,7 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=1.0, ref_ant=0,
     weighted_vis = weighted_vis[..., baselines_per_antA]
     # Initial estimate of gain vector
     gain_shape = tuple(list(vis.shape[:-1]) + [num_ants])
-    g_curr = np.ones(gain_shape, dtype=np.complex) if init_gain is None else init_gain
+    g_curr = np.ones(gain_shape, dtype=rawvis.dtype) if init_gain is None else init_gain
     logger.debug("StEFCal solving for %s gains from vis with shape %s" %
                  ('x'.join(str(gs) for gs in gain_shape), vis.shape))
     for n in range(num_iters):
@@ -431,7 +432,7 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
     # initialise values for solver
     kdelay = []
     if not(np.any(chans)):
-        chans = np.arange(data.shape[0])
+        chans = np.arange(data.shape[0], dtype=np.float32)
 
     # NOTE: I know that iterating over polarisation is horrible, but I ran out
     # of time to fix this up I initially just assumed we would always have two
@@ -457,7 +458,10 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
         # NOTE: This is a bit inefficient at the moment as the FFT for al
         # baselines is calculated but only the baselines to the reference
         # antenna are used for the coarse delay
-        ft_vis = np.fft.fft(good_pol_data, axis=0)
+        # Also note that scipy.fftpack will do a single-precision FFT given
+        # single-precision input, unlike np.fft.fft which converts it to
+        # double precision.
+        ft_vis = scipy.fftpack.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis), axis=0)
         if nchans % 2 == 0:
@@ -466,10 +470,10 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
             k_arg[k_arg > ((nchans - 1) / 2)] -= nchans
 
         # calculate vis space K from FT sample frequencies
-        vis_k = 1. * k_arg / (chan_increment * nchans)
+        vis_k = np.float32(k_arg) / (chan_increment * nchans)
 
         # now determine per-antenna K values
-        coarse_k = np.zeros(num_ants)
+        coarse_k = np.zeros(num_ants, np.float32)
         for ai in range(num_ants):
             k = vis_k[..., (corrprod_lookup[:, 0] == ai) & (corrprod_lookup[:, 1] == refant)]
             if k.size > 0:

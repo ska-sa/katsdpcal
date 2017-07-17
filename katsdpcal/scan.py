@@ -145,7 +145,10 @@ class Scan(object):
         self.dump_period = dump_period
         self.nchan = self.vis.shape[1]
         # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
-        self.channel_freqs = np.arange(self.nchan) if chans is None else np.array(chans)
+        if chans is None:
+            self.channel_freqs = np.arange(self.nchan, dtype=np.float32)
+        else:
+            self.channel_freqs = np.array(chans, dtype=np.float32)
         self.npol = npol
         self.nant = nant
         self.antenna_descriptions = ants
@@ -385,9 +388,13 @@ class Scan(object):
             raise Exception('Polarisation axes do not match!')
         outvis = None
 
-        # TODO: passing dtype is a hack to make this go faster even if the
-        # solval is in double precision. Ideally it should be set up in
-        # single precision in the first place
+        # If the solution was (accidentally) computed at double precision while
+        # the visibilities are single precision, then we force the solution down
+        # to single precision, but warn so that the promotion to double can be
+        # tracked down.
+        if solval.dtype != invis.dtype:
+            logger.warn('Applying solution of type %s to visibilities of type %s',
+                        solval.dtype, invis.dtype)
         inv_solval = np.reciprocal(solval, dtype=invis.dtype)
         index0 = [cp[0] for cp in self.corrprod_lookup]
         index1 = [cp[1] for cp in self.corrprod_lookup]
@@ -487,7 +494,7 @@ class Scan(object):
                  or self.model_raw_params['a3'] == 0)):
                 # CASE A - Point source as the phase centre, no spectral slope
                 # spectral index is zero
-                self.model = np.array([10.**self.model_raw_params['a0'].item()])
+                self.model = np.array([10.**self.model_raw_params['a0'].item()], np.float32)
                 self.logger.info(
                     '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
                         self.model[0],))
@@ -505,6 +512,7 @@ class Scan(object):
                 # (so use frequencies in GHz)
                 self.model = source_flux.flux_density(
                     self.channel_freqs / 1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
+                self.model = np.require(self.model, dtype=np.float32)
                 self.logger.info(
                     '     Model: single point source, spectral model, average flux over '
                     '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
