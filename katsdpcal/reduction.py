@@ -103,7 +103,7 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
         try:
             # get most recent solution value
             sol, soltime = ts.get_range(ts_solname)[0]
-            if X is not 'G':
+            if X != 'G':
                 soln = calprocs.CalSolution(X, sol, soltime)
             else:
                 # get G values for an hour range on either side of target scan
