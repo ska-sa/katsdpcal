@@ -385,7 +385,10 @@ class Scan(object):
             raise Exception('Polarisation axes do not match!')
         outvis = None
 
-        inv_solval = np.reciprocal(solval)
+        # TODO: passing dtype is a hack to make this go faster even if the
+        # solval is in double precision. Ideally it should be set up in
+        # single precision in the first place
+        inv_solval = np.reciprocal(solval, dtype=invis.dtype)
         index0 = [cp[0] for cp in self.corrprod_lookup]
         index1 = [cp[1] for cp in self.corrprod_lookup]
         correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
@@ -400,10 +403,8 @@ class Scan(object):
             return self._apply(full_sol, origvis=origvis, inplace=inplace)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
-            gain_shape = tuple(list(self.vis.shape[:-1]) + [self.nant])
-            g_from_k = np.zeros(gain_shape, dtype=np.complex)
-            for ci, c in enumerate(self.channel_freqs):
-                g_from_k[:, ci, :, :] = np.exp(1.0j*2.*np.pi*soln.values*c)
+            g_from_k = np.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
+                              * self.channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, origvis=origvis, inplace=inplace)
         elif soln.soltype is 'B':
             return self._apply(soln.values, origvis=origvis, inplace=inplace)
@@ -441,7 +442,7 @@ class Scan(object):
 
     def inf_interpolate(self, solns):
         values = solns.values
-        interp_solns = np.repeat(np.expand_dims(values, axis=0), len(self.timestamps), axis=0)
+        interp_solns = np.expand_dims(values, axis=0)
         return CalSolution(solns.soltype, interp_solns, self.timestamps)
 
     # ---------------------------------------------------------------------------------------------
