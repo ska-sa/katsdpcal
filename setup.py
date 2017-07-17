@@ -31,7 +31,7 @@ setup(
     zip_safe=False,
     setup_requires=["katversion"],
     install_requires=[
-        "numpy>=1.8", "scipy>=0.17", "manhole", "trollius", "futures",
+        "numpy>=1.8", "scipy>=0.17", "numba>=0.19.0", "manhole", "trollius", "futures",
         "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
         "spead2"
     ],

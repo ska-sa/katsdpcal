@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from katsdpcal.calprocs import fake_vis, stefcal, solint_from_nominal
+from katsdpcal.calprocs import fake_vis, stefcal, solint_from_nominal, wavg, _wavg_fallback
 
 
 class TestCalprocs(unittest.TestCase):
@@ -98,3 +98,47 @@ class TestCalprocs(unittest.TestCase):
         nchans = 600
         print '\nStefcal comparison, {0} chans:'.format(nchans)
         self._test_stefcal_timing(nchans=nchans)
+
+
+class TestWavg(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.wavg`"""
+    def setUp(self):
+        shape = (5, 10, 3, 10)
+        self.data = np.ones(shape, np.complex64)
+        self.weights = np.ones(shape, np.float32)
+        self.flags = np.zeros(shape, np.uint8)
+
+    def test_fallback(self):
+        """Test the behaviour of the fallback path"""
+        # Use 3D arrays, since that puts us off the numba path
+        data = self.data[0]
+        weights = self.weights[0]
+        flags = self.flags[0]
+        # Put in some NaNs and flags to check that they're handled correctly
+        data[:, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
+        weights[:, 1, 1] = [np.nan, 1.0, 0.0, 1.0, 0.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        flags[:, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
+        # A completely NaN column and a completely flagged column => NaNs in output
+        data[:, 2, 2] = np.nan
+        flags[:, 0, 3] = 4
+
+        expected = np.ones((3, 10), np.complex64)
+        expected[1, 1] = 5.6 + 0.2j
+        expected[2, 2] = np.nan
+        expected[0, 3] = np.nan
+        actual = wavg(data, flags, weights)
+        self.assertEqual(np.complex64, actual.dtype)
+        np.testing.assert_allclose(expected, actual, rtol=1e-6)
+
+    def test_numba(self):
+        rs = np.random.RandomState(seed=1)
+        shape = self.data.shape
+        self.data[:] = rs.standard_normal(shape) + 1j * rs.standard_normal(shape)
+        self.data[:] += rs.choice([0, np.nan], shape, p=[0.95, 0.05])
+        self.weights[:] = rs.uniform(0.0, 4.0, shape)
+        self.weights[:] += rs.choice([0, np.nan], shape, p=[0.95, 0.05])
+        self.flags[:] = rs.choice([0, 4], shape, p=[0.95, 0.05])
+        for axis in range(0, 2):
+            expected = _wavg_fallback(self.data, self.flags, self.weights, axis=axis)
+            actual = wavg(self.data, self.flags, self.weights, axis=axis)
+            np.testing.assert_allclose(expected, actual, rtol=1e-6)

@@ -5,13 +5,17 @@ Calibration procedures for MeerKAT calibration pipeline
 Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
+import copy
+import time
+import logging
+
 import numpy as np
 import scipy.fftpack
-import copy
-import katpoint
-import time
+import numba
 
-import logging
+import katpoint
+
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------------------------------
@@ -571,6 +575,50 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     return coarse_kcross + delta_kcross
 
 
+@numba.jit(nopython=True)
+def _wavg(data, flags, weights, axis, sum_shape):
+    """Numba implementation :func:`wavg`, for the common cases of 4
+    dimensions and axis of 0 or 1.
+
+    It computes the sums of weighted visibilities and weights, ignoring
+    entries where the weighted visibility is NaN. The results are written
+    to vis_sum and weights_sum.
+
+    All arrays have the same shape, but vis_sum and weights_sum will have
+    a degenerate axis (i.e. zero stride) so that results accumulate.
+    """
+    vis_sum = np.zeros(sum_shape, data.dtype)
+    weights_sum = np.zeros(sum_shape, weights.dtype)
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            sum_idx = j if axis == 0 else i
+            for k in range(data.shape[2]):
+                for l in range(data.shape[3]):
+                    idx = (i, j, k, l)
+                    w = np.logical_not(flags[idx]) * weights[idx]
+                    v = data[idx] * w
+                    if not np.isnan(v):
+                        vis_sum[sum_idx, k, l] += v
+                        weights_sum[sum_idx, k, l] += w
+    vis_sum /= weights_sum
+    return vis_sum
+
+
+def _wavg_fallback(data, flags, weights, axis):
+    """Default implementation of :func:`wavg`, for cases where the numba
+    implementation doesn't match.
+    """
+    flagged_weights = np.where(flags, 0.0, weights)
+    weighted_data = data * flagged_weights
+    # Clear the elements that have a nan anywhere
+    isnan = np.isnan(weighted_data)
+    weighted_data[isnan] = 0
+    flagged_weights[isnan] = 0
+    vis = np.sum(weighted_data, axis=axis)
+    vis /= np.sum(flagged_weights, axis=axis)
+    return vis
+
+
 def wavg(data, flags, weights, times=False, axis=0):
     """
     Perform weighted average of data, applying flags,
@@ -588,8 +636,11 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    flagged_weights = np.where(flags, 0.0, weights)
-    vis = np.nansum(data * flagged_weights, axis=axis) / np.nansum(flagged_weights, axis=axis)
+    if data.ndim == 4 and 0 <= axis <= 1:
+        sum_shape = data.shape[:axis] + data.shape[axis + 1:]
+        vis = _wavg(*np.broadcast_arrays(data, flags, weights), axis=axis, sum_shape=sum_shape)
+    else:
+        vis = _wavg_fallback(data, flags, weights, axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
