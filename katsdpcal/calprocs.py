@@ -651,7 +651,7 @@ def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
     """
     # ensure solint is an intager
     solint = np.int(solint)
-    inc_array = np.arange(0, data.shape[axis], solint)
+    inc_array = range(0, data.shape[axis], solint)
 
     av_data, av_flags, av_weights, av_sig = [], [], [], []
     for ti in inc_array:
@@ -670,7 +670,7 @@ def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
         av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])
         return av_data, av_flags, av_weights, av_sig, av_times
     else:
-        return av_data, av_flags, av_sig, av_weights
+        return av_data, av_flags, av_weights, av_sig
 
 
 def solint_from_nominal(solint, dump_period, num_times):
