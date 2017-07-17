@@ -6,7 +6,6 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
 import numpy as np
-import scipy.interpolate
 import copy
 import katpoint
 import time
