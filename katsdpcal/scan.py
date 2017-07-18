@@ -122,7 +122,9 @@ class Scan(object):
         self.corrprod_lookup = bls_lookup[self.bl_slice]
 
         # get references to this time chunk of data, parallel hand polarisations only
-        # data format is:   (time x channels x pol x bl)
+        # data format is:   (time x channels x pol x bl).
+        # set to read-only to ensure that corrections are only applied to
+        # copies of the data, not the original.
         self.vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
         self.flags = data['flags'][time_slice, :, 0:2, self.bl_slice]
         self.weights = np.ones_like(data['weights'][time_slice, :, 0:2, self.bl_slice])
@@ -156,6 +158,18 @@ class Scan(object):
         self.model = None
 
         self.logger = logger
+
+    def set_writeable(self, writeable):
+        """Set the writeability of the referenced data arrays. This is
+        intended mainly to prevent accidental modification.
+        """
+        self.vis.flags.writeable = writeable
+        self.flags.flags.writeable = writeable
+        self.weights.flags.writeable = writeable
+        self.cross_vis.flags.writeable = writeable
+        self.cross_flags.flags.writeable = writeable
+        self.cross_weights.flags.writeable = writeable
+        self.timestamps.flags.writeable = writeable
 
     def logsolutiontime(f):
         """

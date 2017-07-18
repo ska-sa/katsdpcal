@@ -285,6 +285,9 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # run_t0 = time.time()
 
+        # prevent accidental modification
+        s.set_writeable(False)
+
         # perform calibration as appropriate, from scan intent tags:
 
         # BEAMFORMER
@@ -454,9 +457,10 @@ def pipeline(data, ts, task_name='pipeline'):
             # get K, B and G solutions to apply and interpolate it to scan timestamps
             solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
-            # apply solutions
+            # apply solutions in-place
+            s.set_writeable(True)
             for soln in solns_to_apply:
-                s.apply(soln, inplace=True)
+                s.apply(soln, s.vis, out=s.vis)
 
             # accumulate list of target scans to be streamed to L1
             target_slices.append(scan_slice)
