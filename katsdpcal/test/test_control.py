@@ -376,6 +376,9 @@ class TestCalDeviceServer(unittest.TestCase):
     def test_done_when_not_capturing(self):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
+        yield self.make_request('capture-init')
+        yield self.make_request('capture-done')
+        yield self.assert_request_fails(r'no capture in progress', 'capture-done')
 
     @async_test
     @tornado.gen.coroutine
