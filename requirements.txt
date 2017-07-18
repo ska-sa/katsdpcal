@@ -19,7 +19,7 @@ manhole
 matplotlib==1.5.1
 netifaces
 numba==0.34             # contains some multithreading fixes not in the katsdpdockerbase version yet
-numpy
+numpy==1.13.1           # needs at least 1.12, which is newer than katsdpdockerbase
 pkginfo
 ply                     # for katcp
 pyephem

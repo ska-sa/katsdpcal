@@ -665,12 +665,14 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
 
     flagged_weights = np.where(flags, 0.0, weights)
     weighted_data = data * flagged_weights
-    av_data = np.nansum(weighted_data, axis=axis) \
-        / np.nansum(flagged_weights, axis=axis)
-    av_flags = np.nansum(flags, axis=axis) > flags.shape[0] * threshold
-
-    # fake weights for now
-    av_weights = np.ones_like(av_data, dtype=np.float32)
+    # Clear the elements that have a nan anywhere
+    isnan = np.isnan(weighted_data)
+    weighted_data[isnan] = 0
+    flagged_weights[isnan] = 0
+    av_data = np.sum(weighted_data, axis=axis)
+    av_weights = np.sum(flagged_weights, axis=axis)
+    av_data /= av_weights
+    av_flags = np.count_nonzero(flags, axis=axis) > flags.shape[axis] * threshold
 
     return av_data, av_flags, av_weights
 

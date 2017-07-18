@@ -5,19 +5,19 @@ import time
 
 import numpy as np
 
-from katsdpcal.calprocs import fake_vis, stefcal, solint_from_nominal, wavg, _wavg_fallback
+from katsdpcal import calprocs
 
 
 class TestCalprocs(unittest.TestCase):
     def test_solint_from_nominal(self):
         # requested interval shorter than dump
-        self.assertEqual((4.0, 1), solint_from_nominal(0.5, 4.0, 6))
+        self.assertEqual((4.0, 1), calprocs.solint_from_nominal(0.5, 4.0, 6))
         # requested interval longer than scan
-        self.assertEqual((24.0, 6), solint_from_nominal(100.0, 4.0, 6))
+        self.assertEqual((24.0, 6), calprocs.solint_from_nominal(100.0, 4.0, 6))
         # adjust interval to evenly divide the scan
-        self.assertEqual((28.0, 7), solint_from_nominal(32.0, 4.0, 28))
+        self.assertEqual((28.0, 7), calprocs.solint_from_nominal(32.0, 4.0, 28))
         # no way to adjust interval to evenly divide the scan
-        self.assertEqual((32.0, 8), solint_from_nominal(29.0, 4.0, 31))
+        self.assertEqual((32.0, 8), calprocs.solint_from_nominal(29.0, 4.0, 31))
 
     def _test_stefcal(self, nants=7, delta=1e-3, noise=None):
         """Check that specified stefcal calculates gains correct to within
@@ -30,10 +30,10 @@ class TestCalprocs(unittest.TestCase):
         noise     : amount of noise to use noise in the simulation, optional
         """
         rs = np.random.RandomState(seed=1)
-        vis, bl_ant_list, gains = fake_vis(nants, noise=noise, random_state=rs)
+        vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise, random_state=rs)
         # solve for gains
         vis_and_conj = np.hstack((vis, vis.conj()))
-        calc_gains = stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
+        calc_gains = calprocs.stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
                              ref_ant=0, init_gain=None)
         for i in range(len(gains)):
             self.assertAlmostEqual(gains[i], calc_gains[i], delta=delta)
@@ -61,7 +61,7 @@ class TestCalprocs(unittest.TestCase):
 
         rs = np.random.RandomState(seed=1)
         for i in range(ntimes):
-            vis, bl_ant_list, gains = fake_vis(nants, noise=noise, random_state=rs)
+            vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise, random_state=rs)
             # add channel dimension, if required
             if nchans > 1:
                 vis = np.repeat(vis[:, np.newaxis], nchans, axis=1).T
@@ -69,7 +69,7 @@ class TestCalprocs(unittest.TestCase):
 
             # solve for gains
             t0 = time.time()
-            stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
+            calprocs.stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
                     ref_ant=0, init_gain=None)
             t1 = time.time()
 
@@ -116,7 +116,7 @@ class TestWavg(unittest.TestCase):
         flags = self.flags[0]
         # Put in some NaNs and flags to check that they're handled correctly
         data[:, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
-        weights[:, 1, 1] = [np.nan, 1.0, 0.0, 1.0, 0.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        weights[:, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
         flags[:, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => NaNs in output
         data[:, 2, 2] = np.nan
@@ -126,7 +126,7 @@ class TestWavg(unittest.TestCase):
         expected[1, 1] = 5.6 + 0.2j
         expected[2, 2] = np.nan
         expected[0, 3] = np.nan
-        actual = wavg(data, flags, weights)
+        actual = calprocs.wavg(data, flags, weights)
         self.assertEqual(np.complex64, actual.dtype)
         np.testing.assert_allclose(expected, actual, rtol=1e-6)
 
@@ -139,6 +139,56 @@ class TestWavg(unittest.TestCase):
         self.weights[:] += rs.choice([0, np.nan], shape, p=[0.95, 0.05])
         self.flags[:] = rs.choice([0, 4], shape, p=[0.95, 0.05])
         for axis in range(0, 2):
-            expected = _wavg_fallback(self.data, self.flags, self.weights, axis=axis)
-            actual = wavg(self.data, self.flags, self.weights, axis=axis)
+            expected = calprocs._wavg_fallback(self.data, self.flags, self.weights, axis=axis)
+            actual = calprocs.wavg(self.data, self.flags, self.weights, axis=axis)
             np.testing.assert_allclose(expected, actual, rtol=1e-6)
+
+
+class TestWavgFull(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.wavg_full_t`"""
+    def setUp(self):
+        shape = (10, 5, 3, 10)
+        self.data = np.ones(shape, np.complex64)
+        self.weights = np.ones(shape, np.float32)
+        self.flags = np.zeros(shape, np.uint8)
+        # Put in some NaNs and flags to check that they're handled correctly
+        self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
+        self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
+        self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
+        # A completely NaN column and a completely flagged column => NaNs in output
+        self.data[:, 1, 2, 2] = np.nan
+        self.flags[:, 2, 0, 3] = 4
+
+    def test_basic(self):
+        out_shape = (3, 5, 3, 10)
+        expected_data = np.ones(out_shape, np.complex64)
+        expected_weights = np.ones(out_shape, np.float32) * 4
+        expected_weights[2, ...] = 2    # Only two samples added together
+        expected_flags = np.zeros(out_shape, np.bool_)
+        expected_data[:, 0, 1, 1] = [2j, 56.0 / 9.0, np.nan]
+        expected_weights[:, 0, 1, 1] = [1, 9, 0]
+        expected_flags[:, 0, 1, 1] = [True, False, True]
+
+        expected_data[:, 1, 2, 2] = np.nan
+        expected_weights[:, 1, 2, 2] = 0
+
+        expected_data[:, 2, 0, 3] = np.nan
+        expected_weights[:, 2, 0, 3] = 0
+        expected_flags[:, 2, 0, 3] = True
+
+        out_data, out_flags, out_weights = calprocs.wavg_full_t(
+            self.data, self.flags, self.weights, 4)
+        np.testing.assert_allclose(expected_data, out_data, rtol=1e-6)
+        np.testing.assert_equal(expected_flags, out_flags)
+        np.testing.assert_allclose(expected_weights, out_weights, rtol=1e-6)
+
+    def test_threshold(self):
+        """Test thresholding on flags"""
+        # This assumes the threshold default is 0.3 - it's not currently
+        # settable via wavg_full_t.
+        self.flags[:2, 0, 0, 0] = 4
+        self.flags[:4, 0, 0, 1] = 4
+        out_data, out_flags, out_weights = calprocs.wavg_full_t(
+            self.data, self.flags, self.weights, 10)
+        self.assertEqual(False, out_flags[0, 0, 0, 0])
+        self.assertEqual(True, out_flags[0, 0, 0, 1])
