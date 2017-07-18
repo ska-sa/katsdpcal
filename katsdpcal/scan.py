@@ -222,7 +222,7 @@ class Scan(object):
 
         # first averge in time over solution interval, for specified channel
         # range (no averaging over channel)
-        ave_vis, ave_flags, ave_weights, av_sig, ave_times = calprocs.wavg_full_t(
+        ave_vis, ave_flags, ave_weights, ave_times = calprocs.wavg_full_t(
             fitvis, self.flags[chan_slice],
             self.weights[chan_slice], dumps_per_solint, axis=0, times=self.timestamps)
         # secondly, average channels
@@ -267,7 +267,7 @@ class Scan(object):
             if echan == 0:
                 echan = None
             chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
-            ave_vis, av_flags, av_weights, av_sig = calprocs.wavg_full(
+            ave_vis, av_flags, av_weights = calprocs.wavg_full(
                 self.modvis[chan_slice], self.cross_flags[chan_slice],
                 self.cross_weights[chan_slice], axis=0)
 

@@ -661,12 +661,10 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     av_data    : weighted average of data
     av_flags   : weighted average of flags
     av_weights : weighted average of weights
-    av_sig     : sigma of weighted data
     """
 
     flagged_weights = np.where(flags, 0.0, weights)
     weighted_data = data * flagged_weights
-    av_sig = np.nanstd(weighted_data)
     av_data = np.nansum(weighted_data, axis=axis) \
         / np.nansum(flagged_weights, axis=axis)
     av_flags = np.nansum(flags, axis=axis) > flags.shape[0] * threshold
@@ -674,7 +672,7 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     # fake weights for now
     av_weights = np.ones_like(av_data, dtype=np.float32)
 
-    return av_data, av_flags, av_weights, av_sig
+    return av_data, av_flags, av_weights
 
 
 def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
@@ -697,31 +695,28 @@ def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
     av_data    : weighted average of data
     av_flags   : weighted average of flags
     av_weights : weighted average of weights
-    av_sig     : sigma of averaged data
     av_times   : optional average of times
     """
     # ensure solint is an intager
     solint = np.int(solint)
     inc_array = range(0, data.shape[axis], solint)
 
-    av_data, av_flags, av_weights, av_sig = [], [], [], []
+    av_data, av_flags, av_weights = [], [], []
     for ti in inc_array:
         w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint],
                           axis=0)
         av_data.append(w_out[0])
         av_flags.append(np.bool_(w_out[1]))
         av_weights.append(w_out[2])
-        av_sig.append(w_out[3])
     av_data = np.array(av_data)
     av_flags = np.array(av_flags)
     av_weights = np.array(av_weights)
-    av_sig = np.array(av_sig)
 
     if np.any(times):
         av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])
-        return av_data, av_flags, av_weights, av_sig, av_times
+        return av_data, av_flags, av_weights, av_times
     else:
-        return av_data, av_flags, av_weights, av_sig
+        return av_data, av_flags, av_weights
 
 
 def solint_from_nominal(solint, dump_period, num_times):
