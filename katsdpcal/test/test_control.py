@@ -401,7 +401,11 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        yield self.make_request('shutdown')
+        informs = yield self.make_request('shutdown')
+        progress = [inform.arguments[0] for inform in informs]
+        assert_equal(['Accumulator stopped',
+                      'Pipelines stopped',
+                      'Report writer stopped'], progress)
         assert_equal(0, int((yield self.get_sensor('accumulator-capture-active'))))
         assert_equal(10, int((yield self.get_sensor('accumulator-input-heaps'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-batches'))))
