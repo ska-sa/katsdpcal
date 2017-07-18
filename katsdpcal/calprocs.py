@@ -644,17 +644,18 @@ def wavg(data, flags, weights, times=False, axis=0):
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
-def wavg_full(data, flags, weights, axis=0, threshold=0.3):
+def wavg_full(data, flags, weights, threshold=0.3,
+              av_data=None, av_flags=None, av_weights=None):
     """
     Perform weighted average of data, flags and weights,
-    applying flags, over specified axis
+    applying flags, over axis 0.
 
     Parameters
     ----------
     data       : array of complex
     flags      : array of uint8 or boolean
     weights    : array of floats
-    axis    : axis to average over
+    av_data, av_flags, av_weights : optional output arrays
 
     Returns
     -------
@@ -669,18 +670,19 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     isnan = np.isnan(weighted_data)
     weighted_data[isnan] = 0
     flagged_weights[isnan] = 0
-    av_data = np.sum(weighted_data, axis=axis)
-    av_weights = np.sum(flagged_weights, axis=axis)
+    av_data = np.sum(weighted_data, axis=0, out=av_data)
+    av_weights = np.sum(flagged_weights, axis=0, out=av_weights)
     av_data /= av_weights
-    av_flags = np.count_nonzero(flags, axis=axis) > flags.shape[axis] * threshold
+    n_flags = np.count_nonzero(flags, axis=0)
+    av_flags = np.greater(n_flags, flags.shape[0] * threshold, out=av_flags)
 
     return av_data, av_flags, av_weights
 
 
-def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
+def wavg_full_t(data, flags, weights, solint, times=None):
     """
     Perform weighted average of data, flags and weights,
-    applying flags, over specified axis, for specified
+    applying flags, over axis 0, for specified
     solution interval increments
 
     Parameters
@@ -689,7 +691,6 @@ def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
     flags      : array of boolean
     weights    : array of floats
     solint     : index interval over which to average, integer
-    axis       : axis to average over
     times      : optional array of times to average, array of floats
 
     Returns
@@ -701,18 +702,15 @@ def wavg_full_t(data, flags, weights, solint, axis=0, times=None):
     """
     # ensure solint is an intager
     solint = np.int(solint)
-    inc_array = range(0, data.shape[axis], solint)
+    inc_array = range(0, data.shape[0], solint)
 
-    av_data, av_flags, av_weights = [], [], []
-    for ti in inc_array:
+    shape = (len(inc_array),) + data.shape[1:]
+    av_data = np.empty(shape, data.dtype)
+    av_flags = np.empty(shape, np.bool_)
+    av_weights = np.empty(shape, weights.dtype)
+    for i, ti in enumerate(inc_array):
         w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint],
-                          axis=0)
-        av_data.append(w_out[0])
-        av_flags.append(np.bool_(w_out[1]))
-        av_weights.append(w_out[2])
-    av_data = np.array(av_data)
-    av_flags = np.array(av_flags)
-    av_weights = np.array(av_weights)
+                          av_data=av_data[i], av_flags=av_flags[i], av_weights=av_weights[i])
 
     if np.any(times):
         av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])

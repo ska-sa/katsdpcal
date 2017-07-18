@@ -224,7 +224,7 @@ class Scan(object):
         # range (no averaging over channel)
         ave_vis, ave_flags, ave_weights, ave_times = calprocs.wavg_full_t(
             fitvis, self.flags[chan_slice],
-            self.weights[chan_slice], dumps_per_solint, axis=0, times=self.timestamps)
+            self.weights[chan_slice], dumps_per_solint, times=self.timestamps)
         # secondly, average channels
         ave_vis = calprocs.wavg(ave_vis, ave_flags, ave_weights, axis=1)
         # solve for gain
@@ -269,7 +269,7 @@ class Scan(object):
             chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
             ave_vis, av_flags, av_weights = calprocs.wavg_full(
                 self.modvis[chan_slice], self.cross_flags[chan_slice],
-                self.cross_weights[chan_slice], axis=0)
+                self.cross_weights[chan_slice])
 
             # solve for cross hand delay KCROSS
             # note that the kcross solver needs the flags because it averages the data
