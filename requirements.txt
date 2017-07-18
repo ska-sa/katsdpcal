@@ -14,7 +14,7 @@ futures                 # for trollius
 h5py
 kaptan==0.5.8           # for tmuxp
 libtmux==0.6.0
-llvmlite                # for numba
+llvmlite==0.19.0        # for numba
 manhole
 matplotlib==1.5.1
 netifaces
