@@ -416,7 +416,7 @@ class Scan(object):
         elif soln.soltype is 'B':
             return self._apply(soln.values, origvis=origvis, inplace=inplace)
         else:
-            return ValueError('Solution type is invalid.')
+            raise ValueError('Solution type is invalid.')
 
     # ---------------------------------------------------------------------------------------------
     # interpolation
