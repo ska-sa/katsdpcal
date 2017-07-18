@@ -90,7 +90,7 @@ class BaseTestTask(object):
 
     def test(self):
         task = PingTask(self.module.Process, self.master_queue, self.slave_queue)
-        assert_equal(False, task.daemon)
+        assert_equal(False, task.daemon)   # Test the wrapper property
         task.daemon = True       # Ensure it gets killed if the test fails
         assert_equal('PingTask', task.name)
         task.start()
@@ -238,6 +238,8 @@ class TestCalDeviceServer(unittest.TestCase):
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
+            # The position is irrelevant for now, so just give all the
+            # antennas the same position.
             telstate.add(
                 '{}_observer'.format(antenna),
                 '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
@@ -380,6 +382,9 @@ class TestCalDeviceServer(unittest.TestCase):
     def test_done_when_not_capturing(self):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
+        yield self.make_request('capture-init')
+        yield self.make_request('capture-done')
+        yield self.assert_request_fails(r'no capture in progress', 'capture-done')
 
     @classmethod
     def normalise_phase(cls, value, ref):
@@ -432,7 +437,11 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        yield self.make_request('shutdown')
+        informs = yield self.make_request('shutdown')
+        progress = [inform.arguments[0] for inform in informs]
+        assert_equal(['Accumulator stopped',
+                      'Pipelines stopped',
+                      'Report writer stopped'], progress)
         assert_equal(0, int((yield self.get_sensor('accumulator-capture-active'))))
         assert_equal(10, int((yield self.get_sensor('accumulator-input-heaps'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-batches'))))

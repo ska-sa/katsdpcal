@@ -903,12 +903,18 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         raise tornado.gen.Return(('ok',))
 
     @trollius.coroutine
-    def shutdown(self, force=False):
+    def shutdown(self, force=False, conn=None):
         """Shut down the server.
 
         This is a potentially long-running operation, particularly if `force`
-        is used. While it is running, no new capture sessions can be started.
+        is false. While it is running, no new capture sessions can be started.
+
+        If `conn` is given, it is updated with progress of the shutdown.
         """
+        def progress(msg):
+            logger.info(msg)
+            if conn is not None:
+                conn.inform(msg)
         loop = trollius.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             self._stopping = True
@@ -918,12 +924,12 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                 logger.info('Shutting down gracefully')
             if not force:
                 yield From(self.accumulator.stop())
-                logger.info('Accumulator stopped')
+                progress('Accumulator stopped')
                 for task in self.pipelines:
                     yield From(loop.run_in_executor(executor, task.join))
-                logger.info('Pipelines stopped')
+                progress('Pipelines stopped')
                 yield From(loop.run_in_executor(executor, self.report_writer.join))
-                logger.info('Report writer stopped')
+                progress('Report writer stopped')
             elif hasattr(self.report_writer, 'terminate'):
                 # Kill off all the tasks. This is done in reverse order, to avoid
                 # triggering a report writing only to kill it half-way.
@@ -943,11 +949,11 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     @return_reply()
     @concurrent_reply
     @tornado.gen.coroutine
-    def request_shutdown(self, msg, force=False):
+    def request_shutdown(self, req, force=False):
         """Shut down the server.
 
         This is a potentially long-running operation, particularly if `force`
-        is used. While it is running, no new capture sessions can be started.
+        is false. While it is running, no new capture sessions can be started.
         It is possible to make concurrent requests while this request is in
         progress, but it will not be possible to start new observations.
 
@@ -960,7 +966,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             If true, terminate processes immediately rather than waiting for
             them to finish pending work. This can cause data loss!
         """
-        yield to_tornado_future(trollius.ensure_future(self.shutdown(force)))
+        yield to_tornado_future(trollius.ensure_future(self.shutdown(force, req)))
         raise tornado.gen.Return(('ok',))
 
     @trollius.coroutine
