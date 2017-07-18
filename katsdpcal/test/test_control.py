@@ -27,6 +27,7 @@ import katcp
 import katsdptelstate
 from katsdptelstate.endpoint import Endpoint
 from katsdpservices.asyncio import to_tornado_future
+import katpoint
 
 from katsdpcal import control, pipelineprocs, param_dir, rfi_dir
 
@@ -208,15 +209,14 @@ class TestCalDeviceServer(unittest.TestCase):
         return mock_obj
 
     def populate_telstate(self, telstate):
-        antennas = ['m090', 'm091', 'm092', 'm093']
         bls_ordering = []
-        target = ('PKS 0408-65 | J0408-6545, radec bfcal single_accumulation, '
-                  '4:08:20.38, -65:45:09.1, (800.0 8400.0 -3.708 3.807 -0.7202)')
+        target = ('3C286, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
+                  '(800.0 43200.0 0.956 0.584 -0.1644)')
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
-        for a in antennas:
+        for a in self.antennas:
             ant_bls.append((a, a))
-        for a in antennas:
-            for b in antennas:
+        for a in self.antennas:
+            for b in self.antennas:
                 if a < b:
                     ant_bls.append((a, b))
         for a, b in ant_bls:
@@ -226,16 +226,16 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.clear()     # Prevent state leaks
         telstate.add('sdp_l0_int_time', 4.0, immutable=True)
-        telstate.add('antenna_mask', ','.join(antennas), immutable=True)
-        telstate.add('cbf_n_ants', len(antennas), immutable=True)
-        telstate.add('cbf_n_chans', 4096, immutable=True)
+        telstate.add('antenna_mask', ','.join(self.antennas), immutable=True)
+        telstate.add('cbf_n_ants', self.n_antennas, immutable=True)
+        telstate.add('cbf_n_chans', self.n_channels, immutable=True)
         telstate.add('cbf_n_pols', 4, immutable=True)
         telstate.add('cbf_center_freq', 428000000.0, immutable=True)
         telstate.add('cbf_bandwidth', 856000000.0, immutable=True)
         telstate.add('sdp_l0_bls_ordering', bls_ordering, immutable=True)
         telstate.add('cbf_sync_time', 1400000000.0, immutable=True)
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
-        for antenna in antennas:
+        for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
             # The position is irrelevant for now, so just give all the
@@ -275,6 +275,11 @@ class TestCalDeviceServer(unittest.TestCase):
         self.server.stop()
 
     def setUp(self):
+        self.n_channels = 4096
+        self.antennas = ["m090", "m091", "m092", "m093"]
+        self.n_antennas = len(self.antennas)
+        self.n_baselines = self.n_antennas * (self.n_antennas + 1) * 2
+
         self.telstate = katsdptelstate.TelescopeState()
         self.populate_telstate(self.telstate)
         self.ioloop = AsyncIOMainLoop()
@@ -291,7 +296,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.log_path = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.log_path)
 
-        buffer_shape = (20, 4096, 4, 10)  # Time, channels, pols, baselines
+        # Time, channels, pols, baselines
+        buffer_shape = (20, self.n_channels, 4, self.n_baselines // 4)
         num_buffers = 2
         buffers = [control.create_buffer_arrays(buffer_shape, False) for i in range(num_buffers)]
         self.server = control.create_server(
@@ -380,6 +386,12 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-done')
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
 
+    @classmethod
+    def normalise_phase(cls, value, ref):
+        """Multiply `value` by an amount that sets `ref` to zero phase."""
+        ref_phase = ref / np.abs(ref)
+        return value * ref_phase.conj()
+
     @async_test
     @tornado.gen.coroutine
     def test_capture(self):
@@ -389,12 +401,31 @@ class TestCalDeviceServer(unittest.TestCase):
         channels = self.telstate.cbf_n_chans
         baselines = len(self.telstate.sdp_l0_bls_ordering)
         ts = 100
+        rs = np.random.RandomState(seed=1)
+
+        bandwidth = self.telstate.cbf_bandwidth
+        target = katpoint.Target(self.telstate.m090_target)
+        # The + bandwidth is to convert to L band
+        freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
+        flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
+        freqs = freqs[:, np.newaxis]
+
+        bls_ordering = self.telstate.sdp_l0_bls_ordering
+        ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
+        ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
+        pol1 = ['vh'.index(b[0][-1]) for b in bls_ordering]
+        pol2 = ['vh'.index(b[1][-1]) for b in bls_ordering]
+        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
+        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
+            + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
+
+        vis = flux_density * np.exp(2j * np.pi * (K[pol1, ant1] - K[pol2, ant2]) * freqs) \
+            * (G[pol1, ant1] * G[pol2, ant2].conj())
+        flags = np.zeros(vis.shape, np.uint8)
+        weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
+        weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
+
         for i in range(10):
-            shape = (channels, baselines)
-            vis = np.ones(shape, np.complex64)
-            flags = np.zeros(shape, np.uint8)
-            weights = np.ones(shape, np.uint8)
-            weights_channel = np.ones(channels, np.float32)
             self.heaps.append({
                 'correlator_data': vis,
                 'flags': flags,
@@ -417,13 +448,35 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(1, int((yield self.get_sensor('accumulator-observations'))))
         assert_equal(10, int((yield self.get_sensor('pipeline-last-slots'))))
         assert_equal(1, int((yield self.get_sensor('reports-written'))))
-        # TODO: carefully construct artificial data and check that the results match
-        assert_in('cal_product_B', self.telstate)
-        assert_in('cal_product_G', self.telstate)
-        assert_in('cal_product_K', self.telstate)
+
         reports = os.listdir(self.report_path)
         assert_equal(1, len(reports))
         report = os.path.join(self.report_path, reports[0])
         report_files = glob.glob(os.path.join(report, 'calreport_*.html'))
         assert_equal(1, len(report_files))
         assert_true(os.path.samefile(report, (yield self.get_sensor('report-last-path'))))
+
+        cal_product_B = self.telstate.get_range('cal_product_B', st=0)
+        assert_equal(1, len(cal_product_B))
+        ret_B, ret_B_ts = cal_product_B[0]
+
+        cal_product_G = self.telstate.get_range('cal_product_G', st=0)
+        assert_equal(1, len(cal_product_G))
+        ret_G, ret_G_ts = cal_product_G[0]
+        ret_BG = ret_B * ret_G[np.newaxis, :, :]
+        BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
+        # TODO: enable when fixed.
+        # This test won't work yet:
+        # - cal uses the baseband center frequency instead of L band, which breaks
+        #   both the phase of G and the flux model
+        # - cal puts NaNs in B in the channels for which it applies the static
+        #   RFI mask, instead of interpolating
+        # np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG), rtol=1e-3)
+        # np.testing.assert_allclose(self.normalise_phase(BG, BG[:, :, [0]]),
+        #                            self.normalise_phase(ret_BG, ret_BG[:, :, [0]]),
+        #                            rtol=1e-3)
+
+        cal_product_K = self.telstate.get_range('cal_product_K', st=0)
+        assert_equal(1, len(cal_product_K))
+        ret_K, ret_K_ts = cal_product_K[0]
+        np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)

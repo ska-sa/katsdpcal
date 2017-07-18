@@ -6,6 +6,7 @@ from .calprocs import CalSolution
 import numpy as np
 import copy
 from time import time
+import functools
 
 import katpoint
 from scipy.constants import c as light_speed
@@ -161,6 +162,7 @@ class Scan(object):
         """
         Decorator to log time duration of solver functions
         """
+        @functools.wraps(f)
         def timed(*args, **kw):
             ts = time()
             result = f(*args, **kw)
@@ -170,23 +172,6 @@ class Scan(object):
             scanlogger.info('  - Solution time: {0} s'.format(te-ts,))
             return result
         return timed
-
-    def solint_from_nominal(self, input_solint):
-        """
-        Determine appropriate solution interval given nominal solution interval
-
-        Inputs:
-        ------
-        input_solint : nominal solution interval
-
-        Returns
-        -------
-        solint : calculated optimal solution interval
-        dumps_per_solint : number of dumps per solution interval
-        """
-
-        solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period,
-                                                                len(self.timestamps))
 
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions

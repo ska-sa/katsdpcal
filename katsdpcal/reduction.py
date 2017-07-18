@@ -312,7 +312,7 @@ def pipeline(data, ts, task_name='pipeline'):
             solns_to_apply.extend(get_solns_to_apply(s, ts, ['B']))
 
             # use single solution interval
-            dumps_per_solint = np.ceil(scan_slice.stop - scan_slice.start - 1)
+            dumps_per_solint = scan_slice.stop - scan_slice.start
             g_solint = dumps_per_solint * dump_period
             g_soln = s.g_sol(g_solint, g0_h, ts.cal_param_g_bchan, ts.cal_param_g_echan,
                              pre_apply=solns_to_apply)
