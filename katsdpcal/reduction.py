@@ -1,19 +1,18 @@
+import time
+import logging
+
+import numpy as np
+import dask.array as da
+
+from katdal.sensordata import TelstateSensorData, SensorCache
+from katdal.categorical import CategoricalData
+from katdal.h5datav3 import SENSOR_PROPS
 
 from . import calprocs
 from . import pipelineprocs as pp
 from .scan import Scan
 from .rfi import threshold_avg_flagging
-
-import numpy as np
-
 from . import lsm_dir
-
-import time
-import logging
-
-from katdal.sensordata import TelstateSensorData, SensorCache
-from katdal.categorical import CategoricalData
-from katdal.h5datav3 import SENSOR_PROPS
 
 
 logger = logging.getLogger(__name__)
@@ -34,11 +33,14 @@ def rfi(s, thresholds, av_blocks):
         form [time_block, channel_block]
     """
     total_size = np.multiply.reduce(s.flags.shape) / 100.
-    logger.info('  - Start flags: {0:.3f}%'.format(
-        np.sum(s.flags.view(np.bool)) / total_size,))
-    threshold_avg_flagging(s.vis, s.flags, thresholds, blocks=av_blocks, transform=np.abs)
-    logger.info('  - New flags:   {0:.3f}%'.format(
-        np.sum(s.flags.view(np.bool)) / total_size,))
+    logger.info('  - Start flags: %.3f%%',
+                (da.sum(s.flags.view(np.bool)) / total_size).compute())
+    # TODO: push dask into threshold_avg_flagging
+    flags = s.flags.compute()
+    threshold_avg_flagging(s.vis.compute(), flags, thresholds, blocks=av_blocks, transform=np.abs)
+    s.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
+    logger.info('  - New flags:   %.3f%%',
+                (da.sum(calprocs.asbool(s.flags)) / total_size).compute())
 
 
 def get_tracks(data, ts, dump_period):
@@ -285,9 +287,6 @@ def pipeline(data, ts, task_name='pipeline'):
 
         # run_t0 = time.time()
 
-        # prevent accidental modification
-        s.set_writeable(False)
-
         # perform calibration as appropriate, from scan intent tags:
 
         # BEAMFORMER
@@ -457,10 +456,9 @@ def pipeline(data, ts, task_name='pipeline'):
             # get K, B and G solutions to apply and interpolate it to scan timestamps
             solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
-            # apply solutions in-place
-            s.set_writeable(True)
+            # apply solutions
             for soln in solns_to_apply:
-                s.apply(soln, s.vis, out=s.vis)
+                s.vis = s.apply(soln, s.vis)
 
             # accumulate list of target scans to be streamed to L1
             target_slices.append(scan_slice)

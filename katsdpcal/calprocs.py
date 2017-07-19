@@ -5,11 +5,11 @@ Calibration procedures for MeerKAT calibration pipeline
 Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
-import copy
 import time
 import logging
 
 import numpy as np
+import dask.array as da
 import scipy.fftpack
 import numba
 
@@ -604,18 +604,29 @@ def _wavg(data, flags, weights, axis, sum_shape):
     return vis_sum
 
 
+def asbool(arr):
+    """View an array as boolean.
+
+    If possible it simply returns a value, otherwise a copy. It works on both
+    dask and numpy arrays.
+    """
+    if arr.dtype in (np.uint8, np.int8, np.bool_):
+        return arr.view(np.bool_)
+    else:
+        return arr.astype(np.bool_)
+
+
 def _wavg_fallback(data, flags, weights, axis):
     """Default implementation of :func:`wavg`, for cases where the numba
     implementation doesn't match.
     """
-    flagged_weights = np.where(flags, 0.0, weights)
+    flagged_weights = da.where(asbool(flags), weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
     # Clear the elements that have a nan anywhere
-    isnan = np.isnan(weighted_data)
-    weighted_data[isnan] = 0
-    flagged_weights[isnan] = 0
-    vis = np.sum(weighted_data, axis=axis)
-    vis /= np.sum(flagged_weights, axis=axis)
+    isnan = da.isnan(weighted_data)
+    weighted_data = da.where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = da.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
     return vis
 
 
@@ -636,16 +647,16 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    if data.ndim == 4 and axis in (0, 1):
-        sum_shape = data.shape[:axis] + data.shape[axis + 1:]
-        vis = _wavg(*np.broadcast_arrays(data, flags, weights), axis=axis, sum_shape=sum_shape)
-    else:
-        vis = _wavg_fallback(data, flags, weights, axis)
+    # TODO: reintegrate this with dask
+    # if data.ndim == 4 and axis in (0, 1):
+    #     sum_shape = data.shape[:axis] + data.shape[axis + 1:]
+    #     vis = _wavg(*np.broadcast_arrays(data, flags, weights), axis=axis, sum_shape=sum_shape)
+    # else:
+    vis = _wavg_fallback(data, flags, weights, axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
-def wavg_full(data, flags, weights, threshold=0.3,
-              av_data=None, av_flags=None, av_weights=None):
+def wavg_full(data, flags, weights, threshold=0.3):
     """
     Perform weighted average of data, flags and weights,
     applying flags, over axis 0.
@@ -655,7 +666,6 @@ def wavg_full(data, flags, weights, threshold=0.3,
     data       : array of complex
     flags      : array of uint8 or boolean
     weights    : array of floats
-    av_data, av_flags, av_weights : optional output arrays
 
     Returns
     -------
@@ -664,18 +674,17 @@ def wavg_full(data, flags, weights, threshold=0.3,
     av_weights : weighted average of weights
     """
 
-    flagged_weights = np.where(flags, 0.0, weights)
+    bool_flags = asbool(flags)
+    flagged_weights = da.where(bool_flags, weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
     # Clear the elements that have a nan anywhere
-    isnan = np.isnan(weighted_data)
-    weighted_data[isnan] = 0
-    flagged_weights[isnan] = 0
-    av_data = np.sum(weighted_data, axis=0, out=av_data)
-    av_weights = np.sum(flagged_weights, axis=0, out=av_weights)
-    av_data /= av_weights
-    n_flags = np.count_nonzero(flags, axis=0)
-    av_flags = np.greater(n_flags, flags.shape[0] * threshold, out=av_flags)
-
+    isnan = da.isnan(weighted_data)
+    weighted_data = da.where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = da.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    av_weights = da.sum(flagged_weights, axis=0)
+    av_data = da.sum(weighted_data, axis=0) / av_weights
+    n_flags = da.sum(bool_flags, axis=0)
+    av_flags = n_flags > flags.shape[0] * threshold
     return av_data, av_flags, av_weights
 
 
@@ -704,13 +713,18 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     solint = np.int(solint)
     inc_array = range(0, data.shape[0], solint)
 
-    shape = (len(inc_array),) + data.shape[1:]
-    av_data = np.empty(shape, data.dtype)
-    av_flags = np.empty(shape, np.bool_)
-    av_weights = np.empty(shape, weights.dtype)
-    for i, ti in enumerate(inc_array):
-        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint],
-                          av_data=av_data[i], av_flags=av_flags[i], av_weights=av_weights[i])
+    av_data = []
+    av_flags = []
+    av_weights = []
+    # TODO: might be more efficient to use reduceat?
+    for ti in inc_array:
+        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint])
+        av_data.append(w_out[0])
+        av_flags.append(w_out[1])
+        av_weights.append(w_out[2])
+    av_data = da.stack(av_data)
+    av_flags = da.stack(av_flags)
+    av_weights = da.stack(av_weights)
 
     if np.any(times):
         av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])

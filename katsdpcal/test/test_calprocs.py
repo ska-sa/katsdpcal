@@ -4,8 +4,13 @@ import unittest
 import time
 
 import numpy as np
+import dask.array as da
 
 from katsdpcal import calprocs
+
+
+def as_dask(arr):
+    return da.from_array(arr, chunks=arr.shape)
 
 
 class TestCalprocs(unittest.TestCase):
@@ -126,7 +131,7 @@ class TestWavg(unittest.TestCase):
         expected[1, 1] = 5.6 + 0.2j
         expected[2, 2] = np.nan
         expected[0, 3] = np.nan
-        actual = calprocs.wavg(data, flags, weights)
+        actual = calprocs.wavg(as_dask(data), as_dask(flags), as_dask(weights))
         self.assertEqual(np.complex64, actual.dtype)
         np.testing.assert_allclose(expected, actual, rtol=1e-6)
 
@@ -139,8 +144,10 @@ class TestWavg(unittest.TestCase):
         self.weights[:] += rs.choice([0, np.nan], shape, p=[0.95, 0.05])
         self.flags[:] = rs.choice([0, 4], shape, p=[0.95, 0.05])
         for axis in range(0, 2):
-            expected = calprocs._wavg_fallback(self.data, self.flags, self.weights, axis=axis)
-            actual = calprocs.wavg(self.data, self.flags, self.weights, axis=axis)
+            expected = calprocs._wavg_fallback(
+                as_dask(self.data), as_dask(self.flags), as_dask(self.weights), axis=axis)
+            actual = calprocs.wavg(
+                as_dask(self.data), as_dask(self.flags), as_dask(self.weights), axis=axis)
             np.testing.assert_allclose(expected, actual, rtol=1e-6)
 
 

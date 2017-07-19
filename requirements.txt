@@ -33,6 +33,7 @@ scipy==0.19.1           # version pinned because katsdpdockerbase version is too
 singledispatch          # for tornado
 six
 spead2
+toolz==0.8.2            # for dask
 tornado                 # for katcp
 trollius
 git+ssh://git@github.com/ska-sa/katcp-python#egg=katcp    # Needs features not present in 0.6.1

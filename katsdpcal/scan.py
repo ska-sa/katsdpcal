@@ -1,18 +1,19 @@
 """Scan class to data and operations on data."""
 
-from . import calprocs
-from .calprocs import CalSolution
-
-import numpy as np
-import copy
 from time import time
 import functools
+import logging
 
-import katpoint
+import numpy as np
+import dask.array as da
 from scipy.constants import c as light_speed
 import scipy.interpolate
 
-import logging
+import katpoint
+
+from . import calprocs
+from .calprocs import CalSolution
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------------------------------
@@ -125,13 +126,20 @@ class Scan(object):
         # data format is:   (time x channels x pol x bl).
         # set to read-only to ensure that corrections are only applied to
         # copies of the data, not the original.
-        self.vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
-        self.flags = data['flags'][time_slice, :, 0:2, self.bl_slice]
-        self.weights = np.ones_like(data['weights'][time_slice, :, 0:2, self.bl_slice])
+        vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
+        chunks = (1,) + vis.shape[1:]
+        self.vis = da.from_array(vis, chunks, name=False)
+        self.flags = da.from_array(
+            data['flags'][time_slice, :, 0:2, self.bl_slice], chunks, name=False)
+        self.weights = da.from_array(
+            np.ones_like(data['weights'][time_slice, :, 0:2, self.bl_slice]), chunks, name=False)
         # cross hand polarisations
-        self.cross_vis = data['vis'][time_slice, :, 2:, self.bl_slice]
-        self.cross_flags = data['flags'][time_slice, :, 2:, self.bl_slice]
-        self.cross_weights = np.ones_like(data['weights'][time_slice, :, 2:, self.bl_slice])
+        self.cross_vis = da.from_array(
+            data['vis'][time_slice, :, 2:, self.bl_slice], chunks, name=False)
+        self.cross_flags = da.from_array(
+            data['flags'][time_slice, :, 2:, self.bl_slice], chunks, name=False)
+        self.cross_weights = da.from_array(
+            np.ones_like(data['weights'][time_slice, :, 2:, self.bl_slice]), chunks, name=False)
 
         self.timestamps = data['times'][time_slice]
         self.target = katpoint.Target(target)
@@ -158,18 +166,6 @@ class Scan(object):
         self.model = None
 
         self.logger = logger
-
-    def set_writeable(self, writeable):
-        """Set the writeability of the referenced data arrays. This is
-        intended mainly to prevent accidental modification.
-        """
-        self.vis.flags.writeable = writeable
-        self.flags.flags.writeable = writeable
-        self.weights.flags.writeable = writeable
-        self.cross_vis.flags.writeable = writeable
-        self.cross_flags.flags.writeable = writeable
-        self.cross_weights.flags.writeable = writeable
-        self.timestamps.flags.writeable = writeable
 
     def logsolutiontime(f):
         """
@@ -216,7 +212,7 @@ class Scan(object):
         # determine channel range for fit
         if echan == 0:
             echan = None
-        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+        chan_slice = np.s_[:, bchan:echan, :, :]
 
         # initialise and apply model, for if this scan target has an associated model
         self._init_model()
@@ -230,7 +226,7 @@ class Scan(object):
         # secondly, average channels
         ave_vis = calprocs.wavg(ave_vis, ave_flags, ave_weights, axis=1)
         # solve for gain
-        g_soln = calprocs.g_fit(ave_vis, self.corrprod_lookup, g0, self.refant, **kwargs)
+        g_soln = calprocs.g_fit(ave_vis.compute(), self.corrprod_lookup, g0, self.refant, **kwargs)
 
         return CalSolution('G', g_soln, ave_times)
 
@@ -260,8 +256,8 @@ class Scan(object):
             # average over all time, for specified channel range (no averaging over channel)
             if echan == 0:
                 echan = None
-            chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
-            ave_vis, av_flags, av_weights = calprocs.wavg_full(
+            chan_slice = np.s_[:, bchan:echan, :, :]
+            av_vis, av_flags, av_weights = calprocs.wavg_full(
                 modvis[chan_slice], self.cross_flags[chan_slice],
                 self.cross_weights[chan_slice])
 
@@ -269,7 +265,8 @@ class Scan(object):
             # note that the kcross solver needs the flags because it averages the data
             #  (strictly it should need weights too, but deal with that leter
             #  when weights are meaningful)
-            kcross_soln = calprocs.kcross_fit(ave_vis, av_flags, self.channel_freqs[bchan:echan],
+            av_vis, av_flags = da.compute(av_vis, av_flags)
+            kcross_soln = calprocs.kcross_fit(av_vis, av_flags, self.channel_freqs[bchan:echan],
                                               chan_ave=chan_ave)
             return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
 
@@ -295,7 +292,7 @@ class Scan(object):
         # determine channel range for fit
         if echan == 0:
             echan = None
-        chan_slice = [slice(None), slice(bchan, echan), slice(None), slice(None)]
+        chan_slice = np.s_[:, bchan:echan, :, :]
         # use specified channel range for frequencies
         k_freqs = self.channel_freqs[bchan:echan]
 
@@ -313,7 +310,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(fitvis, self.flags[chan_slice], self.weights[chan_slice],
                                           times=self.timestamps, axis=0)
         # fit for delay
-        k_soln = calprocs.k_fit(ave_vis, self.corrprod_lookup, k_freqs, self.refant,
+        k_soln = calprocs.k_fit(ave_vis.compute(), self.corrprod_lookup, k_freqs, self.refant,
                                 chan_sample=chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
@@ -342,26 +339,24 @@ class Scan(object):
         ave_vis, ave_time = calprocs.wavg(fitvis, self.flags, self.weights, times=self.timestamps,
                                           axis=0)
         # solve for bandpass
-        b_soln = calprocs.bp_fit(ave_vis, self.corrprod_lookup, bp0)
+        b_soln = calprocs.bp_fit(ave_vis.compute(), self.corrprod_lookup, bp0)
 
         return CalSolution('B', b_soln, ave_time)
 
     # ---------------------------------------------------------------------------------------------
     # solution application
 
-    def _apply(self, solval, vis, out=None):
+    def _apply(self, solval, vis):
         """
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
 
         Parameters
         ----------
-        solval : array
+        solval : dask.array
             multiplicative solution values to be divided out of visibility data
-        vis : array
+        vis : dask.array
             input visibilities to be corrected
-        out : array, optional
-            output array for visibilities
         """
 
         # check solution and vis shapes are compatible
@@ -375,26 +370,28 @@ class Scan(object):
         if solval.dtype != vis.dtype:
             logger.warn('Applying solution of type %s to visibilities of type %s',
                         solval.dtype, vis.dtype)
-        inv_solval = np.reciprocal(solval, dtype=vis.dtype)
+        inv_solval = da.reciprocal(solval, dtype=vis.dtype)
         index0 = [cp[0] for cp in self.corrprod_lookup]
         index1 = [cp[1] for cp in self.corrprod_lookup]
         correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
-        return np.multiply(vis, correction, out=out)
+        return vis * correction
 
-    def apply(self, soln, vis, out=None):
+    def apply(self, soln, vis):
         # set up more complex interpolation methods later
+        soln_values = da.from_array(soln.values, chunks=(1,) + soln.values.shape[1:])
         if soln.soltype is 'G':
             # add empty channel dimension if necessary
-            full_sol = np.expand_dims(soln.values, axis=1) \
-                if len(soln.values.shape) < 4 else soln.values
-            return self._apply(full_sol, vis, out)
+            full_sol = soln_values[:, np.newaxis, :, :] \
+                if soln_values.ndim < 4 else soln_values
+            return self._apply(full_sol, vis)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
-            g_from_k = np.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
-                              * self.channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
-            return self._apply(g_from_k, vis, out)
+            channel_freqs = da.from_array(self.channel_freqs, self.channel_freqs.shape)
+            g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
+                              * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
+            return self._apply(g_from_k, vis)
         elif soln.soltype is 'B':
-            return self._apply(soln.values, vis, out)
+            return self._apply(soln_values, vis)
         else:
             raise ValueError('Solution type is invalid.')
 
@@ -414,11 +411,10 @@ class Scan(object):
             be a new array.
         """
         modvis = self.vis
-        outvis = None
         for soln in pre_apply_solns:
             self.logger.info(
                 '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
-            modvis = outvis = self.apply(soln, modvis, out=outvis)
+            modvis = self.apply(soln, modvis)
         return modvis
 
     # ---------------------------------------------------------------------------------------------
@@ -599,7 +595,7 @@ class Scan(object):
 
         Parameters
         ----------
-        modvis : array
+        modvis : dask.array
             Input visibilities with gain corrections pre-applied
         chan_select : slice, optional
             Channel selection
@@ -613,15 +609,12 @@ class Scan(object):
 
         """
         if chan_select is None:
-            chan_select = slice(None)
+            chan_select = np.s_[:]
         if self.model is None:
             return modvis[chan_select]
         else:
-            # for single element model, divide through selected channels by model
-            if len(self.model.shape) < 2:
-                return modvis[chan_select] / self.model
-            # for model with empty channel axis, divide through selected channels by model
-            elif (self.model.shape[1] == 1):
+            # for model without channel axis divide through selected channels by model
+            if len(self.model.shape) < 2 or self.model.shape[1] == 1:
                 return modvis[chan_select] / self.model
             else:
                 # for full model, divide through selected channels by same
