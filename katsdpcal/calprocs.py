@@ -636,7 +636,7 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    if data.ndim == 4 and 0 <= axis <= 1:
+    if data.ndim == 4 and axis in (0, 1):
         sum_shape = data.shape[:axis] + data.shape[axis + 1:]
         vis = _wavg(*np.broadcast_arrays(data, flags, weights), axis=axis, sum_shape=sum_shape)
     else:
