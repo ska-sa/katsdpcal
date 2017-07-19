@@ -5,6 +5,7 @@ certifi                 # for tornado
 colorama==0.3.7         # for libtmux
 cycler==0.9.0           # for matplotlib
 Cython                  # for h5py
+dask==0.15.1
 docutils
 enum34                  # for numba
 fakeredis
