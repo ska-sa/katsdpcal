@@ -66,8 +66,8 @@ def get_tracks(data, ts, dump_period):
     for ant in ts.cal_antlist:
         sensor_name = '{}_activity'.format(ant)
         cache[sensor_name] = TelstateSensorData(ts, sensor_name)
-    num_dumps = data['max_index'][0] + 1
-    timestamps = data['times'][:num_dumps]
+    num_dumps = data['times'].shape[0]
+    timestamps = data['times']
     sensors = SensorCache(cache, timestamps, dump_period, props=SENSOR_PROPS)
     # Interpolate onto data timestamps and find dumps where all receptors track
     tracking = np.ones(num_dumps, dtype=bool)
@@ -157,19 +157,22 @@ def init_ts_params(ts):
         ts.add('cal_channel_freqs', channel_freqs, immutable=True)
 
 
-def pipeline(data, ts, task_name='pipeline'):
+def pipeline(data, ts):
     """
     Pipeline calibration
 
     Inputs
     ------
-    data : data buffer, dictionary
-    ts : telescope state, TelescopeState
-    task_name : name of pipeline task (used for logging), string
+    data : dict
+        Dictionary of data buffers. Keys `vis`, `flags` and `weights` reference
+        :class:`dask.Arrays`, while `times` references a numpy array.
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope state
 
     Returns
     -------
-    list of slices for each target track in the buffer
+    slices : list of slice
+        slices for each target track in the buffer
     """
 
     # ----------------------------------------------------------

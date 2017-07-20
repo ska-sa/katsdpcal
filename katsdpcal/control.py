@@ -3,6 +3,7 @@ import mmap
 import os
 import shutil
 import logging
+from collections import deque
 
 import spead2
 import spead2.recv.trollius
@@ -12,6 +13,7 @@ import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool
 
 import numpy as np
+import dask.array as da
 import trollius
 from trollius import From, Return
 import tornado.gen
@@ -41,8 +43,14 @@ class StopEvent(object):
 
 class BufferReadyEvent(object):
     """Indicates to the pipeline that the buffer is ready for it."""
-    def __init__(self, buffer_index):
-        self.buffer_index = buffer_index
+    def __init__(self, slots):
+        self.slots = slots
+
+
+class BufferFreeEvent(object):
+    """Indicates to the accumulator that some slots are available again."""
+    def __init__(self, slots):
+        self.slots = slots
 
 
 class SensorReadingEvent(object):
@@ -150,16 +158,13 @@ def _run_task(task):
 class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
-    def __init__(self, buffers,
-                 accum_pipeline_queue, pipeline_accum_sems,
+    def __init__(self, buffers, accum_pipeline_queue,
                  l0_endpoint, l0_interface_address, telstate):
         self.buffers = buffers
         self.telstate = telstate
         self.l0_endpoint = l0_endpoint
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
-        self.pipeline_accum_sems = pipeline_accum_sems
-        self.num_buffers = len(buffers)
 
         # Extract useful parameters from telescope state
         self.cbf_sync_time = self.telstate.cbf_sync_time
@@ -174,15 +179,21 @@ class Accumulator(object):
         self._obs_end = None
         # Unique number given to each observation
         self._index = 0
-        # Next buffer index for accumulation
-        self._current_buffer = -1
 
         # Get data shape
-        buffer_shape = buffers[0]['vis'].shape
-        self.max_length = buffer_shape[0]
+        buffer_shape = buffers['vis'].shape
+        self.max_length = buffer_shape[0] // 2   # Ensures at least double buffering
+        self.nslots = buffer_shape[0]
         self.nchan = buffer_shape[1]
         self.npol = buffer_shape[2]
         self.nbl = buffer_shape[3]
+
+        # Free space tracking
+        self._free_slots = deque(range(buffer_shape[0]))
+        self._slots_cond = trollius.Condition()  # Signalled when new slots are available
+        # Whether a capture session is active. However, it is set to false as soon as
+        # capture_done is entered, before the _run_future is actually yielded.
+        self._running = False
 
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
@@ -229,6 +240,42 @@ class Accumulator(object):
         return self._rx is not None
 
     @trollius.coroutine
+    def _next_slot(self):
+        wait_sensor = self.sensors['accumulator-last-wait']
+        with (yield From(self._slots_cond)):
+            if not self._running:
+                raise Return(None)
+            elif self._free_slots:
+                wait_sensor.set_value(0.0)
+                raise Return(self._free_slots.popleft())
+            else:
+                logger.warn('no slots available - waiting for pipeline to return buffers')
+                loop = trollius.get_event_loop()
+                now = loop.time()
+                while self._running and not self._free_slots:
+                    yield From(self._slots_cond.wait())
+                if not self._running:
+                    raise Return(None)
+                elapsed = loop.time() - now
+                logger.info('slot acquired')
+                wait_sensor.set_value(elapsed, status=katcp.Sensor.WARN)
+                raise Return(self._free_slots.popleft())
+
+    @trollius.coroutine
+    def buffer_free(self, event):
+        """Return slots to the free list.
+
+        Parameters
+        ----------
+        event : :class:`BufferFreeEvent`
+            Event listing the slots that are now available
+        """
+        with (yield From(self._slots_cond)):
+            self._free_slots.extend(event.slots)
+            if self._free_slots:
+                self._slots_cond.notify()
+
+    @trollius.coroutine
     def _run_observation(self, index):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
@@ -237,35 +284,17 @@ class Accumulator(object):
             # Initialise current buffer counter
             obs_stopped = False
             batches_sensor = self.sensors['accumulator-batches']
-            wait_sensor = self.sensors['accumulator-last-wait']
             while not obs_stopped:
-                # Increment the current buffer
-                self._current_buffer = (self._current_buffer + 1) % self.num_buffers
-                # ------------------------------------------------------------
-                # Loop through the buffers and send data to pipeline task when
-                # accumulation terminate conditions are met.
-
-                logger.info('waiting for pipeline_accum_sems[%d]', self._current_buffer)
-                loop = trollius.get_event_loop()
-                now = loop.time()
-                yield From(loop.run_in_executor(
-                    self._executor, self.pipeline_accum_sems[self._current_buffer].acquire))
-                elapsed = loop.time() - now
-                logger.info('pipeline_accum_sems[%d] acquired by %s (%.3fs)',
-                            self._current_buffer, self.name, elapsed)
-                wait_status = katcp.Sensor.NOMINAL if elapsed < 1.0 else katcp.Sensor.WARN
-                wait_sensor.set_value(elapsed, status=wait_status)
-
                 # accumulate data scan by scan into buffer arrays
-                logger.info('max buffer length %d', self.max_length)
-                logger.info('accumulating into buffer %d', self._current_buffer)
-                max_ind, obs_stopped = yield From(self.accumulate(rx, self._current_buffer))
-                logger.info('Accumulated %d timestamps', max_ind+1)
+                logger.info('max buffer length for batch: %d', self.max_length)
+                slots, obs_stopped = yield From(self.accumulate(rx))
+                logger.info('Accumulated %d timestamps', len(slots))
                 batches_sensor.set_value(batches_sensor.value() + 1)
 
                 # pass the buffer to the pipeline
-                self.accum_pipeline_queue.put(BufferReadyEvent(self._current_buffer))
-                logger.info('accum_pipeline_queue updated by %s', self.name)
+                if len(slots) > 0:
+                    self.accum_pipeline_queue.put(BufferReadyEvent(slots))
+                    logger.info('accum_pipeline_queue updated by %s', self.name)
 
             # Tell the pipeline that the observation ended, but only if there
             # was something to work on.
@@ -286,7 +315,8 @@ class Accumulator(object):
 
     def capture_init(self):
         assert self._rx is None, "observation already running"
-        assert self._run_future is None
+        assert self._run_future is None, "inconsistent state"
+        assert not self._running, "inconsistent state"
         logger.info('===========================')
         logger.info('   Starting new observation')
         self._obs_start = None
@@ -306,6 +336,7 @@ class Accumulator(object):
         logger.info('reader added')
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
+        self._running = True
         self._index += 1
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['accumulator-input-heaps'].set_value(0)
@@ -313,8 +344,15 @@ class Accumulator(object):
     @trollius.coroutine
     def capture_done(self):
         assert self._rx is not None, "observation not running"
+        assert self._run_future is not None, "inconsistent state"
+        # It is possible for _running to already be false here, because it is
+        # set to false early, while _rx and _run_future are cleared late.
         self._rx.stop()
+        self._running = False
         future = self._run_future
+        with (yield From(self._slots_cond)):
+            # Interrupts wait for free slot, if any
+            self._slots_cond.notify()
         yield From(future)
         # Protect against another observation having started while we waited to
         # be woken up again.
@@ -332,11 +370,6 @@ class Accumulator(object):
         terminated, and it does not try to wake it up; otherwise it sends
         it a stop event.
         """
-        if force:
-            # Ensure that the semaphores aren't blocked, even if the pipeline
-            # has been terminated without releasing the buffers.
-            for sem in self.pipeline_accum_sems:
-                sem.release()
         if self._run_future is not None:
             yield From(self.capture_done())
         if not force:
@@ -397,10 +430,10 @@ class Accumulator(object):
         np.take(l0, ordering, axis=1, out=out_view)
 
     @trollius.coroutine
-    def accumulate(self, rx, buffer_index):
+    def accumulate(self, rx):
         """
         Accumulates spead data into arrays, until accumulation end condition is reached:
-         * case 1 -- actitivy change (unless gain cal following target)
+         * case 1 -- activity change (unless gain cal following target)
          * case 2 -- beamformer phase up ended
          * case 3 -- buffer capacity limit reached
          * case 4 -- time limit reached (may be replaced later?)
@@ -416,13 +449,11 @@ class Accumulator(object):
         ----------
         rx : :class:`spead2.recv.trollius.Stream`
             Receiver for L0 stream
-        buffer_index : int
-            Index into :attr:`buffers` for current buffer
 
         Returns
         -------
-        array_index : int
-            Last filled position in buffer
+        slots : list
+            List of filled slot positions
         obs_stopped : bool
             Whether the return was due to stream stopping
         """
@@ -438,8 +469,8 @@ class Accumulator(object):
         prev_target_tags = 'none'
         prev_target_name = 'none'
 
-        # set data buffer for writing
-        data_buffer = self.buffers[buffer_index]
+        # list of slots that have been filled
+        slots = []
 
         # get names of activity and target TS keys, using TS reference antenna
         target_key = '{0}_target'.format(self.telstate.cal_refant,)
@@ -523,19 +554,24 @@ class Accumulator(object):
                 logger.info(' - %s (%s)', target_name, activity)
             start_flag = False
 
-            # increment the index indicating the position of the data in the buffer
-            array_index += 1
+            # Obtain a slot to copy to
+            slot = yield From(self._next_slot())
+            if slot is None:
+                logger.info('Accumulation interrupted while waiting for a slot')
+                break
+            slots.append(slot)
+
             # reshape data and put into relevent arrays
-            self._update_buffer(data_buffer['vis'][array_index],
+            self._update_buffer(self.buffers['vis'][slot],
                                 ig['correlator_data'].value, self.ordering)
-            self._update_buffer(data_buffer['flags'][array_index],
+            self._update_buffer(self.buffers['flags'][slot],
                                 ig['flags'].value, self.ordering)
             weights_channel = ig['weights_channel'].value[:, np.newaxis]
             weights = ig['weights'].value
-            self._update_buffer(data_buffer['weights'][array_index],
+            self._update_buffer(self.buffers['weights'][slot],
                                 weights * weights_channel, self.ordering)
-            data_buffer['times'][array_index] = data_ts
-            fill_sensor.set_value((array_index + 1.0) / self.max_length)
+            self.buffers['times'][slot] = data_ts
+            fill_sensor.set_value(len(slots) / self.nslots)
             heaps_sensor.set_value(heaps_sensor.value() + 1)
 
             # **************** ACCUMULATOR BREAK CONDITIONS ****************
@@ -558,7 +594,7 @@ class Accumulator(object):
                 break
 
             # CASE 3 -- end accumulation if maximum array size has been accumulated
-            if array_index >= self.max_length - 1:
+            if len(slots) >= self.max_length:
                 logger.warn('Accumulate break - buffer size limit %d', self.max_length)
                 break
 
@@ -574,9 +610,8 @@ class Accumulator(object):
             prev_target_tags = target_tags
             prev_target_name = target_name
 
-        data_buffer['max_index'][0] = array_index
         logger.info('Accumulation ended')
-        raise Return((array_index, obs_stopped))
+        raise Return((slots, obs_stopped))
 
 
 # ---------------------------------------------------------------------------------------
@@ -588,13 +623,12 @@ class Pipeline(Task):
     Task (Process or Thread) which runs pipeline
     """
 
-    def __init__(self, task_class, data,
-                 accum_pipeline_queue, pipeline_accum_sems, pipeline_report_queue, master_queue,
+    def __init__(self, task_class, buffers,
+                 accum_pipeline_queue, pipeline_report_queue, master_queue,
                  l1_endpoint, l1_level, l1_rate, telstate):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline')
-        self.data = data
+        self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
-        self.pipeline_accum_sems = pipeline_accum_sems
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
         self.l1_level = l1_level
@@ -623,20 +657,28 @@ class Pipeline(Task):
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
                 if isinstance(event, BufferReadyEvent):
-                    logger.info('buffer %d acquired by %s', event.buffer_index, self.name)
-                    # run the pipeline
+                    logger.info('buffer with %d slots acquired by %s',
+                                len(event.slots), self.name)
                     start_time = time.time()
-                    data = self.data[event.buffer_index]
+                    # set up dask arrays around the chosen slots
+                    data = {'times': self.buffers['times'][event.slots]}
+                    for key in ('vis', 'flags', 'weights'):
+                        buffer = self.buffers[key]
+                        chunks = (4096,) + buffer.shape[2:]
+                        parts = [da.from_array(buffer[slot], chunks=chunks, name=False)
+                                 for slot in event.slots]
+                        data[key] = da.stack(parts)
+                    # run the pipeline
                     self.run_pipeline(data)
                     end_time = time.time()
                     elapsed = end_time - start_time
                     self.sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
                     self.sensors['pipeline-last-slots'].set_value(
-                        data['max_index'][0] + 1, timestamp=end_time)
-                    # release condition after pipeline run finished
-                    self.pipeline_accum_sems[event.buffer_index].release()
-                    logger.info('pipeline_accum_sems[%d] release by %s',
-                                event.buffer_index, self.name)
+                        len(event.slots), timestamp=end_time)
+                    # release slots after pipeline run finished
+                    self.master_queue.put(BufferFreeEvent(event.slots))
+                    logger.info('buffer with %d slots released by %s',
+                                len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
                     self.pipeline_report_queue.put(event)
                 elif isinstance(event, StopEvent):
@@ -648,9 +690,8 @@ class Pipeline(Task):
             self.pipeline_report_queue.put(StopEvent())
 
     def run_pipeline(self, data):
-        # run pipeline calibration, if more than zero timestamps accumulated
-        target_slices = pipeline(data, self.telstate, task_name=self.name) \
-            if (data['max_index'][0] > 0) else []
+        # run pipeline calibration
+        target_slices = pipeline(data, self.telstate)
 
         # send data to L1 SPEAD if necessary
         if self.l1_level != 0:
@@ -660,17 +701,19 @@ class Pipeline(Task):
             logger.info('   Transmit L1 data')
             # for streaming all of the data (not target only),
             # use the highest index in the buffer that is filled with data
-            transmit_slices = [slice(0, data['max_index'][0] + 1)] \
-                if self.l1_level == 2 else target_slices
-            self.data_to_spead(transmit_slices, tx)
+            transmit_slices = np.s_[:] if self.l1_level == 2 else target_slices
+            self.data_to_spead(data, transmit_slices, tx)
             logger.info('   End transmit of L1 data')
 
-    def data_to_spead(self, target_slices, tx):
+    def data_to_spead(self, data, target_slices, tx):
         """
         Transmits data as SPEAD stream
 
         Parameters
         ----------
+        data : dict
+            Dictionary with keys `vis`, `flags`, and `weights` referencing dask
+            arrays, and `times` indexing a numpy array.
         target_slices : list of slices
             slices for target scans in the data buffer
         tx : :class:`spead2.send.UdpStream'
@@ -681,30 +724,28 @@ class Pipeline(Task):
         ig = spead2.send.ItemGroup(flavour=flavour)
         # set up item group with items
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                    shape=self.data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
+                    shape=data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
-        # for now, just transmit flags as placeholder for weights
+                    shape=data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
         ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=self.data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
+                    shape=data['weights'][0].shape, dtype=self.data['weights'][0].dtype)
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
 
         # transmit data
         for data_slice in target_slices:
             # get data for this scan, from the slice
-            scan_vis = self.data['vis'][data_slice]
-            scan_flags = self.data['flags'][data_slice]
-            # for now, just transmit flags as placeholder for weights
-            scan_weights = self.data['flags'][data_slice]
-            scan_times = self.data['times'][data_slice]
+            scan_vis = data['vis'][data_slice]
+            scan_flags = data['flags'][data_slice]
+            scan_weights = data['weights'][data_slice]
+            scan_times = data['times'][data_slice]
 
             # transmit data timestamp by timestamp
             for i in range(len(scan_times)):  # time axis
                 # transmit timestamps, vis, flags and weights
-                ig['correlator_data'].value = scan_vis[i]
-                ig['flags'].value = scan_flags[i]
-                ig['weights'].value = scan_weights[i]
+                ig['correlator_data'].value = scan_vis[i].compute()
+                ig['flags'].value = scan_flags[i].compute()
+                ig['weights'].value = scan_weights[i].compute()
                 ig['timestamp'].value = scan_times[i]
                 tx.send_heap(ig.get_heap())
 
@@ -971,6 +1012,8 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                 event = yield From(loop.run_in_executor(executor, self.master_queue.get))
                 if isinstance(event, StopEvent):
                     break
+                elif isinstance(event, BufferFreeEvent):
+                    yield From(self.accumulator.buffer_free(event))
                 elif isinstance(event, SensorReadingEvent):
                     try:
                         sensor = self.get_sensor(event.name)
@@ -1007,8 +1050,6 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
     data['times'] = factory(buffer_shape[0], dtype=np.float)
-    data['max_index'] = factory([1], dtype=np.int32)
-    data['max_index'][0] = 0
     return data
 
 
@@ -1028,8 +1069,6 @@ def create_server(use_multiprocessing, host, port, buffers,
     # set up inter-task synchronisation primitives.
     # passed events to indicate buffer transfer, end-of-observation, or stop
     accum_pipeline_queue = multiprocessing.Queue()
-    # signalled when the pipeline is finished with a buffer
-    pipeline_accum_sems = [multiprocessing.Semaphore(value=1) for i in range(num_buffers)]
     # signalled by pipelines when they shut down or finish an observation
     pipeline_report_queue = multiprocessing.Queue()
     # other tasks send up sensor updates
@@ -1038,7 +1077,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the pipelines (one per buffer)
     pipeline = Pipeline(
         multiprocessing.Process, buffers,
-        accum_pipeline_queue, pipeline_accum_sems, pipeline_report_queue, master_queue,
+        accum_pipeline_queue, pipeline_report_queue, master_queue,
         l1_endpoint, l1_level, l1_rate, telstate)
     # Set up the report writer
     report_writer = ReportWriter(
@@ -1057,8 +1096,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # Set up the accumulator. This is done after the other processes are
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
-        accumulator = Accumulator(buffers,
-                                  accum_pipeline_queue, pipeline_accum_sems,
+        accumulator = Accumulator(buffers, accum_pipeline_queue,
                                   l0_endpoint, l0_interface_address, telstate)
         return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
     except Exception:

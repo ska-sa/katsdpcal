@@ -72,11 +72,8 @@ def parse_opts():
     parser = katsdpservices.ArgumentParser(
         description='Set up and wait for spead stream to run the pipeline.')
     parser.add_argument(
-        '--num-buffers', type=int, default=2,
-        help='Specify the number of data buffers to use. default: 2')
-    parser.add_argument(
         '--buffer-maxsize', type=float,
-        help='The amount of memory (in bytes) to allocate to each buffer.')
+        help='The amount of memory (in bytes) to allocate for buffer.')
     parser.add_argument(
         '--no-auto', action='store_true',
         help='Pipeline data DOESNT include autocorrelations '
@@ -157,16 +154,13 @@ def setup_logger(log_name, log_path='.'):
 
 
 @trollius.coroutine
-def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
+def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         buffer_maxsize=None, auto=True,
         l0_endpoint=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
         mproc=True, param_file='', report_path='', log_path='.', full_log=None):
     """
-    Start the pipeline using 'num_buffers' buffers, each of size 'buffer_maxsize'.
-    This will instantiate num_buffers + 1 threads; a thread for each pipeline and an
-    extra accumulator thread the reads data from the spead stream into each buffer
-    seen by the pipeline.
+    Run the device server.
 
     Parameters
     ----------
@@ -182,12 +176,9 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
         Bind hostname for katcp server
     port : int
         Bind port for katcp server
-    num_buffers : int
-        The number of buffers to use- this will create a pipeline thread for each buffer
-        and an extra accumulator thread to read the spead stream.
     buffer_maxsize : float
-        The maximum size of the buffer. Memory for each buffer will be allocated at first
-        and then populated by the accumulator from the spead stream.
+        The size of the buffer. Memory for each buffer will be allocated at first
+        and then populated by the accumulator from the SPEAD stream.
     auto : bool
         True for autocorrelations included in the data, False for cross-correlations only
     l0_endpoint : endpoint
@@ -214,8 +205,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
 
     logger.info('Pipeline system input parameters')
     logger.info('   - antenna mask: %s', antenna_mask)
-    logger.info('   - number of channels: %d', cbf_n_chans)
-    logger.info('   - number of polarisation products: %d', cbf_n_pols)
+    logger.info('   - number of channels: %s', cbf_n_chans)
+    logger.info('   - number of polarisation products: %s', cbf_n_pols)
 
     # extract data shape parameters
     #   argument parser traversed TS config to find these
@@ -281,12 +272,11 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
     # get buffer size
     if buffer_maxsize is not None:
         ts.add('cal_buffer_size', buffer_maxsize)
+    elif 'cal_buffer_size' in ts:
+        buffer_maxsize = ts['cal_buffer_size']
     else:
-        if 'cal_buffer_size' in ts:
-            buffer_maxsize = ts['cal_buffer_size']
-        else:
-            buffer_maxsize = 20.0e9
-            ts.add('cal_buffer_size', buffer_maxsize)
+        buffer_maxsize = 20.0e9
+        ts.add('cal_buffer_size', buffer_maxsize)
 
     # buffer needs to include:
     #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
@@ -299,11 +289,11 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port, num_buffers=2,
     array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*ts.cbf_n_pols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Buffer size : %f GB', buffer_maxsize / 1e9)
-    logger.info('Max length of buffer array : %d', array_length)
+    logger.info('Total slots in buffer : %d', array_length)
 
     # Set up empty buffers
     buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
-    buffers = [create_buffer_arrays(buffer_shape, mproc) for i in range(num_buffers)]
+    buffers = create_buffer_arrays(buffer_shape, mproc)
 
     logger.info('Receiving L0 data from %s via %s',
                 l0_endpoint, 'default interface' if l0_interface is None else l0_interface)
@@ -369,7 +359,7 @@ def main():
         opts.telstate,
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
         host=opts.host, port=opts.port,
-        num_buffers=opts.num_buffers, buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
+        buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
         l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
         l1_endpoint=opts.l1_spectral_spead,
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,

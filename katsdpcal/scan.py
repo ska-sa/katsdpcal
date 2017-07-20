@@ -29,6 +29,8 @@ class Scan(object):
     ----------
     data : dictionary
         Buffer of correlator data. Contains arrays of visibility, flag, weight and time.
+        The `vis`, `flags` and `weights` arrays are :class:`dask.Arrays`, while `times`
+        is a numpy array.
     time_slice: slice
         Time slice of the scan in the buffer arrays.
     dump_period : float
@@ -126,20 +128,13 @@ class Scan(object):
         # data format is:   (time x channels x pol x bl).
         # set to read-only to ensure that corrections are only applied to
         # copies of the data, not the original.
-        vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
-        chunks = (1,) + vis.shape[1:]
-        self.vis = da.from_array(vis, chunks, name=False)
-        self.flags = da.from_array(
-            data['flags'][time_slice, :, 0:2, self.bl_slice], chunks, name=False)
-        self.weights = da.from_array(
-            np.ones_like(data['weights'][time_slice, :, 0:2, self.bl_slice]), chunks, name=False)
+        self.vis = data['vis'][time_slice, :, 0:2, self.bl_slice]
+        self.flags = data['flags'][time_slice, :, 0:2, self.bl_slice]
+        self.weights = data['weights'][time_slice, :, 0:2, self.bl_slice]
         # cross hand polarisations
-        self.cross_vis = da.from_array(
-            data['vis'][time_slice, :, 2:, self.bl_slice], chunks, name=False)
-        self.cross_flags = da.from_array(
-            data['flags'][time_slice, :, 2:, self.bl_slice], chunks, name=False)
-        self.cross_weights = da.from_array(
-            np.ones_like(data['weights'][time_slice, :, 2:, self.bl_slice]), chunks, name=False)
+        self.cross_vis = data['vis'][time_slice, :, 2:, self.bl_slice]
+        self.cross_flags = data['flags'][time_slice, :, 2:, self.bl_slice]
+        self.cross_weights = data['weights'][time_slice, :, 2:, self.bl_slice]
 
         self.timestamps = data['times'][time_slice]
         self.target = katpoint.Target(target)

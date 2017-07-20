@@ -297,9 +297,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.log_path)
 
         # Time, channels, pols, baselines
-        buffer_shape = (20, self.n_channels, 4, self.n_baselines // 4)
-        num_buffers = 2
-        buffers = [control.create_buffer_arrays(buffer_shape, False) for i in range(num_buffers)]
+        buffer_shape = (40, self.n_channels, 4, self.n_baselines // 4)
+        buffers = control.create_buffer_arrays(buffer_shape, False)
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             Endpoint('239.102.255.1', 7148), None,
