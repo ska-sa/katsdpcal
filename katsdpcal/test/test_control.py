@@ -440,7 +440,7 @@ class TestCalDeviceServer(unittest.TestCase):
         informs = yield self.make_request('shutdown')
         progress = [inform.arguments[0] for inform in informs]
         assert_equal(['Accumulator stopped',
-                      'Pipelines stopped',
+                      'Pipeline stopped',
                       'Report writer stopped'], progress)
         assert_equal(0, int((yield self.get_sensor('accumulator-capture-active'))))
         assert_equal(10, int((yield self.get_sensor('accumulator-input-heaps'))))
