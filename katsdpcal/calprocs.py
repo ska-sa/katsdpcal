@@ -576,35 +576,6 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     return coarse_kcross + delta_kcross
 
 
-@numba.jit(nopython=True)
-def _wavg(data, flags, weights, axis, sum_shape):
-    """Numba implementation :func:`wavg`, for the common cases of 4
-    dimensions and axis of 0 or 1.
-
-    It computes the sums of weighted visibilities and weights, ignoring
-    entries where the weighted visibility is NaN. The results are written
-    to vis_sum and weights_sum.
-
-    All arrays have the same shape, but vis_sum and weights_sum will have
-    a degenerate axis (i.e. zero stride) so that results accumulate.
-    """
-    vis_sum = np.zeros(sum_shape, data.dtype)
-    weights_sum = np.zeros(sum_shape, weights.dtype)
-    for i in range(data.shape[0]):
-        for j in range(data.shape[1]):
-            sum_idx = j if axis == 0 else i
-            for k in range(data.shape[2]):
-                for l in range(data.shape[3]):
-                    idx = (i, j, k, l)
-                    w = np.logical_not(flags[idx]) * weights[idx]
-                    v = data[idx] * w
-                    if not np.isnan(v):
-                        vis_sum[sum_idx, k, l] += v
-                        weights_sum[sum_idx, k, l] += w
-    vis_sum /= weights_sum
-    return vis_sum
-
-
 def asbool(arr):
     """View an array as boolean.
 
@@ -617,18 +588,17 @@ def asbool(arr):
         return arr.astype(np.bool_)
 
 
-def _wavg_fallback(data, flags, weights, axis):
-    """Default implementation of :func:`wavg`, for cases where the numba
-    implementation doesn't match.
+def _where(condition, x, y):
+    """Reimplementation of :func:`da.where` that doesn't suffer from
+    https://github.com/dask/dask/issues/2526, and is also faster. It
+    may not be as fully featured, however.
     """
-    flagged_weights = da.where(asbool(flags), weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = da.where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = da.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
-    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
-    return vis
+    shape = da.core.broadcast_shapes(condition.shape, x.shape, y.shape)
+    dtype = np.promote_types(x.dtype, y.dtype)
+    condition = da.broadcast_to(condition, shape)
+    x = da.broadcast_to(x, shape).astype(dtype)
+    y = da.broadcast_to(y, shape).astype(dtype)
+    return da.core.elemwise(np.where, condition, x, y, dtype=dtype)
 
 
 def wavg(data, flags, weights, times=False, axis=0):
@@ -648,12 +618,13 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    # TODO: reintegrate this with dask
-    # if data.ndim == 4 and axis in (0, 1):
-    #     sum_shape = data.shape[:axis] + data.shape[axis + 1:]
-    #     vis = _wavg(*np.broadcast_arrays(data, flags, weights), axis=axis, sum_shape=sum_shape)
-    # else:
-    vis = _wavg_fallback(data, flags, weights, axis)
+    flagged_weights = _where(flags, weights.dtype.type(0), weights)
+    weighted_data = data * flagged_weights
+    # Clear the elements that have a nan anywhere
+    isnan = da.isnan(weighted_data)
+    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
@@ -675,16 +646,15 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_weights : weighted average of weights
     """
 
-    bool_flags = asbool(flags)
-    flagged_weights = da.where(bool_flags, weights.dtype.type(0), weights)
+    flagged_weights = _where(flags, weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
     # Clear the elements that have a nan anywhere
     isnan = da.isnan(weighted_data)
-    weighted_data = da.where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = da.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
     av_weights = da.sum(flagged_weights, axis=0)
     av_data = da.sum(weighted_data, axis=0) / av_weights
-    n_flags = da.sum(bool_flags, axis=0)
+    n_flags = da.sum(asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
     return av_data, av_flags, av_weights
 
