@@ -13,7 +13,14 @@ def as_dask(arr):
     return da.from_array(arr, chunks=arr.shape)
 
 
+def unit(value):
+    return value / np.abs(value)
+
+
 class TestCalprocs(unittest.TestCase):
+    def setUp(self):
+        self.random_state = np.random.RandomState(seed=1)
+
     def test_solint_from_nominal(self):
         # requested interval shorter than dump
         self.assertEqual((4.0, 1), calprocs.solint_from_nominal(0.5, 4.0, 6))
@@ -24,7 +31,14 @@ class TestCalprocs(unittest.TestCase):
         # no way to adjust interval to evenly divide the scan
         self.assertEqual((32.0, 8), calprocs.solint_from_nominal(29.0, 4.0, 31))
 
-    def _test_stefcal(self, nants=7, delta=1e-3, noise=None):
+    def _assert_gains_equal(self, expected, actual, *args, **kwargs):
+        """Compares two sets of gains, allowing for a phase shift between
+        them that is uniform along the last dimension.
+        """
+        actual = actual * unit(expected[..., [0]]) / unit(actual[..., [0]])
+        np.testing.assert_allclose(expected, actual, *args, **kwargs)
+
+    def _test_stefcal(self, nants=7, delta=1e-3, noise=None, **kwargs):
         """Check that specified stefcal calculates gains correct to within
         specified limit (default 1e-3)
 
@@ -34,14 +48,11 @@ class TestCalprocs(unittest.TestCase):
         delta     : limit to assess gains as equal, float
         noise     : amount of noise to use noise in the simulation, optional
         """
-        rs = np.random.RandomState(seed=1)
-        vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise, random_state=rs)
+        vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise,
+                                                    random_state=self.random_state)
         # solve for gains
-        vis_and_conj = np.hstack((vis, vis.conj()))
-        calc_gains = calprocs.stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
-                             ref_ant=0, init_gain=None)
-        for i in range(len(gains)):
-            self.assertAlmostEqual(gains[i], calc_gains[i], delta=delta)
+        calc_gains = calprocs.stefcal(vis, nants, bl_ant_list, **kwargs)
+        self._assert_gains_equal(gains, calc_gains, rtol=delta)
 
     def test_stefcal(self):
         """Check that stefcal calculates gains correct to within 1e-3"""
@@ -51,7 +62,60 @@ class TestCalprocs(unittest.TestCase):
         """Check that stefcal calculates gains correct to within 1e-3, on noisy data"""
         self._test_stefcal(noise=1e-4)
 
-    def _test_stefcal_timing(self, ntimes=200, nants=7, nchans=1, noise=None):
+    def test_stefcal_scalar_weight(self):
+        """Test stefcal with a single scalar weight"""
+        self._test_stefcal(weights=2.5)
+
+    def test_stefcal_weight(self):
+        """Test stefcal with non-trivial weights."""
+        vis, bl_ant_list, gains = calprocs.fake_vis(7, random_state=self.random_state)
+        weights = self.random_state.uniform(0.5, 4.0, vis.shape)
+        # deliberate mess up one of the visibilities, but down-weight it
+        assert bl_ant_list[1, 0] != bl_ant_list[1, 1]  # Check that it isn't an autocorr
+        vis[1] = 1e6 - 1e6j
+        weights[1] = 1e-12
+        # solve for gains
+        calc_gains = calprocs.stefcal(vis, 7, bl_ant_list, weights=weights)
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
+
+    def test_stefcal_init_gain(self):
+        """Test stefcal with initial gains provided.
+
+        This is just to check that it doesn't break. It doesn't test the effect
+        on the number of iterations required.
+        """
+        init_gain = self.random_state.random_sample(7) + 1j * self.random_state.random_sample(7)
+        self._test_stefcal(init_gain=init_gain)
+
+    def test_stefcal_neg_ref_ant(self):
+        """Test stefcal with negative `ref_ant`.
+
+        This applies some normalisation to the returned phase. This doesn't
+        check that aspect, just that it doesn't break anything.
+        """
+        self._test_stefcal(ref_ant=-1)
+
+    def test_stefcal_multi_dimensional(self):
+        """Test stefcal with higher number of dimensions."""
+        vis = np.empty((4, 8, 28), np.complex128)
+        gains = np.empty((4, 8, 7), np.complex128)
+        for i in range(4):
+            for j in range(8):
+                vis[i, j], bl_ant_list, gains[i, j] = \
+                    calprocs.fake_vis(7, random_state=self.random_state)
+        calc_gains = calprocs.stefcal(vis, 7, bl_ant_list)
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
+
+    def test_stefcal_single_precision(self):
+        """Test that single precision input yields a single precision output"""
+        vis, bl_ant_list, gains = calprocs.fake_vis(7, random_state=self.random_state)
+        vis = vis.astype(np.complex64)
+        # solve for gains
+        calc_gains = calprocs.stefcal(vis, 7, bl_ant_list)
+        self.assertEqual(np.complex64, calc_gains.dtype)
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
+
+    def _test_stefcal_timing(self, ntimes=5, nants=32, nchans=8192, dtype=np.complex128, noise=None):
         """Time comparisons of the stefcal algorithms. Simulates data and solves for gains.
 
         Parameters
@@ -64,18 +128,18 @@ class TestCalprocs(unittest.TestCase):
 
         elapsed = 0.0
 
-        rs = np.random.RandomState(seed=1)
         for i in range(ntimes):
-            vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise, random_state=rs)
+            vis, bl_ant_list, gains = calprocs.fake_vis(nants, noise=noise,
+                                                        random_state=self.random_state)
+            vis = vis.astype(dtype)
             # add channel dimension, if required
             if nchans > 1:
-                vis = np.repeat(vis[:, np.newaxis], nchans, axis=1).T
-            vis_and_conj = np.concatenate((vis, vis.conj()), axis=-1)
+                vis = np.repeat(vis[np.newaxis, :], nchans, axis=0)
 
             # solve for gains
             t0 = time.time()
-            calprocs.stefcal(vis_and_conj, nants, bl_ant_list, weights=1.0, num_iters=100,
-                    ref_ant=0, init_gain=None)
+            gains = calprocs.stefcal(vis, nants, bl_ant_list, num_iters=100)
+            self.assertEqual(dtype, gains.dtype)
             t1 = time.time()
 
             elapsed += t1-t0
@@ -87,6 +151,11 @@ class TestCalprocs(unittest.TestCase):
         print '\nStefcal comparison:'
         self._test_stefcal_timing()
 
+    def test_stefcal_timing_single_precision(self):
+        """Time comparisons of the stefcal algorithms. Simulates data and solves for gains."""
+        print '\nStefcal comparison (single precision):'
+        self._test_stefcal_timing(dtype=np.complex64)
+
     def test_stefcal_timing_noise(self):
         """Time comparisons of the stefcal algorithms.
 
@@ -94,15 +163,6 @@ class TestCalprocs(unittest.TestCase):
         """
         print '\nStefcal comparison with noise:'
         self._test_stefcal_timing(noise=1e-3)
-
-    def test_stefcal_timing_chans(self):
-        """Time comparisons of the stefcal algorithms.
-
-        Simulates multi-channel data and solves for gains.
-        """
-        nchans = 600
-        print '\nStefcal comparison, {0} chans:'.format(nchans)
-        self._test_stefcal_timing(nchans=nchans)
 
 
 class TestWavg(unittest.TestCase):
