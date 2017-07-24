@@ -9,6 +9,7 @@ docutils
 enum34                  # for numba
 fakeredis
 funcsigs                # for numba
+functools32             # for matplotlib
 future                  # for katcp
 futures                 # for trollius
 h5py
@@ -34,6 +35,7 @@ scipy
 singledispatch          # for tornado
 six
 spead2
+subprocess32            # for matplotlib
 tornado                 # for katcp
 trollius
 git+ssh://git@github.com/ska-sa/katdal
