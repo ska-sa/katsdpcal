@@ -10,7 +10,6 @@ import time
 import logging
 
 import numpy as np
-import dask.array as da
 import scipy.fftpack
 import numba
 
@@ -216,7 +215,7 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
         g *= middle_angle
 
 
-def stefcal(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=0,
+def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
             init_gain=None, num_iters=30, conv_thresh=0.0001):
     """Solve for antenna gains using StEFCal.
 
@@ -270,6 +269,8 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=
     if init_gain.shape[-1] != num_ants:
         raise ValueError('initial gains have wrong length {} for number of antennas {}'.format(
             init_gain.shape[-1], num_ants))
+    if weights is None:
+        weights = rawvis.real.dtype.type(1.0)
     if not all(0 <= x < num_ants for x in corrprod_lookup.flat):
         raise ValueError('invalid antenna index in corrprod_lookup')
     if ref_ant >= num_ants:
@@ -278,45 +279,6 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=
     return _stefcal_gufunc(rawvis, corrprod_lookup[:, 0], corrprod_lookup[:, 1], weights,
                            ref_ant, init_gain, num_iters, conv_thresh)
 
-
-def stefcal_dask(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=0,
-                 init_gain=None, *args, **kwargs):
-    weights = da.asarray(weights)
-    if weights.ndim == 0:
-        weights = weights[np.newaxis]
-
-    if init_gain is None:
-        init_gain = da.ones(num_ants, dtype=rawvis.dtype, chunks=num_ants)
-    else:
-        init_gain = da.asarray(init_gain)
-
-    # label the dimensions; the reverse is to match numpy broadcasting rules
-    # where the number of dimensions don't match. The final dimension in each
-    # case is given a unique label because they do not necessarily match along
-    # that dimension.
-    rawvis_dims = list(reversed(range(rawvis.ndim)))
-    rawvis_dims[-1] = 'i'
-    weights_dims = list(reversed(range(weights.ndim)))
-    weights_dims[-1] = 'j'
-    init_gain_dims = list(reversed(range(init_gain.ndim)))
-    init_gain_dims[-1] = 'k'
-    out_dims = list(reversed(range(max(rawvis.ndim, weights.ndim, init_gain.ndim))))
-    out_dims[-1] = 'l'
-
-    # Determine the output dtype, since the gufunc has two signatures
-    if (np.can_cast(rawvis.dtype, np.complex64)
-        and np.can_cast(weights.dtype, np.float32)
-        and np.can_cast(init_gain, np.complex64)):
-        dtype = np.complex64
-    else:
-        dtype = np.complex128
-
-    def stefcal_wrapper(rawvis, weights, init_gain):
-        return stefcal(rawvis, num_ants, corrprod_lookup, weights, ref_ant, init_gain,
-                       *args, **kwargs)
-    return da.atop(stefcal_wrapper, out_dims,
-                   rawvis, rawvis_dims, weights, weights_dims, init_gain, init_gain_dims,
-                   concatenate=True, new_axes={'l': num_ants}, dtype=dtype)
 
 # --------------------------------------------------------------------------------------------------
 # --- Calibration helper functions
@@ -600,122 +562,6 @@ def asbool(arr):
         return arr.astype(np.bool_)
 
 
-def _where(condition, x, y):
-    """Reimplementation of :func:`da.where` that doesn't suffer from
-    https://github.com/dask/dask/issues/2526, and is also faster. It
-    may not be as fully featured, however.
-    """
-    shape = da.core.broadcast_shapes(condition.shape, x.shape, y.shape)
-    dtype = np.promote_types(x.dtype, y.dtype)
-    condition = da.broadcast_to(condition, shape)
-    x = da.broadcast_to(x, shape).astype(dtype)
-    y = da.broadcast_to(y, shape).astype(dtype)
-    return da.core.elemwise(np.where, condition, x, y, dtype=dtype)
-
-
-def wavg(data, flags, weights, times=False, axis=0):
-    """
-    Perform weighted average of data, applying flags,
-    over specified axis
-
-    Parameters
-    ----------
-    data    : array of complex
-    flags   : array of uint8 or boolean
-    weights : array of floats
-    times   : array of times. If times are given, average times are returned
-    axis    : axis to average over
-
-    Returns
-    -------
-    vis, times : weighted average of data and, optionally, times
-    """
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
-    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
-    return vis if times is False else (vis, np.average(times, axis=axis))
-
-
-def wavg_full(data, flags, weights, threshold=0.3):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 0.
-
-    Parameters
-    ----------
-    data       : array of complex
-    flags      : array of uint8 or boolean
-    weights    : array of floats
-
-    Returns
-    -------
-    av_data    : weighted average of data
-    av_flags   : weighted average of flags
-    av_weights : weighted average of weights
-    """
-
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
-    av_weights = da.sum(flagged_weights, axis=0)
-    av_data = da.sum(weighted_data, axis=0) / av_weights
-    n_flags = da.sum(asbool(flags), axis=0)
-    av_flags = n_flags > flags.shape[0] * threshold
-    return av_data, av_flags, av_weights
-
-
-def wavg_full_t(data, flags, weights, solint, times=None):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 0, for specified
-    solution interval increments
-
-    Parameters
-    ----------
-    data       : array of complex
-    flags      : array of boolean
-    weights    : array of floats
-    solint     : index interval over which to average, integer
-    times      : optional array of times to average, array of floats
-
-    Returns
-    -------
-    av_data    : weighted average of data
-    av_flags   : weighted average of flags
-    av_weights : weighted average of weights
-    av_times   : optional average of times
-    """
-    # ensure solint is an intager
-    solint = np.int(solint)
-    inc_array = range(0, data.shape[0], solint)
-
-    av_data = []
-    av_flags = []
-    av_weights = []
-    # TODO: might be more efficient to use reduceat?
-    for ti in inc_array:
-        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint])
-        av_data.append(w_out[0])
-        av_flags.append(w_out[1])
-        av_weights.append(w_out[2])
-    av_data = da.stack(av_data)
-    av_flags = da.stack(av_flags)
-    av_weights = da.stack(av_weights)
-
-    if np.any(times):
-        av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])
-        return av_data, av_flags, av_weights, av_times
-    else:
-        return av_data, av_flags, av_weights
-
-
 def solint_from_nominal(solint, dump_period, num_times):
     """
     Given nominal solint, modify it by up to 20percent to optimally fit the scan length
@@ -980,9 +826,16 @@ def get_bls_lookup(antlist, bls_ordering):
 # --- Simulation
 # --------------------------------------------------------------------------------------------------
 
-def fake_vis(nants=7, gains=None, noise=None, random_state=None):
-    """Create fake point source visibilities, corrupted by given or random gains"""
+def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
+    """Create fake point source visibilities, corrupted by given or random gains. The
+    final dimension of `shape` corresponds to the number of antennas.
+    """
     # create antenna lists
+    if isinstance(shape, (int, long)):
+        shape = (shape,)
+    shape = tuple(shape)
+    nants = shape[-1]
+
     antlist = range(nants)
     list1 = np.array([])
     for a, i in enumerate(range(nants - 1, 0, -1)):
@@ -1001,14 +854,16 @@ def fake_vis(nants=7, gains=None, noise=None, random_state=None):
     if random_state is None:
         random_state = np.random
     if gains is None:
-        gains = random_state.random_sample(nants) + 1j * random_state.random_sample(nants)
+        gains = random_state.random_sample(shape) + 1j * random_state.random_sample(shape)
+    else:
+        assert shape == gains.shape
 
     # create fake corrupted visibilities
     nbl = nants * (nants + 1) // 2
-    vis = np.ones([nbl], gains.dtype)
+    vis = np.ones(tuple(shape[:-1]) + (nbl,), gains.dtype)
     # corrupt vis with gains
-    for i, j in zip(list1, list2):
-        vis[(list1 == i) & (list2 == j)] *= gains[i] * gains[j].conj()
+    for i, (a, b) in enumerate(zip(list1, list2)):
+        vis[..., i] *= gains[..., a] * gains[..., b].conj()
     # if requested, corrupt vis with noise
     if noise is not None:
         vis_noise = random_state.standard_normal(vis.shape) * noise

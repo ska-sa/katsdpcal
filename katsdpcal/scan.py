@@ -11,7 +11,7 @@ import scipy.interpolate
 
 import katpoint
 
-from . import calprocs
+from . import calprocs, calprocs_dask
 from .calprocs import CalSolution
 
 logger = logging.getLogger(__name__)
@@ -215,11 +215,11 @@ class Scan(object):
 
         # first averge in time over solution interval, for specified channel
         # range (no averaging over channel)
-        ave_vis, ave_flags, ave_weights, ave_times = calprocs.wavg_full_t(
+        ave_vis, ave_flags, ave_weights, ave_times = calprocs_dask.wavg_full_t(
             fitvis, self.flags[chan_slice],
             self.weights[chan_slice], dumps_per_solint, times=self.timestamps)
         # secondly, average channels
-        ave_vis = calprocs.wavg(ave_vis, ave_flags, ave_weights, axis=1)
+        ave_vis = calprocs_dask.wavg(ave_vis, ave_flags, ave_weights, axis=1)
         # solve for gain
         g_soln = calprocs.g_fit(ave_vis.compute(), self.corrprod_lookup, g0, self.refant, **kwargs)
 
@@ -252,7 +252,7 @@ class Scan(object):
             if echan == 0:
                 echan = None
             chan_slice = np.s_[:, bchan:echan, :, :]
-            av_vis, av_flags, av_weights = calprocs.wavg_full(
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
                 modvis[chan_slice], self.cross_flags[chan_slice],
                 self.cross_weights[chan_slice])
 
@@ -302,8 +302,9 @@ class Scan(object):
             fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
 
         # average over all time, for specified channel range (no averaging over channel)
-        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags[chan_slice], self.weights[chan_slice],
-                                          times=self.timestamps, axis=0)
+        ave_vis, ave_time = calprocs_dask.wavg(fitvis, self.flags[chan_slice],
+                                               self.weights[chan_slice], times=self.timestamps,
+                                               axis=0)
         # fit for delay
         k_soln = calprocs.k_fit(ave_vis.compute(), self.corrprod_lookup, k_freqs, self.refant,
                                 chan_sample=chan_sample)
@@ -331,8 +332,8 @@ class Scan(object):
         fitvis = self._get_solver_model(modvis)
 
         # first average in time
-        ave_vis, ave_time = calprocs.wavg(fitvis, self.flags, self.weights, times=self.timestamps,
-                                          axis=0)
+        ave_vis, ave_time = calprocs_dask.wavg(fitvis, self.flags, self.weights,
+                                               times=self.timestamps, axis=0)
         # solve for bandpass
         b_soln = calprocs.bp_fit(ave_vis.compute(), self.corrprod_lookup, bp0)
 
