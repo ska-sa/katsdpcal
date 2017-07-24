@@ -249,13 +249,6 @@ def pipeline(data, ts):
             continue
         logger.info('  Tags:       {0}'.format(taglist,))
 
-        # if we only have one or two timestamps in the scan, ignore it
-        # (a single timestamp can happen when there is no slew between tracks
-        # so we catch the first dump of the next track).
-        if n_times < 3:
-            logger.info('Scan too short (only 1 or 2 timestamps) - ignored')
-            continue
-
         # ---------------------------------------
         # set up scan
         s = Scan(data, scan_slice, dump_period, n_ants, n_pols, ts.cal_bls_lookup, target,
