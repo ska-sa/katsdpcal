@@ -111,7 +111,8 @@ class TestCalprocs(unittest.TestCase):
         self.assertEqual(np.complex64, calc_gains.dtype)
         self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
 
-    def _test_stefcal_timing(self, ntimes=5, nants=32, nchans=8192, dtype=np.complex128, noise=None):
+    def _test_stefcal_timing(self, ntimes=5, nants=32, nchans=8192, dtype=np.complex128,
+                             noise=False, dask=False):
         """Time comparisons of the stefcal algorithms. Simulates data and solves for gains.
 
         Parameters
@@ -120,6 +121,7 @@ class TestCalprocs(unittest.TestCase):
         nants  : number of antennas to use in the simulation, int
         nchans : number of channel to use in the simulation, int
         noise  : whether to use noise in the simulation, boolean
+        dask   : whether to use dask
         """
 
         elapsed = 0.0
@@ -132,11 +134,22 @@ class TestCalprocs(unittest.TestCase):
             if nchans > 1:
                 vis = np.repeat(vis[np.newaxis, :], nchans, axis=0)
 
+            # convert to dask array, if appropriate, with a small enough chunk size
+            # that it should be possible to get parallel gains.
+            if dask:
+                if nchans > 1:
+                    vis = da.from_array(vis, chunks=(max(nchans // 32, 1), vis.shape[-1]))
+                else:
+                    vis = da.asarray(vis)
+
             # solve for gains
             t0 = time.time()
-            gains = calprocs.stefcal(vis, nants, bl_ant_list, num_iters=100)
-            self.assertEqual(dtype, gains.dtype)
+            if dask:
+                gains = calprocs.stefcal_dask(vis, nants, bl_ant_list, num_iters=100).compute()
+            else:
+                gains = calprocs.stefcal(vis, nants, bl_ant_list, num_iters=100)
             t1 = time.time()
+            self.assertEqual(dtype, gains.dtype)
 
             elapsed += t1-t0
 
@@ -152,6 +165,11 @@ class TestCalprocs(unittest.TestCase):
         print '\nStefcal comparison (single precision):'
         self._test_stefcal_timing(dtype=np.complex64)
 
+    def test_stefcal_timing_single_precision_dask(self):
+        """Time comparisons of the stefcal algorithms. Simulates data and solves for gains."""
+        print '\nStefcal comparison (single precision, dask):'
+        self._test_stefcal_timing(dtype=np.complex64, dask=True)
+
     def test_stefcal_timing_noise(self):
         """Time comparisons of the stefcal algorithms.
 
@@ -159,6 +177,38 @@ class TestCalprocs(unittest.TestCase):
         """
         print '\nStefcal comparison with noise:'
         self._test_stefcal_timing(noise=1e-3)
+
+    def test_stefcal_dask(self):
+        """Test :meth:`stefcal_dask`."""
+        vis, bl_ant_list, gains = calprocs.fake_vis(7, random_state=self.random_state)
+        vis = da.asarray(vis)
+        # solve for gains
+        calc_gains = calprocs.stefcal_dask(vis, 7, bl_ant_list).compute()
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
+
+    def test_stefcal_dask_multi_dimensional(self):
+        """Test stefcal with higher number of dimensions.
+
+        Also tests broadcasting of weights and initial gains, and different
+        chunking.
+        """
+        vis = np.empty((4, 8, 28), np.complex128)
+        gains = np.empty((4, 8, 7), np.complex128)
+        weights = self.random_state.uniform(0.5, 4.0, (4, 1, 28))
+        init_gain = self.random_state.standard_normal((8, 7)) \
+                + 1j * self.random_state.standard_normal((8, 7))
+        for i in range(4):
+            for j in range(8):
+                vis[i, j], bl_ant_list, gains[i, j] = \
+                    calprocs.fake_vis(7, random_state=self.random_state)
+
+        vis = da.from_array(vis, chunks=(2, 5, 17))
+        weights = da.from_array(weights, chunks=(3, 1, 28))
+        init_gain = da.from_array(init_gain, chunks=(4, 2))
+
+        calc_gains = calprocs.stefcal_dask(vis, 7, bl_ant_list).compute()
+                                           #weights=weights, init_gain=init_gain).compute()
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
 
 
 class TestWavg(unittest.TestCase):

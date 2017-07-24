@@ -296,7 +296,8 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=
     if init_gain is None:
         init_gain = np.ones(num_ants, rawvis.dtype)
     if init_gain.shape[-1] != num_ants:
-        raise ValueError('initial gains have wrong length for number of antennas')
+        raise ValueError('initial gains have wrong length {} for number of antennas {}'.format(
+            init_gain.shape[-1], num_ants))
     if not all(0 <= x < num_ants for x in corrprod_lookup.flat):
         raise ValueError('invalid antenna index in corrprod_lookup')
     if ref_ant >= num_ants:
@@ -305,6 +306,45 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=
     return _stefcal_gufunc(rawvis, corrprod_lookup[:, 0], corrprod_lookup[:, 1], weights,
                            ref_ant, init_gain, num_iters, conv_thresh)
 
+
+def stefcal_dask(rawvis, num_ants, corrprod_lookup, weights=np.float32(1.0), ref_ant=0,
+                 init_gain=None, *args, **kwargs):
+    weights = da.asarray(weights)
+    if weights.ndim == 0:
+        weights = weights[np.newaxis]
+
+    if init_gain is None:
+        init_gain = da.ones(num_ants, dtype=rawvis.dtype, chunks=num_ants)
+    else:
+        init_gain = da.asarray(init_gain)
+
+    # label the dimensions; the reverse is to match numpy broadcasting rules
+    # where the number of dimensions don't match. The final dimension in each
+    # case is given a unique label because they do not necessarily match along
+    # that dimension.
+    rawvis_dims = list(reversed(range(rawvis.ndim)))
+    rawvis_dims[-1] = 'i'
+    weights_dims = list(reversed(range(weights.ndim)))
+    weights_dims[-1] = 'j'
+    init_gain_dims = list(reversed(range(init_gain.ndim)))
+    init_gain_dims[-1] = 'k'
+    out_dims = list(reversed(range(max(rawvis.ndim, weights.ndim, init_gain.ndim))))
+    out_dims[-1] = 'l'
+
+    # Determine the output dtype, since the gufunc has two signatures
+    if (np.can_cast(rawvis.dtype, np.complex64)
+        and np.can_cast(weights.dtype, np.float32)
+        and np.can_cast(init_gain, np.complex64)):
+        dtype = np.complex64
+    else:
+        dtype = np.complex128
+
+    def stefcal_wrapper(rawvis, weights, init_gain):
+        return stefcal(rawvis, num_ants, corrprod_lookup, weights, ref_ant, init_gain,
+                       *args, **kwargs)
+    return da.atop(stefcal_wrapper, out_dims,
+                   rawvis, rawvis_dims, weights, weights_dims, init_gain, init_gain_dims,
+                   concatenate=True, new_axes={'l': num_ants}, dtype=dtype)
 
 # --------------------------------------------------------------------------------------------------
 # --- Calibration helper functions
