@@ -160,34 +160,6 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_
 # --------------------------------------------------------------------------------------------------
 
 
-def get_bl_ant_pairs(corrprod_lookup):
-    """
-    Get antenna lists in solver format, from `corrprod_lookup`
-
-    Inputs:
-    -------
-    corrprod_lookup : array
-        lookup table of antenna indices for each baseline, array shape(nant,2)
-
-    Returns:
-    --------
-    antlist1, antlist2 : list
-        lists of antennas matching the correlation_product lookup table,
-        appended with their conjugates (format required by stefcal)
-    """
-
-    # NOTE: no longer need hh and vv masks as we re-ordered the data to be
-    # ntime x nchan x nbl x npol
-
-    # get antenna number lists for stefcal - need vis then vis.conj (assume
-    # constant over an observation)
-    # assume same for hh and vv
-    antlist1 = np.concatenate((corrprod_lookup[:, 0], corrprod_lookup[:, 1]))
-    antlist2 = np.concatenate((corrprod_lookup[:, 1], corrprod_lookup[:, 0]))
-
-    return antlist1, antlist2
-
-
 @numba.guvectorize(['c8[:], int_[:], int_[:], f4[:], int_[:], c8[:], int_[:], f4[:], c8[:]',
                     'c16[:], int_[:], int_[:], f8[:], int_[:], c16[:], int_[:], f8[:], c16[:]'],
                    '(n),(n),(n),(n),(),(a),(),()->(a)', nopython=True)
