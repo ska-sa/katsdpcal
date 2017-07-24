@@ -519,7 +519,7 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
 def asbool(arr):
     """View an array as boolean.
 
-    If possible it simply returns a value, otherwise a copy. It works on both
+    If possible it simply returns a view, otherwise a copy. It works on both
     dask and numpy arrays.
     """
     if arr.dtype in (np.uint8, np.int8, np.bool_):
