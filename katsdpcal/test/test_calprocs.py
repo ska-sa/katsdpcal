@@ -9,10 +9,6 @@ import dask.array as da
 from katsdpcal import calprocs
 
 
-def as_dask(arr):
-    return da.from_array(arr, chunks=arr.shape)
-
-
 def unit(value):
     return value / np.abs(value)
 
@@ -187,7 +183,7 @@ class TestWavg(unittest.TestCase):
         expected[0, 1, 1] = 5.6 + 0.2j
         expected[3, 2, 2] = np.nan
         expected[4, 0, 3] = np.nan
-        actual = calprocs.wavg(as_dask(self.data), as_dask(self.flags), as_dask(self.weights))
+        actual = calprocs.wavg(da.asarray(self.data), da.asarray(self.flags), da.asarray(self.weights))
         self.assertEqual(np.complex64, actual.dtype)
         np.testing.assert_allclose(expected, actual, rtol=1e-6)
 

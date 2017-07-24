@@ -381,7 +381,7 @@ class Scan(object):
             return self._apply(full_sol, vis)
         elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
-            channel_freqs = da.from_array(self.channel_freqs, self.channel_freqs.shape)
+            channel_freqs = da.asarray(self.channel_freqs)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis)
