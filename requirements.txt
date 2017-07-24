@@ -37,8 +37,8 @@ scipy
 singledispatch          # for tornado
 six
 spead2
-toolz==0.8.2            # for dask
 subprocess32            # for matplotlib
+toolz==0.8.2            # for dask
 tornado                 # for katcp
 trollius
 git+ssh://git@github.com/ska-sa/katdal
