@@ -3,39 +3,39 @@ backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
 certifi                 # for tornado
 colorama==0.3.7         # for libtmux
-cycler==0.9.0           # for matplotlib
+cycler                  # for matplotlib
 Cython                  # for h5py
 docutils
 enum34                  # for numba
 fakeredis
 funcsigs                # for numba
-future==0.16.0          # for katcp
+future                  # for katcp
 futures                 # for trollius
 h5py
+katcp
 kaptan==0.5.8           # for tmuxp
 libtmux==0.6.0
-llvmlite==0.19.0        # for numba
+llvmlite                # for numba
 manhole
-matplotlib==1.5.1
+matplotlib
 netifaces
-numba==0.34             # contains some multithreading fixes not in the katsdpdockerbase version yet
-numpy==1.13.1           # needs at least 1.12, which is newer than katsdpdockerbase
+numba
+numpy
 pkginfo
 ply                     # for katcp
 pyephem
-pyparsing==2.0.7        # for matplotlib
+pyparsing
 python-casacore==2.0.0
-python-dateutil==2.4.2  # for matplotlib
-pytz==2015.7            # for matplotlib
+python-dateutil
+pytz
 PyYAML==3.11
 redis
-scipy==0.19.1           # version pinned because katsdpdockerbase version is too old (for now)
+scipy
 singledispatch          # for tornado
 six
 spead2
 tornado                 # for katcp
 trollius
-git+ssh://git@github.com/ska-sa/katcp-python#egg=katcp    # Needs features not present in 0.6.1
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
