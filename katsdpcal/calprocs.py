@@ -376,7 +376,7 @@ def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
-    bp = stefcal(data, n_ants, corrprod_lookup, weights=1.0, num_iters=100,
+    bp = stefcal(data, n_ants, corrprod_lookup, num_iters=100,
                  init_gain=bp0, **kwargs)
     # centre the phase on zero
     centre_rotation = np.exp(-1.0j * np.nanmedian(np.angle(bp), axis=0))
