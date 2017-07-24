@@ -315,40 +315,6 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
-    """
-    Fit bandpass to visibility data.
-    The bandpass phase is centred on zero.
-
-    Parameters
-    ----------
-    data : array of complex, shape(num_chans, num_pols, baselines)
-    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
-    corrprod_lookup : antenna mappings, for first then second antennas in bl pair
-    refant : reference antenna
-    normalise : bool, True to normalise the bandpass amplitude
-
-    Returns
-    -------
-    bpass : Bandpass, shape(num_chans, num_pols, num_ants)
-    """
-
-    n_ants = ants_from_bllist(corrprod_lookup)
-    n_chans = data.shape[0]
-
-    # -----------------------------------------------------
-    # solve for the bandpass over the channel range
-    bp = stefcal(data, n_ants, corrprod_lookup, num_iters=100,
-                 init_gain=bp0, **kwargs)
-    # centre the phase on zero
-    centre_rotation = np.exp(-1.0j * np.nanmedian(np.angle(bp), axis=0))
-    rotated_bp = bp * centre_rotation
-    # normalise bandpasses by dividing through by the average
-    if normalise:
-        rotated_bp /= (np.nansum(np.abs(rotated_bp), axis=0) / n_chans)
-    return rotated_bp
-
-
 def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
     """
     Fit delay (phase slope across frequency) to visibility data.

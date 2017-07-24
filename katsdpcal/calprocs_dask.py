@@ -179,3 +179,43 @@ def wavg_full_t(data, flags, weights, solint, times=None):
         return av_data, av_flags, av_weights, av_times
     else:
         return av_data, av_flags, av_weights
+
+
+def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
+    """
+    Fit bandpass to visibility data.
+    The bandpass phase is centred on zero.
+
+    Parameters
+    ----------
+    data : array of complex, shape(num_chans, num_pols, baselines)
+    bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
+    corrprod_lookup : antenna mappings, for first then second antennas in bl pair
+    refant : reference antenna
+    normalise : bool, True to normalise the bandpass amplitude
+
+    Returns
+    -------
+    bpass : Bandpass, shape(num_chans, num_pols, num_ants)
+    """
+
+    n_ants = calprocs.ants_from_bllist(corrprod_lookup)
+    n_chans = data.shape[0]
+
+    # -----------------------------------------------------
+    # solve for the bandpass over the channel range
+    bp = stefcal(data, n_ants, corrprod_lookup, num_iters=100,
+                 init_gain=bp0, **kwargs)
+    # centre the phase on zero
+    angle = da.angle(bp)
+    base_angle = da.nanmin(angle, axis=0) - np.pi
+    # angle relative to base_angle, wrapped to range [0, 2pi], with
+    # some data point sitting at pi.
+    rel_angle = da.fmod(angle - base_angle, 2 * np.pi)
+    mid_angle = da.mean(rel_angle, axis=0) + base_angle
+    centre_rotation = da.exp(-1.0j * mid_angle)
+    rotated_bp = bp * centre_rotation
+    # normalise bandpasses by dividing through by the average
+    if normalise:
+        rotated_bp /= (da.nansum(da.absolute(rotated_bp), axis=0) / n_chans)
+    return rotated_bp

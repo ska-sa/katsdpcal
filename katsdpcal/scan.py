@@ -335,7 +335,7 @@ class Scan(object):
         ave_vis, ave_time = calprocs_dask.wavg(fitvis, self.flags, self.weights,
                                                times=self.timestamps, axis=0)
         # solve for bandpass
-        b_soln = calprocs.bp_fit(ave_vis.compute(), self.corrprod_lookup, bp0)
+        b_soln = calprocs_dask.bp_fit(ave_vis, self.corrprod_lookup, bp0).compute()
 
         return CalSolution('B', b_soln, ave_time)
 
