@@ -14,6 +14,7 @@ from katcp.kattypes import request, return_reply, concurrent_reply, Bool
 
 import numpy as np
 import dask.array as da
+import dask.diagnostics
 import trollius
 from trollius import From, Return
 import tornado.gen
@@ -625,7 +626,8 @@ class Pipeline(Task):
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_report_queue, master_queue,
-                 l1_endpoint, l1_level, l1_rate, telstate):
+                 l1_endpoint, l1_level, l1_rate, telstate,
+                 diagnostics_file=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline')
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -634,6 +636,7 @@ class Pipeline(Task):
         self.l1_level = l1_level
         self.l1_rate = l1_rate
         self.l1_endpoint = l1_endpoint
+        self.diagnostics_file = diagnostics_file
 
     def get_sensors(self):
         return [
@@ -652,7 +655,16 @@ class Pipeline(Task):
         """
 
         # run until stop event received
+        profilers = []
         try:
+            if self.diagnostics_file is not None:
+                profilers = [
+                    dask.diagnostics.Profiler(),
+                    dask.diagnostics.ResourceProfiler(),
+                    dask.diagnostics.CacheProfiler()]
+                for profiler in profilers:
+                    profiler.clear()    # Bug workaround
+                    profiler.register()
             while True:
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
@@ -686,8 +698,19 @@ class Pipeline(Task):
                     break
                 else:
                     logger.error('unknown event type %r by %s', event, self.name)
+            if self.diagnostics_file is not None:
+                # If nothing has run, visualize throws an AttributeError
+                if all(hasattr(profiler, 'results') for profiler in profilers):
+                    dask.diagnostics.visualize(
+                        profilers, file_path=self.diagnostics_file, show=False)
+                    logger.info('wrote diagnostics to %s', self.diagnostics_file)
+                else:
+                    logger.warn('not writing %s because there are no results',
+                                self.diagnostics_file)
         finally:
             self.pipeline_report_queue.put(StopEvent())
+            for profiler in profilers:
+                profiler.unregister()
 
     def run_pipeline(self, data):
         # run pipeline calibration
@@ -1056,7 +1079,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_endpoint, l0_interface_address,
                   l1_endpoint, l1_level, l1_rate, telstate,
-                  report_path, log_path, full_log):
+                  report_path, log_path, full_log, diagnostics_file=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
         logger.info("Using multiprocessing")
@@ -1078,7 +1101,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         multiprocessing.Process, buffers,
         accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l1_endpoint, l1_level, l1_rate, telstate)
+        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file)
     # Set up the report writer
     report_writer = ReportWriter(
         multiprocessing.Process, pipeline_report_queue, master_queue, telstate,

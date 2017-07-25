@@ -121,6 +121,9 @@ def parse_opts():
         '--log-path', type=str, default=os.path.abspath('.'),
         help='Path under which to save pipeline logs. [default: current directory]')
     parser.add_argument(
+        '--dask-diagnostics', type=str, metavar='FILENAME.HTML',
+        help='Write a file with dask diagnostics (requires bokeh). [default: none]')
+    parser.add_argument(
         '--port', '-p', type=int, default=2048, help='katcp host port [%(default)s]')
     parser.add_argument(
         '--host', '-a', type=str, default='', help='katcp host address [all hosts]')
@@ -158,7 +161,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         buffer_maxsize=None, auto=True,
         l0_endpoint=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
-        mproc=True, param_file='', report_path='', log_path='.', full_log=None):
+        mproc=True, param_file='', report_path='', log_path='.', full_log=None,
+        diagnostics_file=None):
     """
     Run the device server.
 
@@ -193,12 +197,14 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         Data to transmit to L1: 0 - none, 1 - target only, 2 - all
     mproc : bool
         True for control via multiprocessing, False for control via threading
-    param_file : string
+    param_file : str
         File of default pipeline parameters
-    report_path : string
+    report_path : str
         Path under which to save pipeline report
-    log_path : string
+    log_path : str
         Path for pipeline logs
+    diagnostics_file : str
+        Path to write dask diagnostics
     """
     ioloop = AsyncIOMainLoop()
     ioloop.install()
@@ -308,7 +314,7 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     server = create_server(mproc, host, port, buffers,
                            l0_endpoint, l0_interface_address,
                            l1_endpoint, l1_level, l1_rate, ts,
-                           report_path, log_path, full_log)
+                           report_path, log_path, full_log, diagnostics_file)
     with server:
         ioloop.add_callback(server.start)
 
@@ -364,7 +370,8 @@ def main():
         l1_endpoint=opts.l1_spectral_spead,
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
         param_file=opts.parameter_file,
-        report_path=opts.report_path, log_path=log_path, full_log=log_name))
+        report_path=opts.report_path, log_path=log_path, full_log=log_name,
+        diagnostics_file=opts.dask_diagnostics))
 
 
 if __name__ == '__main__':
