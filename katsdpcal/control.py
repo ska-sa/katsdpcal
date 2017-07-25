@@ -650,21 +650,32 @@ class Pipeline(Task):
         ]
 
     def run(self):
-        """
-        Task (Process or Thread) run method. Runs pipeline
-        """
+        """Task (Process or Thread) run method. Runs pipeline
 
+        This is a wrapper around :meth:`_run` which just handles the
+        diagnostics option.
+        """
+        if self.diagnostics_file is not None:
+            profilers = [
+                dask.diagnostics.Profiler(),
+                dask.diagnostics.ResourceProfiler(),
+                dask.diagnostics.CacheProfiler()]
+            with profilers[0], profilers[1], profilers[2]:
+                self._run_impl()
+            dask.diagnostics.visualize(
+                profilers, file_path=self.diagnostics_file, show=False)
+            logger.info('wrote diagnostics to %s', self.diagnostics_file)
+        else:
+            self._run_impl()
+
+    def _run_impl(self):
+        """
+        Real implementation of :meth:`_run`.
+
+        Note: do not call this `_run`, since that is a method of the base class.
+        """
         # run until stop event received
-        profilers = []
         try:
-            if self.diagnostics_file is not None:
-                profilers = [
-                    dask.diagnostics.Profiler(),
-                    dask.diagnostics.ResourceProfiler(),
-                    dask.diagnostics.CacheProfiler()]
-                for profiler in profilers:
-                    profiler.clear()    # Bug workaround
-                    profiler.register()
             while True:
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
@@ -698,19 +709,8 @@ class Pipeline(Task):
                     break
                 else:
                     logger.error('unknown event type %r by %s', event, self.name)
-            if self.diagnostics_file is not None:
-                # If nothing has run, visualize throws an AttributeError
-                if all(hasattr(profiler, 'results') for profiler in profilers):
-                    dask.diagnostics.visualize(
-                        profilers, file_path=self.diagnostics_file, show=False)
-                    logger.info('wrote diagnostics to %s', self.diagnostics_file)
-                else:
-                    logger.warn('not writing %s because there are no results',
-                                self.diagnostics_file)
         finally:
             self.pipeline_report_queue.put(StopEvent())
-            for profiler in profilers:
-                profiler.unregister()
 
     def run_pipeline(self, data):
         # run pipeline calibration
