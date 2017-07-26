@@ -479,3 +479,53 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(1, len(cal_product_K))
         ret_K, ret_K_ts = cal_product_K[0]
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
+
+    @async_test
+    @tornado.gen.coroutine
+    def test_buffer_wrap(self):
+        """Test capture with more heaps than buffer slots, to check that it handles
+        wrapping around the end of the buffer.
+        """
+        vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
+        weights = np.ones(vis.shape, np.uint8)
+        weights_channel = np.ones((self.n_channels,), np.float32)
+        flags = np.zeros(vis.shape, np.uint8)
+        ts = 0
+        n_times = 90
+        for i in range(n_times):
+            self.heaps.append({
+                'correlator_data': vis,
+                'flags': flags,
+                'weights': weights,
+                'weights_channel': weights_channel,
+                'timestamp': ts
+            })
+            ts += self.telstate.sdp_l0_int_time
+        # Add a target change at an uneven time, so that the batches won't
+        # neatly align with the buffer end. We also have to fake a slew to make
+        # it work, since the batcher assumes that target cannot change without
+        # an activity change (TODO: it probably shouldn't assume this).
+        target = 'dummy, radec target, 13:30:00.00, +30:30:00.0'
+        slew_start = self.telstate.cbf_sync_time + 12.5 * self.telstate.sdp_l0_int_time
+        slew_end = slew_start + 2 * self.telstate.sdp_l0_int_time
+        for antenna in self.antennas:
+            self.telstate.add('{}_target'.format(antenna), target, ts=slew_start)
+            self.telstate.add('{}_activity'.format(antenna), 'slew', ts=slew_start)
+            self.telstate.add('{}_activity'.format(antenna), 'track', ts=slew_end)
+        # Start the capture
+        yield self.make_request('capture-init')
+        # Wait until all the heaps have been delivered, timing out eventually.
+        # This will take a while because it needs to allow the pipeline to run.
+        for i in range(60):
+            print('waiting', i)
+            yield tornado.gen.sleep(0.5)
+            heaps = int((yield self.get_sensor('accumulator-input-heaps')))
+            if heaps == n_times:
+                break
+        else:
+            raise RuntimeError('Timed out waiting for the heaps to be received')
+        informs = yield self.make_request('shutdown')
+        progress = [inform.arguments[0] for inform in informs]
+        assert_equal(['Accumulator stopped',
+                      'Pipeline stopped',
+                      'Report writer stopped'], progress)

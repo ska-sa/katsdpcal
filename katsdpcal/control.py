@@ -281,6 +281,7 @@ class Accumulator(object):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
             rx = self._rx
+            ig = spead2.ItemGroup()
             # Increment between buffers, filling and releasing iteratively
             # Initialise current buffer counter
             obs_stopped = False
@@ -288,7 +289,7 @@ class Accumulator(object):
             while not obs_stopped:
                 # accumulate data scan by scan into buffer arrays
                 logger.info('max buffer length for batch: %d', self.max_length)
-                slots, obs_stopped = yield From(self.accumulate(rx))
+                slots, obs_stopped = yield From(self.accumulate(rx, ig))
                 logger.info('Accumulated %d timestamps', len(slots))
                 batches_sensor.set_value(batches_sensor.value() + 1)
 
@@ -431,7 +432,7 @@ class Accumulator(object):
         np.take(l0, ordering, axis=1, out=out_view)
 
     @trollius.coroutine
-    def accumulate(self, rx):
+    def accumulate(self, rx, ig):
         """
         Accumulates spead data into arrays, until accumulation end condition is reached:
          * case 1 -- activity change (unless gain cal following target)
@@ -450,6 +451,8 @@ class Accumulator(object):
         ----------
         rx : :class:`spead2.recv.trollius.Stream`
             Receiver for L0 stream
+        ig : :class:`spead2.ItemGroup`
+            Item group for the stream.
 
         Returns
         -------
@@ -480,8 +483,6 @@ class Accumulator(object):
         obs_stopped = False
 
         # receive SPEAD stream
-        ig = spead2.ItemGroup()
-
         logger.info('waiting to start accumulating data')
         while True:
             try:
