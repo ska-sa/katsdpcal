@@ -44,4 +44,5 @@ trollius
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
+git+ssh://git@github.com/ska-sa/katsdpsigproc
 git+ssh://git@github.com/ska-sa/katsdptelstate
