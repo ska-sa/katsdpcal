@@ -586,13 +586,15 @@ def solint_from_nominal(solint, dump_period, num_times):
         # range for searching: nominal solint +-20%
         dumps_per_solint_low = int(np.round(req_dumps_per_solint * 0.8))
         dumps_per_solint_high = int(np.round(req_dumps_per_solint * 1.2))
-        solint_check_range = np.arange(dumps_per_solint_low, dumps_per_solint_high).astype(np.int)
+        solint_check_range = np.arange(dumps_per_solint_low,
+                                       dumps_per_solint_high + 1).astype(np.int)
 
         # compute size of final partial interval (in dumps)
         tail = (num_times - 1) % solint_check_range + 1
+        delta = solint_check_range - tail
 
-        # choose a solint to minimise the final fractional solution interval
-        solint_index = np.argmax(tail)
+        # choose a solint to minimise the change in the final fractional solution interval
+        solint_index = np.argmin(delta)
         logger.debug('solint index: {0}'.format(solint_index,))
         dumps_per_solint = solint_check_range[solint_index]
     return dumps_per_solint * dump_period, dumps_per_solint

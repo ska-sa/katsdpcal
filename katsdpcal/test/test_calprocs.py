@@ -22,6 +22,8 @@ class TestCalprocs(unittest.TestCase):
         self.assertEqual((28.0, 7), calprocs.solint_from_nominal(32.0, 4.0, 28))
         # no way to adjust interval to evenly divide the scan
         self.assertEqual((32.0, 8), calprocs.solint_from_nominal(29.0, 4.0, 31))
+        # single dump
+        self.assertEqual((4.0, 1), calprocs.solint_from_nominal(4.0, 4.0, 1))
 
 
 class TestStefcal(unittest.TestCase):
