@@ -45,12 +45,14 @@ def init_SumThresholdFlagger(ts, dump_period):
                                         windows_freq=rfi_windows_freq,
                                         spike_width_time=spike_width_time,
                                         spike_width_freq=ts.cal_param_rfi_calib_spike_width_freq,
-                                        average_freq=ts.cal_param_rfi_average_freq)
+                                        average_freq=ts.cal_param_rfi_average_freq,
+                                        freq_extend=ts.cal_param_rfi_extend_freq)
     targ_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_nsigma,
                                        windows_freq=rfi_windows_freq,
                                        spike_width_time=spike_width_time,
                                        spike_width_freq=ts.cal_param_rfi_targ_spike_width_freq,
-                                       average_freq=ts.cal_param_rfi_average_freq)
+                                       average_freq=ts.cal_param_rfi_average_freq,
+                                       freq_extend=ts.cal_param_rfi_extend_freq)
     return calib_flagger, targ_flagger
 
 
@@ -328,8 +330,8 @@ def pipeline(data, ts):
 
         # ---------------------------------------
         # Calibrator RFI flagging
-        logger.info('Calibrator flagging')
         if any(k.endswith('cal') for k in taglist):
+            logger.info('Calibrator flagging')
             rfi(calib_flagger, s, ts)
 
         # run_t0 = time.time()
