@@ -27,9 +27,9 @@ cal_param_g_bchan : 2250                    # first channel for g fit, int
 cal_param_g_echan : 2450                    # last channel for g fit, int
 
 # Flagging
-cal_param_rfi_nsigma : 4.0                  # Number of sigma to reject outliers
-cal_param_rfi_windows_freq : 1,2,4,8,16     # Size of windows for SumThreshold
-cal_param_rfi_average_freq : 1              # Amount to average in frequency before flagging
-cal_param_rfi_target_spike_width_freq : 4.0 # 1sigma frequency width of smoothing Gaussian on final target (in MHz)
-cal_param_rfi_calib_spike_width_freq : 1.5  # 1sigma frequency width of smoothing Gaussian on calibrators (in MHz)
-cal_param_rfi_spike_width_time : 100.0      # 1sigma time width of smoothin Gaussian (in seconds)
+cal_param_rfi_nsigma : 6.0                   # Number of sigma to reject outliers
+cal_param_rfi_windows_freq : 1,2,4,8         # Size of windows for SumThreshold
+cal_param_rfi_average_freq : 1               # Amount to average in frequency before flagging
+cal_param_rfi_targ_spike_width_freq : 20.0   # 1sigma frequency width of smoothing Gaussian on final target (in channels)
+cal_param_rfi_calib_spike_width_freq : 7.0   # 1sigma frequency width of smoothing Gaussian on calibrators (in channels)
+cal_param_rfi_spike_width_time : 100.0       # 1sigma time width of smoothing Gaussian (in seconds)

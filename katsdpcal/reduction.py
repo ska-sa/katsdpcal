@@ -1,5 +1,6 @@
 import time
 import logging
+import warnings
 
 import numpy as np
 import dask.array as da
@@ -13,33 +14,81 @@ from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
 from . import calprocs
 from . import pipelineprocs as pp
 from .scan import Scan
-from .rfi import threshold_avg_flagging
 from . import lsm_dir
-
 
 logger = logging.getLogger(__name__)
 
 
-def rfi(s, thresholds, av_blocks):
-    """
-    Place holder for RFI detection algorithms to come.
+def init_SumThresholdFlagger(ts, dump_period):
+    """Set up SumThresholdFlagger objects for targets
+    and calibrators.
 
-    Inputs
-    ------
-    s : Scan
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        The telescope state associated with this pipeline
+    dump_period : float
+        The dump period in seconds
+
+    Returns
+    -------
+    calib_flagger : :class:`SumThresholdFlagger`
+        A SumThresholdFlagger object for use with calibrators
+    targ_flagger : :class:`SumThresholdFlagger`
+        A SumThresholdFlagger object for use with targets
+    """
+
+    # Make windows a integer array
+    rfi_windows_freq = np.array(ts.cal_param_rfi_windows_freq.split(','), dtype=np.int)
+    spike_width_time = ts.cal_param_rfi_spike_width_time/dump_period
+    calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_nsigma,
+                                        windows_freq=rfi_windows_freq,
+                                        spike_width_time=spike_width_time,
+                                        spike_width_freq=ts.cal_param_rfi_calib_spike_width_freq,
+                                        average_freq=ts.cal_param_rfi_average_freq)
+    targ_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_nsigma,
+                                       windows_freq=rfi_windows_freq,
+                                       spike_width_time=spike_width_time,
+                                       spike_width_freq=ts.cal_param_rfi_targ_spike_width_freq,
+                                       average_freq=ts.cal_param_rfi_average_freq)
+    return calib_flagger, targ_flagger
+
+
+def rfi(flagger, s, ts):
+    """
+
+    Parameters
+    ----------
+    flagger : :class:`SumThresholdFlagger`
+        Flagger, with :meth:`get_flags` to detect rfi
+    s : :class:`Scan
         Scan to flag
-    thresholds : list of float, shape(N)
-        Tresholds to use for tN iterations of flagging
-    av_blocks : list of int, shape(N-1, 2)
-        List of block sizes to average over from the second iteration, in the
-        form [time_block, channel_block]
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telstate object. Used to get current rfi mask
     """
     total_size = np.multiply.reduce(s.flags.shape) / 100.
     logger.info('  - Start flags: %.3f%%',
                 (da.sum(s.flags.view(np.bool)) / total_size).compute())
+
+    # do we have an rfi mask? In which case, get it
+    # TODO: Should mask_flags already be in static_flags bit??
+    if 'cal_rfi_mask' in ts.keys():
+        flag_mask = ts.cal_rfi_mask[np.newaxis, :, np.newaxis]
+
     # TODO: push dask into threshold_avg_flagging
     flags = s.flags.compute()
-    threshold_avg_flagging(s.vis.compute(), flags, thresholds, blocks=av_blocks, transform=np.abs)
+    vis = s.vis.compute()
+    # Suppress warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        # Loop over polarisations
+        # TODO: flag cross-polarisation data
+        for pol in range(flags.shape[2]):
+            in_flags = calprocs.asbool(flags)
+            out_flags = flagger.get_flags(vis[:, :, pol, :],
+                                          np.logical_or(in_flags[:, :, pol, :], flag_mask))
+            # Add new flags to 'cal_rfi'
+            flags[:, :, pol, :] += out_flags.view(np.uint8)*(2**6)
     s.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
     logger.info('  - New flags:   %.3f%%',
                 (da.sum(calprocs.asbool(s.flags)) / total_size).compute())
@@ -210,6 +259,9 @@ def pipeline(data, ts):
     # available when the first data starts to flow.
     init_ts_params(ts)
 
+    # Set up flaggers
+    calib_flagger, targ_flagger = init_SumThresholdFlagger(ts, dump_period)
+
     # get names of target TS key, using TS reference antenna
     target_key = '{0}_target'.format(ts.cal_refant,)
 
@@ -273,15 +325,11 @@ def pipeline(data, ts):
         logger.debug('Model parameters for source {0}: {1}'.format(
             target_name, s.model_raw_params))
 
-        # do we have an rfi mask? In which case, apply it
-        if 'cal_rfi_mask' in ts.keys():
-            flag_mask = ts.cal_rfi_mask[np.newaxis, :, np.newaxis, np.newaxis]
-            s.flags = np.logical_or(s.flags, flag_mask)
-
         # ---------------------------------------
-        # initial RFI flagging
-        logger.info('Preliminary flagging')
-        rfi(s, [3.0, 3.0, 2.0, 1.6], [[3, 1], [3, 5], [3, 8]])
+        # Calibrator RFI flagging
+        logger.info('Calibrator flagging')
+        if any(k.endswith('cal') for k in taglist):
+            rfi(calib_flagger, s, ts)
 
         # run_t0 = time.time()
 
@@ -463,6 +511,6 @@ def pipeline(data, ts):
 
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi(s, [3.0, 3.0, 2.0], [[3, 1], [5, 8]])
+            rfi(targ_flagger, s, ts)
 
     return target_slices
