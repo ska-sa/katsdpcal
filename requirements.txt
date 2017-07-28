@@ -28,7 +28,7 @@ pkginfo
 ply                     # for katcp
 pyephem
 pyparsing
-python-casacore==2.0.0
+python-casacore
 python-dateutil
 pytz
 PyYAML==3.11
