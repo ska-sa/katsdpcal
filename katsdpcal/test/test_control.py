@@ -447,6 +447,11 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(1, int((yield self.get_sensor('accumulator-observations'))))
         assert_equal(10, int((yield self.get_sensor('pipeline-last-slots'))))
         assert_equal(1, int((yield self.get_sensor('reports-written'))))
+        # Check that the slot accounting all balances
+        assert_equal(40, int((yield self.get_sensor('slots'))))
+        assert_equal(0, int((yield self.get_sensor('accumulator-slots'))))
+        assert_equal(0, int((yield self.get_sensor('pipeline-slots'))))
+        assert_equal(40, int((yield self.get_sensor('free-slots'))))
 
         reports = os.listdir(self.report_path)
         assert_equal(1, len(reports))
