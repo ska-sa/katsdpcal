@@ -1,12 +1,11 @@
 """Tests for :mod:`katsdpcal.calprocs_dask`."""
 
 import unittest
-import time
 
 import numpy as np
 import dask.array as da
 
-from katsdpcal import calprocs, calprocs_dask
+from katsdpcal import calprocs_dask
 from . import test_calprocs
 
 

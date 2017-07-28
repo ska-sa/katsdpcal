@@ -397,8 +397,6 @@ class TestCalDeviceServer(unittest.TestCase):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        channels = self.telstate.cbf_n_chans
-        baselines = len(self.telstate.sdp_l0_bls_ordering)
         ts = 100
         rs = np.random.RandomState(seed=1)
 
