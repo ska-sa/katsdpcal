@@ -8,7 +8,7 @@ cal_preferred_refants : m031,m006,m010,m024,m025,m034,m014,m015
 cal_sideband : 1                              # for frequency calculation
 
 # general data parameters
-cal_sim_bchan : 800                           # first channel to process, int
+cal_sim_bchan : 1600                          # first channel to process, int
 cal_sim_echan : 30400                         # last channel to process, int
 
 # delay calibration  
