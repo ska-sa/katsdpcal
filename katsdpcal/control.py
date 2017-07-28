@@ -486,7 +486,6 @@ class Accumulator(object):
         """
 
         start_flag = True
-        array_index = -1
         fill_sensor = self.sensors['accumulator-buffer-filled']
         fill_sensor.set_value(0.0)
         heaps_sensor = self.sensors['accumulator-input-heaps']
@@ -1113,7 +1112,6 @@ def create_server(use_multiprocessing, host, port, buffers,
         logger.info("Using threading")
         import multiprocessing.dummy as multiprocessing
 
-    num_buffers = len(buffers)
     # set up inter-task synchronisation primitives.
     # passed events to indicate buffer transfer, end-of-observation, or stop
     accum_pipeline_queue = multiprocessing.Queue()

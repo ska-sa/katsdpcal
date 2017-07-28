@@ -97,8 +97,8 @@ class TestStefcal(unittest.TestCase):
             init_gain = init_gain.astype(vis.dtype)
         else:
             init_gain = None
-        return self._wrap_array(vis), self._wrap_array(weights), self._wrap_array(init_gain), \
-               bl_ant_list, gains
+        return (self._wrap_array(vis), self._wrap_array(weights), self._wrap_array(init_gain),
+                bl_ant_list, gains)
 
     def _test_stefcal(self, shape=(7,), weights_shape=None, init_gain_shape=None,
                       dtype=np.complex128, noise=None, delta=1e-3, ref_ant=0, *args, **kwargs):
