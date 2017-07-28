@@ -90,6 +90,29 @@ def _inc_sensor(sensor, delta, status=katcp.Sensor.NOMINAL, timestamp=None):
     sensor.set_value(sensor.value() + delta, status, timestamp)
 
 
+def _slots_slices(slots):
+    """Compresses a list of slot positions to a list of ranges (given as slices).
+
+    This is a generator that yields the slices
+
+    Example
+    -------
+    >>> list(_slots_slices([2, 3, 4, 6, 7, 8, 0, 1]))
+    [slice(2, 5, None), slice(6, 9, None), slice(0, 2, None)]
+    """
+    start = None
+    end = None
+    for slot in slots:
+        if end is not None and slot != end:
+            yield slice(start, end)
+            start = end = None
+        if start is None:
+            start = slot
+        end = slot + 1
+    if end is not None:
+        yield slice(start, end)
+
+
 class Task(object):
     """Base class for tasks (threads or processes).
 
@@ -709,12 +732,13 @@ class Pipeline(Task):
                     start_time = time.time()
                     # set up dask arrays around the chosen slots
                     data = {'times': self.buffers['times'][event.slots]}
+                    slices = list(_slots_slices(event.slots))
                     for key in ('vis', 'flags', 'weights'):
                         buffer = self.buffers[key]
-                        chunks = (4096,) + buffer.shape[2:]
-                        parts = [da.from_array(buffer[slot], chunks=chunks, name=False)
-                                 for slot in event.slots]
-                        data[key] = da.stack(parts)
+                        chunks = (4, 4096) + buffer.shape[2:]
+                        parts = [da.from_array(buffer[s], chunks=chunks, name=False)
+                                 for s in slices]
+                        data[key] = da.concatenate(parts, axis=0)
                     # run the pipeline
                     self.run_pipeline(data)
                     end_time = time.time()
