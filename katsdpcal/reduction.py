@@ -55,7 +55,8 @@ def init_SumThresholdFlagger(ts, dump_period):
 
 
 def rfi(flagger, s, ts):
-    """
+    """Detect flags in the visibilities. Detected flags
+    are added to the cal_rfi bit (7) of the flag array.
 
     Parameters
     ----------
