@@ -112,6 +112,9 @@ def parse_opts():
         help='Use threading to control pipeline and accumulator '
         + '[default: use multiprocessing]')
     parser.add_argument(
+        '--workers', type=int,
+        help='Number of worker threads to use within the pipeline [default: cores - 1]')
+    parser.add_argument(
         '--parameter-file', type=str, default='',
         help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument(
@@ -162,7 +165,7 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         l0_endpoint=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
         mproc=True, param_file='', report_path='', log_path='.', full_log=None,
-        diagnostics_file=None):
+        diagnostics_file=None, num_workers=None):
     """
     Run the device server.
 
@@ -205,6 +208,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         Path for pipeline logs
     diagnostics_file : str
         Path to write dask diagnostics
+    num_workers : int
+        Number of worker threads to use in the pipeline
     """
     ioloop = AsyncIOMainLoop()
     ioloop.install()
@@ -314,7 +319,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     server = create_server(mproc, host, port, buffers,
                            l0_endpoint, l0_interface_address,
                            l1_endpoint, l1_level, l1_rate, ts,
-                           report_path, log_path, full_log, diagnostics_file)
+                           report_path, log_path, full_log,
+                           diagnostics_file, num_workers)
     with server:
         ioloop.add_callback(server.start)
 
@@ -371,7 +377,7 @@ def main():
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
         param_file=opts.parameter_file,
         report_path=opts.report_path, log_path=log_path, full_log=log_name,
-        diagnostics_file=opts.dask_diagnostics))
+        diagnostics_file=opts.dask_diagnostics, num_workers=opts.workers))
 
 
 if __name__ == '__main__':

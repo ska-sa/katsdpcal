@@ -4,6 +4,8 @@ import os
 import shutil
 import logging
 from collections import deque
+import multiprocessing
+import multiprocessing.dummy
 
 import spead2
 import spead2.recv.trollius
@@ -650,7 +652,7 @@ class Pipeline(Task):
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_report_queue, master_queue,
                  l1_endpoint, l1_level, l1_rate, telstate,
-                 diagnostics_file=None):
+                 diagnostics_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline')
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -660,6 +662,10 @@ class Pipeline(Task):
         self.l1_rate = l1_rate
         self.l1_endpoint = l1_endpoint
         self.diagnostics_file = diagnostics_file
+        if num_workers is None:
+            # Leave a core free to avoid starving the accumulator
+            num_workers = max(1, multiprocessing.cpu_count() - 1)
+        self.num_workers = num_workers
 
     def get_sensors(self):
         return [
@@ -678,18 +684,19 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
-        if self.diagnostics_file is not None:
-            profilers = [
-                dask.diagnostics.Profiler(),
-                dask.diagnostics.ResourceProfiler(),
-                dask.diagnostics.CacheProfiler()]
-            with profilers[0], profilers[1], profilers[2]:
+        with dask.set_options(pool=multiprocessing.pool.ThreadPool(self.num_workers)):
+            if self.diagnostics_file is not None:
+                profilers = [
+                    dask.diagnostics.Profiler(),
+                    dask.diagnostics.ResourceProfiler(),
+                    dask.diagnostics.CacheProfiler()]
+                with profilers[0], profilers[1], profilers[2]:
+                    self._run_impl()
+                dask.diagnostics.visualize(
+                    profilers, file_path=self.diagnostics_file, show=False)
+                logger.info('wrote diagnostics to %s', self.diagnostics_file)
+            else:
                 self._run_impl()
-            dask.diagnostics.visualize(
-                profilers, file_path=self.diagnostics_file, show=False)
-            logger.info('wrote diagnostics to %s', self.diagnostics_file)
-        else:
-            self._run_impl()
 
     def _run_impl(self):
         """
@@ -1103,31 +1110,32 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_endpoint, l0_interface_address,
                   l1_endpoint, l1_level, l1_rate, telstate,
-                  report_path, log_path, full_log, diagnostics_file=None):
+                  report_path, log_path, full_log,
+                  diagnostics_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
         logger.info("Using multiprocessing")
-        import multiprocessing
+        module = multiprocessing
     else:
         logger.info("Using threading")
-        import multiprocessing.dummy as multiprocessing
+        module = multiprocessing.dummy
 
     # set up inter-task synchronisation primitives.
     # passed events to indicate buffer transfer, end-of-observation, or stop
-    accum_pipeline_queue = multiprocessing.Queue()
+    accum_pipeline_queue = module.Queue()
     # signalled by pipelines when they shut down or finish an observation
-    pipeline_report_queue = multiprocessing.Queue()
+    pipeline_report_queue = module.Queue()
     # other tasks send up sensor updates
-    master_queue = multiprocessing.Queue()
+    master_queue = module.Queue()
 
     # Set up the pipelines (one per buffer)
     pipeline = Pipeline(
-        multiprocessing.Process, buffers,
+        module.Process, buffers,
         accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file)
+        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file, num_workers)
     # Set up the report writer
     report_writer = ReportWriter(
-        multiprocessing.Process, pipeline_report_queue, master_queue, telstate,
+        module.Process, pipeline_report_queue, master_queue, telstate,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # Start the child tasks.
