@@ -1,9 +1,7 @@
 import time
 import logging
-import warnings
 
 import numpy as np
-import dask.array as da
 
 from katdal.sensordata import TelstateSensorData, SensorCache
 from katdal.categorical import CategoricalData
@@ -41,7 +39,7 @@ def init_SumThresholdFlagger(ts, dump_period):
     # Make windows a integer array
     rfi_windows_freq = np.array(ts.cal_param_rfi_windows_freq.split(','), dtype=np.int)
     spike_width_time = ts.cal_param_rfi_spike_width_time/dump_period
-    calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_nsigma,
+    calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_calib_nsigma,
                                         windows_freq=rfi_windows_freq,
                                         spike_width_time=spike_width_time,
                                         spike_width_freq=ts.cal_param_rfi_calib_spike_width_freq,
@@ -54,47 +52,6 @@ def init_SumThresholdFlagger(ts, dump_period):
                                        average_freq=ts.cal_param_rfi_average_freq,
                                        freq_extend=ts.cal_param_rfi_extend_freq)
     return calib_flagger, targ_flagger
-
-
-def rfi(flagger, s, ts):
-    """Detect flags in the visibilities. Detected flags
-    are added to the cal_rfi bit (7) of the flag array.
-
-    Parameters
-    ----------
-    flagger : :class:`SumThresholdFlagger`
-        Flagger, with :meth:`get_flags` to detect rfi
-    s : :class:`Scan
-        Scan to flag
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telstate object. Used to get current rfi mask
-    """
-    total_size = np.multiply.reduce(s.flags.shape) / 100.
-    logger.info('  - Start flags: %.3f%%',
-                (da.sum(s.flags.view(np.bool)) / total_size).compute())
-
-    # do we have an rfi mask? In which case, get it
-    # TODO: Should mask_flags already be in static_flags bit??
-    if 'cal_rfi_mask' in ts.keys():
-        flag_mask = ts.cal_rfi_mask[np.newaxis, :, np.newaxis]
-
-    # TODO: push dask into threshold_avg_flagging
-    flags = s.flags.compute()
-    vis = s.vis.compute()
-    # Suppress warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        # Loop over polarisations
-        # TODO: flag cross-polarisation data
-        for pol in range(flags.shape[2]):
-            in_flags = calprocs.asbool(flags)
-            out_flags = flagger.get_flags(vis[:, :, pol, :],
-                                          np.logical_or(in_flags[:, :, pol, :], flag_mask))
-            # Add new flags to 'cal_rfi'
-            flags[:, :, pol, :] += out_flags.view(np.uint8)*(2**6)
-    s.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
-    logger.info('  - New flags:   %.3f%%',
-                (da.sum(calprocs.asbool(s.flags)) / total_size).compute())
 
 
 def get_tracks(data, ts, dump_period):
@@ -332,7 +289,7 @@ def pipeline(data, ts):
         # Calibrator RFI flagging
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
-            rfi(calib_flagger, s, ts)
+            s.rfi(calib_flagger, ts.get('cal_rfi_mask'))
 
         # run_t0 = time.time()
 
@@ -514,6 +471,6 @@ def pipeline(data, ts):
 
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi(targ_flagger, s, ts)
+            s.rfi(targ_flagger, ts.get('cal_rfi_mask'))
 
     return target_slices

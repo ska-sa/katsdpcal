@@ -3,6 +3,7 @@
 from time import time
 import functools
 import logging
+import warnings
 
 import numpy as np
 import dask.array as da
@@ -173,7 +174,7 @@ class Scan(object):
             te = time()
 
             scanlogger = args[0].logger
-            scanlogger.info('  - Solution time: {0} s'.format(te-ts,))
+            scanlogger.info('  - Solution time ({0}): {1} s'.format(f.__name__, te-ts,))
             return result
         return timed
 
@@ -616,3 +617,46 @@ class Scan(object):
                 # for full model, divide through selected channels by same
                 # channel selection in the model
                 return modvis[chan_select] / self.model[chan_select]
+
+    # ----------------------------------------------------------------------
+    # RFI Functions
+    @logsolutiontime
+    def rfi(self, flagger, mask=None):
+        """Detect flags in the visibilities. Detected flags
+        are added to the cal_rfi bit (7) of the flag array.
+        Optionally provide a channel mask, which is added to
+        bit 8 of the flag array.
+
+        Parameters
+        ----------
+        flagger : :class:`SumThresholdFlagger`
+            Flagger, with :meth:`get_flags` to detect rfi
+        mask : 1d array, boolean, optional
+            Channel mask to apply
+        """
+        total_size = np.multiply.reduce(self.flags.shape) / 100.
+        self.logger.info('  - Start flags: %.3f%%',
+                         (da.sum(self.flags.view(np.bool)) / total_size).compute())
+
+        # TODO: push dask into threshold_avg_flagging
+        flags = self.flags.compute()
+        vis = self.vis.compute()
+        # do we have an rfi mask? In which case, use it
+        # Add to flag bit 8
+        # TODO: Should mask_flags already be in static_flags bit??
+        if mask is not None:
+            flags += mask[np.newaxis, :, np.newaxis, np.newaxis].astype(np.uint8) * (2**7)
+
+        # Suppress warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # Loop over polarisations
+            # TODO: flag cross-polarisation data
+            for pol in range(flags.shape[2]):
+                in_flags = calprocs.asbool(flags[:, :, pol, :])
+                out_flags = flagger.get_flags(vis[:, :, pol, :], in_flags)
+                # Add new flags to 'cal_rfi'
+                flags[:, :, pol, :] += out_flags.astype(np.uint8)*(2**6)
+        self.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
+        self.logger.info('  - New flags:   %.3f%%',
+                         (da.sum(calprocs.asbool(self.flags)) / total_size).compute())
