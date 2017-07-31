@@ -86,7 +86,7 @@ def shared_empty(shape, dtype):
 
 
 def _inc_sensor(sensor, delta, status=katcp.Sensor.NOMINAL, timestamp=None):
-    """Add a value to a sensor"""
+    """Increment sensor value by `delta`."""
     sensor.set_value(sensor.value() + delta, status, timestamp)
 
 
