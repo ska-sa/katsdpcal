@@ -513,7 +513,6 @@ class Accumulator(object):
         """
 
         start_flag = True
-        array_index = -1
 
         prev_activity = 'none'
         prev_activity_time = 0.
@@ -1136,7 +1135,6 @@ def create_server(use_multiprocessing, host, port, buffers,
         logger.info("Using threading")
         import multiprocessing.dummy as multiprocessing
 
-    num_buffers = len(buffers)
     # set up inter-task synchronisation primitives.
     # passed events to indicate buffer transfer, end-of-observation, or stop
     accum_pipeline_queue = multiprocessing.Queue()

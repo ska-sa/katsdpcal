@@ -8,7 +8,6 @@ rather than numpy arrays.
 """
 
 import logging
-from functools import wraps
 
 import numpy as np
 import dask.array as da
@@ -54,8 +53,8 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
 
     # Determine the output dtype, since the gufunc has two signatures
     if (np.can_cast(rawvis.dtype, np.complex64)
-        and np.can_cast(weights.dtype, np.float32)
-        and np.can_cast(init_gain, np.complex64)):
+            and np.can_cast(weights.dtype, np.float32)
+            and np.can_cast(init_gain, np.complex64)):
         dtype = np.complex64
     else:
         dtype = np.complex128

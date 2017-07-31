@@ -2,7 +2,7 @@
 # ----------------------------------------------------------
 # Create sumulated data files from existing KAT-7 h5 files
 
-from pyrap import tables
+from casacore import tables
 import numpy as np
 import ephem
 import glob

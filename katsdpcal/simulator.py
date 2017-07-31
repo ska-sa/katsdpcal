@@ -5,9 +5,9 @@ Simulator class for HDF5 files produced by KAT-7 correlator,
 for testing of the MeerKAT pipeline.
 """
 
-from . import table
-from . import spead2
-from . import send
+from casacore import table
+import spead2
+from spead2 import send
 from .calprocs import get_reordering_nopol
 
 import katdal
@@ -360,7 +360,7 @@ class SimDataMS(table):
     """
     Simulated data class.
     Uses MS file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
-    subclassing pyrap table.
+    subclassing casacore table.
 
     Parameters
     ----------
@@ -870,7 +870,7 @@ class SimDataH5V3(katdal.H5DataV3):
 
     def close(self):
         """
-        Allows H5 simulator to emulate pyrap MS close function.
+        Allows H5 simulator to emulate casacore MS close function.
         (Does nothing)
         """
         pass
@@ -939,7 +939,7 @@ class SimDataH5V2(katdal.H5DataV2):
 
     def close(self):
         """
-        Allows H5 simulator to emulate pyrap MS close function.
+        Allows H5 simulator to emulate casacore MS close function.
         (Does nothing)
         """
         pass

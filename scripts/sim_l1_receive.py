@@ -3,8 +3,7 @@
 # Simulate receiver for L1 data stream
 
 from katsdpcal.simulator import init_simdata, get_file_format, SimDataMS
-# import spead2 through katsdpcal to enforce import order (pyrap must be imported first)
-from katsdpcal import spead2
+import spead2
 
 from katsdptelstate import endpoint, ArgumentParser
 
