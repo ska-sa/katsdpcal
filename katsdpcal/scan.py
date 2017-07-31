@@ -624,9 +624,9 @@ class Scan(object):
     @logsolutiontime
     def rfi(self, flagger, mask=None, cross=False):
         """Detect flags in the visibilities. Detected flags
-        are added to the cal_rfi bit (6) of the flag array.
+        are added to the cal_rfi bit of the flag array.
         Optionally provide a channel mask, which is added to
-        bit 8 of the flag array.
+        the static bit of the flag array.
 
         Parameters
         ----------
@@ -635,7 +635,7 @@ class Scan(object):
         mask : 1d array, boolean, optional
             Channel mask to apply
         cross : boolean, optional
-            If True, flag the cross polarisation data, otherwise
+            If True, flag the cross-pol data, otherwise
             flag single-pol data (default).
         """
         if cross:
@@ -662,7 +662,7 @@ class Scan(object):
         # Add to 'static' flag bit.
         # TODO: Should mask_flags already be in static bit?
         if mask is not None:
-            flags |= mask[np.newaxis, :, np.newaxis, np.newaxis].view(np.uint8) * (2**static_bit)
+            flags |= mask[np.newaxis, :, np.newaxis, np.newaxis] * np.uint8(2**static_bit)
 
         # The flagger produces numerous nan related warnings
         # which are not fully dealt with by filtering options in
@@ -674,7 +674,7 @@ class Scan(object):
                 flagger_mask = calprocs.asbool(flags[:, :, pol, :])
                 out_flags = flagger.get_flags(vis[:, :, pol, :], flagger_mask)
                 # Add new flags to 'cal_rfi'
-                flags[:, :, pol, :] |= out_flags.view(np.uint8) * (2**cal_rfi_bit)
-        in_flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
+                flags[:, :, pol, :] |= out_flags * np.uint8(2**cal_rfi_bit)
+        in_flags = da.from_array(flags, chunks=in_flags.chunks, name=False)
         self.logger.info('  - New flags:   %.3f%%',
                          (da.sum(calprocs.asbool(in_flags)) / total_size).compute())
