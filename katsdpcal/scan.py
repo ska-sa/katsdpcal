@@ -676,7 +676,7 @@ class Scan(object):
                 # Add new flags to 'cal_rfi'
                 flags[:, :, pol, :] |= out_flags * np.uint8(2**cal_rfi_bit)
         self.logger.info('  - New flags:   %.3f%%',
-                         (np.sum(calprocs.asbool(flags)) / total_size)
+                         (np.sum(calprocs.asbool(flags)) / total_size))
         if cross:
             self.cross_flags = da.from_array(flags, chunks=self.cross_flags.chunks, name=False)
         else:
