@@ -659,12 +659,12 @@ class Scan(object):
         flags = in_flags.compute()
         vis = in_vis.compute()
         # do we have an rfi mask? In which case, use it
-        # Add to flag bit 1
-        # TODO: Should mask_flags already be in static_flags bit??
+        # Add to 'static' flag bit.
+        # TODO: Should mask_flags already be in static bit?
         if mask is not None:
             flags |= mask[np.newaxis, :, np.newaxis, np.newaxis].view(np.uint8) * (2**static_bit)
 
-        # The flagger produces numerous NaN related warnings,
+        # The flagger produces numerous nan related warnings
         # which are not fully dealt with by filtering options in
         # np.errstate. Therefore we suppress all warnings during flagging.
         with warnings.catch_warnings():
