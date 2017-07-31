@@ -28,7 +28,7 @@ matplotlib
 netifaces
 numba
 numpy
-pandas==0.20.1
+pandas
 pkginfo
 ply                     # for katcp
 pyephem
