@@ -623,7 +623,7 @@ class Scan(object):
     @logsolutiontime
     def rfi(self, flagger, mask=None):
         """Detect flags in the visibilities. Detected flags
-        are added to the cal_rfi bit (7) of the flag array.
+        are added to the cal_rfi bit (6) of the flag array.
         Optionally provide a channel mask, which is added to
         bit 8 of the flag array.
 
@@ -647,11 +647,12 @@ class Scan(object):
         if mask is not None:
             flags |= mask[np.newaxis, :, np.newaxis, np.newaxis].view(np.uint8) * 2
 
-        # Suppress warnings
+        # The flagger produces numerous NaN related warnings,
+        # which are not fully dealt with by filtering options in
+        # np.errstate. Therefore we suppress all warnings during flagging.
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             # Loop over polarisations
-            # TODO: flag cross-polarisation data
             for pol in range(flags.shape[2]):
                 in_flags = calprocs.asbool(flags[:, :, pol, :])
                 out_flags = flagger.get_flags(vis[:, :, pol, :], in_flags)
