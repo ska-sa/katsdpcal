@@ -10,6 +10,7 @@ import dask.array as da
 from scipy.constants import c as light_speed
 import scipy.interpolate
 
+from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 
 from . import calprocs, calprocs_dask
@@ -638,6 +639,10 @@ class Scan(object):
         self.logger.info('  - Start flags: %.3f%%',
                          (da.sum(self.flags.view(np.bool)) / total_size).compute())
 
+        # Get the relevant flag bits from katdal
+        static_bit = FLAG_NAMES.index('static')
+        cal_rfi_bit = FLAG_NAMES.index('cal_rfi')
+
         # TODO: push dask into threshold_avg_flagging
         flags = self.flags.compute()
         vis = self.vis.compute()
@@ -645,7 +650,7 @@ class Scan(object):
         # Add to flag bit 1
         # TODO: Should mask_flags already be in static_flags bit??
         if mask is not None:
-            flags |= mask[np.newaxis, :, np.newaxis, np.newaxis].view(np.uint8) * 2
+            flags |= mask[np.newaxis, :, np.newaxis, np.newaxis].view(np.uint8) * (2**static_bit)
 
         # The flagger produces numerous NaN related warnings,
         # which are not fully dealt with by filtering options in
@@ -657,7 +662,7 @@ class Scan(object):
                 in_flags = calprocs.asbool(flags[:, :, pol, :])
                 out_flags = flagger.get_flags(vis[:, :, pol, :], in_flags)
                 # Add new flags to 'cal_rfi'
-                flags[:, :, pol, :] |= out_flags.view(np.uint8) * (2**6)
+                flags[:, :, pol, :] |= out_flags.view(np.uint8) * (2**cal_rfi_bit)
         self.flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
         self.logger.info('  - New flags:   %.3f%%',
                          (da.sum(calprocs.asbool(self.flags)) / total_size).compute())
