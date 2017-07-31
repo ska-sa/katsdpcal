@@ -642,7 +642,7 @@ class Scan(object):
         flags = self.flags.compute()
         vis = self.vis.compute()
         # do we have an rfi mask? In which case, use it
-        # Add to flag bit 7
+        # Add to flag bit 1
         # TODO: Should mask_flags already be in static_flags bit??
         if mask is not None:
             flags += mask[np.newaxis, :, np.newaxis, np.newaxis].astype(np.uint8) * (2**7)

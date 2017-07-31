@@ -17,7 +17,7 @@ from . import lsm_dir
 logger = logging.getLogger(__name__)
 
 
-def init_SumThresholdFlagger(ts, dump_period):
+def init_flagger(ts, dump_period):
     """Set up SumThresholdFlagger objects for targets
     and calibrators.
 
@@ -220,7 +220,7 @@ def pipeline(data, ts):
     init_ts_params(ts)
 
     # Set up flaggers
-    calib_flagger, targ_flagger = init_SumThresholdFlagger(ts, dump_period)
+    calib_flagger, targ_flagger = init_flagger(ts, dump_period)
 
     # get names of target TS key, using TS reference antenna
     target_key = '{0}_target'.format(ts.cal_refant,)
