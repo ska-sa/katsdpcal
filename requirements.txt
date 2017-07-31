@@ -23,6 +23,7 @@ libtmux==0.6.0
 llvmlite                # for numba
 mako
 manhole
+markupsafe
 matplotlib
 netifaces
 numba
