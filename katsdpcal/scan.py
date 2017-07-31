@@ -658,6 +658,6 @@ class Scan(object):
                 out_flags = flagger.get_flags(vis[:, :, pol, :], in_flags)
                 # Add new flags to 'cal_rfi'
                 flags[:, :, pol, :] |= out_flags.view(np.uint8) * (2**6)
-        self.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
+        self.flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
         self.logger.info('  - New flags:   %.3f%%',
                          (da.sum(calprocs.asbool(self.flags)) / total_size).compute())
