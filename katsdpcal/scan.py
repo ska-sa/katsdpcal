@@ -622,7 +622,7 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None):
+    def rfi(self, flagger, mask=None, cross=False):
         """Detect flags in the visibilities. Detected flags
         are added to the cal_rfi bit (6) of the flag array.
         Optionally provide a channel mask, which is added to
@@ -634,18 +634,30 @@ class Scan(object):
             Flagger, with :meth:`get_flags` to detect rfi
         mask : 1d array, boolean, optional
             Channel mask to apply
+        cross : boolean, optional
+            If True, flag the cross polarisation data, otherwise
+            flag single-pol data (default).
         """
-        total_size = np.multiply.reduce(self.flags.shape) / 100.
+        if cross:
+            self.logger.info('  - Flag cross-pols')
+            in_flags = self.cross_flags
+            in_vis = self.cross_vis
+        else:
+            self.logger.info('  - Flag single-pols')
+            in_flags = self.flags
+            in_vis = self.vis
+
+        total_size = np.multiply.reduce(in_flags.shape) / 100.
         self.logger.info('  - Start flags: %.3f%%',
-                         (da.sum(self.flags.view(np.bool)) / total_size).compute())
+                         (da.sum(in_flags.view(np.bool)) / total_size).compute())
 
         # Get the relevant flag bits from katdal
         static_bit = FLAG_NAMES.index('static')
         cal_rfi_bit = FLAG_NAMES.index('cal_rfi')
 
         # TODO: push dask into threshold_avg_flagging
-        flags = self.flags.compute()
-        vis = self.vis.compute()
+        flags = in_flags.compute()
+        vis = in_vis.compute()
         # do we have an rfi mask? In which case, use it
         # Add to flag bit 1
         # TODO: Should mask_flags already be in static_flags bit??
@@ -659,10 +671,10 @@ class Scan(object):
             warnings.simplefilter('ignore')
             # Loop over polarisations
             for pol in range(flags.shape[2]):
-                in_flags = calprocs.asbool(flags[:, :, pol, :])
-                out_flags = flagger.get_flags(vis[:, :, pol, :], in_flags)
+                flagger_mask = calprocs.asbool(flags[:, :, pol, :])
+                out_flags = flagger.get_flags(vis[:, :, pol, :], flagger_mask)
                 # Add new flags to 'cal_rfi'
                 flags[:, :, pol, :] |= out_flags.view(np.uint8) * (2**cal_rfi_bit)
-        self.flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
+        in_flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
         self.logger.info('  - New flags:   %.3f%%',
-                         (da.sum(calprocs.asbool(self.flags)) / total_size).compute())
+                         (da.sum(calprocs.asbool(in_flags)) / total_size).compute())
