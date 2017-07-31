@@ -291,7 +291,7 @@ def pipeline(data, ts):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, ts.get('cal_rfi_mask'))
             # TODO: setup separate flagger for cross-pols
-            s.rfi(targ_flagger, ts.get('cal_rfi_mask'), cross=True)
+            s.rfi(calib_flagger, ts.get('cal_rfi_mask'), cross=True)
 
         # run_t0 = time.time()
 
