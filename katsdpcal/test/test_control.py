@@ -516,7 +516,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
-        for i in range(60):
+        for i in range(180):
             print('waiting', i)
             yield tornado.gen.sleep(0.5)
             heaps = int((yield self.get_sensor('accumulator-input-heaps')))
