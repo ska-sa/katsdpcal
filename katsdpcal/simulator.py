@@ -5,7 +5,7 @@ Simulator class for HDF5 files produced by KAT-7 correlator,
 for testing of the MeerKAT pipeline.
 """
 
-from casacore import table
+from casacore.tables import table
 import spead2
 from spead2 import send
 from .calprocs import get_reordering_nopol
