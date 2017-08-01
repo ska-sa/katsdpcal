@@ -297,7 +297,10 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
     if init_gain.shape[-1] != num_ants:
         raise ValueError('initial gains have wrong length {} for number of antennas {}'.format(
             init_gain.shape[-1], num_ants))
-    if weights is None:
+    if weights is None or np.isscalar(weights):
+        # Any scalar weight is the same as an unweighted problem, and we don't
+        # want a double-precision scalar weight to cause the result to be
+        # upgraded to double precision.
         weights = rawvis.real.dtype.type(1.0)
     if not all(0 <= x < num_ants for x in corrprod_lookup.flat):
         raise ValueError('invalid antenna index in corrprod_lookup')
@@ -339,7 +342,7 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
     g_array : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_ants = ants_from_bllist(corrprod_lookup)
-    return stefcal(data, num_ants, corrprod_lookup, weights=1.0,
+    return stefcal(data, num_ants, corrprod_lookup,
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
@@ -465,7 +468,7 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
                 v_corrected[ci, vi] = good_pol_data[ci, vi] \
                     * np.exp(-2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 0]]) \
                     * np.exp(2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 1]])
-        bpass = stefcal(v_corrected, num_ants, corrprod_lookup, weights=1.0,
+        bpass = stefcal(v_corrected, num_ants, corrprod_lookup,
                         num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
 
         # find slope of the residual bandpass

@@ -464,10 +464,12 @@ class TestCalDeviceServer(unittest.TestCase):
         cal_product_B = self.telstate.get_range('cal_product_B', st=0)
         assert_equal(1, len(cal_product_B))
         ret_B, ret_B_ts = cal_product_B[0]
+        assert_equal(np.complex64, ret_B.dtype)
 
         cal_product_G = self.telstate.get_range('cal_product_G', st=0)
         assert_equal(1, len(cal_product_G))
         ret_G, ret_G_ts = cal_product_G[0]
+        assert_equal(np.complex64, ret_G.dtype)
         ret_BG = ret_B * ret_G[np.newaxis, :, :]
         BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
         # TODO: enable when fixed.
@@ -484,6 +486,7 @@ class TestCalDeviceServer(unittest.TestCase):
         cal_product_K = self.telstate.get_range('cal_product_K', st=0)
         assert_equal(1, len(cal_product_K))
         ret_K, ret_K_ts = cal_product_K[0]
+        assert_equal(np.float32, ret_K.dtype)
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
 
     @async_test
