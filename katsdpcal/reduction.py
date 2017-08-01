@@ -2,45 +2,56 @@ import time
 import logging
 
 import numpy as np
-import dask.array as da
 
 from katdal.sensordata import TelstateSensorData, SensorCache
 from katdal.categorical import CategoricalData
 from katdal.h5datav3 import SENSOR_PROPS
 
+from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
+
 from . import calprocs
 from . import pipelineprocs as pp
 from .scan import Scan
-from .rfi import threshold_avg_flagging
 from . import lsm_dir
-
 
 logger = logging.getLogger(__name__)
 
 
-def rfi(s, thresholds, av_blocks):
-    """
-    Place holder for RFI detection algorithms to come.
+def init_flagger(ts, dump_period):
+    """Set up SumThresholdFlagger objects for targets
+    and calibrators.
 
-    Inputs
-    ------
-    s : Scan
-        Scan to flag
-    thresholds : list of float, shape(N)
-        Tresholds to use for tN iterations of flagging
-    av_blocks : list of int, shape(N-1, 2)
-        List of block sizes to average over from the second iteration, in the
-        form [time_block, channel_block]
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        The telescope state associated with this pipeline
+    dump_period : float
+        The dump period in seconds
+
+    Returns
+    -------
+    calib_flagger : :class:`SumThresholdFlagger`
+        A SumThresholdFlagger object for use with calibrators
+    targ_flagger : :class:`SumThresholdFlagger`
+        A SumThresholdFlagger object for use with targets
     """
-    total_size = np.multiply.reduce(s.flags.shape) / 100.
-    logger.info('  - Start flags: %.3f%%',
-                (da.sum(s.flags.view(np.bool)) / total_size).compute())
-    # TODO: push dask into threshold_avg_flagging
-    flags = s.flags.compute()
-    threshold_avg_flagging(s.vis.compute(), flags, thresholds, blocks=av_blocks, transform=np.abs)
-    s.flags = da.from_array(flags, chunks=(1,) + flags.shape[1:], name=False)
-    logger.info('  - New flags:   %.3f%%',
-                (da.sum(calprocs.asbool(s.flags)) / total_size).compute())
+
+    # Make windows a integer array
+    rfi_windows_freq = np.array(ts.cal_param_rfi_windows_freq.split(','), dtype=np.int)
+    spike_width_time = ts.cal_param_rfi_spike_width_time/dump_period
+    calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_calib_nsigma,
+                                        windows_freq=rfi_windows_freq,
+                                        spike_width_time=spike_width_time,
+                                        spike_width_freq=ts.cal_param_rfi_calib_spike_width_freq,
+                                        average_freq=ts.cal_param_rfi_average_freq,
+                                        freq_extend=ts.cal_param_rfi_extend_freq)
+    targ_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_targ_nsigma,
+                                       windows_freq=rfi_windows_freq,
+                                       spike_width_time=spike_width_time,
+                                       spike_width_freq=ts.cal_param_rfi_targ_spike_width_freq,
+                                       average_freq=ts.cal_param_rfi_average_freq,
+                                       freq_extend=ts.cal_param_rfi_extend_freq)
+    return calib_flagger, targ_flagger
 
 
 def get_tracks(data, ts, dump_period):
@@ -208,6 +219,9 @@ def pipeline(data, ts):
     # available when the first data starts to flow.
     init_ts_params(ts)
 
+    # Set up flaggers
+    calib_flagger, targ_flagger = init_flagger(ts, dump_period)
+
     # get names of target TS key, using TS reference antenna
     target_key = '{0}_target'.format(ts.cal_refant,)
 
@@ -271,15 +285,13 @@ def pipeline(data, ts):
         logger.debug('Model parameters for source {0}: {1}'.format(
             target_name, s.model_raw_params))
 
-        # do we have an rfi mask? In which case, apply it
-        if 'cal_rfi_mask' in ts.keys():
-            flag_mask = ts.cal_rfi_mask[np.newaxis, :, np.newaxis, np.newaxis]
-            s.flags = np.logical_or(s.flags, flag_mask)
-
         # ---------------------------------------
-        # initial RFI flagging
-        logger.info('Preliminary flagging')
-        rfi(s, [3.0, 3.0, 2.0, 1.6], [[3, 1], [3, 5], [3, 8]])
+        # Calibrator RFI flagging
+        if any(k.endswith('cal') for k in taglist):
+            logger.info('Calibrator flagging')
+            s.rfi(calib_flagger, ts.get('cal_rfi_mask'))
+            # TODO: setup separate flagger for cross-pols
+            s.rfi(calib_flagger, ts.get('cal_rfi_mask'), cross=True)
 
         # run_t0 = time.time()
 
@@ -461,6 +473,8 @@ def pipeline(data, ts):
 
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi(s, [3.0, 3.0, 2.0], [[3, 1], [5, 8]])
+            s.rfi(targ_flagger, ts.get('cal_rfi_mask'))
+            # TODO: setup separate flagger for cross-pols
+            s.rfi(targ_flagger, ts.get('cal_rfi_mask'), cross=True)
 
     return target_slices

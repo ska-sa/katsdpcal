@@ -3,12 +3,14 @@
 from time import time
 import functools
 import logging
+import warnings
 
 import numpy as np
 import dask.array as da
 from scipy.constants import c as light_speed
 import scipy.interpolate
 
+from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 
 from . import calprocs, calprocs_dask
@@ -173,7 +175,7 @@ class Scan(object):
             te = time()
 
             scanlogger = args[0].logger
-            scanlogger.info('  - Solution time: {0} s'.format(te-ts,))
+            scanlogger.info('  - Solution time ({0}): {1} s'.format(f.__name__, te-ts,))
             return result
         return timed
 
@@ -616,3 +618,66 @@ class Scan(object):
                 # for full model, divide through selected channels by same
                 # channel selection in the model
                 return modvis[chan_select] / self.model[chan_select]
+
+    # ----------------------------------------------------------------------
+    # RFI Functions
+    @logsolutiontime
+    def rfi(self, flagger, mask=None, cross=False):
+        """Detect flags in the visibilities. Detected flags
+        are added to the cal_rfi bit of the flag array.
+        Optionally provide a channel mask, which is added to
+        the static bit of the flag array.
+
+        Parameters
+        ----------
+        flagger : :class:`SumThresholdFlagger`
+            Flagger, with :meth:`get_flags` to detect rfi
+        mask : 1d array, boolean, optional
+            Channel mask to apply
+        cross : boolean, optional
+            If True, flag the cross-pol data, otherwise
+            flag single-pol data (default).
+        """
+        if cross:
+            self.logger.info('  - Flag cross-pols')
+            in_flags = self.cross_flags
+            in_vis = self.cross_vis
+        else:
+            self.logger.info('  - Flag single-pols')
+            in_flags = self.flags
+            in_vis = self.vis
+
+        total_size = np.multiply.reduce(in_flags.shape) / 100.
+        self.logger.info('  - Start flags: %.3f%%',
+                         (da.sum(in_flags.view(np.bool)) / total_size).compute())
+
+        # Get the relevant flag bits from katdal
+        static_bit = FLAG_NAMES.index('static')
+        cal_rfi_bit = FLAG_NAMES.index('cal_rfi')
+
+        # TODO: push dask into threshold_avg_flagging
+        flags = in_flags.compute()
+        vis = in_vis.compute()
+        # do we have an rfi mask? In which case, use it
+        # Add to 'static' flag bit.
+        # TODO: Should mask_flags already be in static bit?
+        if mask is not None:
+            flags |= mask[np.newaxis, :, np.newaxis, np.newaxis] * np.uint8(2**static_bit)
+
+        # The flagger produces numerous nan related warnings
+        # which are not fully dealt with by filtering options in
+        # np.errstate. Therefore we suppress all warnings during flagging.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # Loop over polarisations
+            for pol in range(flags.shape[2]):
+                flagger_mask = calprocs.asbool(flags[:, :, pol, :])
+                out_flags = flagger.get_flags(vis[:, :, pol, :], flagger_mask)
+                # Add new flags to 'cal_rfi'
+                flags[:, :, pol, :] |= out_flags * np.uint8(2**cal_rfi_bit)
+        self.logger.info('  - New flags:   %.3f%%',
+                         (np.sum(calprocs.asbool(flags)) / total_size))
+        if cross:
+            self.cross_flags = da.from_array(flags, chunks=self.cross_flags.chunks, name=False)
+        else:
+            self.flags = da.from_array(flags, chunks=self.flags.chunks, name=False)
