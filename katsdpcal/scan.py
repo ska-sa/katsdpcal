@@ -731,11 +731,13 @@ class Scan(object):
         if cross:
             self.logger.info('  - Flag cross-pols')
             data = self.pb.cross
+            orig = self.orig.cross
             # TODO: create cross-hand-aware pre_apply
             vis = data.vis
         else:
             self.logger.info('  - Flag single-pols')
             data = self.pb.auto
+            orig = self.orig.auto
             vis = self.pre_apply(solns_to_apply, data)
 
         total_size = np.multiply.reduce(data.flags.shape) / 100.
@@ -765,5 +767,5 @@ class Scan(object):
                         flagger=flagger, out_bit=cal_rfi_bit).compute()
         self.logger.info('  - New flags:   %.3f%%',
                          (np.sum(calprocs.asbool(flags)) / total_size))
-        data.flags = da.from_array(flags, chunks=data.flags.chunks, name=False)
+        orig.flags = da.from_array(flags, chunks=flags.shape, name=False)
         self.reset_chunked()
