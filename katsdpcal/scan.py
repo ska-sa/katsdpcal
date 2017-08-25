@@ -764,7 +764,14 @@ class Scan(object):
                         dtype=np.uint8,
                         new_axes={'T': vis.shape[0], 'F': vis.shape[1]}, concatenate=True,
                         flagger=flagger, out_bit=cal_rfi_bit).compute()
-        self.logger.info('  - New flags:   %.3f%%',
-                         (np.sum(calprocs.asbool(flags)) / total_size))
         orig.flags = da.from_array(flags, chunks=flags.shape, name=False)
         self.reset_chunked()
+        # We use dask to count the new flags, because it is parallel and hence
+        # faster than using np.sum even though we have a numpy array. We can't
+        # use orig.flags though, because that only has one chunk.
+        if cross:
+            flags = self.tf.cross.flags
+        else:
+            flags = self.tf.auto.flags
+        self.logger.info('  - New flags: %.3f%%',
+                         (da.sum(calprocs.asbool(flags)) / total_size).compute())
