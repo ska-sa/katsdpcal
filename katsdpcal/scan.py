@@ -242,7 +242,7 @@ class Scan(object):
         # Arrays chunked up in time and frequency
         self.tf = self.orig.rechunk((4, 4096, None, None))
         # Arrays chunked up in polarization and baseline
-        self.pb = self.orig.rechunk((None, None, 1, 8))
+        self.pb = self.orig.rechunk((None, None, 1, 16))
 
     def logsolutiontime(f):
         """
