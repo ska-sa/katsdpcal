@@ -741,8 +741,7 @@ class Pipeline(Task):
                     slices = list(_slots_slices(event.slots))
                     for key in ('vis', 'flags', 'weights'):
                         buffer = self.buffers[key]
-                        chunks = (4, 4096) + buffer.shape[2:]
-                        parts = [da.from_array(buffer[s], chunks=chunks, name=False)
+                        parts = [da.from_array(buffer[s], chunks=buffer[s].shape, name=False)
                                  for s in slices]
                         data[key] = da.concatenate(parts, axis=0)
                     # run the pipeline
