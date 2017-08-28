@@ -455,7 +455,7 @@ class Scan(object):
 
     def apply(self, soln, vis):
         # set up more complex interpolation methods later
-        soln_values = da.from_array(soln.values, chunks=(1,) + soln.values.shape[1:])
+        soln_values = da.asarray(soln.values)
         if soln.soltype is 'G':
             # add empty channel dimension if necessary
             full_sol = soln_values[:, np.newaxis, :, :] \
