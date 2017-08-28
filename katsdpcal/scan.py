@@ -202,10 +202,8 @@ class Scan(object):
         self.bl_slice = xc_slice if corr is 'xc' else slice(None)
         self.corrprod_lookup = bls_lookup[self.bl_slice]
 
-        # get references to this time chunk of data, parallel hand polarisations only
+        # get references to this time chunk of data
         # data format is:   (time x channels x pol x bl).
-        # set to read-only to ensure that corrections are only applied to
-        # copies of the data, not the original.
         all_data = ScanData(data['vis'], data['flags'], data['weights'])
         all_data = all_data[time_slice, :, :, self.bl_slice]
         self.orig = ScanDataPair(all_data[:, :, 0:2, :], all_data[:, :, 2:, :])
