@@ -29,7 +29,7 @@ def _rfi(vis, flags, flagger, out_bit):
     assert flags.shape[2] == 1
     flagger_mask = calprocs.asbool(flags[:, :, 0, :])
     out_flags = flagger.get_flags(vis[:, :, 0, :], flagger_mask)
-    return flags | (out_flags[:, :, np.newaxis, :] * np.uint8(2**out_value))
+    return flags | (out_flags[:, :, np.newaxis, :] * out_value
 
 
 class ScanData(object):
