@@ -504,6 +504,7 @@ class Scan(object):
             modvis = self.apply(soln, modvis)
         return modvis
 
+    @logsolutiontime
     def apply_inplace(self, solns_to_apply):
         """Apply a set of solutions to the visibilities, overwriting them.
 
