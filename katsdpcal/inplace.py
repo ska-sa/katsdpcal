@@ -7,6 +7,7 @@ from __future__ import print_function, division, absolute_import
 
 import numpy as np
 import dask.array as da
+import dask.base
 import dask.core
 import dask.optimize
 import dask.array.optimization
@@ -209,3 +210,44 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     if safe:
         _safe_in_place(dsk, src_keys, trg_keys)
     da.Array._get(dsk, out_keys)
+
+
+def _rename(comp, keymap):
+    """Compute the replacement for a computation by remapping keys through `keymap`."""
+    if _in_graph(keymap, comp):
+        return keymap[comp]
+    elif dask.core.istask(comp):
+        return (comp[0],) + tuple(_rename(c, keymap) for c in comp[1:])
+    elif isinstance(comp, list):
+        return [_rename(c, keymap) for c in comp]
+    else:
+        return comp
+
+
+def _rename_key(key, salt):
+    if isinstance(key, str):
+        return 'rename-' + dask.base.tokenize([key, salt])
+    elif isinstance(key, tuple) and len(key) > 0:
+        return (_rename_key(key[0], salt),) + key[1:]
+    else:
+        raise TypeError('Cannot rename key {!r}'.format(key))
+
+
+def rename(array, salt=''):
+    """Rewrite the graph in a dask array to rename all the nodes.
+
+    This is intended to be used when the backing storage has changed
+    underneath, to invalidate any caches.
+
+    Parameters
+    ----------
+    array : :class:`dask.array.Array`
+        Array to rewrite. It is modified in place.
+    salt : str, optional
+        Value mixed in to the hash function used for renaming. If two arrays
+        share keys, then calling this function on those arrays with the same
+        salt will cause them to again share keys.
+    """
+    keymap = {key: _rename_key(key, salt) for key in array.dask}
+    array.dask = {keymap[key]: _rename(value, keymap) for (key, value) in array.dask.items()}
+    array.name = _rename_key(array.name, salt)

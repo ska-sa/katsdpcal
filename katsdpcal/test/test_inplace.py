@@ -1,6 +1,6 @@
 """Tests for :mod:`katsdpcal.inplace`."""
 
-from nose.tools import assert_raises
+from nose.tools import assert_raises, assert_false
 import numpy as np
 import dask.array as da
 
@@ -77,3 +77,18 @@ class TestStoreInplace(object):
             inplace.store_inplace(self.a, self.na)
         with assert_raises(ValueError):
             inplace.store_inplace(self.na, self.a)
+
+
+class TestRename(object):
+    def test(self):
+        a = np.array([1, 2, 3, 4, 5, 6], np.int32)
+        b = np.array([10, 9, 8, 7, 6, 5], np.int32)
+        x = da.from_array(a, chunks=(2,))
+        y = da.from_array(b, chunks=(2,))
+        z = x * y
+        expected = np.array([10, 18, 24, 28, 30, 30], np.int32)
+        old_keys = set(z.dask.keys())
+        inplace.rename(z)
+        new_keys = set(z.dask.keys())
+        assert_false(old_keys & new_keys)
+        np.testing.assert_array_equal(expected, z.compute())
