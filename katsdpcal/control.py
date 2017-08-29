@@ -6,6 +6,7 @@ import logging
 from collections import deque
 import multiprocessing
 import multiprocessing.dummy
+import cProfile
 
 import spead2
 import spead2.recv.trollius
@@ -131,6 +132,8 @@ class Task(object):
         Queue for sending sensor updates to the master.
     name : str, optional
         Name for the task
+    profile_file : str, optional
+        Output filename for a cProfile profile of the :meth:`run` method
 
     Attributes
     ----------
@@ -141,8 +144,9 @@ class Task(object):
         present inside the child process.
     """
 
-    def __init__(self, task_class, master_queue, name=None):
+    def __init__(self, task_class, master_queue, name=None, profile_file=None):
         self.master_queue = master_queue
+        self.profile_file = profile_file
         self._process = task_class(target=_run_task, name=name, args=(self,))
         self.sensors = None
         # Expose assorted methods from the base class
@@ -156,7 +160,16 @@ class Task(object):
         for sensor in sensors:
             sensor.attach(observer)
         self.sensors = {sensor.name: sensor for sensor in sensors}
-        self.run()
+        try:
+            if self.profile_file is not None:
+                profile = cProfile.Profile()
+                profile.enable()
+            self.run()
+        finally:
+            if self.profile_file is not None:
+                profile.create_stats()
+                profile.dump_stats(self.profile_file)
+                logger.info('Wrote profile to %s', self.profile_file)
 
     def get_sensors(self):
         """Get list of katcp sensors.
@@ -675,8 +688,8 @@ class Pipeline(Task):
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_report_queue, master_queue,
                  l1_endpoint, l1_level, l1_rate, telstate,
-                 diagnostics_file=None, num_workers=None):
-        super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline')
+                 diagnostics_file=None, profile_file=None, num_workers=None):
+        super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
         self.pipeline_report_queue = pipeline_report_queue
@@ -1133,7 +1146,7 @@ def create_server(use_multiprocessing, host, port, buffers,
                   l0_endpoint, l0_interface_address,
                   l1_endpoint, l1_level, l1_rate, telstate,
                   report_path, log_path, full_log,
-                  diagnostics_file=None, num_workers=None):
+                  diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
         logger.info("Using multiprocessing")
@@ -1154,7 +1167,8 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file, num_workers)
+        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file, pipeline_profile_file,
+        num_workers)
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, telstate,
