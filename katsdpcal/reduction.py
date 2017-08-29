@@ -464,6 +464,7 @@ def pipeline(data, ts):
             # get K, B and G solutions to apply and interpolate it to scan timestamps
             solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
+            s.apply_inplace(solns_to_apply)
 
             # accumulate list of target scans to be streamed to L1
             target_slices.append(scan_slice)
@@ -471,8 +472,8 @@ def pipeline(data, ts):
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
             rfi_mask = ts.get('cal_rfi_mask')
-            s.rfi(targ_flagger, rfi_mask, solns_to_apply)
+            s.rfi(targ_flagger, rfi_mask)
             # TODO: setup separate flagger for cross-pols
-            s.rfi(targ_flagger, rfi_mask, solns_to_apply, cross=True)
+            s.rfi(targ_flagger, rfi_mask, cross=True)
 
     return target_slices

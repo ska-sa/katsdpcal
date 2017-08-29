@@ -12,7 +12,7 @@ import scipy.interpolate
 from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 
-from . import calprocs, calprocs_dask
+from . import calprocs, calprocs_dask, inplace
 from .calprocs import CalSolution
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,11 @@ def _rfi(vis, flags, flagger, out_bit):
     # flagger doesn't handle a separate pol axis, so the caller must use
     # a chunk size of 1
     assert flags.shape[2] == 1
-    flagger_mask = calprocs.asbool(flags[:, :, 0, :])
+    # Mask out the output but from the input. This ensures that the process
+    # gives invariant values even if some chunks are updated in-place before
+    # they are used to compute other chunks (which shouldn't happen, but the
+    # safety check in the inplace module isn't smart enough to detect this).
+    flagger_mask = calprocs.asbool(flags[:, :, 0, :] & ~out_value)
     out_flags = flagger.get_flags(vis[:, :, 0, :], flagger_mask)
     return flags | (out_flags[:, :, np.newaxis, :] * out_value)
 
@@ -500,6 +504,25 @@ class Scan(object):
             modvis = self.apply(soln, modvis)
         return modvis
 
+    def apply_inplace(self, solns_to_apply):
+        """Apply a set of solutions to the visibilities, overwriting them.
+
+        Parameters
+        ----------
+        solns_to_apply : list of :class:`~katsdpcal.calprocs.CalSolution`
+            Solutions to apply
+        """
+        # TODO: also apply to cross-pols once such an apply function exists
+        vis = self.tf.auto.vis
+        for soln in solns_to_apply:
+            self.logger.info(
+                '  - Apply {0} solution to {1} (inplace)'.format(soln.soltype, self.target.name))
+            vis = self.apply(soln, vis)
+        inplace.store_inplace(vis, self.tf.auto.vis)
+        # bust any dask caches
+        inplace.rename(self.orig.auto.vis)
+        self.reset_chunked()
+
     # ---------------------------------------------------------------------------------------------
     # interpolation
 
@@ -707,7 +730,7 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, solns_to_apply=(), cross=False):
+    def rfi(self, flagger, mask=None, cross=False):
         """Detect flags in the visibilities. Detected flags
         are added to the cal_rfi bit of the flag array.
         Optionally provide a channel mask, which is added to
@@ -719,8 +742,6 @@ class Scan(object):
             Flagger, with :meth:`get_flags` to detect rfi
         mask : 1d array, boolean, optional
             Channel mask to apply
-        solns_to_apply : list of :class:`~katsdpcal.calprocs.CalSolution`, optional
-            Solutions to apply to the visibilities before flagging
         cross : boolean, optional
             If True, flag the cross-pol data, otherwise
             flag single-pol data (default).
@@ -729,13 +750,12 @@ class Scan(object):
             self.logger.info('  - Flag cross-pols')
             data = self.pb.cross
             orig = self.orig.cross
-            # TODO: create cross-hand-aware pre_apply
-            vis = data.vis
         else:
             self.logger.info('  - Flag single-pols')
             data = self.pb.auto
             orig = self.orig.auto
-            vis = self.pre_apply(solns_to_apply, data)
+        vis = data.vis
+        flags = data.flags
 
         total_size = np.multiply.reduce(data.flags.shape) / 100.
         self.logger.info('  - Start flags: %.3f%%',
@@ -749,27 +769,23 @@ class Scan(object):
         # Add to 'static' flag bit.
         # TODO: Should mask_flags already be in static bit?
         if mask is not None:
-            flags = data.flags | (mask[np.newaxis, :, np.newaxis, np.newaxis]
-                                  * np.uint8(2**static_bit))
+            flags |= (mask[np.newaxis, :, np.newaxis, np.newaxis] * np.uint8(2**static_bit))
 
-        # Need chunking with only 1 chunk in time and frequency, so that the
-        # entire time and band gets passed to the flagger as a unit. Parallelism
-        # is provided in the pol and baseline dimensions.
-        new_chunks = (flags.shape[0], flags.shape[1], 1, flags.chunks[3])
-        flags = da.rechunk(flags, new_chunks, block_size_limit=4 * 1024**3)
-        vis = da.rechunk(vis, new_chunks, block_size_limit=4 * 1024**3)
         flags = da.atop(_rfi, 'TFpb', vis, 'tfpb', flags, 'tfpb',
                         dtype=np.uint8,
                         new_axes={'T': vis.shape[0], 'F': vis.shape[1]}, concatenate=True,
-                        flagger=flagger, out_bit=cal_rfi_bit).compute()
-        orig.flags = da.from_array(flags, chunks=flags.shape, name=False)
+                        flagger=flagger, out_bit=cal_rfi_bit)
+        # _rfi takes care to be idempotent, so we can use safe=False. The
+        # safety check doesn't handle the case of some chunks being
+        # concatenated, processed, then split back to the original chunks.
+        inplace.store_inplace(flags, data.flags, safe=False)
+        # Bust any caches of the old values
+        inplace.rename(orig.flags)
         self.reset_chunked()
-        # We use dask to count the new flags, because it is parallel and hence
-        # faster than using np.sum even though we have a numpy array. We can't
-        # use orig.flags though, because that only has one chunk.
         if cross:
             flags = self.tf.cross.flags
         else:
             flags = self.tf.auto.flags
+        # Count the new flags
         self.logger.info('  - New flags: %.3f%%',
                          (da.sum(calprocs.asbool(flags)) / total_size).compute())
