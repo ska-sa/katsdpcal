@@ -534,15 +534,16 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
-        for i in range(180):
-            print('waiting', i)
+        for i in range(60):
             yield tornado.gen.sleep(0.5)
             heaps = int((yield self.get_sensor('accumulator-input-heaps')))
-            if heaps == n_times:
+            if heaps == n_times * self.n_substreams:
+                print('all heaps received')
                 break
+            print('waiting {} ({}/{} received)'.format(i, heaps, n_times * self.n_substreams))
         else:
             raise RuntimeError('Timed out waiting for the heaps to be received')
-        informs = yield self.make_request('shutdown', timeout=180)
+        informs = yield self.make_request('shutdown', timeout=60)
         progress = [inform.arguments[0] for inform in informs]
         assert_equal(['Accumulator stopped',
                       'Pipeline stopped',
