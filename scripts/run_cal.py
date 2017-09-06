@@ -99,6 +99,9 @@ def parse_opts():
         '--l0-spectral-interface',
         help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
     parser.add_argument(
+        '--l0-spectral-name', default='sdp_l0',
+        help='Name of the L0 stream for telstate metadata. [default: %(default)s]', metavar='NAME')
+    parser.add_argument(
         '--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202',
         help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument(
@@ -160,7 +163,7 @@ def setup_logger(log_name, log_path='.'):
 
 
 @trollius.coroutine
-def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
+def run(ts, stream_name, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         buffer_maxsize=None, auto=True,
         l0_endpoint=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
@@ -172,7 +175,9 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     Parameters
     ----------
     ts : TelescopeState
-        The telescope state, default: 'localhost' database 0
+        The telescope state
+    stream_name : str
+        Name of the L0 input stream, for finding parameters in `ts`
     cbf_n_chans : int
         The number of channels in the data stream
     cbf_n_pols : int
@@ -318,7 +323,7 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
 
     server = create_server(mproc, host, port, buffers,
                            l0_endpoint, l0_interface_address,
-                           l1_endpoint, l1_level, l1_rate, ts,
+                           l1_endpoint, l1_level, l1_rate, ts, stream_name,
                            report_path, log_path, full_log,
                            diagnostics_file, num_workers)
     with server:
@@ -368,7 +373,7 @@ def main():
     setup_logger(log_name, log_path)
 
     yield From(run(
-        opts.telstate,
+        opts.telstate, opts.l0_spectral_name,
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
         host=opts.host, port=opts.port,
         buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),

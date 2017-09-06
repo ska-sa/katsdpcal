@@ -13,6 +13,7 @@ import spead2.send
 
 import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool
+from katdal.h5datav3 import FLAG_NAMES
 
 import numpy as np
 import dask.array as da
@@ -194,7 +195,7 @@ class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue,
-                 l0_endpoint, l0_interface_address, telstate):
+                 l0_endpoint, l0_interface_address, telstate, stream_name):
         self.buffers = buffers
         self.telstate = telstate
         self.l0_endpoint = l0_endpoint
@@ -202,9 +203,9 @@ class Accumulator(object):
         self.accum_pipeline_queue = accum_pipeline_queue
 
         # Extract useful parameters from telescope state
-        self.cbf_sync_time = self.telstate.cbf_sync_time
-        self.sdp_l0_int_time = self.telstate.sdp_l0_int_time
-        self.set_ordering_parameters()
+        self.sync_time = self.telstate[stream_name + '_sync_time']
+        self.int_time = self.telstate[stream_name + '_int_time']
+        self.set_ordering_parameters(stream_name)
 
         self.name = 'Accumulator'
         self._rx = None
@@ -233,9 +234,14 @@ class Accumulator(object):
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
         # Then there are per-channel weights (4 bytes each).
-        heap_size = self.nchan * self.npol * self.nbl * 10 + self.nchan * 4
+        stream_n_chans = telstate[stream_name + '_n_chans']
+        stream_n_bls = telstate[stream_name + '_n_bls']
+        stream_n_chans_per_substream = telstate[stream_name + '_n_chans_per_substream']
+        self.n_substreams = stream_n_chans // stream_n_chans_per_substream
+        heap_size = stream_n_chans_per_substream * 10 + stream_n_chans_per_substream * 4
         self._thread_pool = spead2.ThreadPool()
-        self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096, 4, 4)
+        self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096,
+                                              4 * self.n_substreams, 4 * self.n_substreams)
 
         # Thread for doing blocking waits, to avoid stalling the asyncio event loop
         self._executor = concurrent.futures.ThreadPoolExecutor(1)
@@ -312,6 +318,9 @@ class Accumulator(object):
             status = katcp.Sensor.WARN if not self._free_slots else katcp.Sensor.NOMINAL
             _inc_sensor(self.sensors['free-slots'], -1, status, timestamp=now)
             _inc_sensor(self.sensors['accumulator-slots'], 1, timestamp=now)
+            # Mark all flags as data_lost, so that any that aren't overwritten
+            # by data will have this value.
+            self.buffers['flags'][slot].fill(np.uint8(2 ** FLAG_NAMES.index('data_lost')))
             raise Return(slot)
 
     @trollius.coroutine
@@ -364,7 +373,7 @@ class Accumulator(object):
         logger.info('Initializing SPEAD receiver')
         rx = spead2.recv.trollius.Stream(
             self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
-            max_heaps=2, ring_heaps=1)
+            max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams)
         rx.set_memory_allocator(self._memory_pool)
         rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
         if self.l0_interface_address is not None:
@@ -419,12 +428,12 @@ class Accumulator(object):
             self._executor.shutdown()
             self._executor = None
 
-    def set_ordering_parameters(self):
+    def set_ordering_parameters(self, stream_name):
         # determine re-ordering necessary to convert from supplied bls
         # ordering to desired bls ordering
         antlist = self.telstate.cal_antlist
         self.ordering, bls_order, pol_order = \
-            calprocs.get_reordering(antlist, self.telstate.sdp_l0_bls_ordering)
+            calprocs.get_reordering(antlist, self.telstate[stream_name + '_bls_ordering'])
         # determine lookup list for baselines
         bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
         # save these to the telescope state for use in the pipeline/elsewhere
@@ -501,7 +510,8 @@ class Accumulator(object):
                 logger.info('==== empty heap received ====')
                 continue
             have_items = True
-            for key in ('timestamp', 'correlator_data', 'flags', 'weights', 'weights_channel'):
+            for key in ('timestamp', 'frequency',
+                        'correlator_data', 'flags', 'weights', 'weights_channel'):
                 if key not in updated:
                     logger.warn('heap received without %s', key)
                     have_items = False
@@ -636,6 +646,7 @@ class Accumulator(object):
         ig = spead2.ItemGroup()
         old_state = None
         unsync_start_time = None     # Batch start time, raw
+        last_ts = None               # Previous value of data_ts
         # list of slots that have been filled
         slots = []
         refant = self.telstate.cal_refant
@@ -648,57 +659,68 @@ class Accumulator(object):
             except spead2.Stopped:
                 break
 
-            data_ts = ig['timestamp'].value + self.cbf_sync_time
-            if self._obs_start is None:
-                self._obs_start = data_ts - 0.5 * self.sdp_l0_int_time
-            self._obs_end = data_ts + 0.5 * self.sdp_l0_int_time
+            data_ts = ig['timestamp'].value + self.sync_time
+            if last_ts is not None and data_ts < last_ts:
+                logger.warn('Timestamp went backwards (%f < %f), skipping heap', data_ts, last_ts)
+                continue
+            elif data_ts != last_ts:
+                if self._obs_start is None:
+                    self._obs_start = data_ts - 0.5 * self.int_time
+                self._obs_end = data_ts + 0.5 * self.int_time
 
-            # get activity and target tag from telescope state
-            new_state = self._get_activity_state(refant, data_ts)
-            if new_state is None:
-                continue     # _get_activity logs the reason
+                # get activity and target tag from telescope state
+                new_state = self._get_activity_state(refant, data_ts)
+                if new_state is None:
+                    continue     # _get_activity logs the reason
 
-            # if this is the first heap of the batch, set up some values
-            if old_state is None:
-                unsync_start_time = ig['timestamp'].value
-                logger.info('accumulating data from targets:')
+                # if this is the first heap of the batch, set up some values
+                if old_state is None:
+                    unsync_start_time = ig['timestamp'].value
+                    logger.info('accumulating data from targets:')
 
-            if old_state is None or new_state.target_name != old_state.target_name:
-                # update source list if necessary
-                self._update_source_list(new_state.target_name, data_ts)
+                if old_state is None or new_state.target_name != old_state.target_name:
+                    # update source list if necessary
+                    self._update_source_list(new_state.target_name, data_ts)
 
-            # flush a batch if necessary
-            duration = ig['timestamp'].value - unsync_start_time
-            if old_state is not None and self._is_break(old_state, new_state, slots, duration):
-                self._flush_slots(slots)
-                slots = []
-                old_state = None
-                unsync_start_time = ig['timestamp'].value
+                # flush a batch if necessary
+                duration = ig['timestamp'].value - unsync_start_time
+                if old_state is not None and self._is_break(old_state, new_state, slots, duration):
+                    self._flush_slots(slots)
+                    slots = []
+                    old_state = None
+                    unsync_start_time = ig['timestamp'].value
 
-            # print name of target and activity type on changes (and start of batch)
-            if old_state != new_state:
-                logger.info(' - %s (%s)', new_state.target_name, new_state.activity)
+                # print name of target and activity type on changes (and start of batch)
+                if old_state != new_state:
+                    logger.info(' - %s (%s)', new_state.target_name, new_state.activity)
 
-            # Obtain a slot to copy to
-            slot = yield From(self._next_slot())
-            if slot is None:
-                logger.info('Accumulation interrupted while waiting for a slot')
-                break
-            slots.append(slot)
+                # Obtain a slot to copy to
+                slot = yield From(self._next_slot())
+                if slot is None:
+                    logger.info('Accumulation interrupted while waiting for a slot')
+                    break
+                slots.append(slot)
 
+                old_state = new_state
+                last_ts = data_ts
+            else:
+                slot = slots[-1]
+
+            channel0 = ig['frequency'].value
+            channel_slice = np.s_[channel0 : channel0 + ig['flags'].shape[0]]
             # reshape data and put into relevent arrays
-            self._update_buffer(self.buffers['vis'][slot],
+            self._update_buffer(self.buffers['vis'][slot, channel_slice],
                                 ig['correlator_data'].value, self.ordering)
-            self._update_buffer(self.buffers['flags'][slot],
+            self._update_buffer(self.buffers['flags'][slot, channel_slice],
                                 ig['flags'].value, self.ordering)
             weights_channel = ig['weights_channel'].value[:, np.newaxis]
             weights = ig['weights'].value
-            self._update_buffer(self.buffers['weights'][slot],
+            self._update_buffer(self.buffers['weights'][slot, channel_slice],
                                 weights * weights_channel, self.ordering)
+            # This will get overwritten on each heap of the dump, but that
+            # should be harmless.
             self.buffers['times'][slot] = data_ts
             _inc_sensor(self.sensors['accumulator-input-heaps'], 1)
-
-            old_state = new_state
 
         # Flush out the final batch
         self._flush_slots(slots)
@@ -1173,7 +1195,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_endpoint, l0_interface_address,
-                  l1_endpoint, l1_level, l1_rate, telstate,
+                  l1_endpoint, l1_level, l1_rate, telstate, stream_name,
                   report_path, log_path, full_log,
                   diagnostics_file=None, num_workers=None):
     # threading or multiprocessing imports
@@ -1215,7 +1237,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue,
-                                  l0_endpoint, l0_interface_address, telstate)
+                                  l0_endpoint, l0_interface_address, telstate, stream_name)
         return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
     except Exception:
         for task in running_tasks:

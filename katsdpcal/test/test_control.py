@@ -225,16 +225,23 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'h', b + 'v'))
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.clear()     # Prevent state leaks
-        telstate.add('sdp_l0_int_time', 4.0, immutable=True)
         telstate.add('antenna_mask', ','.join(self.antennas), immutable=True)
         telstate.add('cbf_n_ants', self.n_antennas, immutable=True)
         telstate.add('cbf_n_chans', self.n_channels, immutable=True)
         telstate.add('cbf_n_pols', 4, immutable=True)
         telstate.add('cbf_center_freq', 1712000000.0, immutable=True)
         telstate.add('cbf_bandwidth', 856000000.0, immutable=True)
-        telstate.add('sdp_l0_bls_ordering', bls_ordering, immutable=True)
         telstate.add('cbf_sync_time', 1400000000.0, immutable=True)
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
+        telstate.add('sdp_l0_int_time', 4.0, immutable=True)
+        telstate.add('sdp_l0_bls_ordering', bls_ordering, immutable=True)
+        telstate.add('sdp_l0_n_bls', len(bls_ordering), immutable=True)
+        # At present, cal doesn't work with L0 being different to CBF
+        telstate.add('sdp_l0_bandwidth', telstate.cbf_bandwidth)
+        telstate.add('sdp_l0_center_freq', telstate.cbf_center_freq)
+        telstate.add('sdp_l0_n_chans', telstate.cbf_n_chans)
+        telstate.add('sdp_l0_n_chans_per_substream', telstate.sdp_l0_n_chans)
+        telstate.add('sdp_l0_sync_time', telstate.cbf_sync_time)
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
@@ -302,7 +309,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             Endpoint('239.102.255.1', 7148), None,
-            None, 0, None, self.telstate,
+            None, 0, None, self.telstate, 'sdp_l0',
             self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)
@@ -433,7 +440,8 @@ class TestCalDeviceServer(unittest.TestCase):
                 'flags': flags,
                 'weights': weights,
                 'weights_channel': weights_channel,
-                'timestamp': ts
+                'timestamp': ts,
+                'frequency': np.uint32(0)
             })
             ts += self.telstate.sdp_l0_int_time
         yield self.make_request('capture-init')
@@ -507,7 +515,8 @@ class TestCalDeviceServer(unittest.TestCase):
                 'flags': flags,
                 'weights': weights,
                 'weights_channel': weights_channel,
-                'timestamp': ts
+                'timestamp': ts,
+                'frequency': 0
             })
             ts += self.telstate.sdp_l0_int_time
         # Add a target change at an uneven time, so that the batches won't
