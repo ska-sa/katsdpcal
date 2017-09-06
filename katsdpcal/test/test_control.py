@@ -230,7 +230,7 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate.add('cbf_n_ants', self.n_antennas, immutable=True)
         telstate.add('cbf_n_chans', self.n_channels, immutable=True)
         telstate.add('cbf_n_pols', 4, immutable=True)
-        telstate.add('cbf_center_freq', 428000000.0, immutable=True)
+        telstate.add('cbf_center_freq', 1712000000.0, immutable=True)
         telstate.add('cbf_bandwidth', 856000000.0, immutable=True)
         telstate.add('sdp_l0_bls_ordering', bls_ordering, immutable=True)
         telstate.add('cbf_sync_time', 1400000000.0, immutable=True)
@@ -476,8 +476,6 @@ class TestCalDeviceServer(unittest.TestCase):
         BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
         # TODO: enable when fixed.
         # This test won't work yet:
-        # - cal uses the baseband center frequency instead of L band, which breaks
-        #   both the phase of G and the flux model
         # - cal puts NaNs in B in the channels for which it applies the static
         #   RFI mask, instead of interpolating
         # np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG), rtol=1e-3)
