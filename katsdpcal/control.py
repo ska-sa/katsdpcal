@@ -935,9 +935,11 @@ class ReportWriter(Task):
             # there are more than one
             experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
             experiment_id = eval(experiment_id_string.split()[-1])
-        except (TypeError, KeyError, AttributeError):
+        except (TypeError, KeyError, AttributeError, IndexError):
             # TypeError, KeyError because this isn't properly implemented yet
-            # AttributeError in case this key isnt in the telstate for whatever reason
+            # AttributeError in case this key isn't in the telstate for
+            # whatever reason, and IndexError in case experiment_id isn't in
+            # obs_params.
             experiment_id = '{0}_unknown_project'.format(int(now))
 
         # make directory for this observation, for logs and report
