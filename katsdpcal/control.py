@@ -238,7 +238,8 @@ class Accumulator(object):
         stream_n_bls = telstate[stream_name + '_n_bls']
         stream_n_chans_per_substream = telstate[stream_name + '_n_chans_per_substream']
         self.n_substreams = stream_n_chans // stream_n_chans_per_substream
-        heap_size = stream_n_chans_per_substream * 10 + stream_n_chans_per_substream * 4
+        heap_size = (stream_n_chans_per_substream * stream_n_bls * 10
+                     + stream_n_chans_per_substream * 4)
         self._thread_pool = spead2.ThreadPool()
         self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096,
                                               4 * self.n_substreams, 4 * self.n_substreams)
