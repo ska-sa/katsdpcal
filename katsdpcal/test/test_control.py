@@ -311,7 +311,7 @@ class TestCalDeviceServer(unittest.TestCase):
         buffers = control.create_buffer_arrays(buffer_shape, False)
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
-            Endpoint('239.102.255.1', 7148), None,
+            [Endpoint('239.102.255.1', 7148)], None,
             None, 0, None, self.telstate, 'sdp_l0',
             self.report_path, self.log_path, None)
         self.server.start()

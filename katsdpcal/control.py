@@ -195,10 +195,10 @@ class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue,
-                 l0_endpoint, l0_interface_address, telstate, stream_name):
+                 l0_endpoints, l0_interface_address, telstate, stream_name):
         self.buffers = buffers
         self.telstate = telstate
-        self.l0_endpoint = l0_endpoint
+        self.l0_endpoints = l0_endpoints
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
 
@@ -376,11 +376,12 @@ class Accumulator(object):
             max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams)
         rx.set_memory_allocator(self._memory_pool)
         rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
-        if self.l0_interface_address is not None:
-            rx.add_udp_reader(self.l0_endpoint.host, self.l0_endpoint.port,
-                              interface_address=self.l0_interface_address)
-        else:
-            rx.add_udp_reader(self.l0_endpoint.port, bind_hostname=self.l0_endpoint.host)
+        for l0_endpoint in self.l0_endpoints:
+            if self.l0_interface_address is not None:
+                rx.add_udp_reader(l0_endpoint.host, l0_endpoint.port,
+                                  interface_address=self.l0_interface_address)
+            else:
+                rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host)
         logger.info('reader added')
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(self._index))
@@ -1196,7 +1197,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 
 def create_server(use_multiprocessing, host, port, buffers,
-                  l0_endpoint, l0_interface_address,
+                  l0_endpoints, l0_interface_address,
                   l1_endpoint, l1_level, l1_rate, telstate, stream_name,
                   report_path, log_path, full_log,
                   diagnostics_file=None, num_workers=None):
@@ -1239,7 +1240,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue,
-                                  l0_endpoint, l0_interface_address, telstate, stream_name)
+                                  l0_endpoints, l0_interface_address, telstate, stream_name)
         return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
     except Exception:
         for task in running_tasks:

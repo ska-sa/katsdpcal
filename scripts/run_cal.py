@@ -165,7 +165,7 @@ def setup_logger(log_name, log_path='.'):
 @trollius.coroutine
 def run(ts, stream_name, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         buffer_maxsize=None, auto=True,
-        l0_endpoint=':7200', l0_interface=None,
+        l0_endpoints=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
         mproc=True, param_file='', report_path='', log_path='.', full_log=None,
         diagnostics_file=None, num_workers=None):
@@ -193,8 +193,8 @@ def run(ts, stream_name, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
         and then populated by the accumulator from the SPEAD stream.
     auto : bool
         True for autocorrelations included in the data, False for cross-correlations only
-    l0_endpoint : endpoint
-        Endpoint to listen to for L0 stream, default: ':7200'
+    l0_endpoints : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Endpoints to listen to for L0 stream
     l0_interface : str
         Name of interface to subscribe to for L0, or None to let the OS decide
     l1_endpoint : endpoint
@@ -312,7 +312,7 @@ def run(ts, stream_name, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     buffers = create_buffer_arrays(buffer_shape, mproc)
 
     logger.info('Receiving L0 data from %s via %s',
-                l0_endpoint, 'default interface' if l0_interface is None else l0_interface)
+                l0_endpoints, 'default interface' if l0_interface is None else l0_interface)
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
@@ -322,7 +322,7 @@ def run(ts, stream_name, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     server = create_server(mproc, host, port, buffers,
-                           l0_endpoint, l0_interface_address,
+                           l0_endpoints, l0_interface_address,
                            l1_endpoint, l1_level, l1_rate, ts, stream_name,
                            report_path, log_path, full_log,
                            diagnostics_file, num_workers)
@@ -377,7 +377,7 @@ def main():
         cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
         host=opts.host, port=opts.port,
         buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
-        l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
+        l0_endpoints=opts.l0_spectral_spead, l0_interface=opts.l0_spectral_interface,
         l1_endpoint=opts.l1_spectral_spead,
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
         param_file=opts.parameter_file,
