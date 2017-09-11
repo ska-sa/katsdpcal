@@ -29,7 +29,7 @@ simdata.setup_ts(ts)
 print "Use parameters from parameter file."
 param_file = opts.parameter_file
 if param_file == '':
-    if ts.cbf_n_chans == 4096:
+    if ts.sdp_l0_n_chans == 4096:
         param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
         param_file = os.path.join(param_dir,param_filename)
         print 'Parameter file for 4k mode: {0}'.format(param_file,)

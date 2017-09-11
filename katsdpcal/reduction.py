@@ -137,7 +137,7 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
     return solns_to_apply
 
 
-def init_ts_params(ts):
+def init_ts_params(ts, stream_name):
     """
     Initialise telescope state parameteters
     This is necessary to add telescope state parameters derived from
@@ -147,6 +147,8 @@ def init_ts_params(ts):
     ------
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
+    stream_name : str
+        name of L0 data stream
     """
     description_list = [ts['{0}_observer'.format(ant,)] for ant in ts.cal_antlist]
     # list of antenna descriptions
@@ -161,14 +163,16 @@ def init_ts_params(ts):
 
     # channel frequencies
     if 'cal_channel_freqs' not in ts:
-        n_chans = ts.cbf_n_chans
-        sideband = ts['cal_sideband'] if 'cal_sideband' in ts else 1
-        channel_freqs = ts.cbf_center_freq \
-            + sideband*(ts.cbf_bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
+        n_chans = ts[stream_name + '_n_chans']
+        center_freq = ts[stream_name + '_center_freq']
+        bandwidth = ts[stream_name + '_bandwidth']
+        sideband = ts.get('cal_sideband', 1)
+        channel_freqs = center_freq \
+            + sideband*(bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
         ts.add('cal_channel_freqs', channel_freqs, immutable=True)
 
 
-def pipeline(data, ts):
+def pipeline(data, ts, stream_name):
     """
     Pipeline calibration
 
@@ -179,6 +183,8 @@ def pipeline(data, ts):
         :class:`dask.Arrays`, while `times` references a numpy array.
     ts : :class:`katsdptelstate.TelescopeState`
         Telescope state
+    stream_name : str
+        Name of the L0 data stream
 
     Returns
     -------
@@ -203,27 +209,31 @@ def pipeline(data, ts):
     k_chan_sample = ts.cal_param_k_chan_sample
     g_solint = ts.cal_param_g_solint  # seconds
     try:
-        dump_period = ts.sdp_l0_int_time
-    except:
+        dump_period = ts[stream_name + '_int_time']
+    except KeyError:
         logger.warning(
-            'Parameter sdp_l0_int_time not present in TS. Will be derived from data.')
+            'Parameter %s_int_time not present in TS. Will be derived from data.', stream_name)
         dump_period = data['times'][1] - data['times'][0]
 
     antlist = ts.cal_antlist
     n_ants = len(antlist)
-    n_pols = ts.cbf_n_pols
+    pols = set()
+    for a, b in ts[stream_name + '_bls_ordering']:
+        pols.add(a[-1] + b[-1])
+    n_pols = len(pols)
     # refant index number in the antenna list
     refant_ind = antlist.index(ts.cal_refant)
 
     # set up parameters that are static during an observation, but only
     # available when the first data starts to flow.
-    init_ts_params(ts)
+    # TODO: more of this is static now and could be dealt with at startup.
+    init_ts_params(ts, stream_name)
 
     # Set up flaggers
     calib_flagger, targ_flagger = init_flagger(ts, dump_period)
 
     # get names of target TS key, using TS reference antenna
-    target_key = '{0}_target'.format(ts.cal_refant,)
+    target_key = '{0}_target'.format(ts.cal_refant)
 
     # ----------------------------------------------------------
     # set initial values for fits

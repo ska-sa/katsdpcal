@@ -175,35 +175,38 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
                 # if bchan and echan are set, use them to override number of channels
                 if ts['cal_sim_echan'] == 0:
                     ts.delete('cal_sim_echan')
-                    ts.add('cal_sim_echan', parameter_dict['cbf_n_chans'], immutable=True)
+                    ts.add('cal_sim_echan', parameter_dict['sdp_l0_n_chans'], immutable=True)
 
-                parameter_dict['cbf_n_chans'] = ts.cal_sim_echan-ts.cal_sim_bchan
+                parameter_dict['sdp_l0_n_chans'] = ts.cal_sim_echan-ts.cal_sim_bchan
             else:
                 # else set bchan and echan to be full channel range
                 ts.delete('cal_sim_bchan')
                 ts.add('cal_sim_bchan', 0, immutable=True)
                 ts.delete('cal_sim_echan')
-                ts.add('cal_sim_echan', parameter_dict['cbf_n_chans'], immutable=True)
+                ts.add('cal_sim_echan', parameter_dict['sdp_l0_n_chans'], immutable=True)
 
-            # use channel freqs to determine parameters cbf_channel_freq and
-            # cbf_bandwidth which will be given by the real system
+            # use channel freqs to determine parameters sdp_l0_center_freq and
+            # sdp_l0_bandwidth which will be given by the real system
             subset_channel_freqs = \
-                parameter_dict['cbf_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
+                parameter_dict['cal_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
             channel_width = np.abs(subset_channel_freqs[1] - subset_channel_freqs[0])
-            ts.add('cbf_bandwidth',
+            ts.add('sdp_l0_bandwidth',
                    np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]) + channel_width,
                    immutable=True)
-            ts.add('cbf_center_freq', subset_channel_freqs[len(subset_channel_freqs)/2],
+            ts.add('sdp_l0_center_freq', subset_channel_freqs[len(subset_channel_freqs)/2],
                    immutable=True)
-            ts.delete('cbf_channel_freqs')
+            ts.delete('cal_channel_freqs')
 
             # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time', 'antenna_mask',
-                        'cbf_n_ants', 'cbf_n_chans', 'cbf_n_pols', 'sdp_l0_bls_ordering',
-                        'cbf_sync_time', 'subarray_product_id']
+            min_keys = ['sdp_l0_int_time',
+                        'sdp_l0_n_chans', 'sdp_l0_bls_ordering',
+                        'sdp_l0_sync_time', 'subarray_product_id']
             for key in min_keys:
                 if key not in parameter_dict:
                     raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
+            # fill in counts that depend on others
+            parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
+            parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
             # add parameters to telescope state
             for param in parameter_dict:
                 print param, parameter_dict[param]
@@ -254,6 +257,8 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
                         shape=(weights.shape[0],), dtype=np.float32)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                         shape=(), dtype=None, format=[('f', 64)])
+            ig.add_item(id=0x4103, name='frequency', description="Channel index of first channel in the heap",
+                        shape=(), dtype=np.uint32)
 
         def setup_obs_params(self, ts, t=None):
             """
@@ -305,6 +310,7 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
             ig['weights_channel'].value = weights_channel
             ig['weights'].value = scaled_weights
             ig['timestamp'].value = timestamp
+            ig['frequency'].value = 0
             # send all of the descriptors with every heap
             tx.send_heap(ig.get_heap(descriptors='all'))
             time.sleep(self.wait)
@@ -466,22 +472,17 @@ class SimDataMS(table):
         """
         param_dict = {}
 
-        param_dict['cbf_channel_freqs'] = table(
+        param_dict['cal_channel_freqs'] = table(
             self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
-        param_dict['cbf_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
-        param_dict['cbf_n_pols'] = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')[0]
+        param_dict['sdp_l0_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
-        antenna_names = [ant for ant in self.ants]
-        param_dict['antenna_mask'] = ','.join(antenna_names)
-        param_dict['cbf_n_ants'] = len(self.ants)
-        # need polarisation information in the sdp_l0_bls_ordering
         param_dict['sdp_l0_bls_ordering'] = self.corr_products
-        param_dict['cbf_sync_time'] = 0.0
+        param_dict['sdp_l0_sync_time'] = 0.0
         param_dict['config'] = {'MS_simulator': True}
         # antenna descriptions for all antennas
         antenna_descriptions = self.get_antdesc()
-        for antname in antenna_names:
-            param_dict['{0}_observer'.format(antname,)] = antenna_descriptions[antname]
+        for antname in self.ants:
+            param_dict['{0}_observer'.format(antname)] = antenna_descriptions[antname]
 
         return param_dict
 
@@ -697,29 +698,16 @@ def h5_get_params(h5data):
     """
     param_dict = {}
 
-    param_dict['cbf_channel_freqs'] = h5data.channel_freqs
+    param_dict['cal_channel_freqs'] = h5data.channel_freqs
     param_dict['sdp_l0_int_time'] = h5data.dump_period
-    param_dict['cbf_n_ants'] = len(h5data.ants)
-    param_dict['cbf_n_chans'] = len(h5data.channels)
+    param_dict['sdp_l0_n_chans'] = len(h5data.channels)
     param_dict['sdp_l0_bls_ordering'] = h5data.corr_products
-
-    # determine number of polarisation products
-    corrprods_polonly = [[b[0][4], b[1][4]] for b in h5data.corr_products]
-    # find unique pol combinations
-    unique_pol = []
-    for pbl in corrprods_polonly:
-        if pbl not in unique_pol:
-            unique_pol.append(pbl)
-    param_dict['cbf_n_pols'] = len(unique_pol)
-
-    param_dict['cbf_sync_time'] = 0.0
-    antenna_mask = ','.join([ant.name for ant in h5data.ants])
-    param_dict['antenna_mask'] = antenna_mask
+    param_dict['sdp_l0_sync_time'] = 0.0
     param_dict['config'] = {'h5_simulator': True}
 
     # antenna descriptions for all antennas
     for ant in h5data.ants:
-        param_dict['{0}_observer'.format(ant.name,)] = ant.description
+        param_dict['{0}_observer'.format(ant.name)] = ant.description
 
     return param_dict
 

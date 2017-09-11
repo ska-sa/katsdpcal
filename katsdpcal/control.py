@@ -740,13 +740,14 @@ class Pipeline(Task):
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_report_queue, master_queue,
-                 l1_endpoint, l1_level, l1_rate, telstate,
+                 l1_endpoint, l1_level, l1_rate, telstate, stream_name,
                  diagnostics_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline')
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
+        self.stream_name = stream_name
         self.l1_level = l1_level
         self.l1_rate = l1_rate
         self.l1_endpoint = l1_endpoint
@@ -833,7 +834,7 @@ class Pipeline(Task):
 
     def run_pipeline(self, data):
         # run pipeline calibration
-        target_slices = pipeline(data, self.telstate)
+        target_slices = pipeline(data, self.telstate, self.stream_name)
 
         # send data to L1 SPEAD if necessary
         if self.l1_level != 0:
@@ -898,7 +899,7 @@ class Pipeline(Task):
 
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
-                 telstate, l1_endpoint, l1_level,
+                 telstate, stream_name, l1_endpoint, l1_level,
                  report_path, log_path, full_log):
         super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
@@ -906,6 +907,7 @@ class ReportWriter(Task):
         report_path = os.path.abspath(report_path)
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
+        self.stream_name = stream_name
         self.l1_endpoint = l1_endpoint
         self.l1_level = l1_level
         self.report_path = report_path
@@ -955,7 +957,8 @@ class ReportWriter(Task):
 
         # create pipeline report (very basic at the moment)
         try:
-            make_cal_report(self.telstate, current_obs_dir, experiment_id, st=obs_start, et=obs_end)
+            make_cal_report(self.telstate, self.stream_name,
+                            current_obs_dir, experiment_id, st=obs_start, et=obs_end)
         except Exception as error:
             logger.warn('Report generation failed: %s', error, exc_info=True)
 
@@ -1222,10 +1225,10 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l1_endpoint, l1_level, l1_rate, telstate, diagnostics_file, num_workers)
+        l1_endpoint, l1_level, l1_rate, telstate, stream_name, diagnostics_file, num_workers)
     # Set up the report writer
     report_writer = ReportWriter(
-        module.Process, pipeline_report_queue, master_queue, telstate,
+        module.Process, pipeline_report_queue, master_queue, telstate, stream_name,
         l1_endpoint, l1_level, report_path, log_path, full_log)
 
     # Start the child tasks.

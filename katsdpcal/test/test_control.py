@@ -225,23 +225,15 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'h', b + 'v'))
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.clear()     # Prevent state leaks
-        telstate.add('antenna_mask', ','.join(self.antennas), immutable=True)
-        telstate.add('cbf_n_ants', self.n_antennas, immutable=True)
-        telstate.add('cbf_n_chans', self.n_channels, immutable=True)
-        telstate.add('cbf_n_pols', 4, immutable=True)
-        telstate.add('cbf_center_freq', 1712000000.0, immutable=True)
-        telstate.add('cbf_bandwidth', 856000000.0, immutable=True)
-        telstate.add('cbf_sync_time', 1400000000.0, immutable=True)
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
-        telstate.add('sdp_l0_int_time', 4.0, immutable=True)
-        telstate.add('sdp_l0_bls_ordering', bls_ordering, immutable=True)
-        telstate.add('sdp_l0_n_bls', len(bls_ordering), immutable=True)
-        # At present, cal doesn't work with L0 being different to CBF
-        telstate.add('sdp_l0_bandwidth', telstate.cbf_bandwidth)
-        telstate.add('sdp_l0_center_freq', telstate.cbf_center_freq)
-        telstate.add('sdp_l0_n_chans', self.n_channels)
-        telstate.add('sdp_l0_n_chans_per_substream', self.n_channels_per_substream)
-        telstate.add('sdp_l0_sync_time', telstate.cbf_sync_time)
+        telstate.add('sdp_l0test_int_time', 4.0, immutable=True)
+        telstate.add('sdp_l0test_bls_ordering', bls_ordering, immutable=True)
+        telstate.add('sdp_l0test_n_bls', len(bls_ordering), immutable=True)
+        telstate.add('sdp_l0test_bandwidth', 856000000.0, immutable=True)
+        telstate.add('sdp_l0test_center_freq', 1712000000.0, immutable=True)
+        telstate.add('sdp_l0test_n_chans', self.n_channels, immutable=True)
+        telstate.add('sdp_l0test_n_chans_per_substream', self.n_channels_per_substream, immutable=True)
+        telstate.add('sdp_l0test_sync_time', 1400000000.0, immutable=True)
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
@@ -255,11 +247,11 @@ class TestCalDeviceServer(unittest.TestCase):
         param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_ar1_4k.txt')
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
         pipelineprocs.ts_from_file(telstate, param_file, rfi_file)
-        pipelineprocs.setup_ts(telstate)
+        pipelineprocs.setup_ts(telstate, self.antennas)
 
     def add_items(self, ig):
-        channels = self.telstate.sdp_l0_n_chans_per_substream
-        baselines = len(self.telstate.sdp_l0_bls_ordering)
+        channels = self.telstate.sdp_l0test_n_chans_per_substream
+        baselines = len(self.telstate.sdp_l0test_bls_ordering)
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
                     shape=(channels, baselines), dtype=np.complex64)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
@@ -312,7 +304,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             [Endpoint('239.102.255.1', 7148)], None,
-            None, 0, None, self.telstate, 'sdp_l0',
+            None, 0, None, self.telstate, 'sdp_l0test',
             self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)
@@ -413,14 +405,14 @@ class TestCalDeviceServer(unittest.TestCase):
         ts = 100
         rs = np.random.RandomState(seed=1)
 
-        bandwidth = self.telstate.cbf_bandwidth
+        bandwidth = self.telstate.sdp_l0test_bandwidth
         target = katpoint.Target(self.telstate.m090_target)
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
 
-        bls_ordering = self.telstate.sdp_l0_bls_ordering
+        bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
         pol1 = ['vh'.index(b[0][-1]) for b in bls_ordering]
@@ -452,7 +444,7 @@ class TestCalDeviceServer(unittest.TestCase):
                 } for s in channel_slices]
             rs.shuffle(dump_heaps)
             self.heaps.extend(dump_heaps)
-            ts += self.telstate.sdp_l0_int_time
+            ts += self.telstate.sdp_l0test_int_time
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
@@ -535,14 +527,14 @@ class TestCalDeviceServer(unittest.TestCase):
                 } for s in channel_slices]
             rs.shuffle(dump_heaps)
             self.heaps.extend(dump_heaps)
-            ts += self.telstate.sdp_l0_int_time
+            ts += self.telstate.sdp_l0test_int_time
         # Add a target change at an uneven time, so that the batches won't
         # neatly align with the buffer end. We also have to fake a slew to make
         # it work, since the batcher assumes that target cannot change without
         # an activity change (TODO: it probably shouldn't assume this).
         target = 'dummy, radec target, 13:30:00.00, +30:30:00.0'
-        slew_start = self.telstate.cbf_sync_time + 12.5 * self.telstate.sdp_l0_int_time
-        slew_end = slew_start + 2 * self.telstate.sdp_l0_int_time
+        slew_start = self.telstate.sdp_l0test_sync_time + 12.5 * self.telstate.sdp_l0test_int_time
+        slew_end = slew_start + 2 * self.telstate.sdp_l0test_int_time
         for antenna in self.antennas:
             self.telstate.add('{}_target'.format(antenna), target, ts=slew_start)
             self.telstate.add('{}_activity'.format(antenna), 'slew', ts=slew_start)
