@@ -11,6 +11,7 @@ from spead2 import send
 from .calprocs import get_reordering_nopol
 
 import katdal
+from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 import katcp
 
@@ -602,6 +603,7 @@ class SimDataMS(table):
                 tx_vis = np.hstack(ttime.getcol('DATA')[self.data_mask])
                 # flags for this time stamp, for specified channel range
                 tx_flags = np.hstack(ttime.getcol('FLAG')[self.data_mask])
+                tx_flags = tx_flags * np.uint8(2**FLAG_NAMES.index('ingest_rfi'))
                 try:
                     # weights for this time stamp, for specified channel range
                     tx_weights = np.hstack(ttime.getcol('WEIGHT_SPECTRUM')[self.data_mask])
