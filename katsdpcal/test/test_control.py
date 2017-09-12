@@ -421,13 +421,15 @@ class TestCalDeviceServer(unittest.TestCase):
 
         vis = flux_density * np.exp(2j * np.pi * (K[pol1, ant1] - K[pol2, ant2]) * freqs) \
             * (G[pol1, ant1] * G[pol2, ant2].conj())
+        corrupted_vis = vis + 1e9j
         flags = np.zeros(vis.shape, np.uint8)
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
         for i in range(10):
+            # Corrupt some times, to check that the RFI flagging is working
             self.heaps.append({
-                'correlator_data': vis,
+                'correlator_data': corrupted_vis if i in (3, 7) else vis,
                 'flags': flags,
                 'weights': weights,
                 'weights_channel': weights_channel,
