@@ -16,6 +16,7 @@ functools32             # for matplotlib
 future                  # for katcp
 futures                 # for trollius
 h5py
+ipaddress               # for katsdptelstate
 katcp
 kaptan==0.5.8           # for tmuxp
 katversion
