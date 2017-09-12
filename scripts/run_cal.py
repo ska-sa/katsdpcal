@@ -284,7 +284,8 @@ def run(ts, stream_name, host, port,
     buffers = create_buffer_arrays(buffer_shape, mproc)
 
     logger.info('Receiving L0 data from %s via %s',
-                l0_endpoints, 'default interface' if l0_interface is None else l0_interface)
+                endpoint.endpoints_to_str(l0_endpoints),
+                'default interface' if l0_interface is None else l0_interface)
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
