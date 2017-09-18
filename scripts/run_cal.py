@@ -245,8 +245,6 @@ def run(ts, stream_name, host, port,
         # don't print out the really long telescope state key values
         if keyval not in [stream_name + '_bls_ordering', 'cal_channel_freqs']:
             logger.info('%s : %s', keyval, ts[keyval])
-    logger.info('Telescope state config graph:')
-    log_dict(ts.config)
 
     # set up TS for pipeline use
     logger.info('Setting up Telescope State parameters for pipeline.')
