@@ -346,21 +346,26 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
-    """
-    Fit delay (phase slope across frequency) to visibility data.
+def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
+    """Fit delay (phase slope across frequency) to visibility data.
 
     Parameters
     ----------
-    data : array of complex, shape(num_chans, num_pols, baseline)
-    corrprod_lookup : antenna mappings, for first then second antennas in bl pair
-    chans : list or array of channel frequencies, shape(num_chans), optional
-    refant : reference antenna, integer, optional
-    algorithm : stefcal algorithm, string, optional
+    data : array of complex, shape (num_chans, num_pols, num_baselines)
+        Visibility data (may contain NaNs indicating completely flagged data)
+    corrprod_lookup : array of int, shape (num_baselines, 2)
+        Pairs of antenna indices associated with each baseline
+    chans : sequence of float, length num_chans, optional
+        Channel frequencies in Hz (or channel indices if not provided)
+    refant : int, optional
+        Reference antenna index
+    chan_sample : int, optional
+        Subsample channels by this amount, i.e. use every n'th channel in fit
 
     Returns
     -------
-    ksoln : delay, shape(num_pols, num_ants)
+    kdelay : array of float, shape (num_pols, num_ants)
+        Delay solutions per antenna, in seconds
     """
     # OVER THE TOP NOTE:
     # This solver was written to deal with extreme gains, which can wrap many
@@ -392,30 +397,25 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
     #  delay bandpass-linear-phase-fit solver.
 
     # -----------------------------------------------------
+    if chans is None:
+        chans = np.arange(data.shape[0], dtype=np.float32)
     # if channel sampling is specified, thin down the data and channel list
     if chan_sample != 1:
         data = data[::chan_sample, ...]
-        if np.any(chans):
-            chans = chans[::chan_sample]
+        chans = chans[::chan_sample]
 
     # set up parameters
     num_ants = ants_from_bllist(corrprod_lookup)
     num_pol = data.shape[-2] if len(data.shape) > 2 else 1
-    if chans is None:
-        chans = range(data.shape[0])
-    nchans = len(chans)
-    chan_increment = chans[1]-chans[0]
+    num_chans = len(chans)
+    chan_increment = chans[1] - chans[0]
 
     # -----------------------------------------------------
-    # initialise values for solver
-    kdelay = []
-    if not(np.any(chans)):
-        chans = np.arange(data.shape[0], dtype=np.float32)
-
     # NOTE: I know that iterating over polarisation is horrible, but I ran out
     # of time to fix this up I initially just assumed we would always have two
     # polarisations, but shouldn't make that assumption especially for use of
     # calprocs offline on an h5 file
+    kdelay = []
     for p in range(num_pol):
         pol_data = data[:, p, :] if len(data.shape) > 2 else data
 
@@ -442,13 +442,13 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
         ft_vis = scipy.fftpack.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis), axis=0)
-        if nchans % 2 == 0:
-            k_arg[k_arg > ((nchans / 2) - 1)] -= nchans
+        if num_chans % 2 == 0:
+            k_arg[k_arg > ((num_chans / 2) - 1)] -= num_chans
         else:
-            k_arg[k_arg > ((nchans - 1) / 2)] -= nchans
+            k_arg[k_arg > ((num_chans - 1) / 2)] -= num_chans
 
         # calculate vis space K from FT sample frequencies
-        vis_k = np.float32(k_arg) / (chan_increment * nchans)
+        vis_k = np.float32(k_arg) / (chan_increment * num_chans)
 
         # now determine per-antenna K values
         coarse_k = np.zeros(num_ants, np.float32)
@@ -469,7 +469,7 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
                     * np.exp(-2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 0]]) \
                     * np.exp(2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 1]])
         bpass = stefcal(v_corrected, num_ants, corrprod_lookup,
-                        num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
+                        num_iters=100, ref_ant=refant, init_gain=None)
 
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
