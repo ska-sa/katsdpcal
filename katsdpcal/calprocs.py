@@ -346,7 +346,7 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
+def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     """Fit delay (phase slope across frequency) to visibility data.
 
     Parameters
@@ -355,8 +355,8 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
         Visibility data (may contain NaNs indicating completely flagged data)
     corrprod_lookup : array of int, shape (num_baselines, 2)
         Pairs of antenna indices associated with each baseline
-    chans : sequence of float, length num_chans, optional
-        Channel frequencies in Hz (or channel indices if not provided)
+    chans : sequence of float, length num_chans
+        Channel frequencies in Hz
     refant : int, optional
         Reference antenna index
     chan_sample : int, optional
@@ -394,10 +394,7 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
     #  delay bandpass-linear-phase-fit solver.
 
     # -----------------------------------------------------
-    if chans is None:
-        chans = np.arange(data.shape[0], dtype=np.float32)
-    else:
-        chans = np.asarray(chans, dtype=np.float32)
+    chans = np.asarray(chans, dtype=np.float32)
     # if channel sampling is specified, thin down the data and channel list
     if chan_sample != 1:
         data = data[::chan_sample, ...]
@@ -416,8 +413,9 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
     kdelay = []
     for p in range(num_pol):
         pol_data = data[:, p, :] if len(data.shape) > 2 else data
-        # Suppress NaNs which ultimately broadens delay peak in Fourier space
-        # and potentially introduces spurious sidelobes if severe
+        # Suppress NaNs by setting them to zero. This masking step broadens
+        # the delay peak in Fourier space and potentially introduces spurious
+        # sidelobes if severe, like a dirty image suffering from poor uv coverage.
         good_pol_data = np.nan_to_num(pol_data)
 
         # -----------------------------------------------------
@@ -439,10 +437,10 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
         coarse_k = np.zeros(num_ants, np.float32)
         for ai in range(num_ants):
             k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
-            if k:
+            if k.size > 0:
                 coarse_k[ai] = np.squeeze(k)
             k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
-            if k:
+            if k.size > 0:
                 coarse_k[ai] = np.squeeze(-1.0 * k)
 
         # apply coarse K values to the data and solve for bandpass
