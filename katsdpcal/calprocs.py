@@ -407,8 +407,7 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
     # set up parameters
     num_ants = ants_from_bllist(corrprod_lookup)
     num_pol = data.shape[-2] if len(data.shape) > 2 else 1
-    num_chans = len(chans)
-    chan_increment = chans[1] - chans[0]
+    chan_spacing = chans[1] - chans[0]
 
     # -----------------------------------------------------
     # NOTE: I know that iterating over polarisation is horrible, but I ran out
@@ -439,27 +438,22 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1):
         # Also note that scipy.fftpack will do a single-precision FFT given
         # single-precision input, unlike np.fft.fft which converts it to
         # double precision.
+        # NB: The coarse delay part assumes regularly spaced frequencies in chans
         ft_vis = scipy.fftpack.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis), axis=0)
-        if num_chans % 2 == 0:
-            k_arg[k_arg > ((num_chans / 2) - 1)] -= num_chans
-        else:
-            k_arg[k_arg > ((num_chans - 1) / 2)] -= num_chans
-
         # calculate vis space K from FT sample frequencies
-        vis_k = np.float32(k_arg) / (chan_increment * num_chans)
+        vis_k = np.float32(np.fft.fftfreq(ft_vis.shape[0], chan_spacing)[k_arg])
 
         # now determine per-antenna K values
         coarse_k = np.zeros(num_ants, np.float32)
         for ai in range(num_ants):
-            k = vis_k[..., (corrprod_lookup[:, 0] == ai) & (corrprod_lookup[:, 1] == refant)]
-            if k.size > 0:
-                coarse_k[..., ai] = np.squeeze(k)
-        for ai in range(num_ants):
-            k = vis_k[..., (corrprod_lookup[:, 1] == ai) & (corrprod_lookup[:, 0] == refant)]
-            if k.size > 0:
-                coarse_k[..., ai] = np.squeeze(-1.0 * k)
+            k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
+            if k:
+                coarse_k[ai] = np.squeeze(k)
+            k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
+            if k:
+                coarse_k[ai] = np.squeeze(-1.0 * k)
 
         # apply coarse K values to the data and solve for bandpass
         v_corrected = np.zeros_like(good_pol_data)
