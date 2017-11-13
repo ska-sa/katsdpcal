@@ -82,56 +82,47 @@ def ts_from_file(ts, param_filename, rfi_filename=None):
     init_ts(ts, param_dict)
 
 
-def setup_ts(ts, logger=logger):
+def setup_ts(ts, antlist, logger=logger):
     """
     Set up the telescope state for pipeline use.
     In general, the calibration parameters are mutable.
-    Only subarray characteristics (e.g. antenna_mask) are immutable.
+    Only subarray characteristics are immutable.
 
     Parameters
     ----------
     ts : :class:`katsdptelstate.TelescopeState`
         Telescope State
+    antlist : list of str
+        Antenna names
     logger : :class:`logging.Logger`
         logger
 
     Notes
     -----
-    Assumed starting ts entries:
-    antenna_mask
-
     Assumed ending ts entries
-    antenna_mask          - list or csv string of antennas present in the data, immutable
     cal_antlist           - list of antennas present in the data
     cal_preferred_refants - ordered list of refant preference
     cal_refant            - reference antenna
     """
 
-    # ensure that antenna_mask is list of strings, not single csv string
-    if isinstance(ts.antenna_mask, str):
-        antlist = [val.strip() for val in ts['antenna_mask'].split(',')]
-    else:
-        antlist = ts.antenna_mask
-    # cal_antlist
-    #   this should not be pre-set (determine from antenna_mask, which is pre-set)
     ts.add('cal_antlist', antlist)
 
     # cal_preferred_refants
     if 'cal_preferred_refants' not in ts:
         logger.info('Preferred antenna list set to antenna mask list:')
-        ts.add('cal_preferred_refants', ts.cal_antlist)
+        ts.add('cal_preferred_refants', antlist)
         logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
     else:
         # change cal_preferred_refants to lists of strings (not single csv string)
         csv_to_list_ts(ts, 'cal_preferred_refants')
         # reduce the preferred antenna list to only antennas present in cal_antlist
-        preferred = [ant for ant in ts.cal_preferred_refants if ant in ts.cal_antlist]
+        preferred = [ant for ant in ts.cal_preferred_refants if ant in antlist]
         if preferred != ts.cal_preferred_refants:
             if preferred == []:
                 logger.info('No antennas from the antenna mask in the preferred antenna list')
                 logger.info(' - preferred antenna list set to antenna mask list:')
                 ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants', ts.cal_antlist)
+                ts.add('cal_preferred_refants', antlist)
             else:
                 logger.info(
                     'Preferred antenna list reduced to only include antennas in antenna mask:')
@@ -142,13 +133,13 @@ def setup_ts(ts, logger=logger):
     # cal_refant
     if 'cal_refant' not in ts:
         ts.add('cal_refant', ts.cal_preferred_refants[0])
-        logger.info('Reference antenna: {0}'.format(ts.cal_refant,))
+        logger.info('Reference antenna: {0}'.format(ts.cal_refant))
     else:
-        if ts.cal_refant not in ts.cal_antlist:
+        if ts.cal_refant not in antlist:
             ts.delete('cal_refant')
             ts.add('cal_refant', ts.cal_preferred_refants[0])
             logger.info('Requested reference antenna not present in subarray. '
-                        'Change to reference antenna: {0}'.format(ts.cal_refant,))
+                        'Change to reference antenna: {0}'.format(ts.cal_refant))
 
 
 def csv_to_list_ts(ts, keyname):

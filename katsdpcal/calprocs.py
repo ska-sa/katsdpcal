@@ -346,21 +346,26 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
-    """
-    Fit delay (phase slope across frequency) to visibility data.
+def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
+    """Fit delay (phase slope across frequency) to visibility data.
 
     Parameters
     ----------
-    data : array of complex, shape(num_chans, num_pols, baseline)
-    corrprod_lookup : antenna mappings, for first then second antennas in bl pair
-    chans : list or array of channel frequencies, shape(num_chans), optional
-    refant : reference antenna, integer, optional
-    algorithm : stefcal algorithm, string, optional
+    data : array of complex, shape (num_chans, num_pols, num_baselines)
+        Visibility data (may contain NaNs indicating completely flagged data)
+    corrprod_lookup : array of int, shape (num_baselines, 2)
+        Pairs of antenna indices associated with each baseline
+    chans : sequence of float, length num_chans
+        Channel frequencies in Hz
+    refant : int, optional
+        Reference antenna index
+    chan_sample : int, optional
+        Subsample channels by this amount, i.e. use every n'th channel in fit
 
     Returns
     -------
-    ksoln : delay, shape(num_pols, num_ants)
+    kdelay : array of float, shape (num_pols, num_ants)
+        Delay solutions per antenna, in seconds
     """
     # OVER THE TOP NOTE:
     # This solver was written to deal with extreme gains, which can wrap many
@@ -376,9 +381,6 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
     # data. With the coarse delays removed there should be little, or minimal
     # wrapping, and the unwrapping prior to the linear fit usually works.
     # BUT:
-    # * Things fall over in the FFT if there are NaNs in the data - the NaNs
-    #   propagate and everything becomes NaNs There is a temporary fix for this
-    #   below, but if there are chunks of NaNs this won't work (see below)
     # * This algorithm is most effective if the delays are of similar scales.
     #   How to ensure this is to choose a reference antenna that has high delays
     #   on as many baselines as possible.  Perhaps this could be done by looking
@@ -392,44 +394,29 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
     #  delay bandpass-linear-phase-fit solver.
 
     # -----------------------------------------------------
+    chans = np.asarray(chans, dtype=np.float32)
     # if channel sampling is specified, thin down the data and channel list
     if chan_sample != 1:
         data = data[::chan_sample, ...]
-        if np.any(chans):
-            chans = chans[::chan_sample]
+        chans = chans[::chan_sample]
 
     # set up parameters
     num_ants = ants_from_bllist(corrprod_lookup)
     num_pol = data.shape[-2] if len(data.shape) > 2 else 1
-    if chans is None:
-        chans = range(data.shape[0])
-    nchans = len(chans)
-    chan_increment = chans[1]-chans[0]
+    chan_spacing = chans[1] - chans[0]
 
     # -----------------------------------------------------
-    # initialise values for solver
-    kdelay = []
-    if not(np.any(chans)):
-        chans = np.arange(data.shape[0], dtype=np.float32)
-
     # NOTE: I know that iterating over polarisation is horrible, but I ran out
     # of time to fix this up I initially just assumed we would always have two
     # polarisations, but shouldn't make that assumption especially for use of
     # calprocs offline on an h5 file
+    kdelay = []
     for p in range(num_pol):
         pol_data = data[:, p, :] if len(data.shape) > 2 else data
-
-        # if there is a nan in a channel on any baseline, remove that channel
-        # from all baselines for the fit
-        bad_chan_mask = np.logical_or.reduce(np.isnan(pol_data), axis=1)
-        good_pol_data = pol_data[~bad_chan_mask]
-        good_chans = chans[~bad_chan_mask]
-        # NOTE: This removal of channels is not a proper fix for if there are a lot of NaNs.
-        #   In that case there will be large gaps in the data leaving to what
-        #   the FFT below sees as phase jumps This removal of NaN channels is
-        #   just a temporary fix for the case of a few bad channels, so that
-        #   the NaN's don't propagate and lead to NaNs throughout and NaN delay
-        #   values
+        # Suppress NaNs by setting them to zero. This masking step broadens
+        # the delay peak in Fourier space and potentially introduces spurious
+        # sidelobes if severe, like a dirty image suffering from poor uv coverage.
+        good_pol_data = np.nan_to_num(pol_data)
 
         # -----------------------------------------------------
         # FT to find visibility space delays
@@ -439,44 +426,36 @@ def k_fit(data, corrprod_lookup, chans=None, refant=0, chan_sample=1, **kwargs):
         # Also note that scipy.fftpack will do a single-precision FFT given
         # single-precision input, unlike np.fft.fft which converts it to
         # double precision.
+        # NB: The coarse delay part assumes regularly spaced frequencies in chans
         ft_vis = scipy.fftpack.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis), axis=0)
-        if nchans % 2 == 0:
-            k_arg[k_arg > ((nchans / 2) - 1)] -= nchans
-        else:
-            k_arg[k_arg > ((nchans - 1) / 2)] -= nchans
-
         # calculate vis space K from FT sample frequencies
-        vis_k = np.float32(k_arg) / (chan_increment * nchans)
+        vis_k = np.float32(np.fft.fftfreq(ft_vis.shape[0], chan_spacing)[k_arg])
 
         # now determine per-antenna K values
         coarse_k = np.zeros(num_ants, np.float32)
         for ai in range(num_ants):
-            k = vis_k[..., (corrprod_lookup[:, 0] == ai) & (corrprod_lookup[:, 1] == refant)]
+            k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
             if k.size > 0:
-                coarse_k[..., ai] = np.squeeze(k)
-        for ai in range(num_ants):
-            k = vis_k[..., (corrprod_lookup[:, 1] == ai) & (corrprod_lookup[:, 0] == refant)]
+                coarse_k[ai] = np.squeeze(k)
+            k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
             if k.size > 0:
-                coarse_k[..., ai] = np.squeeze(-1.0 * k)
+                coarse_k[ai] = np.squeeze(-1.0 * k)
 
         # apply coarse K values to the data and solve for bandpass
-        v_corrected = np.zeros_like(good_pol_data)
-        for vi in range(v_corrected.shape[-1]):
-            for ci, c in enumerate(good_chans):
-                v_corrected[ci, vi] = good_pol_data[ci, vi] \
-                    * np.exp(-2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 0]]) \
-                    * np.exp(2.0j * np.pi * c * coarse_k[corrprod_lookup[vi, 1]])
-        bpass = stefcal(v_corrected, num_ants, corrprod_lookup,
-                        num_iters=100, ref_ant=refant, init_gain=None, **kwargs)
+        # The baseline delay is calculated as delay(ant2) - delay(ant1)
+        bl_delays = np.diff(coarse_k[corrprod_lookup])
+        good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
+        bpass = stefcal(good_pol_data, num_ants, corrprod_lookup,
+                        num_iters=100, ref_ant=refant, init_gain=None)
 
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
         for i, bp in enumerate(bpass.T):
             # np.unwrap falls over in the case of bad RFI - robustify this later
             bp_phase = np.unwrap(np.angle(bp), discont=1.9 * np.pi)
-            A = np.array([good_chans, np.ones(len(good_chans))])
+            A = np.array([chans, np.ones(len(chans))])
             delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)

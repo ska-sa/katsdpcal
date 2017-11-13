@@ -97,7 +97,7 @@ def write_bullet_if_present(report, ts, var_text, var_name, transform=None):
     report.writeln('* {0}:  {1}'.format(var_text, ts_value))
 
 
-def write_summary(report, ts, st=None, et=None):
+def write_summary(report, ts, stream_name, st=None, et=None):
     """
     Write observation summary information to report
 
@@ -107,6 +107,8 @@ def write_summary(report, ts, st=None, et=None):
         report file to write to
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
+    stream_name : str
+        name of the L0 data stream
     st : float, optional
         start time for reporting parameters, seconds
     et : float, optional
@@ -116,9 +118,8 @@ def write_summary(report, ts, st=None, et=None):
     report.writeln('* {0}:  {1}'.format('Start time', time.strftime("%x %X", time.gmtime(st))))
 
     # telescope state values
-    write_bullet_if_present(report, ts, 'Int time', 'sdp_l0_int_time')
-    write_bullet_if_present(report, ts, 'Channels', 'cbf_n_chans')
-    write_bullet_if_present(report, ts, 'Polarisation products', 'cbf_n_pols')
+    write_bullet_if_present(report, ts, 'Int time', stream_name + '_int_time')
+    write_bullet_if_present(report, ts, 'Channels', stream_name + '_n_chans')
     write_bullet_if_present(report, ts, 'Antennas', 'cal_antlist', transform=len)
     write_bullet_if_present(report, ts, 'Antenna list', 'cal_antlist')
     report.writeln()
@@ -223,7 +224,7 @@ def write_table_timecol(report, antennas, times, data):
     report.writeln()
 
 
-def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
+def make_cal_report(ts, stream_name, report_path, project_name=None, st=None, et=None):
     """
     Creates pdf calibration pipeline report (from RST source),
     using data from the Telescope State
@@ -232,6 +233,8 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
     ----------
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
+    stream_name : str
+        name of the L0 data stream
     report_path : str
         path where report will be created
     project_name : str, optional
@@ -265,7 +268,7 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
     cal_rst.write_heading_1('Observation summary')
     cal_rst.writeln('Observation: {0:s}'.format(project_name))
     cal_rst.writeln()
-    write_summary(cal_rst, ts, st=st, et=et)
+    write_summary(cal_rst, ts, stream_name, st=st, et=et)
 
     # --------------------------------------------------------------------
     # write RFI summary
@@ -275,7 +278,7 @@ def make_cal_report(ts, report_path, project_name=None, st=None, et=None):
 
     # --------------------------------------------------------------------
     # add cal products to report
-    antenna_mask = ts.antenna_mask
+    antenna_mask = ts.cal_antlist
 
     logger.info('Calibration solution summary')
     cal_list = ['K', 'KCROSS', 'B', 'G']

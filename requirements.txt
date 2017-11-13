@@ -10,7 +10,7 @@ dask==0.15.1
 decorator
 docutils
 enum34                  # for numba
-fakeredis
+fakenewsredis           # for katsdptelstate
 funcsigs                # for numba
 functools32             # for matplotlib
 future                  # for katcp

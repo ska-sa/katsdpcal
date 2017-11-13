@@ -75,22 +75,6 @@ def parse_opts():
         '--buffer-maxsize', type=float,
         help='The amount of memory (in bytes) to allocate for buffer.')
     parser.add_argument(
-        '--no-auto', action='store_true',
-        help='Pipeline data DOESNT include autocorrelations '
-        + '[default: False (autocorrelations included)]')
-    parser.set_defaults(no_auto=False)
-    # note - the following lines extract various parameters from the MC config
-    parser.add_argument(
-        '--cbf-channels', type=int,
-        help='The number of frequency channels in the visibility data. Default from MC config')
-    parser.add_argument(
-        '--cbf-pols', type=int,
-        help='The number of polarisation products in the visibility data. Default from MC config')
-    parser.add_argument(
-        '--antenna-mask', type=comma_list(str),
-        help='List of antennas in the L0 data stream. Default from MC config')
-    # also need bls ordering
-    parser.add_argument(
         '--l0-spectral-spead', type=endpoint.endpoint_list_parser(7200, single_port=True),
         default=':7200',
         help='endpoints to listen for L0 spead stream (including multicast IPs). '
@@ -98,6 +82,9 @@ def parse_opts():
     parser.add_argument(
         '--l0-spectral-interface',
         help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
+    parser.add_argument(
+        '--l0-spectral-name', default='sdp_l0',
+        help='Name of the L0 stream for telstate metadata. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
         '--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202',
         help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
@@ -163,9 +150,9 @@ def setup_logger(log_name, log_path='.'):
 
 
 @trollius.coroutine
-def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
-        buffer_maxsize=None, auto=True,
-        l0_endpoint=':7200', l0_interface=None,
+def run(ts, stream_name, host, port,
+        buffer_maxsize=None,
+        l0_endpoints=':7200', l0_interface=None,
         l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
         mproc=True, param_file='', report_path='', log_path='.', full_log=None,
         diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
@@ -175,13 +162,9 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     Parameters
     ----------
     ts : TelescopeState
-        The telescope state, default: 'localhost' database 0
-    cbf_n_chans : int
-        The number of channels in the data stream
-    cbf_n_pols : int
-        The number of polarisations in the data stream
-    antenna_mask : list of strings
-        List of antennas present in the data stream
+        The telescope state
+    stream_name : str
+        Name of the L0 input stream, for finding parameters in `ts`
     host : str
         Bind hostname for katcp server
     port : int
@@ -189,10 +172,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     buffer_maxsize : float
         The size of the buffer. Memory for each buffer will be allocated at first
         and then populated by the accumulator from the SPEAD stream.
-    auto : bool
-        True for autocorrelations included in the data, False for cross-correlations only
-    l0_endpoint : endpoint
-        Endpoint to listen to for L0 stream, default: ':7200'
+    l0_endpoints : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Endpoints to listen to for L0 stream
     l0_interface : str
         Name of interface to subscribe to for L0, or None to let the OS decide
     l1_endpoint : endpoint
@@ -219,38 +200,33 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     ioloop = AsyncIOMainLoop()
     ioloop.install()
 
-    logger.info('Pipeline system input parameters')
-    logger.info('   - antenna mask: %s', antenna_mask)
-    logger.info('   - number of channels: %s', cbf_n_chans)
-    logger.info('   - number of polarisation products: %s', cbf_n_pols)
-
-    # extract data shape parameters
-    #   argument parser traversed TS config to find these
-    if antenna_mask is not None:
-        ts.add('antenna_mask', antenna_mask, immutable=True)
-    elif 'antenna_mask' not in ts:
-        raise RuntimeError("No antenna_mask set.")
-    if len(ts.antenna_mask) < 4:
-        # if we have less than four antennas, no katsdpcal necessary
-        logger.info('Only %d antenna(s) present - stopping katsdpcal', len(ts.antenna_mask))
-        return
-
     # deal with required input parameters
-    if cbf_n_chans is not None:
-        ts.add('cbf_n_chans', cbf_n_chans, immutable=True)
-    elif 'cbf_n_chans' not in ts:
-        raise RuntimeError("No cbf_n_chans set.")
-    if cbf_n_pols is not None:
-        ts.add('cbf_n_pols', cbf_n_pols, immutable=True)
-    elif 'cbf_n_pols' not in ts:
-        logger.warning(
-            'Number of polarisation inputs cbf_n_pols not set. Setting to default value 4')
-        ts.add('cbf_n_pols', 4, immutable=True)
+    n_chans = ts[stream_name + '_n_chans']
+    baselines = ts[stream_name + '_bls_ordering']
+    ants = set()
+    pols = set()
+    ant_baselines = set()
+    for a, b in baselines:
+        ants.add(a[:-1])
+        ants.add(b[:-1])
+        ant_baselines.add((a[:-1], b[:-1]))
+        pols.add((a[-1], b[-1]))
+    antlist = list(sorted(ants))
+
+    logger.info('Pipeline system input parameters')
+    logger.info('   - antennas: %s', antlist)
+    logger.info('   - number of channels: %s', n_chans)
+    logger.info('   - number of polarisation products: %s', len(pols))
+
+    if len(antlist) < 4:
+        # if we have less than four antennas, no katsdpcal necessary
+        logger.info('Only %d antenna(s) present - stopping katsdpcal', len(antlist))
+        return
 
     # initialise TS from default parameter file
     #   defaults are used only for parameters missing from the TS
     if param_file == '':
-        if ts.cbf_n_chans == 4096:
+        if n_chans == 4096:
             param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
             param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 4k mode: %s', param_file)
@@ -272,18 +248,17 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
         # don't print out the really long telescope state key values
-        if keyval not in ['sdp_l0_bls_ordering', 'cbf_channel_freqs']:
+        if keyval not in [stream_name + '_bls_ordering', 'cal_channel_freqs']:
             logger.info('%s : %s', keyval, ts[keyval])
-    logger.info('Telescope state config graph:')
-    log_dict(ts.config)
 
     # set up TS for pipeline use
     logger.info('Setting up Telescope State parameters for pipeline.')
-    setup_ts(ts)
+    setup_ts(ts, antlist)
 
-    nant = len(ts.cal_antlist)
+    nant = len(antlist)
     # number of baselines (may include autocorrelations)
-    nbl = nant*(nant+1)/2 if auto else nant*(nant-1)/2
+    nbl = len(ant_baselines)
+    npols = len(pols)
 
     # get buffer size
     if buffer_maxsize is not None:
@@ -302,17 +277,18 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     # plus minimal extra for scan transition indices
     scale_factor = 8. + 1. + 4.  # vis + flags + weights
     time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
-    array_length = buffer_maxsize/((scale_factor*ts.cbf_n_chans*ts.cbf_n_pols*nbl) + time_factor)
+    array_length = buffer_maxsize/((scale_factor*n_chans*npols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
     logger.info('Buffer size : %f GB', buffer_maxsize / 1e9)
     logger.info('Total slots in buffer : %d', array_length)
 
     # Set up empty buffers
-    buffer_shape = [array_length, ts.cbf_n_chans, ts.cbf_n_pols, nbl]
+    buffer_shape = [array_length, n_chans, npols, nbl]
     buffers = create_buffer_arrays(buffer_shape, mproc)
 
     logger.info('Receiving L0 data from %s via %s',
-                l0_endpoint, 'default interface' if l0_interface is None else l0_interface)
+                endpoint.endpoints_to_str(l0_endpoints),
+                'default interface' if l0_interface is None else l0_interface)
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
@@ -322,8 +298,8 @@ def run(ts, cbf_n_chans, cbf_n_pols, antenna_mask, host, port,
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     server = create_server(mproc, host, port, buffers,
-                           l0_endpoint, l0_interface_address,
-                           l1_endpoint, l1_level, l1_rate, ts,
+                           l0_endpoints, l0_interface_address,
+                           l1_endpoint, l1_level, l1_rate, ts, stream_name,
                            report_path, log_path, full_log,
                            diagnostics_file, pipeline_profile_file, num_workers)
     with server:
@@ -373,11 +349,10 @@ def main():
     setup_logger(log_name, log_path)
 
     yield From(run(
-        opts.telstate,
-        cbf_n_chans=opts.cbf_channels, cbf_n_pols=opts.cbf_pols, antenna_mask=opts.antenna_mask,
+        opts.telstate, opts.l0_spectral_name,
         host=opts.host, port=opts.port,
-        buffer_maxsize=opts.buffer_maxsize, auto=not(opts.no_auto),
-        l0_endpoint=opts.l0_spectral_spead[0], l0_interface=opts.l0_spectral_interface,
+        buffer_maxsize=opts.buffer_maxsize,
+        l0_endpoints=opts.l0_spectral_spead, l0_interface=opts.l0_spectral_interface,
         l1_endpoint=opts.l1_spectral_spead,
         l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
         param_file=opts.parameter_file,
