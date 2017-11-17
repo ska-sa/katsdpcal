@@ -7,15 +7,17 @@ from collections import deque, namedtuple
 import multiprocessing
 import multiprocessing.dummy
 import cProfile
+import json
 
 import spead2
 import spead2.recv.trollius
 import spead2.send
 
 import katcp
-from katcp.kattypes import request, return_reply, concurrent_reply, Bool
+from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
 from katdal.h5datav3 import FLAG_NAMES
 
+import enum
 import numpy as np
 import dask.array as da
 import dask.diagnostics
@@ -34,12 +36,37 @@ from . import calprocs
 logger = logging.getLogger(__name__)
 
 
+class State(enum.Enum):
+    CAPTURING = 1         # capture-init has been called, but not capture-done
+    PROCESSING = 2        # capture-done has been called, but still in the pipeline
+    REPORTING = 3         # generating the report
+    DEAD = 4              # completely finished
+
+
+class EnumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, enum.Enum):
+            return obj.name
+        return json.JSONEncoder.default(self, obj)
+
+
 class ObservationEndEvent(object):
     """An observation has finished upstream"""
-    def __init__(self, index, start_time, end_time):
-        self.index = index
+    def __init__(self, programme_block_id, start_time, end_time):
+        self.programme_block_id = programme_block_id
         self.start_time = start_time
         self.end_time = end_time
+
+
+class ObservationStateEvent(object):
+    """An observation has changed state.
+
+    This is sent from each component to the master queue to update the
+    katcp sensor.
+    """
+    def __init__(self, programme_block_id, state):
+        self.programme_block_id = programme_block_id
+        self.state = state
 
 
 class StopEvent(object):
@@ -207,13 +234,14 @@ def _run_task(task):
 class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
-    def __init__(self, buffers, accum_pipeline_queue,
+    def __init__(self, buffers, accum_pipeline_queue, master_queue,
                  l0_endpoints, l0_interface_address, telstate, stream_name):
         self.buffers = buffers
         self.telstate = telstate
         self.l0_endpoints = l0_endpoints
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
+        self.master_queue = master_queue
 
         # Extract useful parameters from telescope state
         self.sync_time = self.telstate[stream_name + '_sync_time']
@@ -226,8 +254,6 @@ class Accumulator(object):
         # First and last timestamps in observation
         self._obs_start = None
         self._obs_end = None
-        # Unique number given to each observation
-        self._index = 0
 
         # Get data shape
         buffer_shape = buffers['vis'].shape
@@ -355,7 +381,7 @@ class Accumulator(object):
                 self._slots_cond.notify()
 
     @trollius.coroutine
-    def _run_observation(self, index):
+    def _run_observation(self, programme_block_id):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
             yield From(self._accumulate())
@@ -363,19 +389,21 @@ class Accumulator(object):
             # was something to work on.
             if self._obs_end is not None:
                 self.accum_pipeline_queue.put(
-                    ObservationEndEvent(index, self._obs_start, self._obs_end))
+                    ObservationEndEvent(programme_block_id, self._obs_start, self._obs_end))
+                self.master_queue.put(ObservationStateEvent(programme_block_id, State.PROCESSING))
                 _inc_sensor(self.sensors['accumulator-observations'], 1)
             else:
                 logger.info(' --- no data flowed ---')
-            logger.info('Observation ended')
+                self.master_queue.put(ObservationStateEvent(programme_block_id, State.DEAD))
+            logger.info('Observation %s ended', programme_block_id)
         except trollius.CancelledError:
-            logger.info('Observation cancelled')
+            logger.info('Observation %s cancelled', programme_block_id)
         except Exception as error:
             logger.error('Exception in capture: %s', error, exc_info=True)
         finally:
             self._rx.stop()
 
-    def capture_init(self):
+    def capture_init(self, programme_block_id):
         assert self._rx is None, "observation already running"
         assert self._run_future is None, "inconsistent state"
         assert not self._running, "inconsistent state"
@@ -398,9 +426,8 @@ class Accumulator(object):
                 rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host)
         logger.info('reader added')
         self._rx = rx
-        self._run_future = trollius.ensure_future(self._run_observation(self._index))
+        self._run_future = trollius.ensure_future(self._run_observation(programme_block_id))
         self._running = True
-        self._index += 1
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['accumulator-input-heaps'].set_value(0)
 
@@ -837,6 +864,8 @@ class Pipeline(Task):
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
                     self.pipeline_report_queue.put(event)
+                    self.master_queue.put(
+                        ObservationStateEvent(event.programme_block_id, State.REPORTING))
                 elif isinstance(event, StopEvent):
                     logger.info('stop received by %s', self.name)
                     break
@@ -1006,13 +1035,17 @@ class ReportWriter(Task):
             if isinstance(event, StopEvent):
                 break
             elif isinstance(event, ObservationEndEvent):
-                logger.info('Starting report number %d', event.index)
-                start_time = time.time()
-                obs_dir = self.write_report(event.start_time, event.end_time)
-                end_time = time.time()
-                reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
-                report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
-                report_path_sensor.set_value(obs_dir, timestamp=end_time)
+                try:
+                    logger.info('Starting report on %s', event.programme_block_id)
+                    start_time = time.time()
+                    obs_dir = self.write_report(event.start_time, event.end_time)
+                    end_time = time.time()
+                    reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
+                    report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
+                    report_path_sensor.set_value(obs_dir, timestamp=end_time)
+                finally:
+                    self.master_queue.put(
+                        ObservationStateEvent(event.programme_block_id, State.DEAD))
             else:
                 logger.error('unknown event type %r', event)
         logger.info('Pipeline has finished, exiting')
@@ -1057,6 +1090,14 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         self.report_writer = report_writer
         self.master_queue = master_queue
         self._stopping = False
+        self._programme_block_state = {}
+        self._programme_block_state_sensor = katcp.Sensor.string(
+            'programme-block-state',
+            'JSON dict with the state of each programme block')
+        self._programme_block_state_sensor.set_value('{}')
+        # Unique number given to each observation
+        # (used if no programme block ID was provided)
+        self._index = 0
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
@@ -1066,6 +1107,16 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             self.add_sensor(sensor)
         for sensor in self.report_writer.get_sensors():
             self.add_sensor(sensor)
+        self.add_sensor(self._programme_block_state_sensor)
+
+    def _set_programme_block_state(self, programme_block_id, state):
+        if state == State.DEAD:
+            # Remove if present
+            self._programme_block_state.pop(programme_block_id, None)
+        else:
+            self._programme_block_state[programme_block_id] = state
+        dumped = json.dumps(self._programme_block_state, sort_keys=True, cls=EnumEncoder)
+        self._programme_block_state_sensor.set_value(dumped)
 
     def start(self):
         self._run_queue_task = trollius.ensure_future(self._run_queue())
@@ -1075,15 +1126,21 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     def join(self):
         yield From(self._run_queue_task)
 
-    @request()
+    @request(Str(optional=True))
     @return_reply()
-    def request_capture_init(self, msg):
+    def request_capture_init(self, msg, programme_block_id=None):
         """Start an observation"""
         if self.accumulator.capturing:
             return ('fail', 'capture already in progress')
         if self._stopping:
             return ('fail', 'server is shutting down')
-        self.accumulator.capture_init()
+        if programme_block_id is None:
+            programme_block_id = "cal_pb_{}".format(self._index)
+            self._index += 1
+        if programme_block_id in self._programme_block_state:
+            return ('fail', 'programme block ID {} is already active'.format(programme_block_id))
+        self._set_programme_block_state(programme_block_id, State.CAPTURING)
+        self.accumulator.capture_init(programme_block_id)
         return ('ok',)
 
     @request()
@@ -1183,6 +1240,8 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                         sensor.set(event.reading.timestamp,
                                    event.reading.status,
                                    event.reading.value)
+                elif isinstance(event, ObservationStateEvent):
+                    self._set_programme_block_state(event.programme_block_id, event.state)
                 else:
                     logger.warn('Unknown event %r', event)
 
@@ -1257,7 +1316,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # Set up the accumulator. This is done after the other processes are
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
-        accumulator = Accumulator(buffers, accum_pipeline_queue,
+        accumulator = Accumulator(buffers, accum_pipeline_queue, master_queue,
                                   l0_endpoints, l0_interface_address, telstate, stream_name)
         return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
     except Exception:
