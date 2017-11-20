@@ -368,17 +368,17 @@ class TestCalDeviceServer(unittest.TestCase):
     def test_empty_capture(self):
         """Terminating a capture with no data must succeed and not write a report.
 
-        It must also correctly remove the programme block from programme-block-state.
+        It must also correctly remove the program block from program-block-state.
         """
         yield self.make_request('capture-init', 'empty_pb')
-        state = yield self.get_sensor('programme-block-state')
+        state = yield self.get_sensor('program-block-state')
         assert_equal('{"empty_pb": "CAPTURING"}', state)
         yield self.make_request('capture-done')
         yield self.make_request('shutdown')
         assert_equal([], os.listdir(self.report_path))
         reports_written = yield self.get_sensor('reports-written')
         assert_equal(0, int(reports_written))
-        state = yield self.get_sensor('programme-block-state')
+        state = yield self.get_sensor('program-block-state')
         assert_equal('{}', state)
 
     @async_test
@@ -455,7 +455,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        assert_equal('{"cal_pb_0": "CAPTURING"}', (yield self.get_sensor('programme-block-state')))
+        assert_equal('{"cal_pb_0": "CAPTURING"}', (yield self.get_sensor('program-block-state')))
         informs = yield self.make_request('shutdown', timeout=180)
         progress = [inform.arguments[0] for inform in informs]
         assert_equal(['Accumulator stopped',
@@ -473,7 +473,7 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(0, int((yield self.get_sensor('accumulator-slots'))))
         assert_equal(0, int((yield self.get_sensor('pipeline-slots'))))
         assert_equal(40, int((yield self.get_sensor('free-slots'))))
-        assert_equal('{}', (yield self.get_sensor('programme-block-state')))
+        assert_equal('{}', (yield self.get_sensor('program-block-state')))
 
         reports = os.listdir(self.report_path)
         assert_equal(1, len(reports))
