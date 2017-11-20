@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class State(enum.Enum):
+    """State of a single program block"""
     CAPTURING = 1         # capture-init has been called, but not capture-done
     PROCESSING = 2        # capture-done has been called, but still in the pipeline
     REPORTING = 3         # generating the report
