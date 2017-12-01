@@ -4,7 +4,8 @@
 
 import contextlib
 from katsdpcal.simulator import init_simdata
-from katsdptelstate import endpoint, ArgumentParser
+from katsdptelstate import endpoint
+from katsdpservices import ArgumentParser
 
 def parse_opts():
     parser = ArgumentParser(description = 'Simulate SPEAD data stream from H5 file')    
