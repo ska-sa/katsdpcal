@@ -75,7 +75,7 @@ if __name__ == '__main__':
     """
     opts = parse_opts() 
     # Initialise spead receiver
-    rx = spead2.recv.Stream(spead2.ThreadPool(), bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    rx = spead2.recv.Stream(spead2.ThreadPool())
     rx.add_udp_reader(opts.l1_spectral_spead[0].port)
     # recieve stream and accumulate data into arrays
 

@@ -555,7 +555,7 @@ class SimDataMS(table):
         intents = table(self.getkeyword('STATE')).getcol('OBS_MODE')
         antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
         # set up ItemGroup for transmission
-        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+        flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
 
         # fake obs params for now
@@ -727,7 +727,7 @@ def h5_tx_data(h5data, ts, tx, max_scans):
     """
     total_ts, track_ts, slew_ts = 0, 0, 0
 
-    flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    flavour = spead2.Flavour(4, 64, 48)
     ig = send.ItemGroup(flavour=flavour)
 
     # fake obs params for now

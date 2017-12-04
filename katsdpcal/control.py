@@ -415,7 +415,7 @@ class Accumulator(object):
         # Initialise SPEAD receiver
         logger.info('Initializing SPEAD receiver')
         rx = spead2.recv.trollius.Stream(
-            self._thread_pool, bug_compat=spead2.BUG_COMPAT_PYSPEAD_0_5_2,
+            self._thread_pool,
             max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams)
         rx.set_memory_allocator(self._memory_pool)
         rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
@@ -906,7 +906,7 @@ class Pipeline(Task):
             SPEAD transmitter
         """
         # create SPEAD item group
-        flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+        flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
         # set up item group with items
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
@@ -1070,7 +1070,7 @@ def end_transmit(host, port):
     config = spead2.send.StreamConfig(max_packet_size=8972)
     tx = spead2.send.UdpStream(spead2.ThreadPool(), host, port, config)
 
-    flavour = spead2.Flavour(4, 64, 48, spead2.BUG_COMPAT_PYSPEAD_0_5_2)
+    flavour = spead2.Flavour(4, 64, 48)
     heap = spead2.send.Heap(flavour)
     heap.add_end()
 
