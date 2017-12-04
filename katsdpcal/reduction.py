@@ -10,6 +10,7 @@ from katdal.h5datav3 import SENSOR_PROPS
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
 
 from . import calprocs
+from . import calprocs_dask
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
@@ -38,7 +39,7 @@ def init_flagger(ts, dump_period):
 
     # Make windows a integer array
     rfi_windows_freq = np.array(ts.cal_param_rfi_windows_freq.split(','), dtype=np.int)
-    spike_width_time = ts.cal_param_rfi_spike_width_time/dump_period
+    spike_width_time = ts.cal_param_rfi_spike_width_time / dump_period
     calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_calib_nsigma,
                                         windows_freq=rfi_windows_freq,
                                         spike_width_time=spike_width_time,
@@ -121,7 +122,7 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
             else:
                 # get G values for an hour range on either side of target scan
                 t0, t1 = time_range
-                gsols = ts.get_range(ts_solname, st=t0 - 2.*60.*60., et=t1 + 2.*60.*60,
+                gsols = ts.get_range(ts_solname, st=t0 - 2. * 60. * 60., et=t1 + 2. * 60. * 60,
                                      return_format='recarray')
                 solval, soltime = gsols['value'], gsols['time']
                 soln = calprocs.CalSolution('G', solval, soltime)
@@ -168,7 +169,7 @@ def init_ts_params(ts, stream_name):
         bandwidth = ts[stream_name + '_bandwidth']
         sideband = ts.get('cal_sideband', 1)
         channel_freqs = center_freq \
-            + sideband*(bandwidth/n_chans)*(np.arange(n_chans) - n_chans / 2)
+            + sideband * (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
         ts.add('cal_channel_freqs', channel_freqs, immutable=True)
 
 
@@ -248,11 +249,14 @@ def pipeline(data, ts, stream_name):
     #    after a target scan, for application to the target scan
     track_slices = get_tracks(data, ts, dump_period)
     target_slices = []
+    # initialise corrected data
+    av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
+               'times': [], 'n_times': []}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
         t0 = data['times'][scan_slice.start]
-        t1 = data['times'][scan_slice.stop-1]
+        t1 = data['times'][scan_slice.stop - 1]
         n_times = scan_slice.stop - scan_slice.start
 
         #  target string contains: 'target name, tags, RA, DEC'
@@ -448,8 +452,8 @@ def pipeline(data, ts, stream_name):
             logger.info('Solving for G on gain calibrator {0}'.format(target_name,))
             # set up solution interval: just solve for two intervals per G scan
             # (ignore ts g_solint for now)
-            dumps_per_solint = np.ceil((scan_slice.stop-scan_slice.start-1)/2.0)
-            g_solint = dumps_per_solint*dump_period
+            dumps_per_solint = np.ceil((scan_slice.stop - scan_slice.start - 1) / 2.0)
+            g_solint = dumps_per_solint * dump_period
             g_soln = s.g_sol(g_solint, g0_h, ts.cal_param_g_bchan, ts.cal_param_g_echan,
                              pre_apply=solns_to_apply)
 
@@ -486,4 +490,27 @@ def pipeline(data, ts, stream_name):
             # TODO: setup separate flagger for cross-pols
             s.rfi(targ_flagger, rfi_mask, cross=True)
 
-    return target_slices
+        # apply solutions and average the corrected data
+        solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'], time_range=[t0, t1])
+        logger.info('Applying calibration solutions to calibrator {0}:'.format(target_name,))
+        vis = s.tf.auto.vis
+        for soln in solns_to_apply:
+            vis = s.apply(soln, vis)
+        av_vis, av_flags, av_weights = calprocs.wavg_full_f(vis.compute(),
+                                                            s.tf.auto.flags.compute(),
+                                                            s.tf.auto.weights.compute(),
+                                                            chanav=vis.shape[1] / 1024)
+        av_vis, av_flags, av_weights, av_times = calprocs_dask.wavg_full(av_vis,
+                                                                         av_flags,
+                                                                         av_weights,
+                                                                         times=s.timestamps,)
+
+        # collect corrected data and calibrator target list to send to report writer
+        av_corr['targets'].append(target)
+        av_corr['vis'].append(av_vis.compute())
+        av_corr['flags'].append(av_flags.compute())
+        av_corr['weights'].append(av_weights.compute())
+        av_corr['times'].append(np.asarray(av_times))
+        av_corr['n_times'].append(s.tf.auto.vis.shape[0])
+
+    return target_slices, av_corr

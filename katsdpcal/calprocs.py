@@ -417,7 +417,6 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # the delay peak in Fourier space and potentially introduces spurious
         # sidelobes if severe, like a dirty image suffering from poor uv coverage.
         good_pol_data = np.nan_to_num(pol_data)
-
         # -----------------------------------------------------
         # FT to find visibility space delays
         # NOTE: This is a bit inefficient at the moment as the FFT for al
@@ -850,6 +849,102 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
     # return useful info
     bl_pair_list = np.column_stack([list1, list2])
     return vis, bl_pair_list, gains
+
+# --------------------------------------------------------------------------------------------------
+# --- Averaging
+# --------------------------------------------------------------------------------------------------
+
+
+def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
+    """
+    Perform weighted average of data, flags and weights,
+    applying flags, over axis 1, for specified number of channels
+
+    Parameters
+    ----------
+    data       : array of complex
+    flags      : array of boolean
+    weights    : array of floats
+    chanav     : number of channels over which to average, integer
+
+    Returns
+    -------
+    av_data    : weighted average of data
+    av_flags   : weighted average of flags
+    av_weights : weighted average of weights
+    """
+    # ensure solint is an integer
+    chanav = np.int(chanav)
+    inc_array = range(0, data.shape[1], chanav)
+
+    flagged_weights = np.where(flags, weights.dtype.type(0), weights)
+    weighted_data = data * flagged_weights
+
+    # Clear the elements that have a nan anywhere
+    isnan = np.isnan(weighted_data)
+    weighted_data = np.where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = np.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    av_weights = np.add.reduceat(flagged_weights, inc_array, axis=1)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        av_data = np.add.reduceat(weighted_data, inc_array, axis=1) / av_weights
+    n_flags = np.add.reduceat(asbool(flags), inc_array, axis=1)
+    av_flags = n_flags > chanav * threshold
+
+    return av_data, av_flags, av_weights
+
+
+def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
+    """
+    Perform weighted average of data, flags and weights,
+    applying flags, over axis 3 per antenna.
+
+    Parameters
+    ----------
+    data       : array of complex
+    flags      : array of boolean
+    weights    : array of floats
+    ant_array  : array of strings representing antennas
+    bls_lookup : array of antennas in each baseline
+
+    Returns
+    -------
+    av_data    : weighted average of data
+    av_flags   : weighted average of flags
+    av_weights : weighted average of weights
+    """
+    av_data = []
+    av_flags = []
+    av_weights = []
+
+    for ant in range(len(ant_array)):
+        # select all correlations with same antenna but ignore autocorrelations
+        ant_idx = np.where(((bls_lookup[:, 0] == ant)
+                           | (bls_lookup[:, 1] == ant))
+                           & ((bls_lookup[:, 0] != bls_lookup[:, 1])))[0]
+
+        flagged_weights = np.where(flags[..., ant_idx],
+                                   weights[..., ant_idx].dtype.type(0),
+                                   weights[..., ant_idx])
+        weighted_data = data[..., ant_idx] * flagged_weights
+        # clear the elements that have a nan anywhere
+        isnan = np.isnan(weighted_data)
+        weighted_data = np.where(isnan, weighted_data.dtype.type(0), weighted_data)
+        ant_weights = np.sum(flagged_weights, axis=3)
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            ant_data = np.sum(weighted_data, axis=3) / ant_weights
+        n_flags = np.sum(asbool(flags[..., ant_idx]), axis=3)
+        ant_flags = n_flags > flags[..., ant_idx].shape[3] * threshold
+
+        av_data.append(ant_data)
+        av_flags.append(ant_flags)
+        av_weights.append(ant_weights)
+
+    av_data = np.stack(av_data, axis=3)
+    av_flags = np.stack(av_flags, axis=3)
+    av_weights = np.stack(av_weights, axis=3)
+
+    return av_data, av_flags, av_weights
 
 
 # --------------------------------------------------------------------------------------------------

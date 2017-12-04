@@ -149,6 +149,39 @@ def _slots_slices(slots):
         yield slice(start, end)
 
 
+class CorrectedData(object):
+    """Corrected Averaged Data"""
+    def __init__(self, targets, vis, flags, weights, times, n_times):
+        self.targets = targets
+        self.vis = vis
+        self.flags = flags
+        self.weights = weights
+        self.times = times
+        self.n_times = n_times
+
+    def __add__(self, other):
+        total_targets = self.targets+other.targets
+        total_vis = self.vis+other.vis
+        total_flags = self.flags+other.flags
+        total_weights = self.weights+other.weights
+        total_times = self.times+other.times
+        total_n_times = self.n_times+other.n_times
+        return CorrectedData(total_targets,
+                             total_vis,
+                             total_flags,
+                             total_weights,
+                             total_times,
+                             total_n_times)
+
+    def total(self):
+        return {'targets': self.targets,
+                'vis': np.stack(self.vis, axis=0),
+                'flags': np.stack(self.flags, axis=0),
+                'weights': np.stack(self.weights, axis=0),
+                'times': np.stack(self.times, axis=0),
+                'n_times': np.stack(self.n_times, axis=0)}
+
+
 class Task(object):
     """Base class for tasks (threads or processes).
 
@@ -750,7 +783,7 @@ class Accumulator(object):
                 slot = slots[-1]
 
             channel0 = ig['frequency'].value
-            channel_slice = np.s_[channel0 : channel0 + ig['flags'].shape[0]]
+            channel_slice = np.s_[channel0: channel0 + ig['flags'].shape[0]]
             # reshape data and put into relevent arrays
             self._update_buffer(self.buffers['vis'][slot, channel_slice],
                                 ig['correlator_data'].value, self.ordering)
@@ -877,8 +910,14 @@ class Pipeline(Task):
 
     def run_pipeline(self, data):
         # run pipeline calibration
-        target_slices = pipeline(data, self.telstate, self.stream_name)
+        target_slices, avg_corr = pipeline(data, self.telstate, self.stream_name)
 
+        # put corrected data into pipeline report queue
+        avg_corr_event = CorrectedData(avg_corr['targets'], avg_corr['vis'],
+                                       avg_corr['flags'], avg_corr['weights'],
+                                       avg_corr['times'], avg_corr['n_times'])
+
+        self.pipeline_report_queue.put(avg_corr_event)
         # send data to L1 SPEAD if necessary
         if self.l1_level != 0:
             config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
@@ -971,7 +1010,7 @@ class ReportWriter(Task):
                 'report-last-path', 'Directory containing the most recent report')
         ]
 
-    def write_report(self, obs_start, obs_end):
+    def write_report(self, obs_start, obs_end, av_corr):
         now = time.time()
         # get observation name
         try:
@@ -1001,7 +1040,9 @@ class ReportWriter(Task):
         # create pipeline report (very basic at the moment)
         try:
             make_cal_report(self.telstate, self.stream_name,
-                            current_obs_dir, experiment_id, st=obs_start, et=obs_end)
+                            current_obs_dir, av_corr, experiment_id,
+                            st=obs_start, et=obs_end)
+
         except Exception as error:
             logger.warn('Report generation failed: %s', error, exc_info=True)
 
@@ -1031,16 +1072,24 @@ class ReportWriter(Task):
         reports_sensor = self.sensors['reports-written']
         report_time_sensor = self.sensors['report-last-time']
         report_path_sensor = self.sensors['report-last-path']
+        # Set initial value of averaged corrected data
+        av_corr = CorrectedData([], [], [], [], [], [])
+
         while True:
             event = self.pipeline_report_queue.get()
             if isinstance(event, StopEvent):
                 break
+            if isinstance(event, CorrectedData):
+                logger.info('Corrected Data is in the queue')
+                av_corr = av_corr + event
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.program_block_id)
                     start_time = time.time()
-                    obs_dir = self.write_report(event.start_time, event.end_time)
+                    av_corr = av_corr.total()
+                    obs_dir = self.write_report(event.start_time, event.end_time, av_corr)
                     end_time = time.time()
+                    av_corr = CorrectedData([], [], [], [], [], [])
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)

@@ -102,7 +102,7 @@ def wavg(data, flags, weights, times=False, axis=0):
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
-def wavg_full(data, flags, weights, threshold=0.3):
+def wavg_full(data, flags, weights, threshold=0.3, times=None):
     """
     Perform weighted average of data, flags and weights,
     applying flags, over axis 0.
@@ -130,7 +130,11 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_data = da.sum(weighted_data, axis=0) / av_weights
     n_flags = da.sum(calprocs.asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
-    return av_data, av_flags, av_weights
+    if np.any(times):
+        av_times = np.average(times, axis=0)
+        return av_data, av_flags, av_weights, av_times
+    else:
+        return av_data, av_flags, av_weights
 
 
 def wavg_full_t(data, flags, weights, solint, times=None):
