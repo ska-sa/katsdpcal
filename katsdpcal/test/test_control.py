@@ -508,19 +508,13 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(np.float32, ret_K.dtype)
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
 
-    @async_test
-    @tornado.gen.coroutine
-    def test_buffer_wrap(self):
-        """Test capture with more heaps than buffer slots, to check that it handles
-        wrapping around the end of the buffer.
-        """
-        rs = np.random.RandomState(seed=1)
+    def prepare_heaps(self, rs, n_times):
+        """Set up self.heaps with some arbitrary data"""
         vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
         weights = np.ones(vis.shape, np.uint8)
         weights_channel = np.ones((self.n_channels,), np.float32)
         flags = np.zeros(vis.shape, np.uint8)
         ts = 0.0
-        n_times = 90
         channel_slices = [np.s_[i * self.n_channels_per_substream
                                 : (i+1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
@@ -537,6 +531,16 @@ class TestCalDeviceServer(unittest.TestCase):
             rs.shuffle(dump_heaps)
             self.heaps.extend(dump_heaps)
             ts += self.telstate.sdp_l0test_int_time
+
+    @async_test
+    @tornado.gen.coroutine
+    def test_buffer_wrap(self):
+        """Test capture with more heaps than buffer slots, to check that it handles
+        wrapping around the end of the buffer.
+        """
+        rs = np.random.RandomState(seed=1)
+        n_times = 90
+        self.prepare_heaps(rs, n_times)
         # Add a target change at an uneven time, so that the batches won't
         # neatly align with the buffer end. We also have to fake a slew to make
         # it work, since the batcher assumes that target cannot change without
@@ -566,3 +570,21 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(['Accumulator stopped',
                       'Pipeline stopped',
                       'Report writer stopped'], progress)
+
+    @async_test
+    @tornado.gen.coroutine
+    def test_pipeline_exception(self):
+        with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
+            assert_equal(0, int((yield self.get_sensor('pipeline-exceptions'))))
+            self.prepare_heaps(np.random.RandomState(seed=1), 5)
+            yield self.make_request('capture-init', 'testpb')
+            yield tornado.gen.sleep(1)
+            assert_equal('{"testpb": "CAPTURING"}', (yield self.get_sensor('program-block-state')))
+            yield self.make_request('shutdown')
+            informs = yield self.make_request('shutdown', timeout=60)
+            progress = [inform.arguments[0] for inform in informs]
+            assert_equal(['Accumulator stopped',
+                          'Pipeline stopped',
+                          'Report writer stopped'], progress)
+            assert_equal(1, int((yield self.get_sensor('pipeline-exceptions'))))
+            assert_equal('{}', (yield self.get_sensor('program-block-state')))

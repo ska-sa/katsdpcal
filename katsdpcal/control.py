@@ -806,7 +806,11 @@ class Pipeline(Task):
                 unit='s'),
             katcp.Sensor.integer(
                 'pipeline-last-slots',
-                'number of slots filled in the most recent buffer')
+                'number of slots filled in the most recent buffer'),
+            katcp.Sensor.integer(
+                'pipeline-exceptions',
+                'number of times the pipeline threw an exception',
+                default=0, initial_status=katcp.Sensor.NOMINAL)
         ]
 
     def run(self):
@@ -853,12 +857,21 @@ class Pipeline(Task):
                                  for s in slices]
                         data[key] = da.concatenate(parts, axis=0)
                     # run the pipeline
-                    self.run_pipeline(data)
+                    error = False
+                    try:
+                        self.run_pipeline(data)
+                    except Exception:
+                        logger.exception('Exception in pipeline')
+                        error = True
                     end_time = time.time()
                     elapsed = end_time - start_time
                     self.sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
                     self.sensors['pipeline-last-slots'].set_value(
                         len(event.slots), timestamp=end_time)
+                    if error:
+                        _inc_sensor(self.sensors['pipeline-exceptions'], 1,
+                                    status=katcp.Sensor.ERROR,
+                                    timestamp=end_time)
                     # release slots after pipeline run finished
                     self.master_queue.put(BufferFreeEvent(event.slots))
                     logger.info('buffer with %d slots released by %s',
