@@ -236,7 +236,7 @@ class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue, master_queue,
-                 l0_endpoints, l0_interface_address, telstate, stream_name):
+                 l0_name, l0_endpoints, l0_interface_address, telstate):
         self.buffers = buffers
         self.telstate = telstate
         self.l0_endpoints = l0_endpoints
@@ -245,9 +245,10 @@ class Accumulator(object):
         self.master_queue = master_queue
 
         # Extract useful parameters from telescope state
-        self.sync_time = self.telstate[stream_name + '_sync_time']
-        self.int_time = self.telstate[stream_name + '_int_time']
-        self.set_ordering_parameters(stream_name)
+        self.telstate_l0 = self.telstate.view(l0_name)
+        self.sync_time = self.telstate_l0['sync_time']
+        self.int_time = self.telstate_l0['int_time']
+        self.set_ordering_parameters()
 
         self.name = 'Accumulator'
         self._rx = None
@@ -274,9 +275,9 @@ class Accumulator(object):
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
         # Then there are per-channel weights (4 bytes each).
-        stream_n_chans = telstate[stream_name + '_n_chans']
-        stream_n_bls = telstate[stream_name + '_n_bls']
-        stream_n_chans_per_substream = telstate[stream_name + '_n_chans_per_substream']
+        stream_n_chans = self.telstate_l0['n_chans']
+        stream_n_bls = self.telstate_l0['n_bls']
+        stream_n_chans_per_substream = self.telstate_l0['n_chans_per_substream']
         self.n_substreams = stream_n_chans // stream_n_chans_per_substream
         heap_size = (stream_n_chans_per_substream * stream_n_bls * 10
                      + stream_n_chans_per_substream * 4)
@@ -471,12 +472,12 @@ class Accumulator(object):
             self._executor.shutdown()
             self._executor = None
 
-    def set_ordering_parameters(self, stream_name):
+    def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls
         # ordering to desired bls ordering
         antlist = self.telstate.cal_antlist
         self.ordering, bls_order, pol_order = \
-            calprocs.get_reordering(antlist, self.telstate[stream_name + '_bls_ordering'])
+            calprocs.get_reordering(antlist, self.telstate_l0['bls_ordering'])
         # determine lookup list for baselines
         bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
         # save these to the telescope state for use in the pipeline/elsewhere
@@ -781,17 +782,16 @@ class Pipeline(Task):
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_report_queue, master_queue,
-                 l1_endpoint, l1_level, l1_rate, telstate, stream_name,
+                 l0_name, flags_name, flags_endpoint, flags_interface_address,
+                 telstate,
                  diagnostics_file=None, profile_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
-        self.stream_name = stream_name
-        self.l1_level = l1_level
-        self.l1_rate = l1_rate
-        self.l1_endpoint = l1_endpoint
+        self.l0_name = l0_name
+        # TODO: Set up sender for flags
         self.diagnostics_file = diagnostics_file
         if num_workers is None:
             # Leave a core free to avoid starving the accumulator
@@ -890,7 +890,7 @@ class Pipeline(Task):
 
     def run_pipeline(self, data):
         # run pipeline calibration
-        target_slices = pipeline(data, self.telstate, self.stream_name)
+        target_slices = pipeline(data, self.telstate, self.l0_name)
 
         # send data to L1 SPEAD if necessary
         if self.l1_level != 0:
@@ -955,7 +955,7 @@ class Pipeline(Task):
 
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
-                 telstate, stream_name, l1_endpoint, l1_level,
+                 l0_name, telstate,
                  report_path, log_path, full_log):
         super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
@@ -963,9 +963,7 @@ class ReportWriter(Task):
         report_path = os.path.abspath(report_path)
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
-        self.stream_name = stream_name
-        self.l1_endpoint = l1_endpoint
-        self.l1_level = l1_level
+        self.l0_name = l0_name
         self.report_path = report_path
         self.log_path = log_path
         self.full_log = full_log
@@ -1013,20 +1011,10 @@ class ReportWriter(Task):
 
         # create pipeline report (very basic at the moment)
         try:
-            make_cal_report(self.telstate, self.stream_name,
+            make_cal_report(self.telstate, self.l0_name,
                             current_obs_dir, experiment_id, st=obs_start, et=obs_end)
         except Exception as error:
             logger.warn('Report generation failed: %s', error, exc_info=True)
-
-        if self.l1_level != 0:
-            # send L1 stop transmission
-            #   wait for a couple of secs before ending transmission, because
-            #   it's a separate kernel socket and hence unordered with respect
-            #   to the socket used by the pipeline (TODO: move this into the
-            #   pipeline).
-            time.sleep(2.0)
-            end_transmit(self.l1_endpoint.host, self.l1_endpoint.port)
-            logger.info('L1 stream ended')
 
         logger.info('   Observation ended')
         logger.info('===========================')
@@ -1287,9 +1275,9 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 
 def create_server(use_multiprocessing, host, port, buffers,
-                  l0_endpoints, l0_interface_address,
-                  l1_endpoint, l1_level, l1_rate, telstate, stream_name,
-                  report_path, log_path, full_log,
+                  l0_name, l0_endpoints, l0_interface_address,
+                  flags_name, flags_endpoint, flags_interface_address,
+                  telstate, report_path, log_path, full_log,
                   diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
@@ -1311,12 +1299,12 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l1_endpoint, l1_level, l1_rate, telstate, stream_name,
-        diagnostics_file, pipeline_profile_file, num_workers)
+        l0_name, flags_name, flags_endpoint, flags_interface_address,
+        telstate, diagnostics_file, pipeline_profile_file, num_workers)
     # Set up the report writer
     report_writer = ReportWriter(
-        module.Process, pipeline_report_queue, master_queue, telstate, stream_name,
-        l1_endpoint, l1_level, report_path, log_path, full_log)
+        module.Process, pipeline_report_queue, master_queue, l0_name, telstate,
+        report_path, log_path, full_log)
 
     # Start the child tasks.
     running_tasks = []
@@ -1331,7 +1319,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue, master_queue,
-                                  l0_endpoints, l0_interface_address, telstate, stream_name)
+                                  l0_name, l0_endpoints, l0_interface_address, telstate)
         return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
     except Exception:
         for task in running_tasks:

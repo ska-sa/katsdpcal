@@ -86,14 +86,14 @@ def parse_opts():
         '--l0-spectral-name', default='sdp_l0',
         help='Name of the L0 stream for telstate metadata. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
-        '--l1-spectral-spead', type=endpoint.endpoint_parser(7202), default='127.0.0.1:7202',
-        help='destination for spectral L1 output. [default=%(default)s]', metavar='ENDPOINT')
+        '--flags-spead', type=endpoint.endpoint_parser(7202),
+        help='destination for L1 flags. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument(
-        '--l1-rate', type=float, default=5e7,
-        help='L1 spead transmission rate. For laptops, recommend rate of 5e7. Default: 5e7')
+        '--flags-name', type=str, default='sdp_l1_flags',
+        help='name for the flags stream. [default=%(default)s]', metavar='NAME')
     parser.add_argument(
-        '--l1_level', default=0,
-        help='Data to transmit to L1: 0 - none, 1 - target only, 2 - all [default: 0]')
+        '--flags-interface',
+        help='interface to send flags stream to. [default: auto]', metavar='INTERFACE')
     parser.add_argument(
         '--threading', action='store_true',
         help='Use threading to control pipeline and accumulator '
@@ -150,12 +150,12 @@ def setup_logger(log_name, log_path='.'):
 
 
 @trollius.coroutine
-def run(ts, stream_name, host, port,
-        buffer_maxsize=None,
-        l0_endpoints=':7200', l0_interface=None,
-        l1_endpoint='127.0.0.1:7202', l1_rate=5.0e7, l1_level=0,
-        mproc=True, param_file='', report_path='', log_path='.', full_log=None,
-        diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
+def run(ts, host, port,
+        buffer_maxsize,
+        l0_name, l0_endpoints, l0_interface,
+        flags_name, flags_endpoint, flags_interface,
+        mproc, param_file, report_path, log_path, full_log,
+        diagnostics_file, pipeline_profile_file, num_workers):
     """
     Run the device server.
 
@@ -163,8 +163,6 @@ def run(ts, stream_name, host, port,
     ----------
     ts : TelescopeState
         The telescope state
-    stream_name : str
-        Name of the L0 input stream, for finding parameters in `ts`
     host : str
         Bind hostname for katcp server
     port : int
@@ -172,16 +170,18 @@ def run(ts, stream_name, host, port,
     buffer_maxsize : float
         The size of the buffer. Memory for each buffer will be allocated at first
         and then populated by the accumulator from the SPEAD stream.
+    l0_name : str
+        Name of the L0 input stream, for finding parameters in `ts`
     l0_endpoints : list of :class:`katsdptelstate.endpoint.Endpoint`
         Endpoints to listen to for L0 stream
     l0_interface : str
         Name of interface to subscribe to for L0, or None to let the OS decide
-    l1_endpoint : endpoint
-        Destination endpoint for L1 stream, default: '127.0.0.1:7202'
-    l1_rate : float
-        Rate for L1 stream transmission, default 5e7
-    l1_level : int
-        Data to transmit to L1: 0 - none, 1 - target only, 2 - all
+    flags_name : str
+        Name of the L1 flags output stream, for setting parameters in `ts`
+    flags_endpoint : :class:`katsdptelstate.endpoint.Endpoint`
+        Endpoint to send to for L1 flags stream
+    flags_interface : str
+        Name of interface to transmit on for L1 flags output, or None to let the OS decide
     mproc : bool
         True for control via multiprocessing, False for control via threading
     param_file : str
@@ -201,8 +201,9 @@ def run(ts, stream_name, host, port,
     ioloop.install()
 
     # deal with required input parameters
-    n_chans = ts[stream_name + '_n_chans']
-    baselines = ts[stream_name + '_bls_ordering']
+    ts_l0 = ts.view(l0_name)
+    n_chans = ts_l0['n_chans']
+    baselines = ts_l0['bls_ordering']
     ants = set()
     pols = set()
     ant_baselines = set()
@@ -248,7 +249,7 @@ def run(ts, stream_name, host, port,
     logger.info('Telescope state parameters:')
     for keyval in ts.keys():
         # don't print out the really long telescope state key values
-        if keyval not in [stream_name + '_bls_ordering', 'cal_channel_freqs']:
+        if keyval not in [l0_name + '_bls_ordering', 'cal_channel_freqs']:
             logger.info('%s : %s', keyval, ts[keyval])
 
     # set up TS for pipeline use
@@ -290,6 +291,14 @@ def run(ts, stream_name, host, port,
                 endpoint.endpoints_to_str(l0_endpoints),
                 'default interface' if l0_interface is None else l0_interface)
     l0_interface_address = katsdpservices.get_interface_address(l0_interface)
+    if flags_endpoint is not None:
+        logger.info('Sending L1 flags to %s via %s',
+                    flags_endpoint,
+                    'default interface' if flags_interface is None else flags_interface)
+        flags_interface_address = katsdpservices.get_interface_address(flags_interface)
+    else:
+        flags_interface_address = None
+        logger.info('L1 flags not being sent')
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
     # pressing Ctrl-C in a terminal will only deliver SIGINT to the parent.
@@ -298,9 +307,9 @@ def run(ts, stream_name, host, port,
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     server = create_server(mproc, host, port, buffers,
-                           l0_endpoints, l0_interface_address,
-                           l1_endpoint, l1_level, l1_rate, ts, stream_name,
-                           report_path, log_path, full_log,
+                           l0_name, l0_endpoints, l0_interface_address,
+                           flags_name, flags_endpoint, flags_interface_address,
+                           ts, report_path, log_path, full_log,
                            diagnostics_file, pipeline_profile_file, num_workers)
     with server:
         ioloop.add_callback(server.start)
@@ -349,12 +358,16 @@ def main():
     setup_logger(log_name, log_path)
 
     yield From(run(
-        opts.telstate, opts.l0_spectral_name,
+        opts.telstate,
         host=opts.host, port=opts.port,
         buffer_maxsize=opts.buffer_maxsize,
-        l0_endpoints=opts.l0_spectral_spead, l0_interface=opts.l0_spectral_interface,
-        l1_endpoint=opts.l1_spectral_spead,
-        l1_rate=opts.l1_rate, l1_level=opts.l1_level, mproc=not opts.threading,
+        l0_name=opts.l0_spectral_name,
+        l0_endpoints=opts.l0_spectral_spead,
+        l0_interface=opts.l0_spectral_interface,
+        flags_name=opts.flags_name,
+        flags_endpoint=opts.flags_spead,
+        flags_interface=opts.flags_interface,
+        mproc=not opts.threading,
         param_file=opts.parameter_file,
         report_path=opts.report_path, log_path=log_path, full_log=log_name,
         diagnostics_file=opts.dask_diagnostics, pipeline_profile_file=opts.pipeline_profile,
