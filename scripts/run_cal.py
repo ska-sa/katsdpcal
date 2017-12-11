@@ -93,7 +93,10 @@ def parse_opts():
         help='name for the flags stream. [default=%(default)s]', metavar='NAME')
     parser.add_argument(
         '--flags-interface',
-        help='interface to send flags stream to. [default: auto]', metavar='INTERFACE')
+        help='interface to send flags stream to. [default=auto]', metavar='INTERFACE')
+    parser.add_argument(
+        '--flags-rate-ratio', type=float, default=8.0,
+        help='speed to send flags, relative to realtime. [default=%(default)s]', metavar='RATIO')
     parser.add_argument(
         '--threading', action='store_true',
         help='Use threading to control pipeline and accumulator '
@@ -120,7 +123,10 @@ def parse_opts():
         '--port', '-p', type=int, default=2048, help='katcp host port [%(default)s]')
     parser.add_argument(
         '--host', '-a', type=str, default='', help='katcp host address [all hosts]')
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.flags_rate_ratio <= 1.0:
+        parser.error('--flags-rate-ratio must be > 1')
+    return args
 
 
 def setup_logger(log_name, log_path='.'):
@@ -153,7 +159,7 @@ def setup_logger(log_name, log_path='.'):
 def run(ts, host, port,
         buffer_maxsize,
         l0_name, l0_endpoints, l0_interface,
-        flags_name, flags_endpoint, flags_interface,
+        flags_name, flags_endpoint, flags_interface, flags_rate_ratio,
         mproc, param_file, report_path, log_path, full_log,
         diagnostics_file, pipeline_profile_file, num_workers):
     """
@@ -182,6 +188,8 @@ def run(ts, host, port,
         Endpoint to send to for L1 flags stream
     flags_interface : str
         Name of interface to transmit on for L1 flags output, or None to let the OS decide
+    flags_rate_ratio : float
+        Speed to send flags, relative to real-time
     mproc : bool
         True for control via multiprocessing, False for control via threading
     param_file : str
@@ -308,7 +316,7 @@ def run(ts, host, port,
 
     server = create_server(mproc, host, port, buffers,
                            l0_name, l0_endpoints, l0_interface_address,
-                           flags_name, flags_endpoint, flags_interface_address,
+                           flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
                            ts, report_path, log_path, full_log,
                            diagnostics_file, pipeline_profile_file, num_workers)
     with server:
@@ -367,6 +375,7 @@ def main():
         flags_name=opts.flags_name,
         flags_endpoint=opts.flags_spead,
         flags_interface=opts.flags_interface,
+        flags_rate_ratio=opts.flags_rate_ratio,
         mproc=not opts.threading,
         param_file=opts.parameter_file,
         report_path=opts.report_path, log_path=log_path, full_log=log_name,

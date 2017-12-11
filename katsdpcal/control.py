@@ -3,7 +3,7 @@ import mmap
 import os
 import shutil
 import logging
-from collections import deque, namedtuple
+from collections import deque, namedtuple, Counter
 import multiprocessing
 import multiprocessing.dummy
 import cProfile
@@ -75,13 +75,7 @@ class StopEvent(object):
 
 
 class BufferReadyEvent(object):
-    """Indicates to the pipeline that the buffer is ready for it."""
-    def __init__(self, slots):
-        self.slots = slots
-
-
-class BufferFreeEvent(object):
-    """Indicates to the accumulator that some slots are available again."""
+    """Transfers ownership of buffer slots."""
     def __init__(self, slots):
         self.slots = slots
 
@@ -228,10 +222,6 @@ def _run_task(task):
     task._run()
 
 
-# ---------------------------------------------------------------------------------------
-# Accumulator
-# ---------------------------------------------------------------------------------------
-
 class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
@@ -371,7 +361,7 @@ class Accumulator(object):
 
         Parameters
         ----------
-        event : :class:`BufferFreeEvent`
+        event : :class:`BufferReadyEvent`
             Event listing the slots that are now available
         """
         if event.slots:
@@ -396,7 +386,10 @@ class Accumulator(object):
                 _inc_sensor(self.sensors['accumulator-observations'], 1)
             else:
                 logger.info(' --- no data flowed ---')
-                self.master_queue.put(ObservationStateEvent(program_block_id, State.DEAD))
+                # Send it twice, since the master expects it from both flag
+                # sender and report writer.
+                for i in range(2):
+                    self.master_queue.put(ObservationEndEvent(program_block_id, None, None))
             logger.info('Observation %s ended', program_block_id)
         except trollius.CancelledError:
             logger.info('Observation %s cancelled', program_block_id)
@@ -771,27 +764,22 @@ class Accumulator(object):
         logger.info('Accumulation ended')
 
 
-# ---------------------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------------------
-
 class Pipeline(Task):
     """
     Task (Process or Thread) which runs pipeline
     """
 
     def __init__(self, task_class, buffers,
-                 accum_pipeline_queue, pipeline_report_queue, master_queue,
-                 l0_name, flags_name, flags_endpoint, flags_interface_address,
-                 telstate,
+                 accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
+                 l0_name, telstate,
                  diagnostics_file=None, profile_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
+        self.pipeline_sender_queue = pipeline_sender_queue
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
         self.l0_name = l0_name
-        # TODO: Set up sender for flags
         self.diagnostics_file = diagnostics_file
         if num_workers is None:
             # Leave a core free to avoid starving the accumulator
@@ -872,11 +860,12 @@ class Pipeline(Task):
                         _inc_sensor(self.sensors['pipeline-exceptions'], 1,
                                     status=katcp.Sensor.ERROR,
                                     timestamp=end_time)
-                    # release slots after pipeline run finished
-                    self.master_queue.put(BufferFreeEvent(event.slots))
-                    logger.info('buffer with %d slots released by %s',
+                    # transmit flags after pipeline is finished
+                    self.pipeline_sender_queue.put(event)
+                    logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
+                    self.pipeline_sender_queue.put(event)
                     self.pipeline_report_queue.put(event)
                     self.master_queue.put(
                         ObservationStateEvent(event.program_block_id, State.REPORTING))
@@ -886,72 +875,96 @@ class Pipeline(Task):
                 else:
                     logger.error('unknown event type %r by %s', event, self.name)
         finally:
+            self.pipeline_sender_queue.put(StopEvent())
             self.pipeline_report_queue.put(StopEvent())
 
     def run_pipeline(self, data):
         # run pipeline calibration
-        target_slices = pipeline(data, self.telstate, self.l0_name)
+        pipeline(data, self.telstate, self.l0_name)
 
-        # send data to L1 SPEAD if necessary
-        if self.l1_level != 0:
-            config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
-            tx = spead2.send.UdpStream(spead2.ThreadPool(), self.l1_endpoint.host,
-                                       self.l1_endpoint.port, config)
-            logger.info('   Transmit L1 data')
-            # for streaming all of the data (not target only),
-            # use the highest index in the buffer that is filled with data
-            transmit_slices = np.s_[:] if self.l1_level == 2 else target_slices
-            self.data_to_spead(data, transmit_slices, tx)
-            logger.info('   End transmit of L1 data')
 
-    def data_to_spead(self, data, target_slices, tx):
-        """
-        Transmits data as SPEAD stream
+class Sender(Task):
+    def __init__(self, task_class, buffers,
+                 pipeline_sender_queue, master_queue,
+                 l0_name,
+                 flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+                 telstate):
+        super(Sender, self).__init__(task_class, master_queue, 'Sender')
+        self.telstate_l0 = telstate.view(l0_name)
+        self.flags_endpoint = flags_endpoint
+        self.flags_interface_address = flags_interface_address
+        if self.flags_interface_address is None:
+            self.flags_interface_address = ''
+        self.int_time = self.telstate_l0['int_time']
+        self.n_chans = self.telstate_l0['n_chans']
+        self.sync_time = self.telstate_l0['sync_time']
+        self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
+        n_bls = len(self.l0_bls)
+        self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
 
-        Parameters
-        ----------
-        data : dict
-            Dictionary with keys `vis`, `flags`, and `weights` referencing dask
-            arrays, and `times` indexing a numpy array.
-        target_slices : list of slices
-            slices for target scans in the data buffer
-        tx : :class:`spead2.send.UdpStream'
-            SPEAD transmitter
-        """
+        self.buffers = buffers
+        self.pipeline_sender_queue = pipeline_sender_queue
+        # TODO: set metadata in telstate
+        # Compute the permutation to get back to L0 ordering. get_reordering gives
+        # the inverse of what is needed.
+        rev_ordering = calprocs.get_reordering(self.telstate_l0['cal_antlist'], self.l0_bls)[0]
+        self.ordering = np.full(n_bls, -1)
+        for i, idx in enumerate(rev_ordering):
+            self.ordering[idx] = i
+        if np.any(self.ordering < 0):
+            raise RuntimeError('accumulator discards some baselines')
+
+    def run(self):
+        if self.flags_endpoint is not None:
+            config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.rate)
+            tx = spead2.send.UdpStream(
+                spead2.ThreadPool(), self.flags_endpoint.host, self.flags_endpoint.port,
+                config, ttl=1, interface_address=self.flags_interface_address)
+        else:
+            tx = None
         # create SPEAD item group
         flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
         # set up item group with items
-        ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                    shape=data['vis'][0].shape, dtype=self.data['vis'][0].dtype)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=data['flags'][0].shape, dtype=self.data['flags'][0].dtype)
-        ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=data['weights'][0].shape, dtype=self.data['weights'][0].dtype)
+                    shape=(self.n_chans, len(self.l0_bls)), dtype=None, format=[('u', 8)])
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
+        # TODO: add frequency item, capture_block, dump_index
 
-        # transmit data
-        for data_slice in target_slices:
-            # get data for this scan, from the slice
-            scan_vis = data['vis'][data_slice]
-            scan_flags = data['flags'][data_slice]
-            scan_weights = data['weights'][data_slice]
-            scan_times = data['times'][data_slice]
+        started = False
+        out_flags = np.zeros(ig['flags'].shape, np.uint8)
+        while True:
+            event = self.pipeline_sender_queue.get()
+            if isinstance(event, StopEvent):
+                break
+            elif isinstance(event, BufferReadyEvent):
+                if tx is None:
+                    self.master_queue.put(event)
+                else:
+                    logger.info('starting transmission of %d slots', len(event.slots))
+                    if not started:
+                        tx.send_heap(ig.get_start())
+                        started = True
+                    for slot in event.slots:
+                        flags = self.buffers['flags'][slot]
+                        # Flatten the pol and baseline dimensions
+                        flags.shape = ig['flags'].shape
+                        # Permute into the same order as the L0 stream
+                        np.take(flags, self.ordering, axis=1, out=out_flags)
+                        ig['flags'].value = out_flags
+                        ig['timestamp'].value = self.buffers['times'][slot] - self.sync_time
+                        tx.send_heap(ig.get_heap(data='all', descriptors='all'))
+                        self.master_queue.put(BufferReadyEvent([slot]))
+                    logger.info('finished transmission of %d slots', len(event.slots))
+            elif isinstance(event, ObservationEndEvent):
+                if started:
+                    tx.send_heap(ig.get_end())
+                    started = False
+                self.master_queue.put(event)
+        if started:
+            tx.send_heap(ig.get_end())
 
-            # transmit data timestamp by timestamp
-            for i in range(len(scan_times)):  # time axis
-                # transmit timestamps, vis, flags and weights
-                ig['correlator_data'].value = scan_vis[i].compute()
-                ig['flags'].value = scan_flags[i].compute()
-                ig['weights'].value = scan_weights[i].compute()
-                ig['timestamp'].value = scan_times[i]
-                tx.send_heap(ig.get_heap())
-
-
-# ---------------------------------------------------------------------------------------
-# Report writer
-# ---------------------------------------------------------------------------------------
 
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
@@ -1046,53 +1059,29 @@ class ReportWriter(Task):
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)
                 finally:
-                    self.master_queue.put(
-                        ObservationStateEvent(event.program_block_id, State.DEAD))
+                    self.master_queue.put(event)
             else:
                 logger.error('unknown event type %r', event)
         logger.info('Pipeline has finished, exiting')
 
 
-# ---------------------------------------------------------------------------------------
-# SPEAD helper functions
-# ---------------------------------------------------------------------------------------
-
-def end_transmit(host, port):
-    """
-    Send stop packet to spead stream tx
-
-    Parameters
-    ----------
-    host : str
-        host to transmit to
-    port : int
-        port to transmit to
-    """
-    config = spead2.send.StreamConfig(max_packet_size=8972)
-    tx = spead2.send.UdpStream(spead2.ThreadPool(), host, port, config)
-
-    flavour = spead2.Flavour(4, 64, 48)
-    heap = spead2.send.Heap(flavour)
-    heap.add_end()
-
-    tx.send_heap(heap)
-
-
-# ---------------------------------------------------------------------------------------
-# Device server
-# ---------------------------------------------------------------------------------------
-
 class CalDeviceServer(katcp.server.AsyncDeviceServer):
     VERSION_INFO = ('katsdpcal-api', 1, 0)
     BUILD_INFO = ('katsdpcal',) + tuple(katsdpcal.__version__.split('.', 1)) + ('',)
 
-    def __init__(self, accumulator, pipeline, report_writer, master_queue, *args, **kwargs):
+    def __init__(self, accumulator, pipeline, sender, report_writer, master_queue,
+                 *args, **kwargs):
         self.accumulator = accumulator
         self.pipeline = pipeline
+        self.sender = sender
         self.report_writer = report_writer
+        self.children = [pipeline, sender, report_writer]
         self.master_queue = master_queue
         self._stopping = False
         self._program_block_state = {}
+        # Each program block needs to be marked done twice: once from
+        # Sender, once from ReportWriter.
+        self._program_block_ends = Counter()
         self._program_block_state_sensor = katcp.Sensor.string(
             'program-block-state',
             'JSON dict with the state of each program block')
@@ -1105,10 +1094,9 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     def setup_sensors(self):
         for sensor in self.accumulator.sensors.values():
             self.add_sensor(sensor)
-        for sensor in self.pipeline.get_sensors():
-            self.add_sensor(sensor)
-        for sensor in self.report_writer.get_sensors():
-            self.add_sensor(sensor)
+        for child in self.children:
+            for sensor in child.get_sensors():
+                self.add_sensor(sensor)
         self.add_sensor(self._program_block_state_sensor)
 
     def _set_program_block_state(self, program_block_id, state):
@@ -1179,16 +1167,15 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             if not force:
                 yield From(self.accumulator.stop())
                 progress('Accumulator stopped')
-                yield From(loop.run_in_executor(executor, self.pipeline.join))
-                progress('Pipeline stopped')
-                yield From(loop.run_in_executor(executor, self.report_writer.join))
-                progress('Report writer stopped')
+                for task in self.children:
+                    yield From(loop.run_in_executor(executor, task.join))
+                    progress('{} stopped'.format(task.name))
             elif hasattr(self.report_writer, 'terminate'):
                 # Kill off all the tasks. This is done in reverse order, to avoid
                 # triggering a report writing only to kill it half-way.
                 # TODO: this may need to become semi-graceful at some point, to avoid
                 # corrupting an in-progress report.
-                for task in [self.report_writer, self.pipeline]:
+                for task in reversed(self.children):
                     task.terminate()
                     yield From(loop.run_in_executor(executor, task.join))
                 yield From(self.accumulator.stop(force=True))
@@ -1231,7 +1218,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                 event = yield From(loop.run_in_executor(executor, self.master_queue.get))
                 if isinstance(event, StopEvent):
                     break
-                elif isinstance(event, BufferFreeEvent):
+                elif isinstance(event, BufferReadyEvent):
                     yield From(self.accumulator.buffer_free(event))
                 elif isinstance(event, SensorReadingEvent):
                     try:
@@ -1244,6 +1231,12 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                                    event.reading.value)
                 elif isinstance(event, ObservationStateEvent):
                     self._set_program_block_state(event.program_block_id, event.state)
+                elif isinstance(event, ObservationEndEvent):
+                    self._program_block_ends[event.program_block_id] += 1
+                    if self._program_block_ends[event.program_block_id] == 2:
+                        # Both sender and pipeline have finished
+                        del self._program_block_ends[event.program_block_id]
+                        self._set_program_block_state(event.program_block_id, State.DEAD)
                 else:
                     logger.warn('Unknown event %r', event)
 
@@ -1276,7 +1269,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_name, flags_endpoint, flags_interface_address,
+                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
                   telstate, report_path, log_path, full_log,
                   diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
@@ -1291,16 +1284,21 @@ def create_server(use_multiprocessing, host, port, buffers,
     # passed events to indicate buffer transfer, end-of-observation, or stop
     accum_pipeline_queue = module.Queue()
     # signalled by pipelines when they shut down or finish an observation
+    pipeline_sender_queue = module.Queue()
     pipeline_report_queue = module.Queue()
     # other tasks send up sensor updates
     master_queue = module.Queue()
 
-    # Set up the pipelines (one per buffer)
+    # Set up the pipeline
     pipeline = Pipeline(
         module.Process, buffers,
-        accum_pipeline_queue, pipeline_report_queue, master_queue,
-        l0_name, flags_name, flags_endpoint, flags_interface_address,
-        telstate, diagnostics_file, pipeline_profile_file, num_workers)
+        accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
+        l0_name, telstate, diagnostics_file, pipeline_profile_file, num_workers)
+    # Set up the sender
+    sender = Sender(
+        module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
+        flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+        telstate)
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, l0_name, telstate,
@@ -1309,7 +1307,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Start the child tasks.
     running_tasks = []
     try:
-        for task in [report_writer, pipeline]:
+        for task in [report_writer, sender, pipeline]:
             if not use_multiprocessing:
                 task.daemon = True    # Make sure it doesn't prevent process exit
             task.start()
@@ -1320,7 +1318,8 @@ def create_server(use_multiprocessing, host, port, buffers,
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue, master_queue,
                                   l0_name, l0_endpoints, l0_interface_address, telstate)
-        return CalDeviceServer(accumulator, pipeline, report_writer, master_queue, host, port)
+        return CalDeviceServer(accumulator, pipeline, sender, report_writer,
+                               master_queue, host, port)
     except Exception:
         for task in running_tasks:
             if hasattr(task, 'terminate'):

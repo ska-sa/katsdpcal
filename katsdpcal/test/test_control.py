@@ -10,11 +10,13 @@ import shutil
 import functools
 import os
 import glob
+import copy
 from collections import deque
 
 import numpy as np
 from nose.tools import (
-    assert_equal, assert_is_instance, assert_in, assert_false, assert_true, assert_regexp_matches,
+    assert_equal, assert_is_instance, assert_in, assert_false, assert_true,
+    assert_regexp_matches, assert_almost_equal,
     nottest)
 import mock
 
@@ -28,6 +30,7 @@ import katsdptelstate
 from katsdptelstate.endpoint import Endpoint
 from katsdpservices.asyncio import to_tornado_future
 import katpoint
+from katdal.h5datav3 import FLAG_NAMES
 
 from katsdpcal import control, pipelineprocs, param_dir, rfi_dir
 
@@ -134,7 +137,7 @@ def async_test(func):
     return wrapper
 
 
-class MockStream(mock.MagicMock):
+class MockRecvStream(mock.MagicMock):
     """Mock replacement for :class:`spead2.recv.trollius.Stream`.
 
     It has a list of pseudo-heaps that it yields to the caller. A "pseudo-heap"
@@ -147,7 +150,7 @@ class MockStream(mock.MagicMock):
     calling :meth:`stop`.
     """
     def __init__(self, heaps):
-        super(MockStream, self).__init__()
+        super(MockRecvStream, self).__init__()
         self._heaps = heaps
         self._last_future = None
         self._stopped = False
@@ -194,6 +197,24 @@ def mock_item_group_update(self, heap):
         return heap
     else:
         return heap(self)
+
+
+class MockSendHeap(mock.MagicMock):
+    """Mock replacement for :class:`spead2.send.Heap`.
+
+    It records all added items, taking deep copies so that the data at the
+    time of being added is saved.
+    """
+    def __init__(self, *args, **kwargs):
+        super(MockSendHeap, self).__init__(*args, **kwargs)
+        self.items = []
+
+    # Make child mocks use the basic MagicMock, not this class
+    def _get_child_mock(self, **kwargs):
+        return mock.MagicMock(**kwargs)
+
+    def add_item(self, item):
+        self.items.append(copy.deepcopy(item))
 
 
 class TestCalDeviceServer(unittest.TestCase):
@@ -290,8 +311,11 @@ class TestCalDeviceServer(unittest.TestCase):
 
         self.heaps = deque()
         self.heaps.append(self.add_items)
-        self.patch('spead2.recv.trollius.Stream', return_value=MockStream(self.heaps))
+        self.patch('spead2.recv.trollius.Stream', return_value=MockRecvStream(self.heaps))
         self.patch('spead2.ItemGroup.update', mock_item_group_update)
+        self.patch('spead2.send.Heap', side_effect=lambda flavour: MockSendHeap())
+        UdpStream = self.patch('spead2.send.UdpStream', autospec=True)
+        self.udp_stream = UdpStream.return_value
 
         self.report_path = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.report_path)
@@ -304,7 +328,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', [Endpoint('239.102.255.1', 7148)], None,
-            'sdp_l1_flags_test', None, None,
+            'sdp_l1_flags_test', Endpoint('239.102.255.2', 7148), None, 64.0,
             self.telstate, self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)
@@ -403,13 +427,21 @@ class TestCalDeviceServer(unittest.TestCase):
         ref_phase = ref / np.abs(ref)
         return value * ref_phase.conj()
 
+    def _check_stopped(self, progress):
+        assert_equal(['Accumulator stopped',
+                      'Pipeline stopped',
+                      'Sender stopped',
+                      'ReportWriter stopped'], progress)
+
     @async_test
     @tornado.gen.coroutine
     def test_capture(self):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        ts = 100
+        first_ts = ts = 100
+        n_times = 10
+        corrupt_times = (3, 7)
         rs = np.random.RandomState(seed=1)
 
         bandwidth = self.telstate.sdp_l0test_bandwidth
@@ -432,17 +464,20 @@ class TestCalDeviceServer(unittest.TestCase):
             * (G[pol1, ant1] * G[pol2, ant2].conj())
         corrupted_vis = vis + 1e9j
         flags = np.zeros(vis.shape, np.uint8)
+        # Set flag on one channel per baseline, to test the baseline permutation.
+        for i in range(flags.shape[1]):
+            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
         channel_slices = [np.s_[i * self.n_channels_per_substream
                                 : (i+1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
-        for i in range(10):
+        for i in range(n_times):
             # Corrupt some times, to check that the RFI flagging is working
             dump_heaps = [
                 {
-                    'correlator_data': corrupted_vis[s]if i in (3, 7) else vis[s],
+                    'correlator_data': corrupted_vis[s] if i in corrupt_times else vis[s],
                     'flags': flags[s],
                     'weights': weights[s],
                     'weights_channel': weights_channel[s],
@@ -458,15 +493,13 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal('{"cal_pb_0": "CAPTURING"}', (yield self.get_sensor('program-block-state')))
         informs = yield self.make_request('shutdown', timeout=180)
         progress = [inform.arguments[0] for inform in informs]
-        assert_equal(['Accumulator stopped',
-                      'Pipeline stopped',
-                      'Report writer stopped'], progress)
+        self._check_stopped(progress)
         assert_equal(0, int((yield self.get_sensor('accumulator-capture-active'))))
-        assert_equal(10 * self.n_substreams,
+        assert_equal(n_times * self.n_substreams,
                      int((yield self.get_sensor('accumulator-input-heaps'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-batches'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-observations'))))
-        assert_equal(10, int((yield self.get_sensor('pipeline-last-slots'))))
+        assert_equal(n_times, int((yield self.get_sensor('pipeline-last-slots'))))
         assert_equal(1, int((yield self.get_sensor('reports-written'))))
         # Check that the slot accounting all balances
         assert_equal(40, int((yield self.get_sensor('slots'))))
@@ -507,6 +540,19 @@ class TestCalDeviceServer(unittest.TestCase):
         ret_K, ret_K_ts = cal_product_K[0]
         assert_equal(np.float32, ret_K.dtype)
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
+
+        # Check that flags were transmitted
+        calls = self.udp_stream.send_heap.mock_calls
+        assert_equal(n_times + 2, len(calls))   # 2 extra for start and end heaps
+        for i, call in enumerate(calls[1:-1]):
+            heap = call[1][0]
+            items = {item.name: item for item in heap.items}
+            ts = items['timestamp'].value
+            assert_almost_equal(first_ts + i * self.telstate.sdp_l0test_int_time, ts)
+            out_flags = items['flags'].value
+            # Mask out the ones that get changed by cal
+            mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
+            np.testing.assert_array_equal(out_flags & ~mask, flags)
 
     def prepare_heaps(self, rs, n_times):
         """Set up self.heaps with some arbitrary data"""
@@ -567,9 +613,7 @@ class TestCalDeviceServer(unittest.TestCase):
             raise RuntimeError('Timed out waiting for the heaps to be received')
         informs = yield self.make_request('shutdown', timeout=60)
         progress = [inform.arguments[0] for inform in informs]
-        assert_equal(['Accumulator stopped',
-                      'Pipeline stopped',
-                      'Report writer stopped'], progress)
+        self._check_stopped(progress)
 
     @async_test
     @tornado.gen.coroutine
@@ -583,8 +627,6 @@ class TestCalDeviceServer(unittest.TestCase):
             yield self.make_request('shutdown')
             informs = yield self.make_request('shutdown', timeout=60)
             progress = [inform.arguments[0] for inform in informs]
-            assert_equal(['Accumulator stopped',
-                          'Pipeline stopped',
-                          'Report writer stopped'], progress)
+            self._check_stopped(progress)
             assert_equal(1, int((yield self.get_sensor('pipeline-exceptions'))))
             assert_equal('{}', (yield self.get_sensor('program-block-state')))
