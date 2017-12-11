@@ -11,7 +11,6 @@
 #       > tmux attach-session -t redis
 #       > tmux attach-session -t sim_ts
 #       > tmux attach-session -t pipeline
-#       > tmux attach-session -t l1_receiver
 #       > tmux attach-session -t sim_data
 #
 #   * tmux session can be detached from, from the command line within the session, using
@@ -39,7 +38,6 @@ def parse_args():
     parser.set_defaults(no_auto=False)
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
     parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
-    parser.add_argument('--l1-rate', type=float, default=5e7, help='L1 SPEAD transmission rate. For laptops, recommend rate of 1.2e7. Default: 5e7')
     parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
@@ -111,18 +109,9 @@ if __name__ == '__main__':
     no_auto = '--no-auto' if opts.no_auto else ''
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
     pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-        --l1-rate {2} {3} --report-path {4} --log-path {5} {6} {7}'.format(opts.telstate, opts.buffer_maxsize,
-        opts.l1_rate, param_string, opts.report_path, opts.log_path, threading_option, no_auto))
+        {2} --report-path {3} --log-path {4} {5} {6}'.format(opts.telstate, opts.buffer_maxsize,
+        param_string, opts.report_path, opts.log_path, threading_option, no_auto))
     pipeline_pane.enter()
-
-    # start L1 receiver in tmux pane
-    image = '--image' if (opts.max_scans == 0) else ''
-    l1_pane = create_pane('l1_receiver',tmserver,keep_session=opts.keep_sessions)
-    for f in file_list:
-        # Get full path of h5 file
-        file_fullpath=os.path.abspath(f)
-        l1_pane.cmd('send-keys','sim_l1_receive.py --telstate {0} --file {1} {2}; '.format(opts.telstate, file_fullpath, image))
-    l1_pane.enter()
 
     # wait a couple of seconds to start data flowing
     #   time for setting up the pipeline and L1 receiver (setting parameters, creating buffers, etc)

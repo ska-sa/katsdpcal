@@ -30,21 +30,17 @@ Note: The recommended SPEAD rates for laptops are L0: 0.2e7; L1: 1.2e7; And for 
   
  > sim_ts.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\>
 
-3. run the L1 spead receive simulator (will only work on a single scan at a time):
-
- > sim_l1_receive.py 
-
-4. run the pipeline controller:
+3. run the pipeline controller:
 
  > run_cal.py   
 
-5. run the h5 data stream:
+4. run the h5 data stream:
 
  > sim_data_stream.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\>
  
 ### Shortcut simulator
 
- > run_katsdpcal_sim.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\> --l0-rate 0.2e7 --l1-rate 1.2e7 --max-scans=7 --keep-sessions
+ > run_katsdpcal_sim.py --telstate 127.0.0.1:6379 --file \<file.h5 or file.ms\> --l0-rate 0.2e7 --max-scans=7 --keep-sessions
  
-The shortcut simulator runs each of the five commands above in separate tmux sessions, named redis, sim_ts, l1_receiver, pipeline and sim_data respectively.
+The shortcut simulator runs each of the five commands above in separate tmux sessions, named redis, sim_ts, pipeline and sim_data respectively.
  
