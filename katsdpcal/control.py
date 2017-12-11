@@ -890,29 +890,36 @@ class Sender(Task):
                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
                  telstate):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
-        self.telstate_l0 = telstate.view(l0_name)
+        telstate_l0 = telstate.view(l0_name)
         self.flags_endpoint = flags_endpoint
         self.flags_interface_address = flags_interface_address
         if self.flags_interface_address is None:
             self.flags_interface_address = ''
-        self.int_time = self.telstate_l0['int_time']
-        self.n_chans = self.telstate_l0['n_chans']
-        self.sync_time = self.telstate_l0['sync_time']
-        self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
+        self.int_time = telstate_l0['int_time']
+        self.n_chans = telstate_l0['n_chans']
+        self.sync_time = telstate_l0['sync_time']
+        self.l0_bls = np.asarray(telstate_l0['bls_ordering'])
         n_bls = len(self.l0_bls)
         self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
 
         self.buffers = buffers
         self.pipeline_sender_queue = pipeline_sender_queue
-        # TODO: set metadata in telstate
         # Compute the permutation to get back to L0 ordering. get_reordering gives
         # the inverse of what is needed.
-        rev_ordering = calprocs.get_reordering(self.telstate_l0['cal_antlist'], self.l0_bls)[0]
+        rev_ordering = calprocs.get_reordering(telstate_l0['cal_antlist'], self.l0_bls)[0]
         self.ordering = np.full(n_bls, -1)
         for i, idx in enumerate(rev_ordering):
             self.ordering[idx] = i
         if np.any(self.ordering < 0):
             raise RuntimeError('accumulator discards some baselines')
+
+        telstate_flags = telstate.view(flags_name)
+        # The flags stream is mostly the same shape/layout as the L0 stream,
+        # with the exception of the division into substreams.
+        for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
+                    'n_bls', 'n_chans', 'sync_time']:
+            telstate_flags.add(key, telstate_l0[key])
+        telstate_flags.add('n_chans_per_substream', self.n_chans)
 
     def run(self):
         if self.flags_endpoint is not None:
