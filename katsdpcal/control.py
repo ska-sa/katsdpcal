@@ -547,7 +547,7 @@ class Accumulator(object):
                 logger.info('==== empty heap received ====')
                 continue
             have_items = True
-            for key in ('timestamp', 'frequency',
+            for key in ('timestamp', 'dump_index', 'frequency',
                         'correlator_data', 'flags', 'weights', 'weights_channel'):
                 if key not in updated:
                     logger.warn('heap received without %s', key)
@@ -683,7 +683,7 @@ class Accumulator(object):
         ig = spead2.ItemGroup()
         old_state = None
         unsync_start_time = None     # Batch start time, raw
-        last_ts = None               # Previous value of data_ts
+        last_idx = None              # Previous value of data_idx
         # list of slots that have been filled
         slots = []
         refant = self.telstate.cal_refant
@@ -697,10 +697,11 @@ class Accumulator(object):
                 break
 
             data_ts = ig['timestamp'].value + self.sync_time
-            if last_ts is not None and data_ts < last_ts:
-                logger.warn('Timestamp went backwards (%f < %f), skipping heap', data_ts, last_ts)
+            data_idx = ig['dump_index'].value
+            if last_idx is not None and data_idx < last_idx:
+                logger.warn('Dump index went backwards (%d < %d), skipping heap', data_idx, last_idx)
                 continue
-            elif data_ts != last_ts:
+            elif data_idx != last_idx:
                 if self._obs_start is None:
                     self._obs_start = data_ts - 0.5 * self.int_time
                 self._obs_end = data_ts + 0.5 * self.int_time
@@ -739,7 +740,7 @@ class Accumulator(object):
                 slots.append(slot)
 
                 old_state = new_state
-                last_ts = data_ts
+                last_idx = data_idx
             else:
                 slot = slots[-1]
 
@@ -754,9 +755,10 @@ class Accumulator(object):
             weights = ig['weights'].value
             self._update_buffer(self.buffers['weights'][slot, channel_slice],
                                 weights * weights_channel, self.ordering)
-            # This will get overwritten on each heap of the dump, but that
+            # These will get overwritten on each heap of the dump, but that
             # should be harmless.
             self.buffers['times'][slot] = data_ts
+            self.buffers['dump_indices'][slot] = data_idx
             _inc_sensor(self.sensors['accumulator-input-heaps'], 1)
 
         # Flush out the final batch
@@ -837,7 +839,8 @@ class Pipeline(Task):
                                 len(event.slots), self.name)
                     start_time = time.time()
                     # set up dask arrays around the chosen slots
-                    data = {'times': self.buffers['times'][event.slots]}
+                    data = {'times': self.buffers['times'][event.slots],
+                            'dump_indices': self.buffers['dump_indices'][event.slots]}
                     slices = list(_slots_slices(event.slots))
                     for key in ('vis', 'flags', 'weights'):
                         buffer = self.buffers[key]
@@ -937,7 +940,12 @@ class Sender(Task):
                     shape=(self.n_chans, len(self.l0_bls)), dtype=None, format=[('u', 8)])
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
-        # TODO: add frequency item, capture_block, dump_index
+        ig.add_item(id=None, name='dump_index', description='Index in time',
+                    shape=(), dtype=None, format=[('u', 64)])
+        ig.add_item(id=0x4103, name='frequency',
+                    description="Channel index of first channel in the heap",
+                    shape=(), dtype=np.uint32, value=0)
+        # TODO: add capture block ID
 
         started = False
         out_flags = np.zeros(ig['flags'].shape, np.uint8)
@@ -961,6 +969,7 @@ class Sender(Task):
                         np.take(flags, self.ordering, axis=1, out=out_flags)
                         ig['flags'].value = out_flags
                         ig['timestamp'].value = self.buffers['times'][slot] - self.sync_time
+                        ig['dump_index'].value = self.buffers['dump_indices'][slot]
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
                         self.master_queue.put(BufferReadyEvent([slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
@@ -1271,6 +1280,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
     data['times'] = factory(buffer_shape[0], dtype=np.float)
+    data['dump_indices'] = factory(buffer_shape[0], dtype=np.uint64)
     return data
 
 

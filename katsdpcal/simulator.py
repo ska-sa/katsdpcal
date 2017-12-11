@@ -258,6 +258,8 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
                         shape=(weights.shape[0],), dtype=np.float32)
             ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                         shape=(), dtype=None, format=[('f', 64)])
+            ig.add_item(id=None, name='dump_index', description='Index in time',
+                        shape=(), dtype=None, format=[('u', 64)])
             ig.add_item(id=0x4103, name='frequency', description="Channel index of first channel in the heap",
                         shape=(), dtype=np.uint32)
 
@@ -278,7 +280,7 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
             ts.add('obs_params', "project_id 'PIPELINETEST'", ts=t)
             ts.add('obs_params', "sim_file '{0}'".format(self.file_name,), ts=t)
 
-        def transmit_item(self, tx, ig, timestamp, correlator_data, flags, weights):
+        def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
             """
             Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
 
@@ -288,6 +290,8 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
                 SPEAD stream
             ig : :class:`spead2.send.ItemGroup`
                 Item group
+            dump_index : int
+                Index in time
             timestamp : :class:`np.float64`
                 Timestamp
             correlator_data : :class:`np.ndarray`
@@ -311,6 +315,7 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
             ig['weights_channel'].value = weights_channel
             ig['weights'].value = scaled_weights
             ig['timestamp'].value = timestamp
+            ig['dump_index'].value = dump_index
             ig['frequency'].value = 0
             # send all of the descriptors with every heap
             tx.send_heap(ig.get_heap(descriptors='all'))
@@ -615,7 +620,7 @@ class SimDataMS(table):
                 if 'correlator_data' not in ig:
                     self.setup_ig(ig, tx_vis, tx_flags, tx_weights)
                 # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
+                self.transmit_item(tx, ig, time_ind, tx_time, tx_vis, tx_flags, tx_weights)
 
                 time_ind += 1
 
@@ -748,8 +753,7 @@ def h5_tx_data(h5data, ts, tx, max_scans):
         print 'timestamps:', n_ts, ' -- ',
         print scan_state, target.description
 
-        # keep track of number of timestamps
-        total_ts += n_ts
+        # keep track of number of timestamps (total_ts is handled separately)
         if scan_state == 'track':
             track_ts += n_ts
         if scan_state == 'slew':
@@ -779,7 +783,8 @@ def h5_tx_data(h5data, ts, tx, max_scans):
             tx_weights = scan_weights[i, :, :]
 
             # transmit timestamps, vis, flags, weights
-            h5data.transmit_item(tx, ig, tx_time, tx_vis, tx_flags, tx_weights)
+            h5data.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
+            total_ts += 1
 
         if scan_ind+1 == max_scans:
             break

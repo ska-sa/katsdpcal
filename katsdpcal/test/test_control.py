@@ -284,6 +284,8 @@ class TestCalDeviceServer(unittest.TestCase):
                     shape=(channels,), dtype=np.float32)
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
+        ig.add_item(id=None, name='dump_index', description='Index in time',
+                    shape=(), dtype=None, format=[('u', 64)])
         ig.add_item(id=0x4103, name='frequency',
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
@@ -482,6 +484,7 @@ class TestCalDeviceServer(unittest.TestCase):
                     'weights': weights[s],
                     'weights_channel': weights_channel[s],
                     'timestamp': ts,
+                    'dump_index': i,
                     'frequency': np.uint32(s.start)
                 } for s in channel_slices]
             rs.shuffle(dump_heaps)
@@ -549,6 +552,8 @@ class TestCalDeviceServer(unittest.TestCase):
             items = {item.name: item for item in heap.items}
             ts = items['timestamp'].value
             assert_almost_equal(first_ts + i * self.telstate.sdp_l0test_int_time, ts)
+            idx = items['dump_index'].value
+            assert_equal(i, idx)
             out_flags = items['flags'].value
             # Mask out the ones that get changed by cal
             mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
@@ -572,6 +577,7 @@ class TestCalDeviceServer(unittest.TestCase):
                     'weights': weights[s],
                     'weights_channel': weights_channel[s],
                     'timestamp': ts,
+                    'dump_index': i,
                     'frequency': np.uint32(s.start)
                 } for s in channel_slices]
             rs.shuffle(dump_heaps)
