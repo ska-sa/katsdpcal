@@ -380,9 +380,9 @@ class Accumulator(object):
             # Tell the pipeline that the observation ended, but only if there
             # was something to work on.
             if self._obs_end is not None:
+                self.master_queue.put(ObservationStateEvent(program_block_id, State.PROCESSING))
                 self.accum_pipeline_queue.put(
                     ObservationEndEvent(program_block_id, self._obs_start, self._obs_end))
-                self.master_queue.put(ObservationStateEvent(program_block_id, State.PROCESSING))
                 _inc_sensor(self.sensors['accumulator-observations'], 1)
             else:
                 logger.info(' --- no data flowed ---')
@@ -868,10 +868,10 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
-                    self.pipeline_sender_queue.put(event)
-                    self.pipeline_report_queue.put(event)
                     self.master_queue.put(
                         ObservationStateEvent(event.program_block_id, State.REPORTING))
+                    self.pipeline_sender_queue.put(event)
+                    self.pipeline_report_queue.put(event)
                 elif isinstance(event, StopEvent):
                     logger.info('stop received by %s', self.name)
                     break
