@@ -34,7 +34,7 @@ setup(
         "numpy>=1.12", "scipy>=0.17", "numba>=0.19.0", "dask[array]", "enum34",
         "manhole", "trollius", "futures",
         "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
-        "katsdpsigproc", "spead2"
+        "katsdpsigproc", "spead2>=1.5.0"
     ],
     tests_require=["mock", "nose"],
     use_katversion=True

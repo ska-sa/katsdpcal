@@ -270,6 +270,8 @@ class Accumulator(object):
         # Whether a capture session is active. However, it is set to false as soon as
         # capture_done is entered, before the _run_future is actually yielded.
         self._running = False
+        # Enforce only one capture_done at a time
+        self._done_lock = trollius.Lock()
 
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
@@ -419,6 +421,7 @@ class Accumulator(object):
             max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams)
         rx.set_memory_allocator(self._memory_pool)
         rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
+        rx.stop_on_stop_item = False
         for l0_endpoint in self.l0_endpoints:
             if self.l0_interface_address is not None:
                 rx.add_udp_reader(l0_endpoint.host, l0_endpoint.port,
@@ -436,18 +439,20 @@ class Accumulator(object):
     def capture_done(self):
         assert self._rx is not None, "observation not running"
         assert self._run_future is not None, "inconsistent state"
-        # It is possible for _running to already be false here, because it is
-        # set to false early, while _rx and _run_future are cleared late.
-        self._rx.stop()
-        self._running = False
-        future = self._run_future
-        with (yield From(self._slots_cond)):
-            # Interrupts wait for free slot, if any
-            self._slots_cond.notify()
-        yield From(future)
-        # Protect against another observation having started while we waited to
-        # be woken up again.
-        if self._run_future is future:
+        with (yield From(self._done_lock)):
+            future = self._run_future
+            # Give it a chance to stop on its own (from stop heaps)
+            logger.info('Waiting for capture to finish...')
+            done, _ = yield From(trollius.wait([self._run_future], timeout=5))
+            if future not in done:
+                logger.info('Stopping receiver')
+                self._rx.stop()
+                self._running = False
+                with (yield From(self._slots_cond)):
+                    # Interrupts wait for free slot, if any
+                    self._slots_cond.notify()
+                logger.info('Waiting for capture to finish...')
+                yield From(self._run_future)
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
@@ -539,7 +544,7 @@ class Accumulator(object):
         Returns
         -------
         dict
-            Keys that were updated in `ig`
+            Keys that were updated in `ig`, or ``None`` for a stop heap
 
         Raises
         ------
@@ -548,6 +553,8 @@ class Accumulator(object):
         """
         while True:
             heap = yield From(rx.get())
+            if heap.is_end_of_stream():
+                raise Return({})
             updated = ig.update(heap)
             if not updated:
                 logger.info('==== empty heap received ====')
@@ -687,6 +694,7 @@ class Accumulator(object):
 
         rx = self._rx
         ig = spead2.ItemGroup()
+        n_stop = 0                   # Number of stop heaps received
         old_state = None
         unsync_start_time = None     # Batch start time, raw
         last_ts = None               # Previous value of data_ts
@@ -698,9 +706,16 @@ class Accumulator(object):
         logger.info('waiting to start accumulating data')
         while True:
             try:
-                yield From(self._next_heap(rx, ig))
+                updated = yield From(self._next_heap(rx, ig))
             except spead2.Stopped:
                 break
+            if not updated:   # stop heap was received
+                n_stop += 1
+                if n_stop == len(self.l0_endpoints):
+                    rx.stop()
+                    break
+                else:
+                    continue
 
             data_ts = ig['timestamp'].value + self.sync_time
             if last_ts is not None and data_ts < last_ts:
