@@ -394,17 +394,17 @@ class TestCalDeviceServer(unittest.TestCase):
     def test_empty_capture(self):
         """Terminating a capture with no data must succeed and not write a report.
 
-        It must also correctly remove the program block from program-block-state.
+        It must also correctly remove the capture block from capture-block-state.
         """
-        yield self.make_request('capture-init', 'empty_pb')
-        state = yield self.get_sensor('program-block-state')
-        assert_equal('{"empty_pb": "CAPTURING"}', state)
+        yield self.make_request('capture-init', 'empty_cb')
+        state = yield self.get_sensor('capture-block-state')
+        assert_equal('{"empty_cb": "CAPTURING"}', state)
         yield self.make_request('capture-done')
         yield self.make_request('shutdown')
         assert_equal([], os.listdir(self.report_path))
         reports_written = yield self.get_sensor('reports-written')
         assert_equal(0, int(reports_written))
-        state = yield self.get_sensor('program-block-state')
+        state = yield self.get_sensor('capture-block-state')
         assert_equal('{}', state)
 
     @async_test
@@ -493,7 +493,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        assert_equal('{"cal_pb_0": "CAPTURING"}', (yield self.get_sensor('program-block-state')))
+        assert_equal('{"cal_cb_0": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
         informs = yield self.make_request('shutdown', timeout=180)
         progress = [inform.arguments[0] for inform in informs]
         self._check_stopped(progress)
@@ -509,7 +509,7 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(0, int((yield self.get_sensor('accumulator-slots'))))
         assert_equal(0, int((yield self.get_sensor('pipeline-slots'))))
         assert_equal(40, int((yield self.get_sensor('free-slots'))))
-        assert_equal('{}', (yield self.get_sensor('program-block-state')))
+        assert_equal('{}', (yield self.get_sensor('capture-block-state')))
 
         reports = os.listdir(self.report_path)
         assert_equal(1, len(reports))
@@ -627,12 +627,12 @@ class TestCalDeviceServer(unittest.TestCase):
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             assert_equal(0, int((yield self.get_sensor('pipeline-exceptions'))))
             self.prepare_heaps(np.random.RandomState(seed=1), 5)
-            yield self.make_request('capture-init', 'testpb')
+            yield self.make_request('capture-init', 'testcb')
             yield tornado.gen.sleep(1)
-            assert_equal('{"testpb": "CAPTURING"}', (yield self.get_sensor('program-block-state')))
+            assert_equal('{"testcb": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
             yield self.make_request('shutdown')
             informs = yield self.make_request('shutdown', timeout=60)
             progress = [inform.arguments[0] for inform in informs]
             self._check_stopped(progress)
             assert_equal(1, int((yield self.get_sensor('pipeline-exceptions'))))
-            assert_equal('{}', (yield self.get_sensor('program-block-state')))
+            assert_equal('{}', (yield self.get_sensor('capture-block-state')))

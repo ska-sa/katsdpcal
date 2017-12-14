@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class State(enum.Enum):
-    """State of a single program block"""
+    """State of a single capture block"""
     CAPTURING = 1         # capture-init has been called, but not capture-done
     PROCESSING = 2        # capture-done has been called, but still in the pipeline
     REPORTING = 3         # generating the report
@@ -53,8 +53,8 @@ class EnumEncoder(json.JSONEncoder):
 
 class ObservationEndEvent(object):
     """An observation has finished upstream"""
-    def __init__(self, program_block_id, start_time, end_time):
-        self.program_block_id = program_block_id
+    def __init__(self, capture_block_id, start_time, end_time):
+        self.capture_block_id = capture_block_id
         self.start_time = start_time
         self.end_time = end_time
 
@@ -65,8 +65,8 @@ class ObservationStateEvent(object):
     This is sent from each component to the master queue to update the
     katcp sensor.
     """
-    def __init__(self, program_block_id, state):
-        self.program_block_id = program_block_id
+    def __init__(self, capture_block_id, state):
+        self.capture_block_id = capture_block_id
         self.state = state
 
 
@@ -373,32 +373,32 @@ class Accumulator(object):
                 self._slots_cond.notify()
 
     @trollius.coroutine
-    def _run_observation(self, program_block_id):
+    def _run_observation(self, capture_block_id):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
             yield From(self._accumulate())
             # Tell the pipeline that the observation ended, but only if there
             # was something to work on.
             if self._obs_end is not None:
-                self.master_queue.put(ObservationStateEvent(program_block_id, State.PROCESSING))
+                self.master_queue.put(ObservationStateEvent(capture_block_id, State.PROCESSING))
                 self.accum_pipeline_queue.put(
-                    ObservationEndEvent(program_block_id, self._obs_start, self._obs_end))
+                    ObservationEndEvent(capture_block_id, self._obs_start, self._obs_end))
                 _inc_sensor(self.sensors['accumulator-observations'], 1)
             else:
                 logger.info(' --- no data flowed ---')
                 # Send it twice, since the master expects it from both flag
                 # sender and report writer.
                 for i in range(2):
-                    self.master_queue.put(ObservationEndEvent(program_block_id, None, None))
-            logger.info('Observation %s ended', program_block_id)
+                    self.master_queue.put(ObservationEndEvent(capture_block_id, None, None))
+            logger.info('Observation %s ended', capture_block_id)
         except trollius.CancelledError:
-            logger.info('Observation %s cancelled', program_block_id)
+            logger.info('Observation %s cancelled', capture_block_id)
         except Exception as error:
             logger.error('Exception in capture: %s', error, exc_info=True)
         finally:
             self._rx.stop()
 
-    def capture_init(self, program_block_id):
+    def capture_init(self, capture_block_id):
         assert self._rx is None, "observation already running"
         assert self._run_future is None, "inconsistent state"
         assert not self._running, "inconsistent state"
@@ -421,7 +421,7 @@ class Accumulator(object):
                 rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host)
         logger.info('reader added')
         self._rx = rx
-        self._run_future = trollius.ensure_future(self._run_observation(program_block_id))
+        self._run_future = trollius.ensure_future(self._run_observation(capture_block_id))
         self._running = True
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['accumulator-input-heaps'].set_value(0)
@@ -869,7 +869,7 @@ class Pipeline(Task):
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
                     self.master_queue.put(
-                        ObservationStateEvent(event.program_block_id, State.REPORTING))
+                        ObservationStateEvent(event.capture_block_id, State.REPORTING))
                     self.pipeline_sender_queue.put(event)
                     self.pipeline_report_queue.put(event)
                 elif isinstance(event, StopEvent):
@@ -1067,7 +1067,7 @@ class ReportWriter(Task):
                 break
             elif isinstance(event, ObservationEndEvent):
                 try:
-                    logger.info('Starting report on %s', event.program_block_id)
+                    logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     obs_dir = self.write_report(event.start_time, event.end_time)
                     end_time = time.time()
@@ -1094,16 +1094,16 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         self.children = [pipeline, sender, report_writer]
         self.master_queue = master_queue
         self._stopping = False
-        self._program_block_state = {}
-        # Each program block needs to be marked done twice: once from
+        self._capture_block_state = {}
+        # Each capture block needs to be marked done twice: once from
         # Sender, once from ReportWriter.
-        self._program_block_ends = Counter()
-        self._program_block_state_sensor = katcp.Sensor.string(
-            'program-block-state',
-            'JSON dict with the state of each program block')
-        self._program_block_state_sensor.set_value('{}')
+        self._capture_block_ends = Counter()
+        self._capture_block_state_sensor = katcp.Sensor.string(
+            'capture-block-state',
+            'JSON dict with the state of each capture block')
+        self._capture_block_state_sensor.set_value('{}')
         # Unique number given to each observation
-        # (used if no program block ID was provided)
+        # (used if no capture block ID was provided)
         self._index = 0
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
@@ -1113,16 +1113,16 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         for child in self.children:
             for sensor in child.get_sensors():
                 self.add_sensor(sensor)
-        self.add_sensor(self._program_block_state_sensor)
+        self.add_sensor(self._capture_block_state_sensor)
 
-    def _set_program_block_state(self, program_block_id, state):
+    def _set_capture_block_state(self, capture_block_id, state):
         if state == State.DEAD:
             # Remove if present
-            self._program_block_state.pop(program_block_id, None)
+            self._capture_block_state.pop(capture_block_id, None)
         else:
-            self._program_block_state[program_block_id] = state
-        dumped = json.dumps(self._program_block_state, sort_keys=True, cls=EnumEncoder)
-        self._program_block_state_sensor.set_value(dumped)
+            self._capture_block_state[capture_block_id] = state
+        dumped = json.dumps(self._capture_block_state, sort_keys=True, cls=EnumEncoder)
+        self._capture_block_state_sensor.set_value(dumped)
 
     def start(self):
         self._run_queue_task = trollius.ensure_future(self._run_queue())
@@ -1134,19 +1134,19 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
 
     @request(Str(optional=True))
     @return_reply()
-    def request_capture_init(self, msg, program_block_id=None):
+    def request_capture_init(self, msg, capture_block_id=None):
         """Start an observation"""
         if self.accumulator.capturing:
             return ('fail', 'capture already in progress')
         if self._stopping:
             return ('fail', 'server is shutting down')
-        if program_block_id is None:
-            program_block_id = "cal_pb_{}".format(self._index)
+        if capture_block_id is None:
+            capture_block_id = "cal_cb_{}".format(self._index)
             self._index += 1
-        if program_block_id in self._program_block_state:
-            return ('fail', 'program block ID {} is already active'.format(program_block_id))
-        self._set_program_block_state(program_block_id, State.CAPTURING)
-        self.accumulator.capture_init(program_block_id)
+        if capture_block_id in self._capture_block_state:
+            return ('fail', 'capture block ID {} is already active'.format(capture_block_id))
+        self._set_capture_block_state(capture_block_id, State.CAPTURING)
+        self.accumulator.capture_init(capture_block_id)
         return ('ok',)
 
     @request()
@@ -1246,13 +1246,13 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                                    event.reading.status,
                                    event.reading.value)
                 elif isinstance(event, ObservationStateEvent):
-                    self._set_program_block_state(event.program_block_id, event.state)
+                    self._set_capture_block_state(event.capture_block_id, event.state)
                 elif isinstance(event, ObservationEndEvent):
-                    self._program_block_ends[event.program_block_id] += 1
-                    if self._program_block_ends[event.program_block_id] == 2:
+                    self._capture_block_ends[event.capture_block_id] += 1
+                    if self._capture_block_ends[event.capture_block_id] == 2:
                         # Both sender and pipeline have finished
-                        del self._program_block_ends[event.program_block_id]
-                        self._set_program_block_state(event.program_block_id, State.DEAD)
+                        del self._capture_block_ends[event.capture_block_id]
+                        self._set_capture_block_state(event.capture_block_id, State.DEAD)
                 else:
                     logger.warn('Unknown event %r', event)
 
