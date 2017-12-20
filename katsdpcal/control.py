@@ -1313,12 +1313,9 @@ def create_server(use_multiprocessing, host, port, buffers,
         module = multiprocessing.dummy
 
     # set up inter-task synchronisation primitives.
-    # passed events to indicate buffer transfer, end-of-observation, or stop
     accum_pipeline_queue = module.Queue()
-    # signalled by pipelines when they shut down or finish an observation
     pipeline_sender_queue = module.Queue()
     pipeline_report_queue = module.Queue()
-    # other tasks send up sensor updates
     master_queue = module.Queue()
 
     # Set up the pipeline
