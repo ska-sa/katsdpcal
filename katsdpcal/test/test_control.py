@@ -23,6 +23,7 @@ import mock
 import tornado.gen
 from tornado.platform.asyncio import AsyncIOMainLoop
 import trollius
+from trollius import From, Return
 
 import spead2
 import katcp
@@ -140,81 +141,43 @@ def async_test(func):
 class MockRecvStream(mock.MagicMock):
     """Mock replacement for :class:`spead2.recv.trollius.Stream`.
 
-    It has a list of pseudo-heaps that it yields to the caller. A "pseudo-heap"
-    is either:
-    - ``None``, which causes the stream to be stopped
-    - A future, which is returned as is (up to the caller to resolve the future).
-    - anything else yielded as-is (wrapped in a future)
-
-    If the list runs out, it returns a future that can only be resolved by
-    calling :meth:`stop`.
-    """
-    def __init__(self, heaps):
-        super(MockRecvStream, self).__init__()
-        self._heaps = heaps
-        self._last_future = None
-        self._stopped = False
-
-    # Make child mocks use the basic MagicMock, not this class
-    def _get_child_mock(self, **kwargs):
-        return mock.MagicMock(**kwargs)
-
-    def get(self):
-        if self._stopped:
-            raise spead2.Stopped()
-        elif not self._heaps:
-            future = trollius.Future()
-        else:
-            value = self._heaps.popleft()
-            if value is None:
-                self._stopped = True
-                raise spead2.Stopped()
-            elif isinstance(value, trollius.Future):
-                future = value
-            else:
-                future = trollius.Future()
-                future.set_result(value)
-        self._last_future = future
-        return future
-
-    def stop(self):
-        self._stopped = True
-        self._heaps = deque()
-        if self._last_future is not None and not self._last_future.done():
-            self._last_future.set_exception(spead2.Stopped())
-
-
-def mock_item_group_update(self, heap):
-    """Mock replacement for :meth:`spead2.ItemGroup.update`.
-
-    Instead of a real heap, it takes either
-    - a dict replacement values instead, or
-    - a callable which is passed the item group.
-    """
-    if isinstance(heap, dict):
-        for key, value in heap.iteritems():
-            self[key].value = value
-        return heap
-    else:
-        return heap(self)
-
-
-class MockSendHeap(mock.MagicMock):
-    """Mock replacement for :class:`spead2.send.Heap`.
-
-    It records all added items, taking deep copies so that the data at the
-    time of being added is saved.
+    It has a queue of heaps that it yields to the caller. If the queue is
+    empty, it blocks until a new item is added or :meth:`stop` is called.
     """
     def __init__(self, *args, **kwargs):
-        super(MockSendHeap, self).__init__(*args, **kwargs)
-        self.items = []
+        super(MockRecvStream, self).__init__(*args, **kwargs)
+        self._queue = trollius.Queue()
+        self._stop_received = False
+        self._thread_pool = spead2.ThreadPool()
 
     # Make child mocks use the basic MagicMock, not this class
     def _get_child_mock(self, **kwargs):
         return mock.MagicMock(**kwargs)
 
-    def add_item(self, item):
-        self.items.append(copy.deepcopy(item))
+    @trollius.coroutine
+    def get(self):
+        if self._stop_received:
+            raise spead2.Stopped()
+        heap = yield From(self._queue.get())
+        if heap is None:
+            # Special value added by stop
+            self._stop_received = True
+            raise spead2.Stopped()
+        raise Return(heap)
+
+    def send_heap(self, heap):
+        # Convert from send heap to receive heap
+        encoder = spead2.send.BytesStream(self._thread_pool)
+        encoder.send_heap(heap)
+        raw = encoder.getvalue()
+        decoder = spead2.recv.Stream(self._thread_pool)
+        decoder.stop_on_stop_item = False
+        decoder.add_buffer_reader(raw)
+        heap = decoder.get()
+        self._queue.put_nowait(heap)
+
+    def stop(self):
+        self._queue.put_nowait(None)
 
 
 class TestCalDeviceServer(unittest.TestCase):
@@ -289,7 +252,6 @@ class TestCalDeviceServer(unittest.TestCase):
         ig.add_item(id=0x4103, name='frequency',
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
-        return {}
 
     @tornado.gen.coroutine
     def stop_server(self):
@@ -299,6 +261,7 @@ class TestCalDeviceServer(unittest.TestCase):
     def setUp(self):
         self.n_channels = 4096
         self.n_substreams = 4
+        self.n_endpoints = 2
         assert self.n_channels % self.n_substreams == 0
         self.n_channels_per_substream = self.n_channels // self.n_substreams
         self.antennas = ["m090", "m091", "m092", "m093"]
@@ -311,13 +274,16 @@ class TestCalDeviceServer(unittest.TestCase):
         self.ioloop.install()
         self.addCleanup(tornado.ioloop.IOLoop.clear_instance)
 
-        self.heaps = deque()
-        self.heaps.append(self.add_items)
-        self.patch('spead2.recv.trollius.Stream', return_value=MockRecvStream(self.heaps))
-        self.patch('spead2.ItemGroup.update', mock_item_group_update)
-        self.patch('spead2.send.Heap', side_effect=lambda flavour: MockSendHeap())
-        UdpStream = self.patch('spead2.send.UdpStream', autospec=True)
-        self.udp_stream = UdpStream.return_value
+        self.ig = spead2.send.ItemGroup()
+        self.add_items(self.ig)
+        # Create a real stream just so that we can use it as a spec
+        dummy_stream = spead2.recv.trollius.Stream(spead2.ThreadPool())
+        dummy_stream.stop()
+        self.stream = MockRecvStream(spec=dummy_stream)
+        self.stream.send_heap(self.ig.get_heap())
+        self.patch('spead2.recv.trollius.Stream', return_value=self.stream)
+        self.udp_stream = spead2.send.BytesStream(spead2.ThreadPool())
+        self.patch('spead2.send.UdpStream', return_value=self.udp_stream)
 
         self.report_path = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.report_path)
@@ -329,7 +295,8 @@ class TestCalDeviceServer(unittest.TestCase):
         buffers = control.create_buffer_arrays(buffer_shape, False)
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
-            'sdp_l0test', [Endpoint('239.102.255.1', 7148)], None,
+            'sdp_l0test',
+            [Endpoint('239.102.255.{}'.format(i), 7148) for i in range(self.n_endpoints)], None,
             'sdp_l1_flags_test', Endpoint('239.102.255.2', 7148), None, 64.0,
             self.telstate, self.report_path, self.log_path, None)
         self.server.start()
@@ -399,6 +366,8 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init', 'empty_cb')
         state = yield self.get_sensor('capture-block-state')
         assert_equal('{"empty_cb": "CAPTURING"}', state)
+        for i in range(self.n_endpoints):
+            self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.make_request('shutdown')
         assert_equal([], os.listdir(self.report_path))
@@ -411,6 +380,8 @@ class TestCalDeviceServer(unittest.TestCase):
     @tornado.gen.coroutine
     def test_init_when_capturing(self):
         """capture-init fails when already capturing"""
+        for i in range(self.n_endpoints):
+            self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-init')
         yield self.assert_request_fails(r'capture already in progress', 'capture-init')
 
@@ -420,6 +391,8 @@ class TestCalDeviceServer(unittest.TestCase):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
         yield self.make_request('capture-init')
+        for i in range(self.n_endpoints):
+            self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
 
@@ -477,23 +450,26 @@ class TestCalDeviceServer(unittest.TestCase):
                           for i in range(self.n_substreams)]
         for i in range(n_times):
             # Corrupt some times, to check that the RFI flagging is working
-            dump_heaps = [
-                {
-                    'correlator_data': corrupted_vis[s] if i in corrupt_times else vis[s],
-                    'flags': flags[s],
-                    'weights': weights[s],
-                    'weights_channel': weights_channel[s],
-                    'timestamp': ts,
-                    'dump_index': i,
-                    'frequency': np.uint32(s.start)
-                } for s in channel_slices]
+            dump_heaps = []
+            for s in channel_slices:
+                self.ig['correlator_data'].value = corrupted_vis[s] if i in (3, 7) else vis[s]
+                self.ig['flags'].value = flags[s]
+                self.ig['weights'].value = weights[s]
+                self.ig['weights_channel'].value = weights_channel[s]
+                self.ig['timestamp'].value = ts
+                self.ig['dump_index'].value = i
+                self.ig['frequency'].value = np.uint32(s.start)
+                dump_heaps.append(self.ig.get_heap())
             rs.shuffle(dump_heaps)
-            self.heaps.extend(dump_heaps)
+            for heap in dump_heaps:
+                self.stream.send_heap(heap)
             ts += self.telstate.sdp_l0test_int_time
         yield self.make_request('capture-init')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
         assert_equal('{"cal_cb_0": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
+        for i in range(self.n_endpoints):
+            self.stream.send_heap(self.ig.get_end())
         informs = yield self.make_request('shutdown', timeout=180)
         progress = [inform.arguments[0] for inform in informs]
         self._check_stopped(progress)
@@ -545,11 +521,14 @@ class TestCalDeviceServer(unittest.TestCase):
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
 
         # Check that flags were transmitted
-        calls = self.udp_stream.send_heap.mock_calls
-        assert_equal(n_times + 2, len(calls))   # 2 extra for start and end heaps
-        for i, call in enumerate(calls[1:-1]):
-            heap = call[1][0]
-            items = {item.name: item for item in heap.items}
+        decoder = spead2.recv.Stream(spead2.ThreadPool())
+        decoder.stop_on_stop_item = False
+        decoder.add_buffer_reader(self.udp_stream.getvalue())
+        heaps = list(decoder)
+        assert_equal(n_times + 2, len(heaps))   # 2 extra for start and end heaps
+        for i, heap in enumerate(heaps[1:-1]):
+            items = spead2.ItemGroup()
+            items.update(heap)
             ts = items['timestamp'].value
             assert_almost_equal(first_ts + i * self.telstate.sdp_l0test_int_time, ts)
             idx = items['dump_index'].value
@@ -560,7 +539,7 @@ class TestCalDeviceServer(unittest.TestCase):
             np.testing.assert_array_equal(out_flags & ~mask, flags)
 
     def prepare_heaps(self, rs, n_times):
-        """Set up self.heaps with some arbitrary data"""
+        """Set up self.stream with some arbitrary data"""
         vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
         weights = np.ones(vis.shape, np.uint8)
         weights_channel = np.ones((self.n_channels,), np.float32)
@@ -570,18 +549,19 @@ class TestCalDeviceServer(unittest.TestCase):
                                 : (i+1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
         for i in range(n_times):
-            dump_heaps = [
-                {
-                    'correlator_data': vis[s],
-                    'flags': flags[s],
-                    'weights': weights[s],
-                    'weights_channel': weights_channel[s],
-                    'timestamp': ts,
-                    'dump_index': i,
-                    'frequency': np.uint32(s.start)
-                } for s in channel_slices]
+            dump_heaps = []
+            for s in channel_slices:
+                self.ig['correlator_data'].value = vis[s]
+                self.ig['flags'].value = flags[s]
+                self.ig['weights'].value = weights[s]
+                self.ig['weights_channel'].value = weights_channel[s]
+                self.ig['timestamp'].value = ts
+                self.ig['dump_index'].value = i
+                self.ig['frequency'].value = np.uint32(s.start)
+                dump_heaps.append(self.ig.get_heap())
             rs.shuffle(dump_heaps)
-            self.heaps.extend(dump_heaps)
+            for heap in dump_heaps:
+                self.stream.send_heap(heap)
             ts += self.telstate.sdp_l0test_int_time
 
     @async_test
@@ -617,6 +597,8 @@ class TestCalDeviceServer(unittest.TestCase):
             print('waiting {} ({}/{} received)'.format(i, heaps, n_times * self.n_substreams))
         else:
             raise RuntimeError('Timed out waiting for the heaps to be received')
+        for i in range(self.n_endpoints):
+            self.stream.send_heap(self.ig.get_end())
         informs = yield self.make_request('shutdown', timeout=60)
         progress = [inform.arguments[0] for inform in informs]
         self._check_stopped(progress)
@@ -630,6 +612,8 @@ class TestCalDeviceServer(unittest.TestCase):
             yield self.make_request('capture-init', 'testcb')
             yield tornado.gen.sleep(1)
             assert_equal('{"testcb": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
+            for i in range(self.n_endpoints):
+                self.stream.send_heap(self.ig.get_end())
             yield self.make_request('shutdown')
             informs = yield self.make_request('shutdown', timeout=60)
             progress = [inform.arguments[0] for inform in informs]
