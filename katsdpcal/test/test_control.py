@@ -138,7 +138,7 @@ def async_test(func):
 class MockStream(mock.MagicMock):
     """Mock replacement for :class:`spead2.recv.trollius.Stream`.
 
-    It has a queue of streams that it yields to the caller. If the queue is
+    It has a queue of heaps that it yields to the caller. If the queue is
     empty, it blocks until a new item is added or :meth:`stop` is called.
     """
     def __init__(self, *args, **kwargs):
