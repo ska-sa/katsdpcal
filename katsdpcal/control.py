@@ -438,10 +438,10 @@ class Accumulator(object):
             # Give it a chance to stop on its own (from stop heaps)
             logger.info('Waiting for capture to finish (5s timeout)...')
             done, _ = yield From(trollius.wait([self._run_future], timeout=5))
+            self._running = False
             if future not in done:
                 logger.info('Stopping receiver')
                 self._rx.stop()
-                self._running = False
                 with (yield From(self._slots_cond)):
                     # Interrupts wait for free slot, if any
                     self._slots_cond.notify()
