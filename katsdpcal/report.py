@@ -350,7 +350,10 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
 
     # Determine frequency channels and ranges for plots
     chanav = int(av_corr['vis'].shape[-3] / 8)
+    chanidx = ts[stream_name + '_n_chans']
+    
     total_chanav = int(ts['cal_channel_freqs'].shape[0] / 8)
+    chan_no = np.arange(0, chanidx, chanidx/av_corr['vis'].shape[-3])
     chan_steps = range(0, ts['cal_channel_freqs'].shape[0], total_chanav)
     av_chan_freq = np.add.reduceat(
         ts['cal_channel_freqs'], chan_steps) / total_chanav
@@ -390,13 +393,13 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         # Flags per scan weighted by length of scan
         tw_flags = av_corr['flags'] * av_corr['n_times'][:, np.newaxis, np.newaxis, np.newaxis]
         tw_flags = 100 * np.sum(tw_flags, axis=0) / np.sum(av_corr['n_times'], axis=0)
-        plot = plotting.flags_bl_v_chan(tw_flags, freq_range=freq_range)
+        plot = plotting.flags_bl_v_chan(tw_flags, chan_no, freq_range=freq_range)
         insert_fig(report_path, cal_rst, plot, name='Flags_bl_v_chan')
 
         cal_rst.writeln('Percentage of baselines flagged per scan')
         # Average % of baselines flagged per scan
         bl_flags = 100 * np.sum(av_corr['flags'], axis=3) / av_corr['flags'].shape[3]
-        plot = plotting.flags_t_v_chan(bl_flags, freq_range=freq_range)
+        plot = plotting.flags_t_v_chan(bl_flags, chan_no, freq_range=freq_range)
         insert_fig(report_path, cal_rst, plot, name='Flags_s_v_chan')
 
     cal_rst.writeln()
@@ -487,9 +490,10 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
                 t = time.strftime("%Y %x %X", time.gmtime(times[ti]))
                 cal_rst.writeln('Time: {}'.format(t,))
                 ant_chunks = 16
+                
                 for idx in range(0, vals[ti].shape[-1], ant_chunks):
                     plot = plotting.plot_spec(
-                        vals[ti, ..., idx: idx + ant_chunks],
+                        vals[ti, ..., idx: idx + ant_chunks], np.arange(0, chanidx),
                         antlist=ts['cal_antlist'][idx: idx + ant_chunks],
                         freq_range=freq_range)
                     insert_fig(report_path, cal_rst, plot,
@@ -566,7 +570,7 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
             ant_chunks = 16
             for idx in range(0, ant_data.shape[-1], ant_chunks):
                 plot = plotting.plot_spec(
-                    ant_data[ti, ..., idx:idx + ant_chunks],
+                    ant_data[ti, ..., idx:idx + ant_chunks], chan_no,
                     antlist=ts['cal_antlist'][idx:idx + ant_chunks],
                     freq_range=freq_range, title=plot_title)
                 insert_fig(report_path, cal_rst, plot, name='Corr_v_Freq_{0}_ti_{1}_{2}'.format(
@@ -595,7 +599,7 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         for idx in range(0, av_data.shape[-1], ant_chunks):
             data = av_data[..., idx:idx + ant_chunks]
             plot = plotting.plot_spec(
-                data, antlist=ts['cal_antlist'][idx:idx + ant_chunks],
+                data, chan_no, antlist=ts['cal_antlist'][idx:idx + ant_chunks],
                 freq_range=freq_range, title=plot_title)
 
             insert_fig(report_path, cal_rst, plot,
@@ -691,9 +695,9 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         ant_chunks = 16
         for idx in range(0, av_data.shape[-1], ant_chunks):
             data = av_data[..., idx:idx + ant_chunks]
-            plot = plotting.plot_spec_amp(
-                data, antlist=ts['cal_antlist'][idx:idx + ant_chunks],
-                freq_range=freq_range, title=plot_title)
+            plot = plotting.plot_spec(
+                data, chan_no, antlist=ts['cal_antlist'][idx:idx + ant_chunks],
+                freq_range=freq_range, title=plot_title, amp=True)
             insert_fig(report_path, cal_rst, plot,
                        name='Corr_v_Freq_{0}_{1}'.format(target_name.replace(" ", "_"), idx))
             cal_rst.writeln()
@@ -711,8 +715,8 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
             av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
             av_corr['weights'][cal_idx], chanav, threshold=0.7)
         plot_title = 'Field: {0}'.format(target_name)
-        plot = plotting.plot_corr_uvdist_amp(
-            uvdist, av_data, freqlist=av_chan_freq, title=plot_title)
+        plot = plotting.plot_corr_uvdist(
+            uvdist, av_data, freqlist=av_chan_freq, title=plot_title, amp=True)
         insert_fig(report_path, cal_rst, plot,
                    name='Corr_v_UVdist_{0}'.format(target_name.replace(" ", "_")))
         cal_rst.writeln()

@@ -261,7 +261,7 @@ def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
     return fig
 
 
-def flags_bl_v_chan(data, freq_range=None):
+def flags_bl_v_chan(data, chan, freq_range=None):
     """
     Make a waterfall plot of flagged data in Channels vs Baselines
 
@@ -271,11 +271,12 @@ def flags_bl_v_chan(data, freq_range=None):
     freq_range : list of start and stop frequencies of the array, optional
     """
     npols = data.shape[-2]
+    nbls = data.shape[-1]
     ncols = npols
     nrows = 1
     fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4 * nrows), squeeze=False)
     for p in range(npols):
-        im = axes[0, p].imshow(data[:, p, :].transpose(), aspect='auto', origin='lower')
+        im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(chan[0],chan[-1],0,nbls), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0} Baselines'.format(p))
         axes[0, p].set_xlabel('Channels')
     # Add colorbar
@@ -284,22 +285,12 @@ def flags_bl_v_chan(data, freq_range=None):
     cb.set_label('% time flagged')
 
     if freq_range is not None:
-        if len(freq_range) == 2:
-            for ax in axes.flatten()[0:2]:
-                ax_freq = ax.twiny()
-                # Convert xlimits in channels to xlimits in frequencies
-                d_freq = freq_range[1] - freq_range[0]
-                freq_xlim_0 = axes[0, 1].get_xlim()[0] * d_freq / data.shape[-3] + freq_range[0]
-                freq_xlim_1 = axes[0, 1].get_xlim()[1] * d_freq / data.shape[-3] + freq_range[0]
-                ax_freq.set_xlim(freq_xlim_0, freq_xlim_1)
-                ax_freq.tick_params(direction='in')
-                # Format frequency tick labels to include units as MHz
-                formatter = FuncFormatter(Freqformat)
-                ax_freq.xaxis.set_major_formatter(formatter)
+        for ax in axes.flatten()[0:2]:
+            add_freq_axis(ax,chan_range=[chan[0],chan[-1]],freq_range=freq_range)
     return fig
 
 
-def flags_t_v_chan(data, freq_range=None):
+def flags_t_v_chan(data, chan, freq_range=None):
     """
     Make a waterfall plot of flagged data in channels vs time
 
@@ -307,13 +298,15 @@ def flags_t_v_chan(data, freq_range=None):
     ----------
     data    : array of real, shape(num_times, num_chans, num_pol)
     freq_range : list of start and stop frequencies of the array, optional
+    
     """
     npols = data.shape[-1]
+    nscans = data.shape[0]
     ncols = npols
     nrows = 1
     fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 5 * nrows), squeeze=False)
     for p in range(npols):
-        im = axes[0, p].imshow(data[..., p], aspect='auto', origin='lower')
+        im = axes[0, p].imshow(data[..., p], extent=(chan[0],chan[-1],0,nscans), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(p))
         axes[0, p].set_xlabel('Channels')
     # Add colorbar
@@ -322,18 +315,8 @@ def flags_t_v_chan(data, freq_range=None):
     cb.set_label('% baselines flagged')
 
     if freq_range is not None:
-        if len(freq_range) == 2:
-            for ax in axes.flatten()[0:2]:
-                ax_freq = ax.twiny()
-                # Convert xlimits in channels to xlimits in frequencies
-                d_freq = freq_range[1] - freq_range[0]
-                freq_xlim_0 = axes[0, 1].get_xlim()[0] * d_freq / data.shape[-2] + freq_range[0]
-                freq_xlim_1 = axes[0, 1].get_xlim()[1] * d_freq / data.shape[-2] + freq_range[0]
-                ax_freq.set_xlim(freq_xlim_0, freq_xlim_1)
-                ax_freq.tick_params(direction='in')
-                # Format frequency tick labels to include units as MHz
-                formatter = FuncFormatter(Freqformat)
-                ax_freq.xaxis.set_major_formatter(formatter)
+        for ax in axes.flatten()[0:2]:
+            add_freq_axis(ax,chan_range=[chan[0],chan[-1]],freq_range=freq_range)  
     return fig
 
 
@@ -363,7 +346,7 @@ def plot_el_v_time(targets, times, elevations, t_zero, title=None):
     return fig
 
 
-def plot_corr_uvdist(uvdist, data, freqlist=None, title=None):
+def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False):
     """
     Plots Amplitude and Phase vs UVdist
 
@@ -382,18 +365,31 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None):
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
+
     for p in range(npols):
         for i in range(times):
             # Transpose the axes to ensure that the color cycles on frequencies not on baseline
             p1 = axes[p, 0].plot(uvdist[i, :, :].transpose(),
                                  np.absolute(data[i, :, p, :]).transpose(), '.')
-            axes[p, 1].plot(uvdist[i, :, :].transpose(),
+
+            if amp:
+                axes[p, 1].plot(uvdist[i, :, :].transpose(),
+                                 np.absolute(data[i, :, p, :]).transpose(), '.')
+            else:
+                axes[p, 1].plot(uvdist[i, :, :].transpose(),
                             np.angle(data[i, :, 1, :], deg=True).transpose(), '.')
+           
             # Reset color cycle so that channels have the same color
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
+        
         axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
+        if amp:
+            axes[p, 1].set_ylabel('Zoom Amplitude' + ' Pol_{0}'.format(p))
+            low_ylim,upper_ylim=amp_range(data)
+            axes[p, 1].set_ylim(low_ylim,upper_ylim)
+        else:
+            axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -403,62 +399,6 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None):
     axes[l_p, 1].set_xlabel('UV distance [wavelength]')
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
     plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
-
-    if freqlist is not None:
-        freqlabel = ['{0} MHz'.format(int(i / 1e6)) for i in freqlist]
-        axes[0, 1].legend(p1, freqlabel, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
-    fig.subplots_adjust(hspace=0.1)
-    return fig
-
-
-def plot_corr_uvdist_amp(uvdist, data, freqlist=None, title=None):
-    """
-    Plots Amplitude and Phase vs UVdist
-
-    Parameters
-    ----------
-    uvdist  : array of real, shape(num_times, num_chans, num_baselines)
-    data    : array of complex, shape(num_times,num_chans, num_pol, num_baselines)
-    freqlist : list of frequencies for legend, optional
-    title : text for title of plot, optional
-    """
-    npols = data.shape[-2]
-    nrows, ncols = npols, 2
-    times = data.shape[0]
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4 * nrows),
-                             squeeze=False, sharey='col')
-    if title is not None:
-        fig.suptitle(title, y=0.95)
-    # use 3*NMAD to limit y-range of plots
-    low_ylim = 0
-    upper_ylim = 0
-    for p in range(npols):
-        mag = np.absolute(data[..., p, :][~np.isnan(data[..., p, :])])
-        med = np.median(mag)
-        thresh = 3 * 1.4826 * np.median(np.abs(mag - med))
-        low_ylim = min(low_ylim, med - thresh)
-        upper_ylim = max(upper_ylim, med + thresh)
-    low_ylim = max(low_ylim, 0)
-
-    for p in range(npols):
-        for i in range(times):
-            # Transpose the axes to ensure that the color cycles on frequencies not on baseline
-            p1 = axes[p, 0].plot(uvdist[i, :, :].transpose(),
-                                 np.absolute(data[i, :, p, :]).transpose(), '.')
-            axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                            np.absolute(data[i, :, p, :]).transpose(), '.')
-            # Reset the colour cycle so that channels are always the same color
-            axes[p, 0].set_prop_cycle(None)
-            axes[p, 1].set_prop_cycle(None)
-            plt.setp(axes[p, 0].get_xticklabels(), visible=False)
-            plt.setp(axes[p, 1].get_xticklabels(), visible=False)
-
-        # Limit y-range
-        axes[p, 1].set_ylim(low_ylim, upper_ylim)
-        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 0].set_xlabel('UV distance [wavelength]')
-        axes[p, 1].set_ylabel('Zoom Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 1].set_xlabel('UV distance [wavelength]')
 
     if freqlist is not None:
         freqlabel = ['{0} MHz'.format(int(i / 1e6)) for i in freqlist]
@@ -497,19 +437,22 @@ def plot_delays(times, data, t_zero=None, antlist=None):
     return fig
 
 
-def Freqformat(x, pos):
-    """Format the frequency axis tick labels. The two args are the value and tick position"""
-    return '%d MHz' % (x)
-
-
-def plot_spec(data, antlist=None, freq_range=None, title=None):
+def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False):
     """ Plots spectrum of corrected data
     Parameters
     ----------
-    data : array of complex, shape(num_chans, num_pol, num_ant/num_bl)
-    antlist : array of antenna/baseline names for plot legend, optional
-    freq_range : list of start and stop frequency of the array, optional
-    title : text for title of the plot, optional
+    data : :class:`np.ndarray`
+        plot data, shape(num_chans, num_pol, num_ant/num_bl)
+    chan : : class:`np.ndarray`
+        channel numbers for x-axis
+    antlist : list of str
+        list of antenna/baseline names for plot legend, optional  
+    freq_range : list 
+        start and stop frequencies of the array, optional
+    title : str
+        plot title, optional 
+    amp : bool
+        plot only amplitudes if True, else plot amplitude and phase, optional 
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
@@ -519,13 +462,25 @@ def plot_spec(data, antlist=None, freq_range=None, title=None):
         fig.suptitle(title, y=0.95)
 
     for p in range(npols):
-        p1 = axes[p, 0].plot(np.absolute(data[..., p, :]), '.')
-        axes[p, 1].plot(np.angle(data[..., p, :], deg='True'), '.')
+        #plot full range amplitude plots
+        p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.')
         axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
+        if amp:
+            #plot limited range amplitude plots
+            axes[p,1].plot(chan, np.absolute(data[...,p,:]), '.' )
+            axes[p,1].set_ylabel('Zoom Amplitude'+' Pol_{0}'.format(p))
+        else:
+            #plot phase plots
+            axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
+            axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.')
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
+    #set range limit 
+    if amp :    
+        low_ylim,upper_ylim=amp_range(data)
+        axes[p,1].set_ylim(low_ylim,upper_ylim)
+    
     # For the last row, add in xticklabels and xlabels
     l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
@@ -540,82 +495,61 @@ def plot_spec(data, antlist=None, freq_range=None, title=None):
     if freq_range is not None:
         if len(freq_range) == 2:
             for ax in axes.flatten()[0:2]:
-                ax_freq = ax.twiny()
-                # Convert xlimits in channels to xlimits in frequencies
-                d_freq = freq_range[1] - freq_range[0]
-                freq_xlim_0 = axes[0, 1].get_xlim()[0] * d_freq / data.shape[-3] + freq_range[0]
-                freq_xlim_1 = axes[0, 1].get_xlim()[1] * d_freq / data.shape[-3] + freq_range[0]
-                ax_freq.set_xlim(freq_xlim_0, freq_xlim_1)
-                ax_freq.tick_params(direction='in')
-
-                # Format frequency tick labels to include units as MHz
-                formatter = FuncFormatter(Freqformat)
-                ax_freq.xaxis.set_major_formatter(formatter)
+                add_freq_axis(ax,[chan[0],chan[-1]],freq_range)
 
     fig.subplots_adjust(hspace=0.1)
     return fig
 
 
-def plot_spec_amp(data, antlist=None, freq_range=None, title=None):
-    """ Plots spectrum of corrected data, amplitude only
+def add_freq_axis(ax, chan_range=[0,4096],freq_range=[900,1400]):
+    """ Adds a frequency axis to the top of a given matplotlib Axes
     Parameters
     ----------
-    data : array of complex, shape(num_chans, num_pol, num_ant/num_bl)
-    antlist : array of antenna/baseline names for plot legend, optional
-    freq_range : list of start and stop frequency of the array, optional
-    title : text for plot title, optional
+    ax : : class: `matplotlib.axes.Axes`
+         Axes to add the frequency axis to
+    chan_range : list
+         start and stop channel numbers  
+    freq_range : list
+         start and stop frequencies corresponding to the start and stop channel numbers 
+     """
+    ax_freq = ax.twiny()
+    delta_freq=freq_range[1]-freq_range[0]
+    delta_chan=chan_range[1]-chan_range[0]
+    freq_xlim_0 = ax.get_xlim()[0]*delta_freq/delta_chan+freq_range[0]
+    freq_xlim_1 = ax.get_xlim()[1]*delta_freq/delta_chan+freq_range[0]
+    ax_freq.set_xlim(freq_xlim_0,freq_xlim_1)
+    ax_freq.tick_params(direction='in')
+    ax_freq.set_xlabel('Frequency MHz')  
+
+def amp_range(data):
+    """ Calculate a limited amplitude range based on the NMAD of the data
+    Parameters
+    ----------
+    data : :class:`np.ndarray`
+        plot data, shape(..., num_pol, num_ant/num_bl)
+        
+    Returns
+    -------
+    tuple:
+       lower limit, upper limit
     """
     npols = data.shape[-2]
-    nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4.0 * nrows),
-                             squeeze=False, sharey='col')
-
-    if title is not None:
-        fig.suptitle(title, y=0.95)
-
-    # Use 3*NMAD to limit y-range of plots, the definition used is strictly
-    # only correct for a gaussian distribution of points
-    low_ylim = 0
-    upper_ylim = 0
+    # use 3*NMAD to limit y-range of plots, 
+    # the definition used is strictly only correct
+    # a gaussian distribution of points 
+    low=np.empty(npols)
+    upper=np.empty(npols)
     for p in range(npols):
-        mag = np.absolute(data[..., p, :][~np.isnan(data[..., p, :])])
-        med = np.median(mag)
-        thresh = 3 * 1.4826 * np.median(np.abs(mag - med))
-        low_ylim = min(low_ylim, med - thresh)
-        upper_ylim = max(upper_ylim, med + thresh)
-    low_ylim = max(low_ylim, 0)
-
-    for p in range(npols):
-        # Plot full range plots
-        p1 = axes[p, 0].plot(np.absolute(data[..., p, :]), '.')
-        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 0].set_xlabel('Channels')
-        # Plot limited range plots
-        p1 = axes[p, 1].plot(np.absolute(data[..., p, :]), '.')
-        axes[p, 1].set_ylabel('Zoom Amplitude' + ' Pol_{0}'.format(p))
-        axes[p, 1].set_xlabel('Channels')
-        axes[p, 1].set_ylim(low_ylim, upper_ylim)
-
-    if antlist is not None:
-        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
-
-    # If frequency range supplied, plot a frequency axis for the top row
-    if freq_range is not None:
-        if len(freq_range) == 2:
-            for ax in axes.flatten()[0:2]:
-                ax_freq = ax.twiny()
-                # Convert xlimits in channels to xlimits in frequencies
-                d_freq = freq_range[1] - freq_range[0]
-                freq_xlim_0 = axes[0, 0].get_xlim()[0] * d_freq / data.shape[-3] + freq_range[0]
-                freq_xlim_1 = axes[0, 0].get_xlim()[1] * d_freq / data.shape[-3] + freq_range[0]
-                ax_freq.set_xlim(freq_xlim_0, freq_xlim_1)
-                ax_freq.tick_params(direction='in')
-
-                # Format frequency tick labels to include units as MHz
-                formatter = FuncFormatter(Freqformat)
-                ax_freq.xaxis.set_major_formatter(formatter)
-
-    return fig
+        mag=np.absolute(data[...,p,:][~np.isnan(data[...,p,:])])
+        med=np.median(mag)       
+        thresh=3*1.4826*np.median(np.abs(mag-med))
+        low[p]=med-thresh
+        upper[p]=med+thresh
+        
+    low_lim=min(low)
+    low_lim=max(low_lim,0)
+    upper_lim=max(upper)
+    return low_lim, upper_lim 
 
 
 def plot_corr_v_time(times, data, plottype='p', antlist=None, t_zero=None, title=None):
