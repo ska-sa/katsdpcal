@@ -2,6 +2,7 @@ import time
 import logging
 
 import numpy as np
+import dask.array as da
 
 from katdal.sensordata import TelstateSensorData, SensorCache
 from katdal.categorical import CategoricalData
@@ -191,6 +192,9 @@ def pipeline(data, ts, stream_name):
     -------
     slices : list of slice
         slices for each target track in the buffer
+    av_corr : dict
+        Dictionary containing time and frequency averaged, calibrated data. Keys `targets`, `vis`, 
+    `flags`, `weights`, `times`, `ntimes` all reference numpy arrays.
     """
 
     # ----------------------------------------------------------
@@ -492,25 +496,30 @@ def pipeline(data, ts, stream_name):
 
         # apply solutions and average the corrected data
         solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'], time_range=[t0, t1])
-        logger.info('Applying calibration solutions to calibrator {0}:'.format(target_name,))
+        logger.info('Applying solutions to {0}:'.format(target_name,))
         vis = s.tf.auto.vis
         for soln in solns_to_apply:
             vis = s.apply(soln, vis)
-        av_vis, av_flags, av_weights = calprocs.wavg_full_f(vis.compute(),
-                                                            s.tf.auto.flags.compute(),
-                                                            s.tf.auto.weights.compute(),
-                                                            chanav=vis.shape[1] / 1024)
+        
+        av_vis, av_flags, av_weights = da.compute(vis, s.tf.auto.flags, s.tf.auto.weights)        
+
+        if vis.shape[1]>1024:
+            av_vis, av_flags, av_weights = calprocs.wavg_full_f(av_vis,
+                                                            av_flags,
+                                                            av_weights,
+                                                            chanav=vis.shape[1] // 1024)       
+
         av_vis, av_flags, av_weights, av_times = calprocs_dask.wavg_full(av_vis,
                                                                          av_flags,
                                                                          av_weights,
-                                                                         times=s.timestamps,)
+                                                                         times=s.timestamps)
 
         # collect corrected data and calibrator target list to send to report writer
         av_corr['targets'].append(target)
         av_corr['vis'].append(av_vis.compute())
         av_corr['flags'].append(av_flags.compute())
         av_corr['weights'].append(av_weights.compute())
-        av_corr['times'].append(np.asarray(av_times))
+        av_corr['times'].append(np.average(s.timestamps))
         av_corr['n_times'].append(s.tf.auto.vis.shape[0])
 
     return target_slices, av_corr

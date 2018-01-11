@@ -1,5 +1,7 @@
-import numpy as np
 import time
+
+import numpy as np
+
 
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
@@ -12,6 +14,10 @@ from matplotlib.ticker import FuncFormatter
 from matplotlib.backends.backend_pdf import PdfPages
 
 # PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
+
+#Figure sizes
+fig_x=10.0
+fig_y=4 
 
 
 def flush_plots(fig_list, report_name='cal_report.pdf'):
@@ -90,7 +96,7 @@ def plot_bp_data(data, chans=None, plotavg=False):
         nrows, ncols = 2, 2
     else:
         nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(18.0 * ncols, 5.0 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * fig_x, nrows * fig_y))
 
     tlist = np.arange(data.shape[0])
     for ti in tlist:
@@ -121,7 +127,7 @@ def plot_bp_solns(data, chans=None):
     npols = data.shape[-2]
     nrows, ncols = npols, 2
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 3.0 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
     for p in range(npols):
         plot_data_v_chan(data[:, p, :], axes, plotnum=p, ylabelplus=' - POL ' + str(p))
 
@@ -142,7 +148,7 @@ def plot_bp_soln_list(bplist, chans=None):
         chans = np.arange(bplist[0].shape[-2])
 
     nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(18.0 * ncols, 5.0 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * fig_x, nrows * fig_y))
     for bp in bplist:
         plot_data_v_chan(bp, axes, plotnum=0)
 
@@ -158,7 +164,7 @@ def plot_g_solns(times, data):
     data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 3.0 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
 
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -188,7 +194,7 @@ def plot_g_solns_with_errors(times, data, stddev):
     """
 
     nrows, ncols = 2, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(18.0 * ncols, 5.0 * nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * fig_x, nrows * fig_y))
 
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -227,14 +233,14 @@ def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0*ncols, 3.0*nrows))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
     if t_zero is None:
         t_zero = times[0]
     t = time.strftime("%Y %x %X", time.gmtime(t_zero))
     times = np.array(times) - t_zero
     data = np.array(data)
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0*ncols, 4.0*nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey='col')
     for p in range(npols):
         # plot amplitude
@@ -242,7 +248,7 @@ def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
         axes[p, 0].set_ylabel('Amplitude'+' Pol_{0}'.format(p))
 
         # plot phase
-        axes[p, 1].plot(times / 60., 360. * np.angle(data[:, p, :]) / (2.*np.pi), '.-')
+        axes[p, 1].plot(times / 60., np.angle(data[:, p, :], deg=True), '.-')
         axes[p, 1].set_ylabel('Phase'+' Pol_{0}'.format(p))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
@@ -274,7 +280,7 @@ def flags_bl_v_chan(data, chan, freq_range=None):
     nbls = data.shape[-1]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4 * nrows), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(chan[0],chan[-1],0,nbls), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0} Baselines'.format(p))
@@ -304,7 +310,7 @@ def flags_t_v_chan(data, chan, freq_range=None):
     nscans = data.shape[0]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 5 * nrows), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(chan[0],chan[-1],0,nscans), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(p))
@@ -332,7 +338,7 @@ def plot_el_v_time(targets, times, elevations, t_zero, title=None):
     t_zero : start time of observation for x-label
     title : text for title of the plot, optional
     """
-    fig, axes = plt.subplots(1, 1, figsize=(20.0, 4.0))
+    fig, axes = plt.subplots(1, 1, figsize=(2*fig_x, fig_y))
     if title is not None:
         fig.suptitle(title, y=0.95)
 
@@ -361,7 +367,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False):
     npols = data.shape[-2]
     nrows, ncols = npols, 2
     times = data.shape[0]
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -377,19 +383,19 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False):
                                  np.absolute(data[i, :, p, :]).transpose(), '.')
             else:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                            np.angle(data[i, :, 1, :], deg=True).transpose(), '.')
+                            np.angle(data[i, :, p, :], deg=True).transpose(), '.')
            
             # Reset color cycle so that channels have the same color
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
         
-        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(p))
         if amp:
-            axes[p, 1].set_ylabel('Zoom Amplitude' + ' Pol_{0}'.format(p))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(p))
             low_ylim,upper_ylim=amp_range(data)
             axes[p, 1].set_ylim(low_ylim,upper_ylim)
         else:
-            axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
+            axes[p, 1].set_ylabel('Phase Pol_{0}'.format(p))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -420,7 +426,7 @@ def plot_delays(times, data, t_zero=None, antlist=None):
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4.0 * nrows), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
 
     if t_zero is None:
         t_zero = times[0]
@@ -456,7 +462,7 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False):
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.0 * ncols, 4.0 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -464,15 +470,15 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False):
     for p in range(npols):
         #plot full range amplitude plots
         p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.')
-        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(p))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(p))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             #plot limited range amplitude plots
             axes[p,1].plot(chan, np.absolute(data[...,p,:]), '.' )
-            axes[p,1].set_ylabel('Zoom Amplitude'+' Pol_{0}'.format(p))
+            axes[p,1].set_ylabel('Zoom Amplitude Pol_{0}'.format(p))
         else:
             #plot phase plots
-            axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(p))
+            axes[p, 1].set_ylabel('Phase Pol_{0}'.format(p))
             axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.')
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -518,7 +524,6 @@ def add_freq_axis(ax, chan_range=[0,4096],freq_range=[900,1400]):
     freq_xlim_0 = ax.get_xlim()[0]*delta_freq/delta_chan+freq_range[0]
     freq_xlim_1 = ax.get_xlim()[1]*delta_freq/delta_chan+freq_range[0]
     ax_freq.set_xlim(freq_xlim_0,freq_xlim_1)
-    ax_freq.tick_params(direction='in')
     ax_freq.set_xlabel('Frequency MHz')  
 
 def amp_range(data):
@@ -567,7 +572,7 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, t_zero=None, title
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(20.0 * ncols, 3.0 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey=True)
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -617,7 +622,7 @@ def plot_waterfall(visdata, contrast=0.01, flags=None, channel_freqs=None, dump_
     dump_timestamps : array (ntimestamps) of timestamps represented by each dump
     """
 
-    fig = plt.figure(figsize=(8.3, 11.7))
+    fig = plt.figure(figsize=(0.8*fig_x, 2*fig_y))
     kwargs = {'aspect': 'auto', 'origin': 'lower', 'interpolation': 'none'}
     # Defaults
     kwargs['extent'] = [-0.5, visdata.shape[1] - 0.5, -0.5, visdata.shape[0] - 0.5]
