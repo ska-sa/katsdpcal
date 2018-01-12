@@ -613,14 +613,14 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
     # get index of all gain-calibrated calibrator scans, combine these into one plot
     cal_idx = [i for i, t in enumerate(av_corr['targets']) if t in gain]
     if len(cal_idx)>0:
-        # average bandpass into 8 chunks, average per antenna
-        av_data, av_flags, av_weights = calprocs.wavg_full_f(
-            av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
-            av_corr['weights'][cal_idx], chanav, threshold=0.7)
+        # average per antenna, average bandpass into 8 chunks
         av_data, av_flags, av_weights = calprocs.wavg_ant(
-            av_data, av_flags, av_weights,
-            ant_array=ts['cal_antlist'],
-        bls_lookup=ts['cal_bls_lookup'])
+            av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
+            av_corr['weights'][cal_idx], ant_array=ts['cal_antlist'],
+            bls_lookup=ts['cal_bls_lookup'])
+        av_data, av_flags, av_weights = calprocs_dask.wavg_full_f(
+            av_data, av_flags, av_weights, chanav)
+        
 
         for idx in range(0, av_data.shape[-1], ant_chunks):
             plot = plotting.plot_corr_v_time(
@@ -659,7 +659,7 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         tags = kat_target.tags
         cal_idx = [i for i, t in enumerate(av_corr['targets']) if t == cal]
         uvdist = calc_uvdist(ts, cal, av_chan_freq, av_corr['times'][cal_idx])
-        av_data, av_flags, av_weights = calprocs.wavg_full_f(av_corr['vis'][cal_idx],
+        av_data, av_flags, av_weights = calprocs_dask.wavg_full_f(av_corr['vis'][cal_idx],
                                                              av_corr['flags'][cal_idx],
                                                              av_corr['weights'][cal_idx],
                                                              chanav, threshold=0.7)
@@ -711,9 +711,9 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         target_name = kat_target.name
         cal_idx = [i for i, t in enumerate(av_corr['targets']) if t == cal]
         uvdist = calc_uvdist(ts, cal, av_chan_freq, av_corr['times'][cal_idx])
-        av_data, av_flags, av_weights = calprocs.wavg_full_f(
+        av_data, av_flags, av_weights = calprocs_dask.wavg_full_f(
             av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
-            av_corr['weights'][cal_idx], chanav, threshold=0.7)
+            av_corr['weights'][cal_idx], chanav)
         plot_title = 'Field: {0}'.format(target_name)
         plot = plotting.plot_corr_uvdist(
             uvdist, av_data, freqlist=av_chan_freq, title=plot_title, amp=True)

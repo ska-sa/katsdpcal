@@ -504,7 +504,7 @@ def pipeline(data, ts, stream_name):
         av_vis, av_flags, av_weights = da.compute(vis, s.tf.auto.flags, s.tf.auto.weights)        
 
         if vis.shape[1]>1024:
-            av_vis, av_flags, av_weights = calprocs.wavg_full_f(av_vis,
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
                                                             av_flags,
                                                             av_weights,
                                                             chanav=vis.shape[1] // 1024)       
@@ -514,10 +514,11 @@ def pipeline(data, ts, stream_name):
                                                                av_weights)
 
         # collect corrected data and calibrator target list to send to report writer
+        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights) 
         av_corr['targets'].append(target)
-        av_corr['vis'].append(av_vis.compute())
-        av_corr['flags'].append(av_flags.compute())
-        av_corr['weights'].append(av_weights.compute())
+        av_corr['vis'].append(av_vis)
+        av_corr['flags'].append(av_flags)
+        av_corr['weights'].append(av_weights)
         av_corr['times'].append(np.average(s.timestamps))
         av_corr['n_times'].append(s.tf.auto.vis.shape[0])
         av_corr['t_stamps'].append(s.timestamps)

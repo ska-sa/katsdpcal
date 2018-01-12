@@ -182,6 +182,59 @@ def wavg_full_t(data, flags, weights, solint, times=None):
         return av_data, av_flags, av_weights
 
 
+def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
+    """
+    Perform weighted average of data, flags and weights,
+    applying flags, over axis 1, for specified number of channels
+
+    Parameters
+    ----------
+    data       : array of complex
+    flags      : array of boolean
+    weights    : array of floats
+    chanav     : number of channels over which to average, integer
+
+    Returns
+    -------
+    av_data    : weighted average of data
+    av_flags   : weighted average of flags
+    av_weights : weighted average of weights
+    """
+    
+    inc_array = range(0, data.shape[1], chanav)
+
+    flagged_weights = _where(flags, weights.dtype.type(0), weights)
+    weighted_data = data * flagged_weights
+
+    # Clear the elements that have a nan anywhere
+    isnan = np.isnan(weighted_data)
+    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    
+    av_data = []
+    av_flags = []
+    av_weights = []
+    
+    for f in inc_array:
+        inc_weights = da.sum(flagged_weights[:,f:f+chanav,...], axis=1)
+        inc_data = da.sum(weighted_data[:,f:f+chanav,...], axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            inc_data = inc_data/inc_weights   
+        n_flags = da.sum(calprocs.asbool(flags[:,f:f+chanav,...]), axis=1)
+        inc_flags = n_flags > chanav * threshold
+        
+        av_data.append(inc_data)
+        av_flags.append(inc_flags)
+        av_weights.append(inc_weights)
+      
+    av_data = da.stack(av_data, axis=1)
+    av_flags = da.stack(av_flags, axis=1)
+    av_weights = da.stack(av_weights, axis=1)
+
+    return av_data, av_flags, av_weights
+
+
+
 def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
     """
     Fit bandpass to visibility data.
