@@ -151,13 +151,14 @@ def _slots_slices(slots):
 
 class CorrectedData(object):
     """Corrected Averaged Data"""
-    def __init__(self, targets, vis, flags, weights, times, n_times):
+    def __init__(self, targets, vis, flags, weights, times, n_times, t_stamps):
         self.targets = targets
         self.vis = vis
         self.flags = flags
         self.weights = weights
         self.times = times
         self.n_times = n_times
+        self.t_stamps = t_stamps
 
     def __add__(self, other):
         total_targets = self.targets+other.targets
@@ -166,12 +167,14 @@ class CorrectedData(object):
         total_weights = self.weights+other.weights
         total_times = self.times+other.times
         total_n_times = self.n_times+other.n_times
+        total_t_stamps = self.t_stamps+other.t_stamps
         return CorrectedData(total_targets,
                              total_vis,
                              total_flags,
                              total_weights,
                              total_times,
-                             total_n_times)
+                             total_n_times,
+                             total_t_stamps)
 
     def total(self):
         return {'targets': self.targets,
@@ -179,7 +182,8 @@ class CorrectedData(object):
                 'flags': np.stack(self.flags, axis=0),
                 'weights': np.stack(self.weights, axis=0),
                 'times': np.stack(self.times, axis=0),
-                'n_times': np.stack(self.n_times, axis=0)}
+                'n_times': np.stack(self.n_times, axis=0),
+                't_stamps': self.t_stamps}
 
 
 class Task(object):
@@ -915,7 +919,7 @@ class Pipeline(Task):
         # put corrected data into pipeline report queue
         avg_corr_event = CorrectedData(avg_corr['targets'], avg_corr['vis'],
                                        avg_corr['flags'], avg_corr['weights'],
-                                       avg_corr['times'], avg_corr['n_times'])
+                                       avg_corr['times'], avg_corr['n_times'], avg_corr['t_stamps'])
 
         self.pipeline_report_queue.put(avg_corr_event)
         # send data to L1 SPEAD if necessary
@@ -1073,7 +1077,7 @@ class ReportWriter(Task):
         report_time_sensor = self.sensors['report-last-time']
         report_path_sensor = self.sensors['report-last-path']
         # Set initial value of averaged corrected data
-        av_corr = CorrectedData([], [], [], [], [], [])
+        av_corr = CorrectedData([], [], [], [], [], [], [])
 
         while True:
             event = self.pipeline_report_queue.get()
@@ -1089,7 +1093,7 @@ class ReportWriter(Task):
                     av_corr = av_corr.total()
                     obs_dir = self.write_report(event.start_time, event.end_time, av_corr)
                     end_time = time.time()
-                    av_corr = CorrectedData([], [], [], [], [], [])
+                    av_corr = CorrectedData([], [], [], [], [], [], [])
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)

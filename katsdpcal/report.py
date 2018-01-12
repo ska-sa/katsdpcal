@@ -8,7 +8,7 @@ from . import calprocs_dask
 import numpy as np
 
 import time
-
+import datetime
 from docutils.core import publish_file
 
 import matplotlib.pylab as plt
@@ -17,9 +17,8 @@ import katpoint
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-#No of antennas per plot 
+# No of antennas per plot 
 ant_chunks=16 
-
 # --------------------------------------------------------------------------------------------------
 # --- CLASS :  rstReport
 # --------------------------------------------------------------------------------------------------
@@ -57,6 +56,14 @@ class rstReport(file):
 # --------------------------------------------------------------------------------------------------
 # --- FUNCTION :  Report writing functions
 # --------------------------------------------------------------------------------------------------
+def utc_tstr(t_stamp, day=False):
+    time=datetime.datetime.utcfromtimestamp(t_stamp)
+    time_format="%Y-%m-%d %H:%M:%S"
+    if day:
+        time_format="%d %H:%M:%S"        
+    time_string=time.strftime(time_format)
+    return time_string
+
 
 def insert_fig(report_path, report, fig, name=None):
     """
@@ -126,7 +133,8 @@ def write_summary(report, ts, stream_name, st=None, et=None):
         end time for reporting parameters, seconds
     """
     # write RST style bulletted list
-    report.writeln('* {0}:  {1}'.format('Start time', time.strftime("%x %X", time.gmtime(st))))
+
+    report.writeln('* Start time:  '+utc_tstr(st))
 
     # telescope state values
     write_bullet_if_present(report, ts, 'Int time', stream_name + '_int_time')
@@ -179,7 +187,7 @@ def write_table_timerow(report, colnames, times, data):
     report.writeln(" ".join([h.ljust(col_width) for h in header]))
     report.writeln(col_header * n_entries)
 
-    timestrings = [time.strftime("%d %X", time.gmtime(t)) for t in times]
+    timestrings = [utc_tstr(t,True) for t in times]
 
     # add each time row to the table
     for t, d in zip(timestrings, data):
@@ -213,7 +221,7 @@ def write_table_timecol(report, antennas, times, data):
     col_header = '=' * col_width + ' '
 
     # create table header
-    timestrings = [time.strftime("%d %X", time.gmtime(t)) for t in times]
+    timestrings = [utc_tstr(t,day='True') for t in times]
     header = " ".join(["{}".format(t,).ljust(col_width) for t in timestrings])
     header = 'Ant'.ljust(col_width + 1) + header
 
@@ -235,7 +243,7 @@ def write_table_timecol(report, antennas, times, data):
     report.writeln()
 
 
-def calc_elevation(ts, stream_name, times, n_times, target):
+def calc_elevation(ts, stream_name, times, target):
     """
       Calculates elevation versus timestamps for observation targets
 
@@ -246,9 +254,7 @@ def calc_elevation(ts, stream_name, times, n_times, target):
       stream_name : str
           name of the L0 data stream
       times : array
-          mean time of scan
-      n_times : array
-          number of timestamps
+          timestamps of scan
       target : str
           target string
 
@@ -260,22 +266,10 @@ def calc_elevation(ts, stream_name, times, n_times, target):
     # get reference antenna description
     refant_index = ts['cal_antlist'].index(ts['cal_refant'])
     kat_refant = katpoint.Antenna(ts['cal_antlist_description'][refant_index])
-
-    timestamps = np.array([])
-    elevations = np.array([])
-
     kat_target = katpoint.Target(target)
-    int_time = ts[stream_name + '_int_time']
-
-    for st, nt in zip(times, n_times):
-        # calculate timestamps
-        t_inc = int_time * (range(nt) - np.median(range(nt))) + st
-        # calculate elevations
-        el = kat_target.azel(t_inc, kat_refant)[1]
-        timestamps = np.append(timestamps, t_inc, axis=0)
-        elevations = np.append(elevations, el, axis=0)
-
-    return timestamps, elevations
+    elevations = kat_target.azel(times, kat_refant)[1]
+        
+    return elevations
 
 
 def calc_uvdist(ts, target, freq, times):
@@ -368,25 +362,24 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
                   ts['cal_channel_freqs'][-1] / 1e6)
 
     # Plot elevation vs time for one antenna
+
     if len(av_corr['targets']) > 0:
         unique_targets = list(set(av_corr['targets']))
         timestamps, el, names = [], [], []
-        t_zero = av_corr['times'][0]
         for cal in unique_targets:
-            cal_idx = [idx for idx, t in enumerate(
+            t_stamps_cal = [ti for ti, t in zip(av_corr['t_stamps'],
                 av_corr['targets']) if t == cal]
-            t_cal, el_cal = calc_elevation(ts, stream_name,
-                                           av_corr['times'][cal_idx],
-                                           av_corr['n_times'][cal_idx], cal)
-            t_zero = min(t_zero, np.min(t_cal))
-            timestamps.append(t_cal)
+            t_stamps_flat = np.array([x for y in t_stamps_cal for x in y])
+            el_cal = calc_elevation(ts, stream_name,
+                                           t_stamps_flat, cal)
+            timestamps.append(t_stamps_flat)
             names.append(cal.split(',')[0])
             el.append(el_cal)
-
+        
         plot_title = 'Elevation vs Time for Reference Antenna: {0}'.format(
             ts['cal_refant'])
         plot = plotting.plot_el_v_time(
-            names, timestamps, el, t_zero=t_zero, title=plot_title)
+            names, timestamps, el, title=plot_title)
         insert_fig(report_path, cal_rst, plot, name='El_v_time')
     else:
         logger.info(' - no calibrated data')
@@ -492,9 +485,9 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
             # B shape is n_time, n_chan, n_pol, n_ant
             times = product['time']
             logger.info('  shape: {0}'.format(vals.shape,))
-
+            logger.info('  times: {0}'.format(times))
             for ti in range(len(times)):
-                t = time.strftime("%Y %x %X", time.gmtime(times[ti]))
+                t = utc_tstr(times[ti])
                 cal_rst.writeln('Time: {}'.format(t,))
                 
                 for idx in range(0, vals[ti].shape[-1], ant_chunks):
@@ -571,7 +564,7 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
             cal_rst.write_heading_3(
                 'Baselines to the reference antenna : {0}'.format(ts['cal_refant']))
             cal_rst.writeln()
-            t = time.strftime("%Y %x %X", time.gmtime(times[ti]))
+            t = utc_tstr(times[ti])
             cal_rst.writeln('Time : {0}'.format(t))
             plot_title = 'Calibrator: {0} , tags are {1}'.format(target_name, tags[1:])
             # Only plot 16 antennas per plot
@@ -619,22 +612,22 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
 
     # get index of all gain-calibrated calibrator scans, combine these into one plot
     cal_idx = [i for i, t in enumerate(av_corr['targets']) if t in gain]
-
-    # average bandpass into 8 chunks, average per antenna
-    av_data, av_flags, av_weights = calprocs.wavg_full_f(
-        av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
-        av_corr['weights'][cal_idx], chanav, threshold=0.7)
-    av_data, av_flags, av_weights = calprocs.wavg_ant(
-        av_data, av_flags, av_weights,
-        ant_array=ts['cal_antlist'],
+    if len(cal_idx)>0:
+        # average bandpass into 8 chunks, average per antenna
+        av_data, av_flags, av_weights = calprocs.wavg_full_f(
+            av_corr['vis'][cal_idx], av_corr['flags'][cal_idx],
+            av_corr['weights'][cal_idx], chanav, threshold=0.7)
+        av_data, av_flags, av_weights = calprocs.wavg_ant(
+            av_data, av_flags, av_weights,
+            ant_array=ts['cal_antlist'],
         bls_lookup=ts['cal_bls_lookup'])
 
-    for idx in range(0, av_data.shape[-1], ant_chunks):
-        plot = plotting.plot_corr_v_time(
-            av_corr['times'][cal_idx], av_data[..., idx : idx + ant_chunks].compute(),
-            antlist=ts['cal_antlist'][idx : idx + ant_chunks], t_zero=t_zero)
+        for idx in range(0, av_data.shape[-1], ant_chunks):
+            plot = plotting.plot_corr_v_time(
+                av_corr['times'][cal_idx], av_data[..., idx : idx + ant_chunks],
+                antlist=ts['cal_antlist'][idx : idx + ant_chunks])
 
-        insert_fig(report_path, cal_rst, plot, name='Phase_v_Time_{0}'.format(idx))
+            insert_fig(report_path, cal_rst, plot, name='Phase_v_Time_{0}'.format(idx))
 
     # Plot the Amp and Phase vs time for all gain-calibrated calibrators.
     cal_rst.writeln()
@@ -643,15 +636,14 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
     cal_rst.writeln()
     cal_rst.write_heading_3('All baselines, averaged per antenna')
     cal_rst.writeln()
+    if len(cal_idx)>0:
+        for idx in range(0, av_data.shape[-1], ant_chunks):
+            plot = plotting.plot_corr_v_time(
+                av_corr['times'][cal_idx],
+                av_data[..., idx : idx + ant_chunks], plottype='a',
+                antlist=ts['cal_antlist'][idx : idx + ant_chunks])
 
-    for idx in range(0, av_data.shape[-1], ant_chunks):
-        plot = plotting.plot_corr_v_time(
-            av_corr['times'][cal_idx],
-            av_data[..., idx : idx + ant_chunks], plottype='a',
-            antlist=ts['cal_antlist'][idx : idx + ant_chunks],
-            t_zero=t_zero)
-
-        insert_fig(report_path, cal_rst, plot, name='Amp_v_Time_{0}'.format(idx))
+            insert_fig(report_path, cal_rst, plot, name='Amp_v_Time_{0}'.format(idx))
 
     cal_rst.writeln()
     cal_rst.write_heading_2(

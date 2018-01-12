@@ -255,7 +255,7 @@ def pipeline(data, ts, stream_name):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_times': []}
+               'times': [], 'n_times': [], 't_stamps': []}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
@@ -509,10 +509,9 @@ def pipeline(data, ts, stream_name):
                                                             av_weights,
                                                             chanav=vis.shape[1] // 1024)       
 
-        av_vis, av_flags, av_weights, av_times = calprocs_dask.wavg_full(av_vis,
-                                                                         av_flags,
-                                                                         av_weights,
-                                                                         times=s.timestamps)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis,
+                                                               av_flags,
+                                                               av_weights)
 
         # collect corrected data and calibrator target list to send to report writer
         av_corr['targets'].append(target)
@@ -521,5 +520,6 @@ def pipeline(data, ts, stream_name):
         av_corr['weights'].append(av_weights.compute())
         av_corr['times'].append(np.average(s.timestamps))
         av_corr['n_times'].append(s.tf.auto.vis.shape[0])
+        av_corr['t_stamps'].append(s.timestamps)
 
     return target_slices, av_corr

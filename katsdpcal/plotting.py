@@ -1,7 +1,8 @@
 import time
 
+import datetime
 import numpy as np
-
+import matplotlib.dates as md
 
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
@@ -223,7 +224,7 @@ def plot_g_solns_with_errors(times, data, stddev):
     return fig
 
 
-def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
+def plot_g_solns_legend(times, data, antlist=None):
     """
     Plots gain solutions
 
@@ -234,21 +235,18 @@ def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
     npols = data.shape[-2]
     nrows, ncols = npols, 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
-    if t_zero is None:
-        t_zero = times[0]
-    t = time.strftime("%Y %x %X", time.gmtime(t_zero))
-    times = np.array(times) - t_zero
-    data = np.array(data)
-
+    
+    datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
+    
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey='col')
     for p in range(npols):
         # plot amplitude
-        p1 = axes[p, 0].plot(times / 60., np.abs(data[:, p, :]), '.-')
+        p1 = axes[p, 0].plot(datetimes, np.abs(data[:, p, :]), '.-')
         axes[p, 0].set_ylabel('Amplitude'+' Pol_{0}'.format(p))
 
         # plot phase
-        axes[p, 1].plot(times / 60., np.angle(data[:, p, :], deg=True), '.-')
+        axes[p, 1].plot(datetimes, np.angle(data[:, p, :], deg=True), '.-')
         axes[p, 1].set_ylabel('Phase'+' Pol_{0}'.format(p))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
@@ -258,8 +256,8 @@ def plot_g_solns_legend(times, data, antlist=None, t_zero=None):
     l_p = npols-1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
     plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
-    axes[l_p, 0].set_xlabel('Time since {0} (UTC) [min]'.format(t))
-    axes[l_p, 1].set_xlabel('Time since {0} (UTC) [min]'.format(t))
+    time_label(axes[l_p,0],[datetimes[0],datetimes[-1]])
+    time_label(axes[l_p,1],[datetimes[0],datetimes[-1]])
 
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
@@ -326,7 +324,23 @@ def flags_t_v_chan(data, chan, freq_range=None):
     return fig
 
 
-def plot_el_v_time(targets, times, elevations, t_zero, title=None):
+def time_label(ax, timerange):
+    """
+    Format the label and ticklabels for time axis of a plot
+    """
+    # Format the xticklabels to display h:m:s
+    xfmt = md.DateFormatter('%H:%M:%S')
+    ax.xaxis.set_major_formatter(xfmt)
+
+    if timerange[0].date() == timerange[-1].date():
+        datelabel = timerange[0].strftime('%Y-%m-%d')
+    else:
+        datelabel = timerange[0].strftime('%Y-%m-%d')+' -- '+timerange[-1].strftime('%Y-%m-%d')
+    # Display the date in the label 
+    ax.set_xlabel('Times (UTC) \n Date: '+datelabel)
+
+
+def plot_el_v_time(targets, times, elevations, title=None):
     """
     Make a plot of elevation vs time for a number of targets
 
@@ -342,13 +356,18 @@ def plot_el_v_time(targets, times, elevations, t_zero, title=None):
     if title is not None:
         fig.suptitle(title, y=0.95)
 
-    for idx, target in enumerate(targets):
-        axes.plot((times[idx] - t_zero) / 60, np.rad2deg(elevations[idx]), '.', label=target)
-    t = time.strftime("%Y %x %X", time.gmtime(t_zero))
+    t_zero = min([np.min(t) for t in times]) 
+    t_max = max([np.max(t) for t in times])
+    t_zero = datetime.datetime.utcfromtimestamp(t_zero) 
+    t_max = datetime.datetime.utcfromtimestamp(t_max)
 
+    for idx, target in enumerate(targets):
+        datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times[idx]] 
+        axes.plot(datetimes, np.rad2deg(elevations[idx]), '.', label=target)
+    
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
-    axes.set_xlabel('Time (UTC) since {0} (minutes)'.format(t))
+    time_label(axes, [t_zero,t_max])
     return fig
 
 
@@ -413,7 +432,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False):
     return fig
 
 
-def plot_delays(times, data, t_zero=None, antlist=None):
+def plot_delays(times, data, antlist=None):
     """Plots delay vs time
        Parameters
        ----------
@@ -428,15 +447,12 @@ def plot_delays(times, data, t_zero=None, antlist=None):
     nrows, ncols = 1, npols
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
 
-    if t_zero is None:
-        t_zero = times[0]
-    t = time.strftime("%Y %x %X", time.gmtime(t_zero))
+    datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
 
     for p in range(npols):
-        p1 = axes[0, p].plot((times - t_zero) / 60, data[:, p, :], marker='.', ls='dotted')
-        axes[0, p].set_xlabel('Time since {0} (UTC) [minutes]'.format(t))
+        p1 = axes[0, p].plot(datetimes, data[:, p, :], marker='.', ls='dotted')
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(p))
-
+        time_label(axes[0,p],[datetimes[0],datetimes[-1]])
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
 
@@ -540,7 +556,7 @@ def amp_range(data):
     """
     npols = data.shape[-2]
     # use 3*NMAD to limit y-range of plots, 
-    # the definition used is strictly only correct
+    # the definition used is strictly only correct 
     # a gaussian distribution of points 
     low=np.empty(npols)
     upper=np.empty(npols)
@@ -557,7 +573,7 @@ def amp_range(data):
     return low_lim, upper_lim 
 
 
-def plot_corr_v_time(times, data, plottype='p', antlist=None, t_zero=None, title=None):
+def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None):
     """
     Plots amp/phase versus time
 
@@ -577,19 +593,15 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, t_zero=None, title
     if title is not None:
         fig.suptitle(title, y=0.95)
 
-    if t_zero is None:
-        t_zero = times[0]
-    times = np.array(times) - t_zero
-    t = time.strftime("%Y %x %X", time.gmtime(t_zero))
-
+    datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
     for p in range(npols):
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
-                p1 = axes[p, 0].plot(times / 60., np.absolute(data_pol[:, chan, :]), '.')
+                p1 = axes[p, 0].plot(datetimes, np.absolute(data_pol[:, chan, :]), '.')
                 axes[p, 0].set_ylabel('Amp Pol_{0}'.format(p))
             else:
-                p1 = axes[p, 0].plot(times / 60., np.angle(data_pol[:, chan, :], deg=True), '.')
+                p1 = axes[p, 0].plot(datetimes, np.angle(data_pol[:, chan, :], deg=True), '.')
                 axes[p, 0].set_ylabel('Phase Pol_{0}'.format(p))
 
             # Reset the colour cycle, so that all channels have the same plot color
@@ -599,8 +611,8 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, t_zero=None, title
     # For the final row, add in xticklabels and xlabel
     l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
-    axes[l_p, 0].set_xlabel('Time since {0} (UTC) [min]'.format(t))
-
+    time_label(axes[l_p,0],[datetimes[0],datetimes[-1]])
+ 
     if antlist is not None:
         axes[0, 0].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
 
