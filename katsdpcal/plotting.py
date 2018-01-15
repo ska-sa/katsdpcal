@@ -3,6 +3,7 @@ import time
 import datetime
 import numpy as np
 import matplotlib.dates as md
+from matplotlib.ticker import MaxNLocator
 
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
@@ -265,7 +266,7 @@ def plot_g_solns_legend(times, data, antlist=None):
     return fig
 
 
-def flags_bl_v_chan(data, chan, freq_range=None):
+def flags_bl_v_chan(data, chan, uvlist, freq_range=None):
     """
     Make a waterfall plot of flagged data in Channels vs Baselines
 
@@ -278,11 +279,14 @@ def flags_bl_v_chan(data, chan, freq_range=None):
     nbls = data.shape[-1]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(chan[0],chan[-1],0,nbls), aspect='auto', origin='lower')
-        axes[0, p].set_ylabel('Pol {0} Baselines'.format(p))
+        axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(p))
         axes[0, p].set_xlabel('Channels')
+    bl_labels(axes[0, 0], uvlist)
+    plt.setp(axes[0, 1].get_yticklabels(), visible=False)
+   
     # Add colorbar
     cax = fig.add_axes([0.92, 0.12, 0.02, 0.75])
     cb = fig.colorbar(im, cax=cax)
@@ -293,14 +297,37 @@ def flags_bl_v_chan(data, chan, freq_range=None):
             add_freq_axis(ax,chan_range=[chan[0],chan[-1]],freq_range=freq_range)
     return fig
 
+def bl_labels(ax, seplist):
+    """
+    Creates ticklabels for the baseline axis of a plot
 
-def flags_t_v_chan(data, chan, freq_range=None):
+    Parameters
+    ----------
+    ax : : class: `matplotlib.axes.Axes`
+         axes to add ticklabels to
+    seplist : :class:`np.ndarray`
+         array of labels corresponding to integer positions in ax 
+
+    """
+    ax.locator_params(axis='y', integer=True)
+    yticks = ax.get_yticks()
+    # select only ticks with valid separations 
+    idx=[all(_) for _ in zip(yticks>=0,yticks<=len(seplist))]
+    yticks = np.int_(yticks[idx])
+  
+    septicks = seplist[yticks]
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(np.int_(septicks))
+
+def flags_t_v_chan(data, chan, targets, freq_range=None):
     """
     Make a waterfall plot of flagged data in channels vs time
 
     Parameters
     ----------
     data    : array of real, shape(num_times, num_chans, num_pol)
+    chan    :  array of real, shape(num_chans)
+    targets : list of targets in each scan 
     freq_range : list of start and stop frequencies of the array, optional
     
     """
@@ -308,11 +335,17 @@ def flags_t_v_chan(data, chan, freq_range=None):
     nscans = data.shape[0]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(chan[0],chan[-1],0,nscans), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(p))
         axes[0, p].set_xlabel('Channels')
+    plt.setp(axes[0, 1].get_yticklabels(), visible=False)
+    
+    axes[0, 0].set_yticks(np.arange(0,len(targets)))
+    axes[0, 0].set_yticklabels(targets)
+    for label in axes[0, 0].get_yticklabels():
+        label.set_verticalalignment('baseline')
     # Add colorbar
     cax = fig.add_axes([0.92, 0.12, 0.02, 0.75])
     cb = fig.colorbar(im, cax=cax)

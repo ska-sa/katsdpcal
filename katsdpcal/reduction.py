@@ -255,7 +255,7 @@ def pipeline(data, ts, stream_name):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_times': [], 't_stamps': []}
+               'times': [], 'n_flags': [], 't_stamps': []}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
@@ -520,7 +520,7 @@ def pipeline(data, ts, stream_name):
         av_corr['flags'].append(av_flags)
         av_corr['weights'].append(av_weights)
         av_corr['times'].append(np.average(s.timestamps))
-        av_corr['n_times'].append(s.tf.auto.vis.shape[0])
+        av_corr['n_flags'].append(da.sum(calprocs.asbool(s.tf.auto.flags),axis=0).compute())
         av_corr['t_stamps'].append(s.timestamps)
 
     return target_slices, av_corr

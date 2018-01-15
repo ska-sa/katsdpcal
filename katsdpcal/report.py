@@ -301,6 +301,39 @@ def calc_uvdist(ts, target, freq, times):
     return uvdist
 
 
+def calc_enu_sep(ant_desc, bls_lookup):
+    """
+    Calculate baseline separation in meters 
+    for cross correlations only.
+ 
+    Parameters
+    ----------
+    ant_desc : str 
+         antenna description string
+    bls_lookup : :class:`np.ndarray`
+         array of indices of antennas in each baseline 
+
+    Returns
+    -------
+    array of separations for baselines in bls_lookup 
+    """
+
+    cross_idx = np.where(bls_lookup[:,0]!=bls_lookup[:,1])[0]
+    bls_lookup = bls_lookup[cross_idx]
+    ant1 = [ant_desc[bls_lookup[i][0]] for i in range(len(bls_lookup))]
+    ant2 = [ant_desc[bls_lookup[i][1]] for i in range(len(bls_lookup))]
+    bl = np.empty([len(ant1),3])
+    
+    for i, _ in enumerate(bl):
+        kat_ant1 = katpoint.Antenna(ant1[i])
+        kat_ant2 = katpoint.Antenna(ant2[i])
+        enu = kat_ant1.baseline_toward(kat_ant2)
+        bl[i] = enu
+        
+    sep = np.linalg.norm(bl, axis=1)
+    
+    return sep 
+
 def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st=None, et=None):
     """
     Creates pdf calibration pipeline report (from RST source),
@@ -391,15 +424,21 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
 
         cal_rst.writeln('Percentage of time data is flagged')
         # Flags per scan weighted by length of scan
-        tw_flags = av_corr['flags'] * av_corr['n_times'][:, np.newaxis, np.newaxis, np.newaxis]
-        tw_flags = 100 * np.mean(tw_flags, axis=0)
-        plot = plotting.flags_bl_v_chan(tw_flags, chan_no, freq_range=freq_range)
+        n_times = np.array([len(_) for _ in av_corr['t_stamps']],dtype = np.float32)
+        tw_flags = av_corr['n_flags'] / n_times[:,np.newaxis, np.newaxis, np.newaxis]
+        tw_flags_ave = 100 * np.mean(tw_flags, axis=0)
+
+        dist = calc_enu_sep(ts['cal_antlist_description'],ts['cal_bls_lookup'])
+        idx_sort = np.argsort(dist)
+        tw_flags_sort = tw_flags_ave[:,:,idx_sort]
+        plot = plotting.flags_bl_v_chan(tw_flags_sort, chan_no, dist[idx_sort], freq_range=freq_range)
         insert_fig(report_path, cal_rst, plot, name='Flags_bl_v_chan')
 
         cal_rst.writeln('Percentage of baselines flagged per scan')
         # Average % of baselines flagged per scan
-        bl_flags = 100 * np.mean(av_corr['flags'], axis=3) 
-        plot = plotting.flags_t_v_chan(bl_flags, chan_no, freq_range=freq_range)
+        bl_flags = 100 * np.mean(tw_flags, axis=3) 
+        target_names=[katpoint.Target(_).name for _ in av_corr['targets']]
+        plot = plotting.flags_t_v_chan(bl_flags, chan_no, target_names, freq_range=freq_range)
         insert_fig(report_path, cal_rst, plot, name='Flags_s_v_chan')
 
     cal_rst.writeln()
