@@ -149,41 +149,33 @@ def _slots_slices(slots):
         yield slice(start, end)
 
 
-class CorrectedData(object):
-    """Corrected Averaged Data"""
-    def __init__(self, targets, vis, flags, weights, times, n_flags, t_stamps):
-        self.targets = targets
-        self.vis = vis
-        self.flags = flags
-        self.weights = weights
-        self.times = times
-        self.n_flags = n_flags
-        self.t_stamps = t_stamps
-
-    def __add__(self, other):
-        total_targets = self.targets+other.targets
-        total_vis = self.vis+other.vis
-        total_flags = self.flags+other.flags
-        total_weights = self.weights+other.weights
-        total_times = self.times+other.times
-        total_n_flags = self.n_flags+other.n_flags
-        total_t_stamps = self.t_stamps+other.t_stamps
-        return CorrectedData(total_targets,
-                             total_vis,
-                             total_flags,
-                             total_weights,
-                             total_times,
-                             total_n_flags,
-                             total_t_stamps)
-
-    def total(self):
-        return {'targets': self.targets,
-                'vis': np.stack(self.vis, axis=0),
-                'flags': np.stack(self.flags, axis=0),
-                'weights': np.stack(self.weights, axis=0),
-                'times': np.stack(self.times, axis=0),
-                'n_flags': np.stack(self.n_flags, axis=0),
-                't_stamps': self.t_stamps}
+def _corr_total(corr_data):
+    """
+    Compresses a list of dictionaries each containing a single scan of averaged, corrected data 
+    into a single dictionary containing corrected data for all scans.
+    Parameters:
+    -----------
+    corr_data : list of dict
+        dict's contain all of the following keys: 'vis','flags',
+        'weights', 'times', 'n_flags','targets, 't_stamps'
+    Returns:
+    --------
+    dict 
+      Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
+      of averaged, corrected data for all scans. Key 'targets' contains a list of target
+      strings corresponding to each scan, while 't_stamps' contains a list of numpy arrays 
+      of timestamps for each scan.  
+    """
+    total = {}
+    for key in ['vis','flags','weights','times','n_flags']:
+        stack = [] 
+        [stack.extend(d[key]) for d in corr_data]
+        total[key] = np.stack(stack, axis=0)
+    for key in ['targets','t_stamps']:
+        stack = []
+        [stack.extend(d[key]) for d in corr_data] 
+        total[key] = stack         
+    return total 
 
 
 class Task(object):
@@ -915,13 +907,8 @@ class Pipeline(Task):
     def run_pipeline(self, data):
         # run pipeline calibration
         target_slices, avg_corr = pipeline(data, self.telstate, self.stream_name)
-
-        # put corrected data into pipeline report queue
-        avg_corr_event = CorrectedData(avg_corr['targets'], avg_corr['vis'],
-                                       avg_corr['flags'], avg_corr['weights'],
-                                       avg_corr['times'], avg_corr['n_flags'], avg_corr['t_stamps'])
-
-        self.pipeline_report_queue.put(avg_corr_event)
+        # put corrected data into pipeline_report_queue
+        self.pipeline_report_queue.put(avg_corr)
         # send data to L1 SPEAD if necessary
         if self.l1_level != 0:
             config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.l1_rate)
@@ -1077,23 +1064,23 @@ class ReportWriter(Task):
         report_time_sensor = self.sensors['report-last-time']
         report_path_sensor = self.sensors['report-last-path']
         # Set initial value of averaged corrected data
-        av_corr = CorrectedData([], [], [], [], [], [], [])
+        av_corr = []
 
         while True:
             event = self.pipeline_report_queue.get()
             if isinstance(event, StopEvent):
                 break
-            if isinstance(event, CorrectedData):
+            if isinstance(event, dict):
                 logger.info('Corrected Data is in the queue')
-                av_corr = av_corr + event
+                av_corr.append(event)   
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.program_block_id)
                     start_time = time.time()
-                    av_corr = av_corr.total()
+                    av_corr = _corr_total(av_corr)
                     obs_dir = self.write_report(event.start_time, event.end_time, av_corr)
                     end_time = time.time()
-                    av_corr = CorrectedData([], [], [], [], [], [], [])
+                    av_corr = []
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)
