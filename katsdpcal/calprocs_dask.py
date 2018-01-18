@@ -8,8 +8,10 @@ rather than numpy arrays.
 """
 
 import logging
+import operator
 
 import numpy as np
+import dask
 import dask.array as da
 
 from . import calprocs
@@ -182,6 +184,43 @@ def wavg_full_t(data, flags, weights, solint, times=None):
         return av_data, av_flags, av_weights
 
 
+def _align_chunks(chunks, alignment):
+    """Compute a new chunking scheme where chunk boundaries are aligned.
+
+    `chunks` must be a dask chunks specification in normalised form.
+    `alignment` is a dictionary mapping axes to an alignment factor. The return
+    value is a new chunking scheme where all chunk sizes, except possibly the
+    last on each axis, is a multiple of that alignment.
+
+    The implementation tries to minimize the cost of rechunking to the new
+    scheme, while also minimising the number of chunks. Within each existing
+    chunk, the first and last alignment boundaries are split along (which may
+    be a no-op where the start/end of the chunk is already aligned).
+    """
+
+    out = list(chunks)
+    for axis, align in alignment.items():
+        sizes = []
+        in_pos = 0       # Sum of all processed incoming sizes
+        out_pos = 0      # Sum of generated sizes
+        for c in chunks[axis]:
+            in_end = in_pos + c
+            low = (in_pos + align - 1) // align * align    # first aligned point
+            if low > out_pos and low <= in_end:
+                sizes.append(low - out_pos)
+                out_pos = low
+            high = in_end // align * align             # last aligned point
+            if high > out_pos and high >= in_pos:
+                sizes.append(high - out_pos)
+                out_pos = high
+            in_pos = in_end
+        # May be a final unaligned piece
+        if out_pos < in_pos:
+            sizes.append(in_pos - out_pos)
+        out[axis] = tuple(sizes)
+    return tuple(out)
+
+
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     """
     Perform weighted average of data, flags and weights,
@@ -200,39 +239,46 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     av_flags   : weighted average of flags
     av_weights : weighted average of weights
     """
-    
-    inc_array = range(0, data.shape[1], chanav)
+    # We rechunk (if needed) to get blocks that are multiples of chanav
+    # long, then apply the non-dask version of wavg_full_f per block.
+    # This would be simple with da.core.map_blocks, but it doesn't
+    # support multiple outputs, so we need to do manual construction
+    # of the dask graphs.
+    def sub_array(name, idx, dtype):
+        graph = {
+            (name,) + key[1:]: (operator.getitem, (base_name,) + key[1:], idx)
+            for key in keys
+        }
+        dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
+                                   data.dask, flags.dask, weights.dask)
+        return da.Array(dsk, name, out_chunks, data.dtype)
 
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
+    chunks = _align_chunks(data.chunks, {1: chanav})
+    out_chunks = list(chunks)
+    # Divide by chanav, rounding up
+    out_chunks[1] = tuple((x + chanav - 1) // chanav for x in chunks[1])
+    out_chunks = tuple(out_chunks)
 
-    # Clear the elements that have a nan anywhere
-    isnan = np.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
-    
-    av_data = []
-    av_flags = []
-    av_weights = []
-    
-    for f in inc_array:
-        inc_weights = da.sum(flagged_weights[:,f:f+chanav,...], axis=1)
-        inc_data = da.sum(weighted_data[:,f:f+chanav,...], axis=1)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            inc_data = inc_data/inc_weights   
-        n_flags = da.sum(calprocs.asbool(flags[:,f:f+chanav,...]), axis=1)
-        inc_flags = n_flags > chanav * threshold
-        
-        av_data.append(inc_data)
-        av_flags.append(inc_flags)
-        av_weights.append(inc_weights)
-      
-    av_data = da.stack(av_data, axis=1)
-    av_flags = da.stack(av_flags, axis=1)
-    av_weights = da.stack(av_weights, axis=1)
+    data = data.rechunk(chunks)
+    flags = flags.rechunk(chunks)
+    weights = weights.rechunk(chunks)
 
+    token = da.core.tokenize(data, flags, weights, chanav, threshold)
+    base_name = 'wavg_full_f-' + token
+    keys = list(dask.core.flatten(data.__dask_keys__()))
+
+    base_graph = {
+        (base_name,) + key[1:]: (calprocs.wavg_full_f, key,
+                                 (flags.name,) + key[1:],
+                                 (weights.name,) + key[1:],
+                                 chanav, threshold)
+        for key in keys
+    }
+
+    av_data = sub_array('wavg_full_f-data-' + token, 0, data.dtype)
+    av_flags = sub_array('wavg_full_f-flags-' + token, 1, flags.dtype)
+    av_weights = sub_array('wavg_full_f-weights-' + token, 2, weights.dtype)
     return av_data, av_flags, av_weights
-
 
 
 def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):

@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import dask.array as da
 
-from katsdpcal import calprocs_dask
+from katsdpcal import calprocs, calprocs_dask
 from . import test_calprocs
 
 
@@ -48,6 +48,29 @@ class TestStefcal(test_calprocs.TestStefcal):
             return da.from_array(array, chunks=tuple(chunks))
 
 
+class TestAlignChunks(unittest.TestCase):
+    def test_simple(self):
+        old = ((15, 18, 15, 16, 8),)   # Boundaries: 0, 15, 33, 48, 64, 72
+        self.assertEqual(((12, 4, 16, 4, 12, 16, 8),), calprocs_dask._align_chunks(old, {0: 4}))
+
+    def test_already_aligned(self):
+        old = ((5, 10, 15, 5),)
+        self.assertEqual(old, calprocs_dask._align_chunks(old, {0: 5}))
+
+    def test_small_chunks(self):
+        old = ((1,) * 12,)
+        self.assertEqual(((5, 5, 2),), calprocs_dask._align_chunks(old, {0: 5}))
+
+    def test_align_1(self):
+        old = ((1, 2, 3, 4, 1),)
+        self.assertEqual(old, calprocs_dask._align_chunks(old, {0: 1}))
+
+    def test_multi_dimensions(self):
+        old = ((5, 5, 5), (4, 4, 4), (7, 7, 7))
+        self.assertEqual(((4, 4, 4, 3), (4, 4, 4), (6, 2, 6, 6, 1)),
+                         calprocs_dask._align_chunks(old, {0: 4, 2: 2}))
+
+
 class TestWavg(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs_dask.wavg`"""
     def setUp(self):
@@ -75,7 +98,7 @@ class TestWavg(unittest.TestCase):
         np.testing.assert_allclose(expected, actual, rtol=1e-6)
 
 
-class TestWavgFull(unittest.TestCase):
+class TestWavgFullT(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs_dask.wavg_full_t`"""
     def setUp(self):
         shape = (10, 5, 3, 10)
@@ -123,3 +146,48 @@ class TestWavgFull(unittest.TestCase):
             self.data, self.flags, self.weights, 10)
         self.assertEqual(False, out_flags[0, 0, 0, 0])
         self.assertEqual(True, out_flags[0, 0, 0, 1])
+
+
+class TestWavgFullF(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs_dask.wavg_full_f`
+
+    The tests just compare results against
+    :func:`katsdpcal.calprocs.wavg_full_f` (i.e., the non-dask version),
+    which is assumed to have its own tests.
+    """
+    def _test(self, shape, chunks, chanav):
+        rs = np.random.RandomState(seed=1)
+        data = rs.standard_normal(shape) + 1j * rs.standard_normal(shape)
+        data = data.astype(np.complex64)
+        weights = rs.uniform(size=shape).astype(np.float32)
+        flags = rs.uniform(size=shape) < 0.05
+        # Ensure some data values are NaN and some weights are zero
+        data[rs.uniform(size=shape) < 0.1] = np.nan
+        weights[rs.uniform(size=shape) < 0.1] = 0.0
+        # Ensure some whole chunks are flagged/zero-weight/nan
+        data[0, :, 0, 0] = np.nan
+        weights[0, :, 0, 1] = 0.0
+        flags[0, :, 0, 2] = True
+
+        ex_data, ex_flags, ex_weights = calprocs.wavg_full_f(data, flags, weights, chanav)
+
+        data = da.from_array(data, chunks=chunks)
+        flags = da.from_array(flags, chunks=chunks)
+        weights = da.from_array(weights, chunks=chunks)
+        av_data, av_flags, av_weights = calprocs_dask.wavg_full_f(data, flags, weights, chanav)
+
+        np.testing.assert_array_equal(ex_data, av_data.compute())
+        np.testing.assert_array_equal(ex_flags, av_flags.compute())
+        np.testing.assert_array_equal(ex_weights, av_weights.compute())
+
+    def test_aligned(self):
+        """Test where all chunks are aligned to chanav"""
+        self._test((40, 32, 2, 6), (4, 8, 2, 6), 4)
+
+    def test_overhang(self):
+        """Test where the chunk boundaries are aligned, but there is a leftover piece"""
+        self._test((40, 22, 2, 6), (4, (12, 4, 4, 2), 2, 3), 4)
+
+    def test_unaligned(self):
+        """Test where the chunk boundaries are not aligned at all"""
+        self._test((40, 22, 2, 6), (4, (3, 6, 5, 8), 1, 6), 4)
