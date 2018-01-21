@@ -297,7 +297,7 @@ def write_elevation(report, report_path, targets, refant_desc, av_corr):
     insert_fig(report_path, report, plot, name='El_v_time')
 
 
-def write_flag_summary(report, report_path, av_corr, dist, correlator_freq):
+def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=[0,1]):
     """
     Write the RFI summary
 
@@ -313,6 +313,8 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq):
         array of separations between antennas for baselines in av_corr
     correlator_freq : array
         array of correlator channel frequencies
+    pol : list 
+        description of polarisation axes, optional 
     """
     report.writeln('Percentage of time data is flagged')
     # Flags per scan weighted by length of scan
@@ -329,20 +331,20 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq):
     idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
     freq_range = [freq_chan[0], freq_chan[-1]]
 
-    plot = plotting.flags_bl_v_chan(tw_flags_sort, idx_chan, dist[idx_sort], freq_range)
+    plot = plotting.flags_bl_v_chan(tw_flags_sort, idx_chan, dist[idx_sort], freq_range, pol=pol)
     insert_fig(report_path, report, plot, name='Flags_bl_v_chan')
 
     report.writeln('Percentage of baselines flagged per scan')
     # Average % of baselines flagged per scan
     bl_flags = 100 * np.mean(tw_flags, axis=3)
     target_names = [katpoint.Target(_).name for _ in av_corr['targets']]
-    plot = plotting.flags_t_v_chan(bl_flags, idx_chan, target_names, freq_range)
+    plot = plotting.flags_t_v_chan(bl_flags, idx_chan, target_names, freq_range, pol=pol)
     insert_fig(report_path, report, plot, name='Flags_s_v_chan')
     report.writeln()
 
 
 def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
-                  refant_index, antenna_mask, correlator_freq):
+                  refant_index, antenna_mask, correlator_freq, pol=[0,1]):
     """
     Include plots of spectra of all scans of non gain-calibrated calibrators in report.
     The plots will only show baselines to reference antenna.
@@ -365,6 +367,8 @@ def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
            list of antenna names
     correlator_freq : array
            array of correlator channel frequencies
+    pol : list 
+        description of polarisation axes, optional 
     """
     if len(targets) > 0:
         report.write_heading_2(
@@ -397,14 +401,14 @@ def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
                 plot = plotting.plot_spec(
                     ant_data[ti, ..., idx: idx + ant_chunks], idx_chan,
                     antlist=antenna_mask[idx: idx + ant_chunks],
-                    freq_range=freq_range, title=plot_title)
+                    freq_range=freq_range, title=plot_title, pol=pol)
                 insert_fig(report_path, report, plot, name='Corr_v_Freq_{0}_ti_{1}_{2}'.format(
                     target_name.replace(' ', '_'), ti, idx))
                 report.writeln()
 
 
 def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
-                 cal_bls_lookup, correlator_freq, amp=False):
+                 cal_bls_lookup, correlator_freq, amp=False, pol=[0,1]):
     """
     Include plots of spectra of all scans of gain-calibrated calibrators in report.
 
@@ -426,6 +430,8 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
            array of correlator channel frequencies
     amp : bool, optional
            plot only amplitudes if True, else plot amplitude and phase
+    pol : list 
+        description of polarisation axes, optional 
     """
     if amp:
         suffix = ('', 'all target fields')
@@ -466,14 +472,14 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
             data = av_data[..., idx: idx + ant_chunks].compute()
             plot = plotting.plot_spec(
                 data, idx_chan, antlist=antenna_mask[idx: idx + ant_chunks],
-                freq_range=freq_range, title=plot_title, amp=amp)
+                freq_range=freq_range, title=plot_title, amp=amp, pol=pol)
 
             insert_fig(report_path, report, plot,
                        name='Corr_v_Freq_{0}_{1}'.format(target_name.replace(" ", "_"), idx))
             report.writeln()
 
 
-def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lookup):
+def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lookup, pol):
     """
     Include plots of amp and phase versus time of all scans of the given targets in report.
     The plots show data averaged per antenna, with 8 channels averaged in frequency.
@@ -492,6 +498,8 @@ def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lo
            list of antenna names
     cal_bls_lookup : :class:`np.ndarray`
            array of antenna indices in each baseline
+    pol : list 
+        description of polarisation axes, optional 
     """
     # Select all gain-calibrated calibrator scans
     av_data, av_flags, av_weights, av_times = select_data(av_corr, targets)
@@ -520,7 +528,7 @@ def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lo
         for idx in range(0, av_data.shape[-1], ant_chunks):
             plot = plotting.plot_corr_v_time(
                 av_times, av_data[..., idx: idx + ant_chunks],
-                antlist=antenna_mask[idx: idx + ant_chunks])
+                antlist=antenna_mask[idx: idx + ant_chunks], pol=pol)
             insert_fig(report_path, report, plot, name='Phase_v_Time_{0}'.format(idx))
             report.writeln()
 
@@ -534,14 +542,14 @@ def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lo
         for idx in range(0, av_data.shape[-1], ant_chunks):
             plot = plotting.plot_corr_v_time(av_times,
                                              av_data[..., idx: idx + ant_chunks], plottype='a',
-                                             antlist=antenna_mask[idx: idx + ant_chunks])
+                                             antlist=antenna_mask[idx: idx + ant_chunks], pol=pol)
 
             insert_fig(report_path, report, plot, name='Amp_v_Time_{0}'.format(idx))
             report.writeln()
 
 
 def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
-               cal_antlist_description, cal_array_position, correlator_freq, amp):
+               cal_antlist_description, cal_array_position, correlator_freq, amp, pol=[0,1]):
     """
     Include plots of amp and phase/amp versus uvdist in report.
     The plots show 8 channels averaged in frequency.
@@ -567,6 +575,8 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
            array of correlator channel frequencies
     amp : bool, optional
            plot only amplitudes if True, else plot amplitude and phase
+    pol : list 
+        description of polarisation axes, optional 
     """
     if amp:
         suffix = ('', 'all target fields')
@@ -606,13 +616,13 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
             plot_title = 'Target {0}'.format(target_name)
         else:
             plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
-        plot = plotting.plot_corr_uvdist(uvdist, av_data, freq_chan, plot_title, amp)
+        plot = plotting.plot_corr_uvdist(uvdist, av_data, freq_chan, plot_title, amp, pol=pol)
         insert_fig(report_path, report, plot,
                    name='Corr_v_UVdist_{0}'.format(target_name.replace(" ", "_")))
         report.writeln()
 
 
-def write_products(report, report_path, ts, st, et, antenna_mask, correlator_freq):
+def write_products(report, report_path, ts, st, et, antenna_mask, correlator_freq, pol=[0,1]):
     """
     Include calibration product plots in the report
 
@@ -645,7 +655,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     vals, times = get_cal(ts, cal, st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Delay', '([ns])')
-        write_K(report, report_path, times, vals, antenna_mask)
+        write_K(report, report_path, times, vals, antenna_mask, pol)
 
     # ---------------------------------
     # cross pol delay
@@ -663,7 +673,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     vals, times = get_cal(ts, cal, st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Bandpass')
-        write_B(report, report_path, times, vals, antenna_mask, correlator_freq)
+        write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol)
 
     # ---------------------------------
     # gain
@@ -674,7 +684,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
         for idx in range(0, vals.shape[-1], ant_chunks):
             plot = plotting.plot_g_solns_legend(
                 times, vals[..., idx: idx + ant_chunks],
-                antlist=antenna_mask[idx: idx + ant_chunks])
+                antlist=antenna_mask[idx: idx + ant_chunks], pol=pol)
             insert_fig(report_path, report, plot, name='{0}'.format(cal))
 
 
@@ -710,7 +720,7 @@ def get_cal(ts, cal, st, et):
     return vals, times
 
 
-def write_K(report, report_path, times, vals, antenna_mask):
+def write_K(report, report_path, times, vals, antenna_mask, pol=[0,1]):
     """
     Include table of delays and delay plots in cal report
 
@@ -726,7 +736,8 @@ def write_K(report, report_path, times, vals, antenna_mask):
         delay solutions
     antenna_mask : list
         list of antenna names
-
+    pol : list 
+        description of polarisation axes, optional 
     """
     # convert delays to nano seconds
     vals = 1e9 * vals
@@ -737,11 +748,11 @@ def write_K(report, report_path, times, vals, antenna_mask):
         logger.info('  pol{0} shape: {1}'.format(p, kpol.shape))
         write_table_timecol(report, antenna_mask, times, kpol)
 
-    plot = plotting.plot_delays(times, vals, antlist=antenna_mask)
+    plot = plotting.plot_delays(times, vals, antlist=antenna_mask, pol=pol)
     insert_fig(report_path, report, plot, name='K')
 
 
-def write_B(report, report_path, times, vals, antenna_mask, correlator_freq):
+def write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol=[0,1]):
     """
     Include plots of bandpass solutions at all given times in report
 
@@ -759,6 +770,8 @@ def write_B(report, report_path, times, vals, antenna_mask, correlator_freq):
         list of antenna names
     chanidx : float
         number of channels solutions
+    pol : list 
+        description of polarisation axes, optional 
     """
     # B shape is n_time, n_chan, n_pol, n_ant
     freq_range = [correlator_freq[0], correlator_freq[-1]]
@@ -772,7 +785,7 @@ def write_B(report, report_path, times, vals, antenna_mask, correlator_freq):
             plot = plotting.plot_spec(
                 vals[ti, ..., idx: idx + ant_chunks], chan_no,
                 antlist=antenna_mask[idx: idx + ant_chunks],
-                freq_range=freq_range)
+                freq_range=freq_range, pol=pol)
             insert_fig(report_path, report, plot,
                        name='B_ti_{0}_{1}'.format(ti, idx))
 
@@ -851,6 +864,8 @@ def select_data(av_corr, t_list):
     flags = av_corr['flags'][idx]
     weights = av_corr['weights'][idx]
     times = av_corr['times'][idx]
+    if type(times) == np.float64:
+        times=np.array([times]) 
 
     return data, flags, weights, times
 
@@ -1039,17 +1054,18 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
 
         correlator_freq = ts['cal_channel_freqs'] / 1e6
         cal_bls_lookup = ts['cal_bls_lookup']
-
+        pol_order=ts['cal_pol_ordering']
+        pol = [_[0].upper() for _ in pol_order if _[0]==_[1]]
         if len(av_corr['targets']) > 0:
             dist = calc_enu_sep(ant_desc, cal_bls_lookup)
-            write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq)
+            write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq, pol)
         else:
             logger.info(' - no calibrated data')
 
         # --------------------------------------------------------------------
         # add cal products to report
         antenna_mask = ts.cal_antlist
-        write_products(cal_rst, report_path, ts, st, et, antenna_mask, correlator_freq)
+        write_products(cal_rst, report_path, ts, st, et, antenna_mask, correlator_freq, pol)
         logger.info('Calibration solution summary')
 
         # --------------------------------------------------------------------
@@ -1069,22 +1085,22 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
             & ((cal_bls_lookup[:, 0] != cal_bls_lookup[:, 1])))[0]
 
         write_ng_freq(cal_rst, report_path, nogain, av_corr, ant_idx,
-                      refant_index, antenna_mask, correlator_freq)
+                      refant_index, antenna_mask, correlator_freq, pol)
         write_g_freq(cal_rst, report_path, gain, av_corr, antenna_mask,
-                     cal_bls_lookup, correlator_freq, amp=False)
-        write_g_time(cal_rst, report_path, gain, av_corr, antenna_mask, cal_bls_lookup)
+                     cal_bls_lookup, correlator_freq, amp=False, pol=pol)
+        write_g_time(cal_rst, report_path, gain, av_corr, antenna_mask, cal_bls_lookup, pol)
 
         cal_array_position = ts['cal_array_position']
         write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
-                   ant_desc, cal_array_position, correlator_freq, amp=False)
+                   ant_desc, cal_array_position, correlator_freq, amp=False, pol=pol)
 
         # --------------------------------------------------------------------
         # Corrected data : Targets
         cal_rst.write_heading_1('Calibrated Target Fields')
         write_g_freq(cal_rst, report_path, target, av_corr, antenna_mask,
-                     cal_bls_lookup, correlator_freq, amp=True)
+                     cal_bls_lookup, correlator_freq, amp=True, pol=pol)
         write_g_uv(cal_rst, report_path, target, av_corr, cal_bls_lookup,
-                   ant_desc, cal_array_position, correlator_freq, amp=True)
+                   ant_desc, cal_array_position, correlator_freq, amp=True, pol=pol)
 
         cal_rst.writeln()
 
