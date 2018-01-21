@@ -490,11 +490,17 @@ def plot_delays(times, data, antlist=None, pol=[0,1]):
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
+    if len(times) == 1:
+       low=datetime.datetime.utcfromtimestamp(times-60)
+       high=datetime.datetime.utcfromtimestamp(times+60)
+       for p in range(npols):
+           axes[0, p].set_xlim(low, high)
 
     for p in range(npols):
         p1 = axes[0, p].plot(datetimes, data[:, p, :], marker='.', ls='dotted')
-        axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
+        axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))    
         time_label(axes[0,p],[datetimes[0],datetimes[-1]])
+
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
 
@@ -641,7 +647,7 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
     
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-
+    
     for p in range(npols):
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
@@ -655,6 +661,12 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
             # Reset the colour cycle, so that all channels have the same plot color
             axes[p, 0].set_prop_cycle(None)
             plt.setp(axes[p, 0].get_xticklabels(), visible=False)
+
+    if len(times) == 1:
+       low=datetime.datetime.utcfromtimestamp(times-60)
+       high=datetime.datetime.utcfromtimestamp(times+60)
+       for p in range(npols):
+           axes[p, 0].set_xlim(low, high)
 
     # For the final row, add in xticklabels and xlabel
     l_p = npols - 1
