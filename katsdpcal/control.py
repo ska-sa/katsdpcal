@@ -53,6 +53,7 @@ class EnumEncoder(json.JSONEncoder):
 
 class ObservationEndEvent(object):
     """An observation has finished upstream"""
+
     def __init__(self, program_block_id, start_time, end_time):
         self.program_block_id = program_block_id
         self.start_time = start_time
@@ -65,6 +66,7 @@ class ObservationStateEvent(object):
     This is sent from each component to the master queue to update the
     katcp sensor.
     """
+
     def __init__(self, program_block_id, state):
         self.program_block_id = program_block_id
         self.state = state
@@ -76,18 +78,21 @@ class StopEvent(object):
 
 class BufferReadyEvent(object):
     """Indicates to the pipeline that the buffer is ready for it."""
+
     def __init__(self, slots):
         self.slots = slots
 
 
 class BufferFreeEvent(object):
     """Indicates to the accumulator that some slots are available again."""
+
     def __init__(self, slots):
         self.slots = slots
 
 
 class SensorReadingEvent(object):
     """An update to a sensor sent to the master"""
+
     def __init__(self, name, reading):
         self.name = name
         self.reading = reading
@@ -95,6 +100,7 @@ class SensorReadingEvent(object):
 
 class QueueObserver(object):
     """katcp Sensor observer that forwards updates to a queue"""
+
     def __init__(self, queue):
         self._queue = queue
 
@@ -151,7 +157,7 @@ def _slots_slices(slots):
 
 def _corr_total(corr_data):
     """
-    Compresses a list of dictionaries each containing a single scan of averaged, corrected data 
+    Compresses a list of dictionaries each containing a single scan of averaged, corrected data
     into a single dictionary containing corrected data for all scans.
     Parameters:
     -----------
@@ -160,22 +166,22 @@ def _corr_total(corr_data):
         'weights', 'times', 'n_flags','targets, 't_stamps'
     Returns:
     --------
-    dict 
+    dict
       Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
       of averaged, corrected data for all scans. Key 'targets' contains a list of target
-      strings corresponding to each scan, while 't_stamps' contains a list of numpy arrays 
-      of timestamps for each scan.  
+      strings corresponding to each scan, while 't_stamps' contains a list of numpy arrays
+      of timestamps for each scan.
     """
     total = {}
-    for key in ['vis','flags','weights','times','n_flags']:
-        stack = [] 
+    for key in ['vis', 'flags', 'weights', 'times', 'n_flags']:
+        stack = []
         [stack.extend(d[key]) for d in corr_data]
         total[key] = np.stack(stack, axis=0)
-    for key in ['targets','t_stamps']:
+    for key in ['targets', 't_stamps']:
         stack = []
-        [stack.extend(d[key]) for d in corr_data] 
-        total[key] = stack         
-    return total 
+        [stack.extend(d[key]) for d in corr_data]
+        total[key] = stack
+    return total
 
 
 class Task(object):
@@ -779,7 +785,7 @@ class Accumulator(object):
                 slot = slots[-1]
 
             channel0 = ig['frequency'].value
-            channel_slice = np.s_[channel0: channel0 + ig['flags'].shape[0]]
+            channel_slice = np.s_[channel0 : channel0 + ig['flags'].shape[0]]
             # reshape data and put into relevent arrays
             self._update_buffer(self.buffers['vis'][slot, channel_slice],
                                 ig['correlator_data'].value, self.ordering)
@@ -1072,7 +1078,7 @@ class ReportWriter(Task):
                 break
             if isinstance(event, dict):
                 logger.info('Corrected Data is in the queue')
-                av_corr.append(event)   
+                av_corr.append(event)
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.program_block_id)

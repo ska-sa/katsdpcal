@@ -16,16 +16,17 @@ import katpoint
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# No of antennas per plot 
-ant_chunks=16 
+# No of antennas per plot
+ant_chunks = 16
 # No of channels for plots which aren't spectra
-plot_channels=8
+plot_channels = 8
 # Tag blacklist
-tag_whitelist=['gain','bfcal','delaycal','polcal','bpcal','target']
+tag_whitelist = ['gain', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 
 # --------------------------------------------------------------------------------------------------
 # --- CLASS :  rstReport
 # --------------------------------------------------------------------------------------------------
+
 
 class rstReport(file):
     """
@@ -44,7 +45,7 @@ class rstReport(file):
 
     def write_heading_1(self, heading):
         self.write_heading(heading, '*')
-   
+
     def write_heading_2(self, heading):
         self.write_heading(heading, '=')
 
@@ -61,25 +62,25 @@ class rstReport(file):
 # --- FUNCTION :  Report writing functions
 # --------------------------------------------------------------------------------------------------
 def utc_tstr(t_stamp, day=False):
-    """ 
-    Returns a formatted UTC time string 
+    """
+    Returns a formatted UTC time string
 
     Parameters
     ----------
     t_stamp : float
          unix_timestamp
-    day : bool, optional 
-         if true don't include the year and 
+    day : bool, optional
+         if true don't include the year and
          month in the time string
     Returns
     -------
-    str : formatted time string 
-    """ 
-    time=datetime.datetime.utcfromtimestamp(t_stamp)
-    time_format="%Y-%m-%d %H:%M:%S"
+    str : formatted time string
+    """
+    time = datetime.datetime.utcfromtimestamp(t_stamp)
+    time_format = "%Y-%m-%d %H:%M:%S"
     if day:
-        time_format="%d %H:%M:%S"        
-    time_string=time.strftime(time_format)
+        time_format = "%d %H:%M:%S"
+    time_string = time.strftime(time_format)
     return time_string
 
 
@@ -152,7 +153,7 @@ def write_summary(report, ts, stream_name, st=None, et=None):
     """
     # write RST style bulletted list
 
-    report.writeln('* Start time:  '+utc_tstr(st))
+    report.writeln('* Start time:  ' + utc_tstr(st))
 
     # telescope state values
     write_bullet_if_present(report, ts, 'Int time', stream_name + '_int_time')
@@ -205,7 +206,7 @@ def write_table_timerow(report, colnames, times, data):
     report.writeln(" ".join([h.ljust(col_width) for h in header]))
     report.writeln(col_header * n_entries)
 
-    timestrings = [utc_tstr(t,True) for t in times]
+    timestrings = [utc_tstr(t, True) for t in times]
 
     # add each time row to the table
     for t, d in zip(timestrings, data):
@@ -239,7 +240,7 @@ def write_table_timecol(report, antennas, times, data):
     col_header = '=' * col_width + ' '
 
     # create table header
-    timestrings = [utc_tstr(t,day = 'True') for t in times]
+    timestrings = [utc_tstr(t, day='True') for t in times]
     header = " ".join(["{}".format(t,).ljust(col_width) for t in timestrings])
     header = 'Ant'.ljust(col_width + 1) + header
 
@@ -297,7 +298,7 @@ def write_elevation(report, report_path, targets, refant_desc, av_corr):
     insert_fig(report_path, report, plot, name='El_v_time')
 
 
-def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=[0,1]):
+def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=[0, 1]):
     """
     Write the RFI summary
 
@@ -309,12 +310,12 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
         path where report is written
     av_corr : dict
         dictionary containing averaged, corrected data
-    dist : array
-        array of separations between antennas for baselines in av_corr
-    correlator_freq : array
-        array of correlator channel frequencies
-    pol : list 
-        description of polarisation axes, optional 
+    dist : :class:`np.ndarray`
+        real (nbls), separations between antennas for baselines in av_corr
+    correlator_freq : :class:`np.ndarray`
+        real (nchan) of correlator channel frequencies
+    pol : list
+        description of polarisation axes, optional
     """
     report.writeln('Percentage of time data is flagged')
     # Flags per scan weighted by length of scan
@@ -344,7 +345,7 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
 
 
 def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
-                  refant_index, antenna_mask, correlator_freq, pol=[0,1]):
+                  refant_index, antenna_mask, correlator_freq, pol=[0, 1]):
     """
     Include plots of spectra of all scans of non gain-calibrated calibrators in report.
     The plots will only show baselines to reference antenna.
@@ -359,16 +360,16 @@ def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
            list of target strings for the targets to plot
     av_corr : dict
            dictionary of averaged corrected data
-    ant_idx : array of int
-           array of indices of all baselines to the reference antenna
+    ant_idx : :class:`np.ndarray` of int
+           int, (n_ants) indices of all baselines to the reference antenna
     refant_index : int
            index of reference antenna
     antenna_mask : list
            list of antenna names
-    correlator_freq : array
-           array of correlator channel frequencies
-    pol : list 
-        description of polarisation axes, optional 
+    correlator_freq : :class:`np.ndarray`
+           real (nchan), correlator channel frequencies
+    pol : list
+        description of polarisation axes, optional
     """
     if len(targets) > 0:
         report.write_heading_2(
@@ -408,7 +409,7 @@ def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
 
 
 def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
-                 cal_bls_lookup, correlator_freq, amp=False, pol=[0,1]):
+                 cal_bls_lookup, correlator_freq, amp=False, pol=[0, 1]):
     """
     Include plots of spectra of all scans of gain-calibrated calibrators in report.
 
@@ -425,13 +426,13 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
     antenna_mask : list
            list of antenna names
     cal_bls_lookup : :class:`np.ndarray`
-           array of antenna indices in each baseline
+           int (nbls x 2), of antenna indices in each baseline
     correlator_freq : :class:`np.ndarray`
-           array of correlator channel frequencies
+           real (ncha), correlator channel frequencies
     amp : bool, optional
            plot only amplitudes if True, else plot amplitude and phase
-    pol : list 
-        description of polarisation axes, optional 
+    pol : list
+        description of polarisation axes, optional
     """
     if amp:
         suffix = ('', 'all target fields')
@@ -498,8 +499,8 @@ def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lo
            list of antenna names
     cal_bls_lookup : :class:`np.ndarray`
            array of antenna indices in each baseline
-    pol : list 
-        description of polarisation axes, optional 
+    pol : list
+        description of polarisation axes, optional
     """
     # Select all gain-calibrated calibrator scans
     av_data, av_flags, av_weights, av_times = select_data(av_corr, targets)
@@ -549,7 +550,7 @@ def write_g_time(report, report_path, targets, av_corr, antenna_mask, cal_bls_lo
 
 
 def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
-               cal_antlist_description, cal_array_position, correlator_freq, amp, pol=[0,1]):
+               cal_antlist_description, cal_array_position, correlator_freq, amp, pol=[0, 1]):
     """
     Include plots of amp and phase/amp versus uvdist in report.
     The plots show 8 channels averaged in frequency.
@@ -572,11 +573,11 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
     cal_array_position : str
            description string of array position
     correlator_freq : :class:`np.ndarray`
-           array of correlator channel frequencies
+           real (nchan) correlator channel frequencies
     amp : bool, optional
            plot only amplitudes if True, else plot amplitude and phase
-    pol : list 
-        description of polarisation axes, optional 
+    pol : list
+        description of polarisation axes, optional
     """
     if amp:
         suffix = ('', 'all target fields')
@@ -622,7 +623,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         report.writeln()
 
 
-def write_products(report, report_path, ts, st, et, antenna_mask, correlator_freq, pol=[0,1]):
+def write_products(report, report_path, ts, st, et, antenna_mask, correlator_freq, pol=[0, 1]):
     """
     Include calibration product plots in the report
 
@@ -641,7 +642,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     antenna_mask : list
            list of antenna names
     correlator_freq : :class:`np.ndarray`
-           array of correlator channel frequencies
+           real (nchans), correlator channel frequencies
 
     """
 
@@ -704,8 +705,10 @@ def get_cal(ts, cal, st, et):
         end time for reporting parameters, seconds
     Returns:
     --------
-    vals : array of values of calibration product
-    times : array of times of calibration product
+    vals : :class:`np.ndarray`
+       values of calibration product
+    times : :class:`np.ndarray`
+       times of calibration product
     """
     cal_product = 'cal_product_' + cal
     vals, times = [], []
@@ -720,7 +723,7 @@ def get_cal(ts, cal, st, et):
     return vals, times
 
 
-def write_K(report, report_path, times, vals, antenna_mask, pol=[0,1]):
+def write_K(report, report_path, times, vals, antenna_mask, pol=[0, 1]):
     """
     Include table of delays and delay plots in cal report
 
@@ -736,8 +739,8 @@ def write_K(report, report_path, times, vals, antenna_mask, pol=[0,1]):
         delay solutions
     antenna_mask : list
         list of antenna names
-    pol : list 
-        description of polarisation axes, optional 
+    pol : list
+        description of polarisation axes, optional
     """
     # convert delays to nano seconds
     vals = 1e9 * vals
@@ -752,7 +755,7 @@ def write_K(report, report_path, times, vals, antenna_mask, pol=[0,1]):
     insert_fig(report_path, report, plot, name='K')
 
 
-def write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol=[0,1]):
+def write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol=[0, 1]):
     """
     Include plots of bandpass solutions at all given times in report
 
@@ -770,8 +773,8 @@ def write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol
         list of antenna names
     chanidx : float
         number of channels solutions
-    pol : list 
-        description of polarisation axes, optional 
+    pol : list
+        description of polarisation axes, optional
     """
     # B shape is n_time, n_chan, n_pol, n_ant
     freq_range = [correlator_freq[0], correlator_freq[-1]]
@@ -817,16 +820,16 @@ def get_freq_info(correlator_freq, nchan):
 
     Parameters
     -----------
-    correlator_freq : array
+    correlator_freq : :class:`np.ndarray`
          array of correlator channel frequencies
     nchan : int
          no of averaged channels
     Returns
     -------
-    avchan : array
-       array of mean channel indices in correlator channels
-    avfreq : array
-       array of mean frequencies of averaged channels
+    avchan : :class:`np.ndarray`
+       real (nchan) of mean channel indices in correlator channels
+    avfreq : :class:`np.ndarray`
+       real (nchan) of mean frequencies of averaged channels
     """
 
     nc_chan = correlator_freq.shape[0]
@@ -864,8 +867,8 @@ def select_data(av_corr, t_list):
     flags = av_corr['flags'][idx]
     weights = av_corr['weights'][idx]
     times = av_corr['times'][idx]
-    if type(times) == np.float64:
-        times=np.array([times]) 
+    if isinstance(times, np.float64):
+        times = np.array([times])
 
     return data, flags, weights, times
 
@@ -919,10 +922,10 @@ def calc_elevation(refant_desc, times, target):
 
       Returns
       -------
-      times : array
-          array of timestamps
-      elevation : array
-          array of elevations
+      times : :class:`np.ndarray`
+          real, (ntimes) timestamps
+      elevation : :class:`np.ndarray`
+          real, (ntimes) of elevations
       """
     kat_refant = katpoint.Antenna(refant_desc)
     kat_target = katpoint.Target(target)
@@ -941,14 +944,15 @@ def calc_uvdist(target, freq, times, cal_bls_lookup, cal_antlist_description, ca
         telescope state
     target : str
          target string
-    frequencies : array
-         array of frequencies
-    times : array
-         array of times
+    frequencies : :class:`np.ndarray`
+         real, (nchan) frequencies
+    times : :class:`np.ndarray`
+         real, (ntimes) times
 
     Returns
     -------
-    array of UV distances in wavelengths
+    uvdist : :class:`np.ndarray`
+        real, (nbls) UV distances in wavelengths
     """
     wl = katpoint.lightspeed / freq
     cross_idx = np.where(cal_bls_lookup[:, 0] !=
@@ -974,7 +978,8 @@ def calc_enu_sep(ant_desc, bls_lookup):
 
     Returns
     -------
-    array of separations for baselines in bls_lookup
+    sep: :class:`np.ndarray`
+         real (nbls), separations for baselines in bls_lookup
     """
 
     cross_idx = np.where(bls_lookup[:, 0] != bls_lookup[:, 1])[0]
@@ -1054,8 +1059,8 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
 
         correlator_freq = ts['cal_channel_freqs'] / 1e6
         cal_bls_lookup = ts['cal_bls_lookup']
-        pol_order=ts['cal_pol_ordering']
-        pol = [_[0].upper() for _ in pol_order if _[0]==_[1]]
+        pol_order = ts['cal_pol_ordering']
+        pol = [_[0].upper() for _ in pol_order if _[0] == _[1]]
         if len(av_corr['targets']) > 0:
             dist = calc_enu_sep(ant_desc, cal_bls_lookup)
             write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq, pol)

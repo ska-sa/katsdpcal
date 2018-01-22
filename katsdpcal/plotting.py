@@ -1,25 +1,21 @@
-import time
-
 import datetime
+
 import numpy as np
 import matplotlib.dates as md
-from matplotlib.ticker import MaxNLocator
+import matplotlib.pylab as plt
 
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
 use('Agg', warn=False)
-
-import matplotlib.pylab as plt
-from matplotlib.ticker import FuncFormatter
 
 # for multiple page pdf plotting
 from matplotlib.backends.backend_pdf import PdfPages
 
 # PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
 
-#Figure sizes
-fig_x=10.0
-fig_y=4 
+# Figure sizes
+fig_x = 10.0
+fig_y = 4
 
 
 def flush_plots(fig_list, report_name='cal_report.pdf'):
@@ -225,42 +221,47 @@ def plot_g_solns_with_errors(times, data, stddev):
     return fig
 
 
-def plot_g_solns_legend(times, data, antlist=None, pol=[0,1]):
+def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
     """
     Plots gain solutions
 
     Parameters
     ----------
-    data   : array of complex, shape(num_times,num_pols,num_ants)
-    pol : list 
-        list of polarisation descriptions, optional 
+    times  :  :class:`np.ndarray`
+       real, shape(num_times)
+    data   :  :class:`np.ndarray`
+        complex, shape(num_times,num_pols,num_ants)
+    antlist: list of str
+        antenna names for legend, optional
+    pol : list
+        list of polarisation descriptions, optional
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
-    
+
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-    
+
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
                              squeeze=False, sharey='col')
     for p in range(npols):
         # plot amplitude
         p1 = axes[p, 0].plot(datetimes, np.abs(data[:, p, :]), '.-')
-        axes[p, 0].set_ylabel('Amplitude'+' Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(pol[p]))
 
         # plot phase
         axes[p, 1].plot(datetimes, np.angle(data[:, p, :], deg=True), '.-')
-        axes[p, 1].set_ylabel('Phase'+' Pol_{0}'.format(pol[p]))
+        axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(pol[p]))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
     # for the last row, add in xticklabels and xlabels
-    l_p = npols-1
+    l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
     plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
-    time_label(axes[l_p,0],[datetimes[0],datetimes[-1]])
-    time_label(axes[l_p,1],[datetimes[0],datetimes[-1]])
+    time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
+    time_label(axes[l_p, 1], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
@@ -268,29 +269,37 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0,1]):
     return fig
 
 
-def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0,1]):
+def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
     """
     Make a waterfall plot of flagged data in Channels vs Baselines
 
     Parameters
     ----------
-    data    : array of real, shape(num_chans, num_pol, num_baselines)
-    freq_range : list of start and stop frequencies of the array, optional
-    pol : list 
-        list of polarisation descriptions, optional 
+    data    :  :class:`np.ndarray`
+        complex, shape(num_chans, num_pol, num_baselines)
+    chan    :  :class:`np.ndarray`
+        real, shape(num_chans), index numbers of the chan axis.
+    uvdist    :  :class:`np.ndarray`
+        real, shape(num_bls), UVdist of each baseline
+    freq_range : list
+        list of start and stop frequencies of the array, optional
+    pol : list
+        list of polarisation descriptions, optional
     """
     npols = data.shape[-2]
     nbls = data.shape[-1]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
+    fig, axes = plt.subplots(nrows, ncols, figsize=(
+        ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
     for p in range(npols):
-        im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(chan[0],chan[-1],0,nbls), aspect='auto', origin='lower')
+        im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
+            chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
     bl_labels(axes[0, 0], uvlist)
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
-   
+
     # Add colorbar
     cax = fig.add_axes([0.92, 0.12, 0.02, 0.75])
     cb = fig.colorbar(im, cax=cax)
@@ -298,8 +307,9 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0,1]):
 
     if freq_range is not None:
         for ax in axes.flatten()[0:2]:
-            add_freq_axis(ax,chan_range=[chan[0],chan[-1]],freq_range=freq_range)
+            add_freq_axis(ax, chan_range=[chan[0], chan[-1]], freq_range=freq_range)
     return fig
+
 
 def bl_labels(ax, seplist):
     """
@@ -310,44 +320,51 @@ def bl_labels(ax, seplist):
     ax : : class: `matplotlib.axes.Axes`
          axes to add ticklabels to
     seplist : :class:`np.ndarray`
-         array of labels corresponding to integer positions in ax 
+         real (n_bls) of labels corresponding to baseline positions in ax
 
     """
     ax.locator_params(axis='y', integer=True)
     yticks = ax.get_yticks()
-    # select only ticks with valid separations 
-    idx=[all(_) for _ in zip(yticks>=0,yticks<len(seplist))]
+    # select only ticks with valid separations
+    idx = [all(_) for _ in zip(yticks >= 0, yticks < len(seplist))]
     yticks = np.int_(yticks[idx])
-  
+
     septicks = seplist[yticks]
     ax.set_yticks(yticks)
     ax.set_yticklabels(np.int_(septicks))
 
-def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0,1]):
+
+def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     """
     Make a waterfall plot of flagged data in channels vs time
 
     Parameters
     ----------
-    data    : array of real, shape(num_times, num_chans, num_pol)
-    chan    :  array of real, shape(num_chans)
-    targets : list of targets in each scan 
-    freq_range : list of start and stop frequencies of the array, optional
-    pol : list 
-        list of polarisation descriptions, optional 
+    data    :  :class:`np.ndarray`
+        complex, shape(num_times, num_chans, num_pol)
+    chan    :   :class:`np.ndarray`
+        real, shape(num_chans), index number of chan axis
+    targets : list of str
+        target names/labels for targets in each scan
+    freq_range : list
+        start and stop frequencies of the array, optional
+    pol : list
+        list of polarisation descriptions, optional
     """
     npols = data.shape[-1]
     nscans = data.shape[0]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
+    fig, axes = plt.subplots(nrows, ncols, figsize=(
+        ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
     for p in range(npols):
-        im = axes[0, p].imshow(data[..., p], extent=(chan[0],chan[-1],0,nscans), aspect='auto', origin='lower')
+        im = axes[0, p].imshow(data[..., p], extent=(
+            chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
-    
-    axes[0, 0].set_yticks(np.arange(0,len(targets)))
+
+    axes[0, 0].set_yticks(np.arange(0, len(targets)))
     axes[0, 0].set_yticklabels(targets)
     for label in axes[0, 0].get_yticklabels():
         label.set_verticalalignment('baseline')
@@ -357,25 +374,37 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0,1]):
     cb.set_label('% baselines flagged')
 
     if freq_range is not None:
-        for ax in axes.flatten()[0:2]:
-            add_freq_axis(ax,chan_range=[chan[0],chan[-1]],freq_range=freq_range)  
+        for ax in axes.flatten()[0: 2]:
+            add_freq_axis(ax, chan_range=[chan[0], chan[-1]], freq_range=freq_range)
     return fig
 
 
 def time_label(ax, timerange):
     """
     Format the label and ticklabels for time axis of a plot
+
+    Parameters
+    ----------
+    ax : : class: `matplotlib.axes.Axes`
+        axes to add the xaxis labels to
+    timerange : list of :class: `datetime.datetime`
+        start and stop times of the plot
     """
     # Format the xticklabels to display h:m:s
     xfmt = md.DateFormatter('%H:%M:%S')
     ax.xaxis.set_major_formatter(xfmt)
 
+    if timerange[0] == timerange[-1]:
+        low = timerange[0] - datetime.timedelta(seconds=60)
+        high = timerange[0] + datetime.timedelta(seconds=60)
+        ax.set_xlim(low, high)
+
     if timerange[0].date() == timerange[-1].date():
         datelabel = timerange[0].strftime('%Y-%m-%d')
     else:
-        datelabel = timerange[0].strftime('%Y-%m-%d')+' -- '+timerange[-1].strftime('%Y-%m-%d')
-    # Display the date in the label 
-    ax.set_xlabel('Times (UTC) \n Date: '+datelabel)
+        datelabel = timerange[0].strftime('%Y-%m-%d') + ' -- ' + timerange[-1].strftime('%Y-%m-%d')
+    # Display the date in the label
+    ax.set_xlabel('Times (UTC) \n Date: ' + datelabel)
 
 
 def plot_el_v_time(targets, times, elevations, title=None):
@@ -384,43 +413,51 @@ def plot_el_v_time(targets, times, elevations, title=None):
 
     Parameters
     ----------
-    targets : list of names of targets for plot legend
-    times    : list of arrays of times for each target
-    elevations : list of arrays of elevations for each target
-    t_zero : start time of observation for x-label
-    title : text for title of the plot, optional
+    targets : list of str
+       names of targets for plot legend
+    times    : list of :class:`np.ndarray`
+       real, times for each target
+    elevations : list of  :class:`np.ndarray`
+       real, elevations for each target
+    title : str, optional
+       title of the plot
     """
-    fig, axes = plt.subplots(1, 1, figsize=(2*fig_x, fig_y))
+    fig, axes = plt.subplots(1, 1, figsize=(2 * fig_x, fig_y))
     if title is not None:
         fig.suptitle(title, y=0.95)
 
-    t_zero = min([np.min(t) for t in times]) 
+    t_zero = min([np.min(t) for t in times])
     t_max = max([np.max(t) for t in times])
-    t_zero = datetime.datetime.utcfromtimestamp(t_zero) 
+    t_zero = datetime.datetime.utcfromtimestamp(t_zero)
     t_max = datetime.datetime.utcfromtimestamp(t_max)
 
     for idx, target in enumerate(targets):
-        datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times[idx]] 
+        datetimes = [datetime.datetime.utcfromtimestamp(
+            unix_timestamp) for unix_timestamp in times[idx]]
         axes.plot(datetimes, np.rad2deg(elevations[idx]), '.', label=target)
-    
+
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
-    time_label(axes, [t_zero,t_max])
+    time_label(axes, [t_zero, t_max])
     return fig
 
 
-def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,1]):
+def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0, 1]):
     """
     Plots Amplitude and Phase vs UVdist
 
     Parameters
     ----------
-    uvdist  : array of real, shape(num_times, num_chans, num_baselines)
-    data    : array of complex, shape(num_times,num_chans, num_pol, num_baselines)
-    freqlist : list of frequencies for legend, optional
-    title : text for title of plot, optional
-    pol : list 
-        list of polarisation descriptions, optional 
+    uvdist :  :class:`np.ndarray`
+        real, shape(num_baselines)
+    data :  :class:`np.ndarray`
+       complex, shape(num_times,num_chans, num_pol, num_baselines)
+    freqlist : list, optional
+       frequencies for legend
+    title : str, optional
+       title of plot
+    pol : list, optional
+        list of polarisation descriptions
     """
 
     npols = data.shape[-2]
@@ -439,20 +476,20 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
 
             if amp:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                                 np.absolute(data[i, :, p, :]).transpose(), '.')
+                                np.absolute(data[i, :, p, :]).transpose(), '.')
             else:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                            np.angle(data[i, :, p, :], deg=True).transpose(), '.')
-           
+                                np.angle(data[i, :, p, :], deg=True).transpose(), '.')
+
             # Reset color cycle so that channels have the same color
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
-        
+
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
         if amp:
             axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
-            low_ylim,upper_ylim=amp_range(data)
-            axes[p, 1].set_ylim(low_ylim,upper_ylim)
+            low_ylim, upper_ylim = amp_range(data)
+            axes[p, 1].set_ylim(low_ylim, upper_ylim)
         else:
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
@@ -472,34 +509,31 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
     return fig
 
 
-def plot_delays(times, data, antlist=None, pol=[0,1]):
-    """Plots delay vs time
-       Parameters
-       ----------
-       times: array of real
-           timestamps of delays
-       data: array of real
-            delays in nanoseconds
-       t_zero: start time, optional
-       antlist: list of antenna names for legend, optional
-       pol : list 
-        list of polarisation descriptions, optional 
+def plot_delays(times, data, antlist=None, pol=[0, 1]):
+    """
+    Plots delay vs time
+
+    Parameters
+    ----------
+    times:  :class:`np.ndarray`
+        real, timestamps of delays
+    data:  :class:`np.ndarray`
+        real, delays in nanoseconds
+    antlist: list of str
+        antenna names for legend, optional
+    pol : list
+        list of polarisation descriptions, optional
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-    if len(times) == 1:
-       low=datetime.datetime.utcfromtimestamp(times-60)
-       high=datetime.datetime.utcfromtimestamp(times+60)
-       for p in range(npols):
-           axes[0, p].set_xlim(low, high)
 
     for p in range(npols):
         p1 = axes[0, p].plot(datetimes, data[:, p, :], marker='.', ls='dotted')
-        axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))    
-        time_label(axes[0,p],[datetimes[0],datetimes[-1]])
+        axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
+        time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
@@ -507,24 +541,25 @@ def plot_delays(times, data, antlist=None, pol=[0,1]):
     return fig
 
 
-def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, pol=[0,1]):
+def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, pol=[0, 1]):
     """ Plots spectrum of corrected data
+
     Parameters
     ----------
     data : :class:`np.ndarray`
-        plot data, shape(num_chans, num_pol, num_ant/num_bl)
+        complex, shape(num_chans, num_pol, num_ant/num_bl)
     chan : : class:`np.ndarray`
-        channel numbers for x-axis
+        real, (nchan) channel numbers for x-axis
     antlist : list of str
-        list of antenna/baseline names for plot legend, optional  
-    freq_range : list 
+        list of antenna/baseline names for plot legend, optional
+    freq_range : list
         start and stop frequencies of the array, optional
-    title : str
-        plot title, optional 
-    amp : bool
-        plot only amplitudes if True, else plot amplitude and phase, optional 
-    pol : list 
-        list of polarisation descriptions, optional 
+    title : str, optional
+        plot title
+    amp : bool, optional
+        plot only amplitudes if True, else plot amplitude and phase
+    pol : list, optional
+        list of polarisation descriptions
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
@@ -534,25 +569,25 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
         fig.suptitle(title, y=0.95)
 
     for p in range(npols):
-        #plot full range amplitude plots
+        # plot full range amplitude plots
         p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.')
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
-            #plot limited range amplitude plots
-            axes[p,1].plot(chan, np.absolute(data[...,p,:]), '.' )
-            axes[p,1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            # plot limited range amplitude plots
+            axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.')
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
         else:
-            #plot phase plots
+            # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
             axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.')
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
-    #set range limit 
-    if amp :    
-        low_ylim,upper_ylim=amp_range(data)
-        axes[p,1].set_ylim(low_ylim,upper_ylim)
-    
+    # set range limit
+    if amp:
+        low_ylim, upper_ylim = amp_range(data)
+        axes[p, 1].set_ylim(low_ylim, upper_ylim)
+
     # For the last row, add in xticklabels and xlabels
     l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
@@ -567,76 +602,85 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
     if freq_range is not None:
         if len(freq_range) == 2:
             for ax in axes.flatten()[0:2]:
-                add_freq_axis(ax,[chan[0],chan[-1]],freq_range)
+                add_freq_axis(ax, [chan[0], chan[-1]], freq_range)
 
     fig.subplots_adjust(hspace=0.1)
     return fig
 
 
-def add_freq_axis(ax, chan_range=[0,4096],freq_range=[900,1400]):
+def add_freq_axis(ax, chan_range=[0, 4096], freq_range=[900, 1400]):
     """ Adds a frequency axis to the top of a given matplotlib Axes
     Parameters
     ----------
     ax : : class: `matplotlib.axes.Axes`
          Axes to add the frequency axis to
     chan_range : list
-         start and stop channel numbers  
+         start and stop channel numbers
     freq_range : list
-         start and stop frequencies corresponding to the start and stop channel numbers 
+         start and stop frequencies corresponding to the start and stop channel numbers
      """
     ax_freq = ax.twiny()
-    delta_freq=freq_range[1]-freq_range[0]
-    delta_chan=chan_range[1]-chan_range[0]
-    freq_xlim_0 = ax.get_xlim()[0]*delta_freq/delta_chan+freq_range[0]
-    freq_xlim_1 = ax.get_xlim()[1]*delta_freq/delta_chan+freq_range[0]
-    ax_freq.set_xlim(freq_xlim_0,freq_xlim_1)
-    ax_freq.set_xlabel('Frequency MHz')  
+    delta_freq = freq_range[1] - freq_range[0]
+    delta_chan = chan_range[1] - chan_range[0]
+    freq_xlim_0 = ax.get_xlim()[0] * delta_freq / delta_chan + freq_range[0]
+    freq_xlim_1 = ax.get_xlim()[1] * delta_freq / delta_chan + freq_range[0]
+    ax_freq.set_xlim(freq_xlim_0, freq_xlim_1)
+    ax_freq.set_xlabel('Frequency MHz')
+
 
 def amp_range(data):
-    """ Calculate a limited amplitude range based on the NMAD of the data
+    """
+    Calculate a limited amplitude range based on the NMAD of the data
+
     Parameters
     ----------
     data : :class:`np.ndarray`
-        plot data, shape(..., num_pol, num_ant/num_bl)
-        
+        complex, shape(..., num_pol, num_ant/num_bl)
+
     Returns
     -------
-    tuple:
-       lower limit, upper limit
+    lower limit : float
+        lower limit for plot
+    upper limit : float
+        upper limit for plot
     """
     npols = data.shape[-2]
-    # use 3*NMAD to limit y-range of plots, 
-    # the definition used is strictly only correct 
-    # a gaussian distribution of points 
-    low=np.empty(npols)
-    upper=np.empty(npols)
+    # use 3*NMAD to limit y-range of plots,
+    # the definition used is strictly only correct
+    # a gaussian distribution of points
+    low = np.empty(npols)
+    upper = np.empty(npols)
     for p in range(npols):
-        mag=np.absolute(data[...,p,:][~np.isnan(data[...,p,:])])
-        med=np.median(mag)       
-        thresh=3*1.4826*np.median(np.abs(mag-med))
-        low[p]=med-thresh
-        upper[p]=med+thresh
-        
-    low_lim=min(low)
-    low_lim=max(low_lim,0)
-    upper_lim=max(upper)
-    return low_lim, upper_lim 
+        mag = np.absolute(data[..., p, :][~np.isnan(data[..., p, :])])
+        med = np.median(mag)
+        thresh = 3 * 1.4826 * np.median(np.abs(mag - med))
+        low[p] = med - thresh
+        upper[p] = med + thresh
+
+    low_lim = min(low)
+    low_lim = max(low_lim, 0)
+    upper_lim = max(upper)
+    return low_lim, upper_lim
 
 
-def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0,1]):
+def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0, 1]):
     """
     Plots amp/phase versus time
 
     Parameters
     ----------
-    times  : array of real, shape(num_times)
-    data   : array of complex, shape(num_times,num_chns, num_pol, num_ants)
-    plottype : 'a' to plot amplitude else plot phase, default is phase
-    antlist : array if antenna names for plot legend, optional
-    t_zero : start time of the observation, optional
-    title : text for title of plot, optional
-    pol : list 
-        list of polarisation descriptions, optional
+    times  :  :class:`np.ndarray`
+       real, shape(num_times)
+    data   :  :class:`np.ndarray`
+       complex, shape(num_times,num_chns, num_pol, num_ants)
+    plottype : str
+       'a' to plot amplitude else plot phase, default is phase
+    antlist :  :class:`np.ndarray`, optional
+        antenna names for plot legend
+    title : str, optional
+        title of plot
+    pol : list, optional
+        list of polarisation descriptions
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 1
@@ -644,10 +688,9 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
                              squeeze=False, sharey=True)
     if title is not None:
         fig.suptitle(title, y=0.95)
-    
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-    
+
     for p in range(npols):
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
@@ -662,17 +705,11 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
             axes[p, 0].set_prop_cycle(None)
             plt.setp(axes[p, 0].get_xticklabels(), visible=False)
 
-    if len(times) == 1:
-       low=datetime.datetime.utcfromtimestamp(times-60)
-       high=datetime.datetime.utcfromtimestamp(times+60)
-       for p in range(npols):
-           axes[p, 0].set_xlim(low, high)
-
     # For the final row, add in xticklabels and xlabel
     l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
-    time_label(axes[l_p,0],[datetimes[0],datetimes[-1]])
- 
+    time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
+
     if antlist is not None:
         axes[0, 0].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
 
@@ -694,7 +731,7 @@ def plot_waterfall(visdata, contrast=0.01, flags=None, channel_freqs=None, dump_
     dump_timestamps : array (ntimestamps) of timestamps represented by each dump
     """
 
-    fig = plt.figure(figsize=(0.8*fig_x, 2*fig_y))
+    fig = plt.figure(figsize=(0.8 * fig_x, 2 * fig_y))
     kwargs = {'aspect': 'auto', 'origin': 'lower', 'interpolation': 'none'}
     # Defaults
     kwargs['extent'] = [-0.5, visdata.shape[1] - 0.5, -0.5, visdata.shape[0] - 0.5]

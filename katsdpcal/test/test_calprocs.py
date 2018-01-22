@@ -248,7 +248,7 @@ class TestWavgFull_F(unittest.TestCase):
         out_shape = (5, 3, 3, 10)
         expected_data = np.ones(out_shape, np.complex64)
         expected_weights = np.ones(out_shape, np.float32) * 4
-        expected_weights[:,2, ...] = 2    # Only two samples added together
+        expected_weights[:, 2, ...] = 2    # Only two samples added together
         expected_flags = np.zeros(out_shape, np.bool_)
         expected_data[0, :, 1, 1] = [2j, 56.0 / 9.0, np.nan]
         expected_weights[0, :, 1, 1] = [1, 9, 0]
@@ -277,4 +277,3 @@ class TestWavgFull_F(unittest.TestCase):
             self.data, self.flags, self.weights, 10)
         self.assertEqual(False, out_flags[0, 0, 0, 0])
         self.assertEqual(True, out_flags[0, 0, 0, 1])
-              
