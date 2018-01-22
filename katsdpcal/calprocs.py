@@ -456,7 +456,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             bp_phase = np.unwrap(np.angle(bp), discont=1.9 * np.pi)
             A = np.array([chans, np.ones(len(chans))])
             delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
-
+            
         kdelay.append(coarse_k + delta_k)
 
     return np.atleast_2d(kdelay)
@@ -862,18 +862,28 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
 
     Parameters
     ----------
-    data       : array of complex
-    flags      : array of boolean
-    weights    : array of floats
-    chanav     : number of channels over which to average, integer
-
+    data       : :class:`np.ndarray`
+        complex (ntimes, nchans, npols, nbls)
+    flags      : :class:`np.ndarray`
+        int (ntimes, nchans, npols, bls)
+    weights    : :class:`np.ndarray`
+        real (ntimes, nchans, npols, bls)
+    chanav     : int
+        number of channels over which to average, integer
+    threshold  : float
+        if fraction of flags in the input data
+        exceeds threshold then set output flag to True, else False 
+    
     Returns
     -------
-    av_data    : weighted average of data
-    av_flags   : weighted average of flags
-    av_weights : weighted average of weights
+    av_data    : :class:`np.ndarray`
+        complex (ntimes, av_chans, npols, nbls), weighted average of data 
+    av_flags   : :class:`np.ndarray`
+        bool (ntimes, av_chans, npols, nbls), weighted average of flags
+    av_weights : ntimes, av_chans, npols, nbls)
+        real (ntimes, av_chans, npols, nbls), weighted average of weights
     """
-    # ensure solint is an integer
+    # ensure chanav is an integer
     chanav = np.int(chanav)
     inc_array = range(0, data.shape[1], chanav)
 
@@ -888,7 +898,8 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     with np.errstate(divide='ignore', invalid='ignore'):
         av_data = np.add.reduceat(weighted_data, inc_array, axis=1) / av_weights
     n_flags = np.add.reduceat(asbool(flags), inc_array, axis=1)
-    av_flags = n_flags > chanav * threshold
+    n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=1)
+    av_flags = n_flags > n_samples * threshold
 
     return av_data, av_flags, av_weights
 
@@ -900,17 +911,28 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
 
     Parameters
     ----------
-    data       : array of complex
-    flags      : array of boolean
-    weights    : array of floats
-    ant_array  : array of strings representing antennas
-    bls_lookup : array of antennas in each baseline
+    data       : :class:`np.ndarray`
+        complex (..., bls)
+    flags      : :class:`np.ndarray`
+        int (..., bls)
+    weights    : :class:`np.ndarray`
+        real (..., bls)
+    ant_array  : :class:`np.ndarray` 
+        array of strings representing antennas
+    bls_lookup : :class:`np.ndarray`
+        (bls x 2) array of antennas in each baseline
+    threshold : float
+        if fraction of flags in the input data array
+        exceeds threshold then set output flag to True, else False 
 
     Returns
     -------
-    av_data    : weighted average of data
-    av_flags   : weighted average of flags
-    av_weights : weighted average of weights
+    av_data    : :class:`np.ndarray` 
+        complex (..., n_ant), weighted average of data
+    av_flags   : :class:`np.ndarray`
+        bool (n_ant), weighted average of flags
+    av_weights : :class:`np.ndarray` 
+        real (..., n_ant), weighted average of weights
     """
     av_data = []
     av_flags = []
@@ -923,7 +945,7 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
                            & ((bls_lookup[:, 0] != bls_lookup[:, 1])))[0]
 
         flagged_weights = np.where(flags[..., ant_idx],
-                                   weights[..., ant_idx].dtype.type(0),
+                                   weights.dtype.type(0),
                                    weights[..., ant_idx])
         weighted_data = data[..., ant_idx] * flagged_weights
         # clear the elements that have a nan anywhere
@@ -934,7 +956,7 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
         with np.errstate(divide='ignore', invalid='ignore'):
             ant_data = np.sum(weighted_data, axis=3) / ant_weights
         n_flags = np.sum(asbool(flags[..., ant_idx]), axis=3)
-        ant_flags = n_flags > flags[..., ant_idx].shape[3] * threshold
+        ant_flags = n_flags > ant_idx.shape[0] * threshold
 
         av_data.append(ant_data)
         av_flags.append(ant_flags)

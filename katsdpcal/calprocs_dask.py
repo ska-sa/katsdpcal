@@ -130,12 +130,7 @@ def wavg_full(data, flags, weights, threshold=0.3, times=None):
     av_data = da.sum(weighted_data, axis=0) / av_weights
     n_flags = da.sum(calprocs.asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
-    if np.any(times):
-        av_times = np.average(times, axis=0)
-        return av_data, av_flags, av_weights, av_times
-    else:
-        return av_data, av_flags, av_weights
-
+    return av_data, av_flags, av_weights
 
 def wavg_full_t(data, flags, weights, solint, times=None):
     """
@@ -232,7 +227,6 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     av_weights = da.stack(av_weights, axis=1)
 
     return av_data, av_flags, av_weights
-
 
 
 def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
