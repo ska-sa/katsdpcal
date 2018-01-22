@@ -244,15 +244,6 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     # This would be simple with da.core.map_blocks, but it doesn't
     # support multiple outputs, so we need to do manual construction
     # of the dask graphs.
-    def sub_array(name, idx, dtype):
-        graph = {
-            (name,) + key[1:]: (operator.getitem, (base_name,) + key[1:], idx)
-            for key in keys
-        }
-        dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
-                                   data.dask, flags.dask, weights.dask)
-        return da.Array(dsk, name, out_chunks, data.dtype)
-
     chunks = _align_chunks(data.chunks, {1: chanav})
     out_chunks = list(chunks)
     # Divide by chanav, rounding up
@@ -274,6 +265,15 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
                                  chanav, threshold)
         for key in keys
     }
+
+    def sub_array(name, idx, dtype):
+        graph = {
+            (name,) + key[1:]: (operator.getitem, (base_name,) + key[1:], idx)
+            for key in keys
+        }
+        dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
+                                   data.dask, flags.dask, weights.dask)
+        return da.Array(dsk, name, out_chunks, data.dtype)
 
     av_data = sub_array('wavg_full_f-data-' + token, 0, data.dtype)
     av_flags = sub_array('wavg_full_f-flags-' + token, 1, flags.dtype)
