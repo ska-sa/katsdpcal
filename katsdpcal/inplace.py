@@ -195,8 +195,8 @@ def store_inplace(sources, targets, safe=True, **kwargs):
         source_chunked = source.rechunk(target.chunks)
         slices = da.core.slices_from_chunks(target.chunks)
         name = 'store-' + source_chunked.name
-        for src_key, trg_key, slc in zip(dask.core.flatten(source_chunked._keys()),
-                                         dask.core.flatten(target._keys()),
+        for src_key, trg_key, slc in zip(dask.core.flatten(source_chunked.__dask_keys__()),
+                                         dask.core.flatten(target.__dask_keys__()),
                                          slices):
             key = (name,) + src_key[1:]
             dsk[key] = (store, trg_key, src_key)
@@ -209,7 +209,7 @@ def store_inplace(sources, targets, safe=True, **kwargs):
         raise ValueError('The target contains duplicate keys')
     if safe:
         _safe_in_place(dsk, src_keys, trg_keys)
-    da.Array._get(dsk, out_keys)
+    dask.base.compute_as_if_collection(da.Array, dsk, out_keys)
 
 
 def _rename(comp, keymap):
