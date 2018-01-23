@@ -539,7 +539,7 @@ class TestCalDeviceServer(unittest.TestCase):
             np.testing.assert_array_equal(out_flags & ~mask, flags)
 
     def prepare_heaps(self, rs, n_times):
-        """Set up self.stream with some arbitrary data"""
+        """Produce a list of heaps with arbitrary data."""
         vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
         weights = np.ones(vis.shape, np.uint8)
         weights_channel = np.ones((self.n_channels,), np.float32)
@@ -548,6 +548,7 @@ class TestCalDeviceServer(unittest.TestCase):
         channel_slices = [np.s_[i * self.n_channels_per_substream
                                 : (i+1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
+        heaps = []
         for i in range(n_times):
             dump_heaps = []
             for s in channel_slices:
@@ -560,9 +561,9 @@ class TestCalDeviceServer(unittest.TestCase):
                 self.ig['frequency'].value = np.uint32(s.start)
                 dump_heaps.append(self.ig.get_heap())
             rs.shuffle(dump_heaps)
-            for heap in dump_heaps:
-                self.stream.send_heap(heap)
+            heaps.extend(dump_heaps)
             ts += self.telstate.sdp_l0test_int_time
+        return heaps
 
     @async_test
     @tornado.gen.coroutine
@@ -572,7 +573,8 @@ class TestCalDeviceServer(unittest.TestCase):
         """
         rs = np.random.RandomState(seed=1)
         n_times = 90
-        self.prepare_heaps(rs, n_times)
+        for heap in self.prepare_heaps(rs, n_times):
+            self.stream.send_heap(heap)
         # Add a target change at an uneven time, so that the batches won't
         # neatly align with the buffer end. We also have to fake a slew to make
         # it work, since the batcher assumes that target cannot change without
@@ -605,10 +607,31 @@ class TestCalDeviceServer(unittest.TestCase):
 
     @async_test
     @tornado.gen.coroutine
+    def test_out_of_order(self):
+        """A heap received from the past should be processed (if possible)."""
+        rs = np.random.RandomState(seed=1)
+        n_times = 4
+        heaps = self.prepare_heaps(rs, n_times)
+        # Delay one heap to the end
+        victim = 3
+        heaps = heaps[: victim] + heaps[victim + 1 :] + heaps[victim : victim + 1]
+        for heap in heaps:
+            self.stream.send_heap(heap)
+        # Run the capture
+        yield self.make_request('capture-init')
+        yield tornado.gen.sleep(1)
+        informs = yield self.make_request('shutdown', timeout=60)
+        # Check that all heaps were accepted
+        assert_equal(n_times * self.n_substreams,
+                     int((yield self.get_sensor('accumulator-input-heaps'))))
+
+    @async_test
+    @tornado.gen.coroutine
     def test_pipeline_exception(self):
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             assert_equal(0, int((yield self.get_sensor('pipeline-exceptions'))))
-            self.prepare_heaps(np.random.RandomState(seed=1), 5)
+            for heap in self.prepare_heaps(np.random.RandomState(seed=1), 5):
+                self.stream.send_heap(heap)
             yield self.make_request('capture-init', 'testcb')
             yield tornado.gen.sleep(1)
             assert_equal('{"testcb": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))

@@ -694,6 +694,8 @@ class Accumulator(object):
         last_idx = None              # Previous value of data_idx
         # list of slots that have been filled
         slots = []
+        # Look up dump index by slot
+        slot_for_index = {}
         refant = self.telstate.cal_refant
 
         # receive SPEAD stream
@@ -714,8 +716,14 @@ class Accumulator(object):
             data_ts = ig['timestamp'].value + self.sync_time
             data_idx = ig['dump_index'].value
             if last_idx is not None and data_idx < last_idx:
-                logger.warn('Dump index went backwards (%d < %d), skipping heap', data_idx, last_idx)
-                continue
+                try:
+                    slot = slot_for_index[data_idx]
+                    logger.warning('Dump index went backwards (%d < %d), but managed to accept it',
+                                   data_idx, last_idx)
+                except KeyError:
+                    logger.warning('Dump index went backwards (%d < %d), skipping heap',
+                                   data_idx, last_idx)
+                    continue
             elif data_idx != last_idx:
                 if self._obs_start is None:
                     self._obs_start = data_ts - 0.5 * self.int_time
@@ -740,6 +748,7 @@ class Accumulator(object):
                 if old_state is not None and self._is_break(old_state, new_state, slots, duration):
                     self._flush_slots(slots)
                     slots = []
+                    slot_for_index.clear()
                     old_state = None
                     unsync_start_time = ig['timestamp'].value
 
@@ -753,6 +762,7 @@ class Accumulator(object):
                     logger.info('Accumulation interrupted while waiting for a slot')
                     break
                 slots.append(slot)
+                slot_for_index[data_idx] = slot
 
                 old_state = new_state
                 last_idx = data_idx
