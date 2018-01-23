@@ -456,7 +456,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             bp_phase = np.unwrap(np.angle(bp), discont=1.9 * np.pi)
             A = np.array([chans, np.ones(len(chans))])
             delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
-            
+
         kdelay.append(coarse_k + delta_k)
 
     return np.atleast_2d(kdelay)
@@ -862,23 +862,23 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
 
     Parameters
     ----------
-    data       : :class:`np.ndarray`
+    data : :class:`np.ndarray`
         complex (ntimes, nchans, npols, nbls)
-    flags      : :class:`np.ndarray`
+    flags : :class:`np.ndarray`
         int (ntimes, nchans, npols, bls)
-    weights    : :class:`np.ndarray`
+    weights : :class:`np.ndarray`
         real (ntimes, nchans, npols, bls)
-    chanav     : int
+    chanav : int
         number of channels over which to average, integer
-    threshold  : float
+    threshold : float
         if fraction of flags in the input data
-        exceeds threshold then set output flag to True, else False 
-    
+        exceeds threshold then set output flag to True, else False
+
     Returns
     -------
-    av_data    : :class:`np.ndarray`
-        complex (ntimes, av_chans, npols, nbls), weighted average of data 
-    av_flags   : :class:`np.ndarray`
+    av_data : :class:`np.ndarray`
+        complex (ntimes, av_chans, npols, nbls), weighted average of data
+    av_flags : :class:`np.ndarray`
         bool (ntimes, av_chans, npols, nbls), weighted average of flags
     av_weights : ntimes, av_chans, npols, nbls)
         real (ntimes, av_chans, npols, nbls), weighted average of weights
@@ -911,27 +911,27 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
 
     Parameters
     ----------
-    data       : :class:`np.ndarray`
+    data : :class:`np.ndarray`
         complex (..., bls)
-    flags      : :class:`np.ndarray`
+    flags : :class:`np.ndarray`
         int (..., bls)
-    weights    : :class:`np.ndarray`
+    weights : :class:`np.ndarray`
         real (..., bls)
-    ant_array  : :class:`np.ndarray` 
+    ant_array : :class:`np.ndarray`
         array of strings representing antennas
     bls_lookup : :class:`np.ndarray`
         (bls x 2) array of antennas in each baseline
     threshold : float
         if fraction of flags in the input data array
-        exceeds threshold then set output flag to True, else False 
+        exceeds threshold then set output flag to True, else False
 
     Returns
     -------
-    av_data    : :class:`np.ndarray` 
+    av_data : :class:`np.ndarray`
         complex (..., n_ant), weighted average of data
-    av_flags   : :class:`np.ndarray`
+    av_flags : :class:`np.ndarray`
         bool (n_ant), weighted average of flags
-    av_weights : :class:`np.ndarray` 
+    av_weights : :class:`np.ndarray`
         real (..., n_ant), weighted average of weights
     """
     av_data = []
