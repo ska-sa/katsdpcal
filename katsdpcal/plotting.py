@@ -2,11 +2,12 @@ import datetime
 
 import numpy as np
 import matplotlib.dates as md
-import matplotlib.pylab as plt
 
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
 use('Agg', warn=False)
+
+import matplotlib.pylab as plt
 
 # for multiple page pdf plotting
 from matplotlib.backends.backend_pdf import PdfPages
@@ -14,8 +15,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 # PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
 
 # Figure sizes
-fig_x = 10.0
-fig_y = 4
+FIG_X = 10
+FIG_Y = 4
 
 
 def flush_plots(fig_list, report_name='cal_report.pdf'):
@@ -94,7 +95,7 @@ def plot_bp_data(data, chans=None, plotavg=False):
         nrows, ncols = 2, 2
     else:
         nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * FIG_X, nrows * FIG_Y))
 
     tlist = np.arange(data.shape[0])
     for ti in tlist:
@@ -125,7 +126,7 @@ def plot_bp_solns(data, chans=None):
     npols = data.shape[-2]
     nrows, ncols = npols, 2
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y))
     for p in range(npols):
         plot_data_v_chan(data[:, p, :], axes, plotnum=p, ylabelplus=' - POL ' + str(p))
 
@@ -146,7 +147,7 @@ def plot_bp_soln_list(bplist, chans=None):
         chans = np.arange(bplist[0].shape[-2])
 
     nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols * FIG_X, nrows * FIG_Y))
     for bp in bplist:
         plot_data_v_chan(bp, axes, plotnum=0)
 
@@ -162,7 +163,7 @@ def plot_g_solns(times, data):
     data   : array of complex, shape(num_times,num_ants)
     """
     nrows, ncols = 1, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y))
 
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -192,7 +193,7 @@ def plot_g_solns_with_errors(times, data, stddev):
     """
 
     nrows, ncols = 2, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * FIG_X, nrows * FIG_Y))
 
     times = np.array(times) - times[0]
     data = np.array(data)
@@ -227,9 +228,9 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
 
     Parameters
     ----------
-    times  :  :class:`np.ndarray`
-       real, shape(num_times)
-    data   :  :class:`np.ndarray`
+    times : :class:`np.ndarray`
+        real, shape(num_times)
+    data : :class:`np.ndarray`
         complex, shape(num_times,num_pols,num_ants)
     antlist: list of str
         antenna names for legend, optional
@@ -238,20 +239,20 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y))
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey='col')
     for p in range(npols):
         # plot amplitude
         p1 = axes[p, 0].plot(datetimes, np.abs(data[:, p, :]), '.-')
-        axes[p, 0].set_ylabel('Amplitude' + ' Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
 
         # plot phase
         axes[p, 1].plot(datetimes, np.angle(data[:, p, :], deg=True), '.-')
-        axes[p, 1].set_ylabel('Phase' + ' Pol_{0}'.format(pol[p]))
+        axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
@@ -275,11 +276,11 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
 
     Parameters
     ----------
-    data    :  :class:`np.ndarray`
-        complex, shape(num_chans, num_pol, num_baselines)
-    chan    :  :class:`np.ndarray`
+    data : :class:`np.ndarray`
+        real, shape(num_chans, num_pol, num_baselines)
+    chan : :class:`np.ndarray`
         real, shape(num_chans), index numbers of the chan axis.
-    uvdist    :  :class:`np.ndarray`
+    uvdist : :class:`np.ndarray`
         real, shape(num_bls), UVdist of each baseline
     freq_range : list
         list of start and stop frequencies of the array, optional
@@ -291,13 +292,13 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
     ncols = npols
     nrows = 1
     fig, axes = plt.subplots(nrows, ncols, figsize=(
-        ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
+        ncols * FIG_X, nrows * FIG_Y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
             chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower')
         axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
-    bl_labels(axes[0, 0], uvlist)
+        bl_labels(axes[0, p], uvlist)
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
 
     # Add colorbar
@@ -318,20 +319,17 @@ def bl_labels(ax, seplist):
     Parameters
     ----------
     ax : : class: `matplotlib.axes.Axes`
-         axes to add ticklabels to
+        axes to add ticklabels to
     seplist : :class:`np.ndarray`
-         real (n_bls) of labels corresponding to baseline positions in ax
-
+        real (n_bls) of labels corresponding to baseline positions in ax
     """
-    ax.locator_params(axis='y', integer=True)
     yticks = ax.get_yticks()
-    # select only ticks with valid separations
-    idx = [all(_) for _ in zip(yticks >= 0, yticks < len(seplist))]
-    yticks = np.int_(yticks[idx])
-
-    septicks = seplist[yticks]
-    ax.set_yticks(yticks)
-    ax.set_yticklabels(np.int_(septicks))
+    # select only the ticks with valid separations
+    valid_yticks = [int(y) for y in yticks if y >= 0 and y < len(seplist)]
+    # set the yticks to only appear at places with a valid separation
+    ax.set_yticks(valid_yticks)
+    # set the labels of the yticks to be the separations
+    ax.set_yticklabels(np.int_(seplist[valid_yticks]))
 
 
 def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
@@ -340,9 +338,9 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
 
     Parameters
     ----------
-    data    :  :class:`np.ndarray`
+    data : :class:`np.ndarray`
         complex, shape(num_times, num_chans, num_pol)
-    chan    :   :class:`np.ndarray`
+    chan : :class:`np.ndarray`
         real, shape(num_chans), index number of chan axis
     targets : list of str
         target names/labels for targets in each scan
@@ -356,7 +354,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     ncols = npols
     nrows = 1
     fig, axes = plt.subplots(nrows, ncols, figsize=(
-        ncols * fig_x, nrows * fig_y), squeeze=False, sharey='row')
+        ncols * FIG_X, nrows * FIG_Y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(
             chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower')
@@ -414,15 +412,15 @@ def plot_el_v_time(targets, times, elevations, title=None):
     Parameters
     ----------
     targets : list of str
-       names of targets for plot legend
-    times    : list of :class:`np.ndarray`
-       real, times for each target
-    elevations : list of  :class:`np.ndarray`
-       real, elevations for each target
+        names of targets for plot legend
+    times : list of :class:`np.ndarray`
+        real, times for each target
+    elevations : list of :class:`np.ndarray`
+        real, elevations for each target
     title : str, optional
-       title of the plot
+        title of the plot
     """
-    fig, axes = plt.subplots(1, 1, figsize=(2 * fig_x, fig_y))
+    fig, axes = plt.subplots(1, 1, figsize=(2 * FIG_X, FIG_Y))
     if title is not None:
         fig.suptitle(title, y=0.95)
 
@@ -448,14 +446,14 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
 
     Parameters
     ----------
-    uvdist :  :class:`np.ndarray`
+    uvdist : :class:`np.ndarray`
         real, shape(num_baselines)
-    data :  :class:`np.ndarray`
-       complex, shape(num_times,num_chans, num_pol, num_baselines)
+    data : :class:`np.ndarray`
+        complex, shape(num_times,num_chans, num_pol, num_baselines)
     freqlist : list, optional
-       frequencies for legend
+        frequencies for legend
     title : str, optional
-       title of plot
+        title of plot
     pol : list, optional
         list of polarisation descriptions
     """
@@ -463,7 +461,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
     npols = data.shape[-2]
     nrows, ncols = npols, 2
     times = data.shape[0]
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -515,18 +513,18 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
 
     Parameters
     ----------
-    times:  :class:`np.ndarray`
+    times : :class:`np.ndarray`
         real, timestamps of delays
-    data:  :class:`np.ndarray`
+    data : :class:`np.ndarray`
         real, delays in nanoseconds
-    antlist: list of str
+    antlist : list of str
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y), squeeze=False)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y), squeeze=False)
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
 
@@ -563,7 +561,7 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * fig_x, nrows * fig_y),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -600,7 +598,6 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
-        if len(freq_range) == 2:
             for ax in axes.flatten()[0:2]:
                 add_freq_axis(ax, [chan[0], chan[-1]], freq_range)
 
@@ -608,16 +605,16 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
     return fig
 
 
-def add_freq_axis(ax, chan_range=[0, 4096], freq_range=[900, 1400]):
+def add_freq_axis(ax, chan_range, freq_range):
     """ Adds a frequency axis to the top of a given matplotlib Axes
     Parameters
     ----------
     ax : : class: `matplotlib.axes.Axes`
-         Axes to add the frequency axis to
+        Axes to add the frequency axis to
     chan_range : list
-         start and stop channel numbers
+        start and stop channel numbers
     freq_range : list
-         start and stop frequencies corresponding to the start and stop channel numbers
+        start and stop frequencies corresponding to the start and stop channel numbers
      """
     ax_freq = ax.twiny()
     delta_freq = freq_range[1] - freq_range[0]
@@ -669,13 +666,13 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
 
     Parameters
     ----------
-    times  :  :class:`np.ndarray`
-       real, shape(num_times)
-    data   :  :class:`np.ndarray`
-       complex, shape(num_times,num_chns, num_pol, num_ants)
+    times : :class:`np.ndarray`
+        real, shape(num_times)
+    data : class:`np.ndarray`
+        complex, shape(num_times,num_chns, num_pol, num_ants)
     plottype : str
-       'a' to plot amplitude else plot phase, default is phase
-    antlist :  :class:`np.ndarray`, optional
+        'a' to plot amplitude else plot phase, default is phase
+    antlist : :class:`np.ndarray`, optional
         antenna names for plot legend
     title : str, optional
         title of plot
@@ -684,7 +681,7 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * fig_x, nrows * fig_y),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey=True)
     if title is not None:
         fig.suptitle(title, y=0.95)
@@ -731,7 +728,7 @@ def plot_waterfall(visdata, contrast=0.01, flags=None, channel_freqs=None, dump_
     dump_timestamps : array (ntimestamps) of timestamps represented by each dump
     """
 
-    fig = plt.figure(figsize=(0.8 * fig_x, 2 * fig_y))
+    fig = plt.figure(figsize=(0.8 * FIG_X, 2 * FIG_Y))
     kwargs = {'aspect': 'auto', 'origin': 'lower', 'interpolation': 'none'}
     # Defaults
     kwargs['extent'] = [-0.5, visdata.shape[1] - 0.5, -0.5, visdata.shape[0] - 0.5]

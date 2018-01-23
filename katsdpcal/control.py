@@ -159,28 +159,29 @@ def _corr_total(corr_data):
     """
     Compresses a list of dictionaries each containing a single scan of averaged, corrected data
     into a single dictionary containing corrected data for all scans.
-    Parameters:
-    -----------
+
+    Parameters
+    ----------
     corr_data : list of dict
         dict's contain all of the following keys: 'vis','flags',
-        'weights', 'times', 'n_flags','targets, 't_stamps'
-    Returns:
+        'weights', 'times', 'n_flags', 'targets, 'timestamps'
+
+    Returns
     --------
     dict
-      Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
-      of averaged, corrected data for all scans. Key 'targets' contains a list of target
-      strings corresponding to each scan, while 't_stamps' contains a list of numpy arrays
-      of timestamps for each scan.
+        Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
+        of averaged, corrected data for all scans. Key 'targets' contains a list of target
+        strings corresponding to each scan, while 'timestamps' contains a list of numpy arrays
+        of timestamps for each scan.
     """
     total = {}
     for key in ['vis', 'flags', 'weights', 'times', 'n_flags']:
-        stack = []
-        [stack.extend(d[key]) for d in corr_data]
-        total[key] = np.stack(stack, axis=0)
-    for key in ['targets', 't_stamps']:
-        stack = []
-        [stack.extend(d[key]) for d in corr_data]
-        total[key] = stack
+        stack = [d[key] for d in corr_data if len(d[key]) > 0]
+        total[key] = np.concatenate(stack, axis=0)
+    for key in ['targets', 'timestamps']:
+        stack = [d[key] for d in corr_data]
+        stack_flat = [y for z in stack for y in z]
+        total[key] = stack_flat
     return total
 
 

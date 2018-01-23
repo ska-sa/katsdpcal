@@ -229,7 +229,7 @@ class TestStefcal(unittest.TestCase):
         self._test_stefcal_timing(noise=1e-3)
 
 
-class TestWavgFull_F(unittest.TestCase):
+class TestWavgFullF(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs.wavg_full_f`"""
     def setUp(self):
         shape = (5, 10, 3, 10)

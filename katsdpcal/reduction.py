@@ -193,8 +193,9 @@ def pipeline(data, ts, stream_name):
     slices : list of slice
         slices for each target track in the buffer
     av_corr : dict
-        Dictionary containing time and frequency averaged, calibrated data. Keys `targets`, `vis`,
-    `flags`, `weights`, `times`, `ntimes` all reference numpy arrays.
+        Dictionary containing time and frequency averaged, calibrated data.
+        Keys `targets`, `vis`, `flags`, `weights`, `times`, `n_flags`,
+        `timestamps` all reference numpy arrays.
     """
 
     # ----------------------------------------------------------
@@ -255,7 +256,7 @@ def pipeline(data, ts, stream_name):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_flags': [], 't_stamps': []}
+               'times': [], 'n_flags': [], 'timestamps': []}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
@@ -516,12 +517,12 @@ def pipeline(data, ts, stream_name):
         # collect corrected data and calibrator target list to send to report writer
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
 
-        av_corr['targets'].append(target)
-        av_corr['vis'].append(av_vis)
-        av_corr['flags'].append(av_flags)
-        av_corr['weights'].append(av_weights)
-        av_corr['times'].append(np.average(s.timestamps))
-        av_corr['n_flags'].append(da.sum(calprocs.asbool(s.tf.auto.flags), axis=0).compute())
-        av_corr['t_stamps'].append(s.timestamps)
+        av_corr['targets'].insert(0, target)
+        av_corr['vis'].insert(0, av_vis)
+        av_corr['flags'].insert(0, av_flags)
+        av_corr['weights'].insert(0, av_weights)
+        av_corr['times'].insert(0, np.average(s.timestamps))
+        av_corr['n_flags'].insert(0, da.sum(calprocs.asbool(s.tf.auto.flags), axis=0).compute())
+        av_corr['timestamps'].insert(0, s.timestamps)
 
     return target_slices, av_corr
