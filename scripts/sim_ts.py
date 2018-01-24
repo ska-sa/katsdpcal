@@ -4,7 +4,7 @@
 
 from katsdpcal import pipelineprocs, param_dir
 from katsdpcal.simulator import init_simdata
-from katsdptelstate import ArgumentParser
+from katsdpservices import ArgumentParser
 import os
 
 def parse_opts():

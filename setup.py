@@ -12,7 +12,6 @@ setup(
     scripts=[
         "scripts/run_cal.py",
         "scripts/run_katsdpcal_sim.py",
-        "scripts/sim_l1_receive.py",
         "scripts/sim_ts.py",
         "scripts/sim_data_stream.py",
         "scripts/create_test_data.py"
@@ -34,7 +33,7 @@ setup(
         "numpy>=1.12", "scipy>=0.17", "numba>=0.19.0", "dask[array]>=0.16", "enum34",
         "manhole", "trollius", "futures",
         "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
-        "katsdpsigproc", "spead2"
+        "katsdpsigproc", "spead2>=1.5.0"
     ],
     tests_require=["mock", "nose"],
     use_katversion=True
