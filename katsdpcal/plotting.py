@@ -242,16 +242,16 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y))
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-
+    dates = md.date2num(datetimes)
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey='col')
     for p in range(npols):
         # plot amplitude
-        p1 = axes[p, 0].plot(datetimes, np.abs(data[:, p, :]), '.-')
+        p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-')
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
 
         # plot phase
-        axes[p, 1].plot(datetimes, np.angle(data[:, p, :], deg=True), '.-')
+        axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-')
         axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
@@ -291,8 +291,9 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
     nbls = data.shape[-1]
     ncols = npols
     nrows = 1
-    fig, axes = plt.subplots(nrows, ncols, figsize=(
-        ncols * FIG_X, nrows * FIG_Y), squeeze=False, sharey='row')
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(ncols * FIG_X, nrows * FIG_Y),
+                             squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
             chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower')
@@ -430,9 +431,10 @@ def plot_el_v_time(targets, times, elevations, title=None):
     t_max = datetime.datetime.utcfromtimestamp(t_max)
 
     for idx, target in enumerate(targets):
-        datetimes = [datetime.datetime.utcfromtimestamp(
-            unix_timestamp) for unix_timestamp in times[idx]]
-        axes.plot(datetimes, np.rad2deg(elevations[idx]), '.', label=target)
+        datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp)
+                     for unix_timestamp in times[idx]]
+        dates = md.date2num(datetimes)
+        axes.plot(dates, np.rad2deg(elevations[idx]), '.', label=target)
 
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
@@ -527,9 +529,10 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y), squeeze=False)
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
+    dates = md.date2num(datetimes)
 
     for p in range(npols):
-        p1 = axes[0, p].plot(datetimes, data[:, p, :], marker='.', ls='dotted')
+        p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted')
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
@@ -687,15 +690,15 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
         fig.suptitle(title, y=0.95)
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-
+    dates = md.date2num(datetimes)
     for p in range(npols):
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
-                p1 = axes[p, 0].plot(datetimes, np.absolute(data_pol[:, chan, :]), '.')
+                p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.')
                 axes[p, 0].set_ylabel('Amp Pol_{0}'.format(pol[p]))
             else:
-                p1 = axes[p, 0].plot(datetimes, np.angle(data_pol[:, chan, :], deg=True), '.')
+                p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.')
                 axes[p, 0].set_ylabel('Phase Pol_{0}'.format(pol[p]))
 
             # Reset the colour cycle, so that all channels have the same plot color
