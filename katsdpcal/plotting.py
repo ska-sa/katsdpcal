@@ -263,6 +263,7 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
     plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
     time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
     time_label(axes[l_p, 1], [datetimes[0], datetimes[-1]])
+    time_xtick_fmt(axes)
 
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
@@ -378,9 +379,25 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     return fig
 
 
+def time_xtick_fmt(ax):
+    """
+    Format the ticklabels for time axis of a plot
+
+    Parameters
+    ----------
+    ax : : class: `np.ndarray` of : class: `matplotlib.axes.Axes`
+        array of axes whose ticklabels will be formatted
+    """
+    # Format the xticklabels to display h:m:s
+    xfmt = md.DateFormatter('%H:%M:%S')
+    ax_flat = ax.flatten()
+    for a in ax_flat:
+        a.xaxis.set_major_formatter(xfmt)
+
+
 def time_label(ax, timerange):
     """
-    Format the label and ticklabels for time axis of a plot
+    Format the x-axis labels for time axis of a plot
 
     Parameters
     ----------
@@ -389,9 +406,6 @@ def time_label(ax, timerange):
     timerange : list of :class: `datetime.datetime`
         start and stop times of the plot
     """
-    # Format the xticklabels to display h:m:s
-    xfmt = md.DateFormatter('%H:%M:%S')
-    ax.xaxis.set_major_formatter(xfmt)
 
     if timerange[0] == timerange[-1]:
         low = timerange[0] - datetime.timedelta(seconds=60)
@@ -438,6 +452,7 @@ def plot_el_v_time(targets, times, elevations, title=None):
 
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
+    time_xtick_fmt(np.array([axes]))
     time_label(axes, [t_zero, t_max])
     return fig
 
@@ -504,7 +519,8 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
 
     if freqlist is not None:
         freqlabel = ['{0} MHz'.format(int(i / 1e6)) for i in freqlist]
-        axes[0, 1].legend(p1, freqlabel, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+        axes[0, 1].legend(p1, freqlabel, bbox_to_anchor=(1.0, 1.0),
+                          loc="upper left", frameon=False)
     fig.subplots_adjust(hspace=0.1)
     return fig
 
@@ -534,6 +550,7 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
     for p in range(npols):
         p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted')
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
+        time_xtick_fmt(axes)
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
@@ -601,8 +618,8 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
-            for ax in axes.flatten()[0:2]:
-                add_freq_axis(ax, [chan[0], chan[-1]], freq_range)
+        for ax in axes.flatten()[0:2]:
+            add_freq_axis(ax, [chan[0], chan[-1]], freq_range)
 
     fig.subplots_adjust(hspace=0.1)
     return fig
@@ -708,6 +725,7 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
     # For the final row, add in xticklabels and xlabel
     l_p = npols - 1
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
+    time_xtick_fmt(axes)
     time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
