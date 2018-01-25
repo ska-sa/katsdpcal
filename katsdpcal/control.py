@@ -309,9 +309,6 @@ class Accumulator(object):
         self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096,
                                               4 * self.n_substreams, 4 * self.n_substreams)
 
-        # Thread for doing blocking waits, to avoid stalling the asyncio event loop
-        self._executor = concurrent.futures.ThreadPoolExecutor(1)
-
         # Sensors for the katcp server to report
         sensors = [
             katcp.Sensor.boolean(
@@ -498,9 +495,9 @@ class Accumulator(object):
             if self.accum_pipeline_queue is not None:
                 self.accum_pipeline_queue.put(StopEvent())
         self.accum_pipeline_queue = None    # Make safe for concurrent calls to stop
-        if self._executor is not None:
-            self._executor.shutdown()
-            self._executor = None
+        if self._thread_pool is not None:
+            self._thread_pool.stop()
+            self._thread_pool = None
 
     def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls
@@ -726,6 +723,8 @@ class Accumulator(object):
         last_idx = None              # Previous value of data_idx
         # list of slots that have been filled
         slots = []
+        # Look up dump index by slot
+        slot_for_index = {}
         refant = self.telstate.cal_refant
 
         # receive SPEAD stream
@@ -746,8 +745,14 @@ class Accumulator(object):
             data_ts = ig['timestamp'].value + self.sync_time
             data_idx = ig['dump_index'].value
             if last_idx is not None and data_idx < last_idx:
-                logger.warn('Dump index went backwards (%d < %d), skipping heap', data_idx, last_idx)
-                continue
+                try:
+                    slot = slot_for_index[data_idx]
+                    logger.warning('Dump index went backwards (%d < %d), but managed to accept it',
+                                   data_idx, last_idx)
+                except KeyError:
+                    logger.warning('Dump index went backwards (%d < %d), skipping heap',
+                                   data_idx, last_idx)
+                    continue
             elif data_idx != last_idx:
                 if self._obs_start is None:
                     self._obs_start = data_ts - 0.5 * self.int_time
@@ -772,6 +777,7 @@ class Accumulator(object):
                 if old_state is not None and self._is_break(old_state, new_state, slots, duration):
                     self._flush_slots(slots)
                     slots = []
+                    slot_for_index.clear()
                     old_state = None
                     unsync_start_time = ig['timestamp'].value
 
@@ -785,6 +791,7 @@ class Accumulator(object):
                     logger.info('Accumulation interrupted while waiting for a slot')
                     break
                 slots.append(slot)
+                slot_for_index[data_idx] = slot
 
                 old_state = new_state
                 last_idx = data_idx
@@ -856,19 +863,24 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
-        with dask.set_options(pool=multiprocessing.pool.ThreadPool(self.num_workers)):
-            if self.diagnostics_file is not None:
-                profilers = [
-                    dask.diagnostics.Profiler(),
-                    dask.diagnostics.ResourceProfiler(),
-                    dask.diagnostics.CacheProfiler()]
-                with profilers[0], profilers[1], profilers[2]:
+        pool = multiprocessing.pool.ThreadPool(self.num_workers)
+        try:
+            with dask.set_options(pool=pool):
+                if self.diagnostics_file is not None:
+                    profilers = [
+                        dask.diagnostics.Profiler(),
+                        dask.diagnostics.ResourceProfiler(),
+                        dask.diagnostics.CacheProfiler()]
+                    with profilers[0], profilers[1], profilers[2]:
+                        self._run_impl()
+                    dask.diagnostics.visualize(
+                        profilers, file_path=self.diagnostics_file, show=False)
+                    logger.info('wrote diagnostics to %s', self.diagnostics_file)
+                else:
                     self._run_impl()
-                dask.diagnostics.visualize(
-                    profilers, file_path=self.diagnostics_file, show=False)
-                logger.info('wrote diagnostics to %s', self.diagnostics_file)
-            else:
-                self._run_impl()
+        finally:
+            pool.close()
+            pool.join()
 
     def _run_impl(self):
         """
