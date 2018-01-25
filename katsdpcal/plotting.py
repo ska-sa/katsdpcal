@@ -239,12 +239,13 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y))
-
-    datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
-    dates = md.date2num(datetimes)
     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
                              squeeze=False, sharey='col')
+    # get matplotlib dates and format time axis
+    datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
+    dates = md.date2num(datetimes)
+    time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
+
     for p in range(npols):
         # plot amplitude
         p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-')
@@ -259,15 +260,12 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
 
     # for the last row, add in xticklabels and xlabels
     l_p = npols - 1
-    plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
-    plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
-    time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
-    time_label(axes[l_p, 1], [datetimes[0], datetimes[-1]])
-    time_xtick_fmt(axes)
+    for i in range(ncols):
+        plt.setp(axes[l_p, i].get_xticklabels(), visible=True)
+        time_label(axes[l_p, i], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
         axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
-
     return fig
 
 
@@ -379,7 +377,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     return fig
 
 
-def time_xtick_fmt(ax):
+def time_xtick_fmt(ax, timerange):
     """
     Format the ticklabels for time axis of a plot
 
@@ -387,12 +385,19 @@ def time_xtick_fmt(ax):
     ----------
     ax : : class: `np.ndarray` of : class: `matplotlib.axes.Axes`
         array of axes whose ticklabels will be formatted
+    timerange : list of :class: `datetime.datetime`
+        start and stop times of the plot
     """
     # Format the xticklabels to display h:m:s
     xfmt = md.DateFormatter('%H:%M:%S')
     ax_flat = ax.flatten()
     for a in ax_flat:
         a.xaxis.set_major_formatter(xfmt)
+        # set axis range for plots of 1 plot, nb or it will fail
+        if timerange[0] == timerange[-1]:
+            low = timerange[0] - datetime.timedelta(seconds=60)
+            high = timerange[0] + datetime.timedelta(seconds=60)
+            a.set_xlim(low, high)
 
 
 def time_label(ax, timerange):
@@ -406,11 +411,6 @@ def time_label(ax, timerange):
     timerange : list of :class: `datetime.datetime`
         start and stop times of the plot
     """
-
-    if timerange[0] == timerange[-1]:
-        low = timerange[0] - datetime.timedelta(seconds=60)
-        high = timerange[0] + datetime.timedelta(seconds=60)
-        ax.set_xlim(low, high)
 
     if timerange[0].date() == timerange[-1].date():
         datelabel = timerange[0].strftime('%Y-%m-%d')
@@ -452,8 +452,9 @@ def plot_el_v_time(targets, times, elevations, title=None):
 
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
-    time_xtick_fmt(np.array([axes]))
+    time_xtick_fmt(np.array([axes]), [t_zero, t_max])
     time_label(axes, [t_zero, t_max])
+
     return fig
 
 
@@ -546,11 +547,11 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
     dates = md.date2num(datetimes)
+    time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
 
     for p in range(npols):
         p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted')
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
-        time_xtick_fmt(axes)
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
@@ -708,6 +709,8 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
 
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
     dates = md.date2num(datetimes)
+    time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
+
     for p in range(npols):
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
@@ -724,9 +727,8 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
 
     # For the final row, add in xticklabels and xlabel
     l_p = npols - 1
-    plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
-    time_xtick_fmt(axes)
     time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
+    plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
 
     if antlist is not None:
         axes[0, 0].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)

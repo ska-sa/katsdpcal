@@ -22,7 +22,7 @@ ANT_CHUNKS = 16
 # No of channels for plots which aren't spectra
 PLOT_CHANNELS = 8
 # Tag blacklist
-TAG_WHITELIST = ['gain', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
+TAG_WHITELIST = ['gaincal', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 
 # --------------------------------------------------------------------------------------------------
 # --- CLASS :  rstReport

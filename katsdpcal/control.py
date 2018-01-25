@@ -167,7 +167,10 @@ def _corr_total(corr_data):
     total = {}
     for key in ['vis', 'flags', 'weights', 'times', 'n_flags']:
         stack = [d[key] for d in corr_data if len(d[key]) > 0]
-        total[key] = np.concatenate(stack, axis=0)
+        if len(stack) > 0:
+            total[key] = np.concatenate(stack, axis=0)
+        else:
+            total[key] = stack
     for key in ['targets', 'timestamps']:
         stack = [d[key] for d in corr_data]
         stack_flat = [y for z in stack for y in z]
