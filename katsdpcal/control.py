@@ -170,7 +170,7 @@ def _corr_total(corr_data):
         if len(stack) > 0:
             total[key] = np.concatenate(stack, axis=0)
         else:
-            total[key] = stack
+            total[key] = np.asarray(stack)
     for key in ['targets', 'timestamps']:
         stack = [d[key] for d in corr_data]
         stack_flat = [y for z in stack for y in z]

@@ -769,8 +769,9 @@ def write_K(report, report_path, times, vals, antenna_mask, pol=[0, 1]):
         logger.info('  pol{0} shape: {1}'.format(p, kpol.shape))
         write_table_timecol(report, antenna_mask, times, kpol)
 
-    plot = plotting.plot_delays(times, vals, antlist=antenna_mask, pol=pol)
-    insert_fig(report_path, report, plot, name='K')
+    for idx in range(0, vals.shape[-1], ANT_CHUNKS):
+        plot = plotting.plot_delays(times, vals, antlist=antenna_mask, pol=pol)
+        insert_fig(report_path, report, plot, name='K')
 
 
 def write_B(report, report_path, times, vals, antenna_mask, correlator_freq, pol=[0, 1]):
@@ -1074,7 +1075,8 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         unique_targets = list(set(av_corr['targets']))
         refant_index = ts['cal_antlist'].index(ts['cal_refant'])
         ant_desc = ts['cal_antlist_description']
-        write_elevation(cal_rst, report_path, unique_targets, ant_desc[refant_index], av_corr)
+        if len(av_corr['targets']) > 0:
+            write_elevation(cal_rst, report_path, unique_targets, ant_desc[refant_index], av_corr)
 
         # -------------------------------------------------------------------
         # write RFI summary
