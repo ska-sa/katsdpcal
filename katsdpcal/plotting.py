@@ -392,12 +392,12 @@ def time_xtick_fmt(ax, timerange):
     xfmt = md.DateFormatter('%H:%M:%S')
     ax_flat = ax.flatten()
     for a in ax_flat:
-        a.xaxis.set_major_formatter(xfmt)
         # set axis range for plots of 1 plot, nb or it will fail
         if timerange[0] == timerange[-1]:
-            low = timerange[0] - datetime.timedelta(seconds=60)
-            high = timerange[0] + datetime.timedelta(seconds=60)
+            low = md.date2num(timerange[0] - datetime.timedelta(seconds=10))
+            high = md.date2num(timerange[-1] + datetime.timedelta(seconds=10))
             a.set_xlim(low, high)
+        a.xaxis.set_major_formatter(xfmt)
 
 
 def time_label(ax, timerange):
