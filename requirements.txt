@@ -1,5 +1,6 @@
 appdirs
 argcomplete==1.0.0      # for tmuxp
+attrs==17.4.0
 backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
 certifi                 # for tornado

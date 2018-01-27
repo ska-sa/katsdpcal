@@ -261,7 +261,7 @@ class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue, master_queue,
-                 l0_name, l0_endpoints, l0_interface_address, telstate):
+                 l0_name, l0_endpoints, l0_interface_address, telstate, parameters):
         self.buffers = buffers
         self.telstate = telstate
         self.l0_endpoints = l0_endpoints
@@ -271,6 +271,7 @@ class Accumulator(object):
 
         # Extract useful parameters from telescope state
         self.telstate_l0 = self.telstate.view(l0_name)
+        self.parameters = parameters
         self.sync_time = self.telstate_l0['sync_time']
         self.int_time = self.telstate_l0['int_time']
         self.set_ordering_parameters()
@@ -505,15 +506,8 @@ class Accumulator(object):
     def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls
         # ordering to desired bls ordering
-        antlist = self.telstate.cal_antlist
-        self.ordering, bls_order, pol_order = \
-            calprocs.get_reordering(antlist, self.telstate_l0['bls_ordering'])
-        # determine lookup list for baselines
-        bls_lookup = calprocs.get_bls_lookup(antlist, bls_order)
-        # save these to the telescope state for use in the pipeline/elsewhere
-        self.telstate.add('cal_bls_ordering', bls_order)
-        self.telstate.add('cal_pol_ordering', pol_order)
-        self.telstate.add('cal_bls_lookup', bls_lookup)
+        antlist = self.parameters['antlist']
+        self.ordering, _, _ = calprocs.get_reordering(antlist, self.telstate_l0['bls_ordering'])
 
     @classmethod
     def _update_buffer(cls, out, l0, ordering):
@@ -596,12 +590,12 @@ class Accumulator(object):
                 continue
             raise Return(updated)
 
-    def _get_activity_state(self, refant, data_ts):
+    def _get_activity_state(self, refant_name, data_ts):
         """Extract telescope state information about current activity.
 
         Parameters
         ----------
-        refant : str
+        refant_name : str
             Name of reference antenna. It is the one whose activity and target
             are used.
         data_ts : float
@@ -615,17 +609,18 @@ class Accumulator(object):
         activity_full = []
         try:
             activity_full = self.telstate.get_range(
-                refant + '_activity', et=data_ts, include_previous=True)
+                refant_name + '_activity', et=data_ts, include_previous=True)
         except KeyError:
             pass
         if not activity_full:
-            logger.info('no activity recorded for reference antenna %s - ignoring dump', refant)
+            logger.info('no activity recorded for reference antenna %s - ignoring dump',
+                        refant_name)
             return None
         activity, activity_time = activity_full[0]
 
         # get target from telescope state, if it is present (if it
         # isn't present, set to unknown)
-        target_key = refant + '_target'
+        target_key = refant_name + '_target'
         try:
             target = self.telstate.get_range(target_key, et=data_ts,
                                              include_previous=True)[0][0]
@@ -728,7 +723,7 @@ class Accumulator(object):
         slots = []
         # Look up dump index by slot
         slot_for_index = {}
-        refant = self.telstate.cal_refant
+        refant_name = self.parameters['refant'].name
 
         # receive SPEAD stream
         logger.info('waiting to start accumulating data')
@@ -762,7 +757,7 @@ class Accumulator(object):
                 self._obs_end = data_ts + 0.5 * self.int_time
 
                 # get activity and target tag from telescope state
-                new_state = self._get_activity_state(refant, data_ts)
+                new_state = self._get_activity_state(refant_name, data_ts)
                 if new_state is None:
                     continue     # _get_activity logs the reason
 
@@ -830,7 +825,7 @@ class Pipeline(Task):
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-                 l0_name, telstate,
+                 l0_name, telstate, parameters,
                  diagnostics_file=None, profile_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
@@ -838,6 +833,7 @@ class Pipeline(Task):
         self.pipeline_sender_queue = pipeline_sender_queue
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
+        self.parameters = parameters
         self.l0_name = l0_name
         self.diagnostics_file = diagnostics_file
         if num_workers is None:
@@ -945,7 +941,7 @@ class Pipeline(Task):
 
     def run_pipeline(self, data):
         # run pipeline calibration
-        target_slices, avg_corr = pipeline(data, self.telstate, self.l0_name)
+        target_slices, avg_corr = pipeline(data, self.telstate, self.parameters, self.l0_name)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
@@ -955,7 +951,7 @@ class Sender(Task):
                  pipeline_sender_queue, master_queue,
                  l0_name,
                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-                 telstate):
+                 telstate, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate_l0 = telstate.view(l0_name)
         self.flags_endpoint = flags_endpoint
@@ -973,7 +969,7 @@ class Sender(Task):
         self.pipeline_sender_queue = pipeline_sender_queue
         # Compute the permutation to get back to L0 ordering. get_reordering gives
         # the inverse of what is needed.
-        rev_ordering = calprocs.get_reordering(telstate_l0['cal_antlist'], self.l0_bls)[0]
+        rev_ordering = calprocs.get_reordering(parameters['antlist'], self.l0_bls)[0]
         self.ordering = np.full(n_bls, -1)
         for i, idx in enumerate(rev_ordering):
             self.ordering[idx] = i
@@ -1048,7 +1044,7 @@ class Sender(Task):
 
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
-                 l0_name, telstate,
+                 l0_name, telstate, parameters,
                  report_path, log_path, full_log):
         super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
@@ -1057,6 +1053,7 @@ class ReportWriter(Task):
         self.pipeline_report_queue = pipeline_report_queue
         self.telstate = telstate
         self.l0_name = l0_name
+        self.parameters = parameters
         self.report_path = report_path
         self.log_path = log_path
         self.full_log = full_log
@@ -1104,7 +1101,7 @@ class ReportWriter(Task):
 
         # create pipeline report (very basic at the moment)
         try:
-            make_cal_report(self.telstate, self.l0_name,
+            make_cal_report(self.telstate, self.l0_name, self.parameters,
                             current_obs_dir, av_corr, experiment_id,
                             st=obs_start, et=obs_end)
         except Exception as error:
@@ -1360,7 +1357,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-                  telstate, report_path, log_path, full_log,
+                  telstate, parameters, report_path, log_path, full_log,
                   diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
@@ -1380,15 +1377,15 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-        l0_name, telstate, diagnostics_file, pipeline_profile_file, num_workers)
+        l0_name, telstate, parameters, diagnostics_file, pipeline_profile_file, num_workers)
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
         flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-        telstate)
+        telstate, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
-        module.Process, pipeline_report_queue, master_queue, l0_name, telstate,
+        module.Process, pipeline_report_queue, master_queue, l0_name, telstate, parameters,
         report_path, log_path, full_log)
 
     # Start the child tasks.
@@ -1404,7 +1401,7 @@ def create_server(use_multiprocessing, host, port, buffers,
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue, master_queue,
-                                  l0_name, l0_endpoints, l0_interface_address, telstate)
+                                  l0_name, l0_endpoints, l0_interface_address, telstate, parameters)
         return CalDeviceServer(accumulator, pipeline, sender, report_writer,
                                master_queue, host, port)
     except Exception:

@@ -209,15 +209,16 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'h', b + 'v'))
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.clear()     # Prevent state leaks
+        telstate_l0 = telstate.view('sdp_l0test')
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
-        telstate.add('sdp_l0test_int_time', 4.0, immutable=True)
-        telstate.add('sdp_l0test_bls_ordering', bls_ordering, immutable=True)
-        telstate.add('sdp_l0test_n_bls', len(bls_ordering), immutable=True)
-        telstate.add('sdp_l0test_bandwidth', 856000000.0, immutable=True)
-        telstate.add('sdp_l0test_center_freq', 1712000000.0, immutable=True)
-        telstate.add('sdp_l0test_n_chans', self.n_channels, immutable=True)
-        telstate.add('sdp_l0test_n_chans_per_substream', self.n_channels_per_substream, immutable=True)
-        telstate.add('sdp_l0test_sync_time', 1400000000.0, immutable=True)
+        telstate_l0.add('int_time', 4.0, immutable=True)
+        telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
+        telstate_l0.add('n_bls', len(bls_ordering), immutable=True)
+        telstate_l0.add('bandwidth', 856000000.0, immutable=True)
+        telstate_l0.add('center_freq', 1712000000.0, immutable=True)
+        telstate_l0.add('n_chans', self.n_channels, immutable=True)
+        telstate_l0.add('n_chans_per_substream', self.n_channels_per_substream, immutable=True)
+        telstate_l0.add('sync_time', 1400000000.0, immutable=True)
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
@@ -230,8 +231,9 @@ class TestCalDeviceServer(unittest.TestCase):
                 '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(antenna))
         param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_ar1_4k.txt')
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
-        pipelineprocs.ts_from_file(telstate, param_file, rfi_file)
-        pipelineprocs.setup_ts(telstate, self.antennas)
+        parameters = pipelineprocs.parameters_from_file(param_file)
+        pipelineprocs.finalise_parameters(parameters, telstate_l0, rfi_file)
+        return parameters
 
     def add_items(self, ig):
         channels = self.telstate.sdp_l0test_n_chans_per_substream
@@ -269,7 +271,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self.n_baselines = self.n_antennas * (self.n_antennas + 1) * 2
 
         self.telstate = katsdptelstate.TelescopeState()
-        self.populate_telstate(self.telstate)
+        self.parameters = self.populate_telstate(self.telstate)
         self.ioloop = AsyncIOMainLoop()
         self.ioloop.install()
         self.addCleanup(tornado.ioloop.IOLoop.clear_instance)
@@ -298,7 +300,7 @@ class TestCalDeviceServer(unittest.TestCase):
             'sdp_l0test',
             [Endpoint('239.102.255.{}'.format(i), 7148) for i in range(self.n_endpoints)], None,
             'sdp_l1_flags_test', Endpoint('239.102.255.2', 7148), None, 64.0,
-            self.telstate, self.report_path, self.log_path, None)
+            self.telstate, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)
 

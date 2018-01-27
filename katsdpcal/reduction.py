@@ -19,14 +19,14 @@ from . import lsm_dir
 logger = logging.getLogger(__name__)
 
 
-def init_flagger(ts, dump_period):
+def init_flagger(parameters, dump_period):
     """Set up SumThresholdFlagger objects for targets
     and calibrators.
 
     Parameters
     ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        The telescope state associated with this pipeline
+    parameters : dict
+        Pipeline parameters
     dump_period : float
         The dump period in seconds
 
@@ -39,24 +39,24 @@ def init_flagger(ts, dump_period):
     """
 
     # Make windows a integer array
-    rfi_windows_freq = np.array(ts.cal_param_rfi_windows_freq.split(','), dtype=np.int)
-    spike_width_time = ts.cal_param_rfi_spike_width_time / dump_period
-    calib_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_calib_nsigma,
+    rfi_windows_freq = np.array(parameters['rfi_windows_freq'], dtype=np.int)
+    spike_width_time = parameters['rfi_spike_width_time'] / dump_period
+    calib_flagger = SumThresholdFlagger(outlier_nsigma=parameters['rfi_calib_nsigma'],
                                         windows_freq=rfi_windows_freq,
                                         spike_width_time=spike_width_time,
-                                        spike_width_freq=ts.cal_param_rfi_calib_spike_width_freq,
-                                        average_freq=ts.cal_param_rfi_average_freq,
-                                        freq_extend=ts.cal_param_rfi_extend_freq)
-    targ_flagger = SumThresholdFlagger(outlier_nsigma=ts.cal_param_rfi_targ_nsigma,
+                                        spike_width_freq=parameters['rfi_calib_spike_width_freq'],
+                                        average_freq=parameters['rfi_average_freq'],
+                                        freq_extend=parameters['rfi_extend_freq'])
+    targ_flagger = SumThresholdFlagger(outlier_nsigma=parameters['rfi_targ_nsigma'],
                                        windows_freq=rfi_windows_freq,
                                        spike_width_time=spike_width_time,
-                                       spike_width_freq=ts.cal_param_rfi_targ_spike_width_freq,
-                                       average_freq=ts.cal_param_rfi_average_freq,
-                                       freq_extend=ts.cal_param_rfi_extend_freq)
+                                       spike_width_freq=parameters['rfi_targ_spike_width_freq'],
+                                       average_freq=parameters['rfi_average_freq'],
+                                       freq_extend=parameters['rfi_extend_freq'])
     return calib_flagger, targ_flagger
 
 
-def get_tracks(data, ts, dump_period):
+def get_tracks(data, ts, parameters, dump_period):
     """Determine the start and end indices of each track segment in data buffer.
 
     Inputs
@@ -65,6 +65,8 @@ def get_tracks(data, ts, dump_period):
         Data buffer
     ts : :class:`katsdptelstate.TelescopeState`
         The telescope state associated with this pipeline
+    parameters : dict
+        Pipeline parameters
     dump_period : float
         Dump period in seconds
 
@@ -76,8 +78,8 @@ def get_tracks(data, ts, dump_period):
     """
     # Collect all receptor activity sensors from telstate
     cache = {}
-    for ant in ts.cal_antlist:
-        sensor_name = '{}_activity'.format(ant)
+    for ant in parameters['antennas']:
+        sensor_name = '{}_activity'.format(ant.name)
         cache[sensor_name] = TelstateSensorData(ts, sensor_name)
     num_dumps = data['times'].shape[0]
     timestamps = data['times']
@@ -139,42 +141,7 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
     return solns_to_apply
 
 
-def init_ts_params(ts, stream_name):
-    """
-    Initialise telescope state parameteters
-    This is necessary to add telescope state parameters derived from
-    information available only after data has started flowing.
-
-    Inputs
-    ------
-    ts : :class:`katsdptelstate.TelescopeState`
-        telescope state
-    stream_name : str
-        name of L0 data stream
-    """
-    description_list = [ts['{0}_observer'.format(ant,)] for ant in ts.cal_antlist]
-    # list of antenna descriptions
-    if 'cal_antlist_description' not in ts:
-        ts.add('cal_antlist_description', description_list, immutable=True)
-
-    # array reference position
-    if 'cal_array_position' not in ts:
-        # take lat-long-alt value from first antenna in antenna list as the array reference position
-        ts.add('cal_array_position',
-               'array_position, ' + ','.join(description_list[0].split(',')[1:-1]))
-
-    # channel frequencies
-    if 'cal_channel_freqs' not in ts:
-        n_chans = ts[stream_name + '_n_chans']
-        center_freq = ts[stream_name + '_center_freq']
-        bandwidth = ts[stream_name + '_bandwidth']
-        sideband = ts.get('cal_sideband', 1)
-        channel_freqs = center_freq \
-            + sideband * (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
-        ts.add('cal_channel_freqs', channel_freqs, immutable=True)
-
-
-def pipeline(data, ts, stream_name):
+def pipeline(data, ts, parameters, stream_name):
     """
     Pipeline calibration
 
@@ -185,6 +152,8 @@ def pipeline(data, ts, stream_name):
         :class:`dask.Arrays`, while `times` references a numpy array.
     ts : :class:`katsdptelstate.TelescopeState`
         Telescope state
+    parameters : dict
+        The pipeline parameters
     stream_name : str
         Name of the L0 data stream
 
@@ -209,37 +178,30 @@ def pipeline(data, ts, stream_name):
     # ----------------------------------------------------------
     # extract some some commonly used constants from the TS
 
+    telstate_l0 = ts.view(stream_name)
     # solution intervals
-    bp_solint = ts.cal_param_bp_solint  # seconds
-    k_solint = ts.cal_param_k_solint  # seconds
-    k_chan_sample = ts.cal_param_k_chan_sample
-    g_solint = ts.cal_param_g_solint  # seconds
+    bp_solint = parameters['bp_solint']  # seconds
+    k_solint = parameters['k_solint']  # seconds
+    k_chan_sample = parameters['k_chan_sample']
+    g_solint = parameters['g_solint']  # seconds
     try:
-        dump_period = ts[stream_name + '_int_time']
+        dump_period = telstate_l0['int_time']
     except KeyError:
         logger.warning(
             'Parameter %s_int_time not present in TS. Will be derived from data.', stream_name)
         dump_period = data['times'][1] - data['times'][0]
 
-    antlist = ts.cal_antlist
+    antlist = parameters['antlist']
     n_ants = len(antlist)
-    pols = set()
-    for a, b in ts[stream_name + '_bls_ordering']:
-        pols.add(a[-1] + b[-1])
-    n_pols = len(pols)
+    n_pols = len(parameters['pol_ordering'])
     # refant index number in the antenna list
-    refant_ind = antlist.index(ts.cal_refant)
-
-    # set up parameters that are static during an observation, but only
-    # available when the first data starts to flow.
-    # TODO: more of this is static now and could be dealt with at startup.
-    init_ts_params(ts, stream_name)
+    refant_ind = antlist.index(parameters['refant'].name)
 
     # Set up flaggers
-    calib_flagger, targ_flagger = init_flagger(ts, dump_period)
+    calib_flagger, targ_flagger = init_flagger(parameters, dump_period)
 
     # get names of target TS key, using TS reference antenna
-    target_key = '{0}_target'.format(ts.cal_refant)
+    target_key = '{0}_target'.format(parameters['refant'].name)
 
     # ----------------------------------------------------------
     # set initial values for fits
@@ -252,7 +214,7 @@ def pipeline(data, ts, stream_name):
     #    iterate backwards in time through the scans,
     #    for the case where a gains need to be calculated from a gain scan
     #    after a target scan, for application to the target scan
-    track_slices = get_tracks(data, ts, dump_period)
+    track_slices = get_tracks(data, ts, parameters, dump_period)
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
@@ -269,8 +231,8 @@ def pipeline(data, ts, stream_name):
         target_list = target.split(',')
         target_name = target_list[0]
         logger.info('-----------------------------------')
-        logger.info('Target: {0}'.format(target_name,))
-        logger.info('  Timestamps: {0}'.format(n_times,))
+        logger.info('Target: {0}'.format(target_name))
+        logger.info('  Timestamps: {0}'.format(n_times))
         logger.info('  Time:       {0} - {1}'.format(
             time.strftime("%H:%M:%S", time.gmtime(t0)), time.strftime("%H:%M:%S", time.gmtime(t1))))
 
@@ -284,9 +246,12 @@ def pipeline(data, ts, stream_name):
 
         # ---------------------------------------
         # set up scan
-        s = Scan(data, scan_slice, dump_period, n_ants, n_pols, ts.cal_bls_lookup, target,
-                 chans=ts.cal_channel_freqs, ants=ts.cal_antlist_description,
-                 refant=refant_ind, array_position=ts.cal_array_position, logger=logger)
+        s = Scan(data, scan_slice, dump_period, n_ants, n_pols,
+                 parameters['bls_lookup'], target,
+                 chans=parameters['channel_freqs'],
+                 ants=parameters['antennas'],
+                 refant=refant_ind,
+                 array_position=parameters['array_position'], logger=logger)
         if s.xc_mask.size == 0:
             logger.info('No XC data - no processing performed.')
             continue
@@ -321,7 +286,7 @@ def pipeline(data, ts, stream_name):
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
-            k_soln = s.k_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan)
+            k_soln = s.k_sol(parameters['k_bchan'], parameters['k_echan'])
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
 
@@ -343,7 +308,7 @@ def pipeline(data, ts, stream_name):
             # use single solution interval
             dumps_per_solint = scan_slice.stop - scan_slice.start
             g_solint = dumps_per_solint * dump_period
-            g_soln = s.g_sol(g_solint, g0_h, ts.cal_param_g_bchan, ts.cal_param_g_echan,
+            g_soln = s.g_sol(g_solint, g0_h, parameters['g_bchan'], parameters['g_echan'],
                              pre_apply=solns_to_apply)
             logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
@@ -361,13 +326,13 @@ def pipeline(data, ts, stream_name):
             logger.info('Solving for preliminary G on delay calibrator {0}'.format(
                 target_name,))
             # solve and interpolate to scan timestamps
-            pre_g_soln = s.g_sol(k_solint, g0_h, ts.cal_param_k_bchan, ts.cal_param_k_echan)
+            pre_g_soln = s.g_sol(k_solint, g0_h, parameters['k_bchan'], parameters['k_echan'])
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on delay calibrator {0}'.format(target_name,))
-            k_soln = s.k_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan, k_chan_sample,
+            k_soln = s.k_sol(parameters['k_bchan'], parameters['k_echan'], k_chan_sample,
                              pre_apply=[g_to_apply])
 
             # ---------------------------------------
@@ -404,8 +369,8 @@ def pipeline(data, ts, stream_name):
                 # KCROSS solution
                 logger.info(
                     'Solving for KCROSS on cross-hand delay calibrator {0}'.format(target_name,))
-                kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
-                                           ts.cal_param_kcross_chanave, pre_apply=solns_to_apply)
+                kcross_soln = s.kcross_sol(parameters['k_bchan'], parameters['k_echan'],
+                                           parameters['kcross_chanave'], pre_apply=solns_to_apply)
 
                 # ---------------------------------------
                 # update TS
@@ -459,7 +424,7 @@ def pipeline(data, ts, stream_name):
             # (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop - scan_slice.start - 1) / 2.0)
             g_solint = dumps_per_solint * dump_period
-            g_soln = s.g_sol(g_solint, g0_h, ts.cal_param_g_bchan, ts.cal_param_g_echan,
+            g_soln = s.g_sol(g_solint, g0_h, parameters['g_bchan'], parameters['g_echan'],
                              pre_apply=solns_to_apply)
 
             # ---------------------------------------

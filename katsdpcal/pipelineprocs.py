@@ -3,14 +3,19 @@ Pipeline procedures for MeerKAT calibration pipeline
 ====================================================
 """
 
+import glob    # for model files
+import pickle
+import logging
+import argparse
+
+import attr
 import numpy as np
 
-# for model files
-import glob
+import katpoint
 
-import pickle
+from . import calprocs
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
@@ -18,145 +23,193 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------------------------------
 
 
-def init_ts(ts, param_dict):
+@attr.s
+class Parameter(object):
+    name = attr.ib()
+    help = attr.ib()
+    type = attr.ib()
+    metavar = attr.ib(default=None)
+    default = attr.ib(default=None)
+    telstate = attr.ib(default=True)    # Whether to store into telstate
+
+
+def comma_list(type_):
+    def convert(value):
+        if value == '':
+            return []
+        parts = value.split(',')
+        return [type_(part.strip()) for part in parts]
+
+    return convert
+
+
+USER_PARAMETERS = [
+    Parameter('preferred_refants', 'preferred reference antennas', comma_list(str),
+              default=attr.Factory(list)),
+    # delay calibration
+    Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
+    Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
+    Parameter('k_bchan', 'first channel for K fit', int),
+    Parameter('k_echan', 'last channel for K fit', int),
+    Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
+    # bandpass calibration
+    Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
+    # gain calibration
+    Parameter('g_solint', 'nominal g solution interval, seconds', float),
+    Parameter('g_bchan', 'first channel for g fit', int),
+    Parameter('g_echan', 'last channel for g fit', int),
+    # Flagging
+    Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
+    Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
+    Parameter('rfi_windows_freq', 'size of windows for SumThreshold', comma_list(int)),
+    Parameter('rfi_average_freq', 'amount to average in frequency before flagging', int),
+    Parameter('rfi_targ_spike_width_freq',
+              '1sigma frequency width of smoothing Gaussian on final target (in channels)', float),
+    Parameter('rfi_calib_spike_width_freq',
+              '1sigma frequency width of smoothing Gaussian on calibrators (in channels)', float),
+    Parameter('rfi_spike_width_time',
+              '1sigma time width of smoothing Gaussian (in seconds)', float),
+    Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags', int),
+    Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna)
+]
+
+# Parameters that the user cannot set directly (the type is not used)
+COMPUTED_PARAMETERS = [
+    Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
+    Parameter('refant', 'selected reference antenna', katpoint.Antenna),
+    Parameter('antlist', 'antenna names', list),    # TODO: eliminate, use antennas?
+    Parameter('antennas', 'antenna objects', list),
+    Parameter('bls_ordering', 'list of baselines', list),
+    Parameter('pol_ordering', 'list of polarisations', list),
+    Parameter('bls_lookup', 'list of baselines as indices into antlist', list),  # TODO: eliminate?
+    Parameter('channel_freqs', 'frequency of each channel in Hz', np.ndarray)
+]
+
+
+def parameters_from_file(filename):
+    """Load a set of parameters from a config file, returning a dict.
+
+    The file has the format :samp:`{key}: {value}`. Hashes (#) introduce
+    comments.
     """
-    Initialises the telescope state from parameter dictionary.
-    Parameters from the parameter dictionary are only added to the TS the
-    the parameter is not already in the TS.
-
-    Parameters
-    ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telescope State
-    param_dict : dict
-        dictionary of parameters
-    """
-
-    # populate ts with parameters
-    #   parameter only added if it is missing from the TS
-    for key in param_dict.keys():
-        if key not in ts:
-            ts.add(key, param_dict[key])
-
-
-def ts_from_file(ts, param_filename, rfi_filename=None):
-    """
-    Initialises the telescope state from parameter file.
-    Note: parameters will be returned as ints, floats or strings (not lists)
-
-    Parameters
-    ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telescope State
-    param_filename : str
-        parameter file, text file
-    rfi_filename : str, optional
-        RFI mask file, pickle
-
-    Notes
-    -----
-    * Parameter file uses colons (:) for delimiters
-    * Parameter file uses hashes (#) for comments
-    * Missing parameters are set to empty strings ''
-    """
-    param_list = np.genfromtxt(param_filename, delimiter=':', dtype=np.str,
-                               comments='#', missing_values='')
+    rows = np.loadtxt(filename, delimiter=':', dtype=np.str, comments='#')
+    raw_params = {key.strip(): value.strip() for (key, value) in rows}
     param_dict = {}
-    for key, value in param_list:
-        try:
-            # integer?
-            param_value = int(value)
-        except ValueError:
-            try:
-                # float?
-                param_value = float(value)
-            except ValueError:
-                # keep as string, strip whitespace
-                param_value = value.strip()
-
-        param_dict[key.strip()] = param_value
-
-    if rfi_filename is not None:
-        param_dict['cal_rfi_mask'] = pickle.load(open(rfi_filename))
-
-    init_ts(ts, param_dict)
+    for parameter in USER_PARAMETERS:
+        if parameter.name in raw_params:
+            param_dict[parameter.name] = parameter.type(raw_params[parameter.name])
+            del raw_params[parameter.name]
+    if raw_params:
+        raise ValueError('Unknown parameters ' + ', '.join(raw_params.keys()))
+    return param_dict
 
 
-def setup_ts(ts, antlist, logger=logger):
-    """
-    Set up the telescope state for pipeline use.
-    In general, the calibration parameters are mutable.
-    Only subarray characteristics are immutable.
+def parameters_from_argparse(namespace):
+    """Extracts those parameters that are present in an argparse namespace"""
+    param_dict = {}
+    for parameter in USER_PARAMETERS:
+        if parameter.name in vars(namespace):
+            param_dict[parameter.name] = getattr(namespace, parameter.name)
+    return param_dict
+
+
+def register_argparse_parameters(parser):
+    """Add command-line arguments corresponding to parameters"""
+    for parameter in USER_PARAMETERS:
+        # Note: does NOT set default=. Defaults are resolved only after
+        # processing both command-line arguments and config files.
+        parser.add_argument('--' + parameter.name.replace('_', '-'),
+                            help=parameter.help,
+                            type=parameter.type,
+                            default=argparse.SUPPRESS,
+                            metavar=parameter.metavar)
+
+
+def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
+    """Set the defaults and computed parameters in `parameters`.
+
+    On input, `parameters` contains the keys in :const:`USER_PARAMETERS`. Keys
+    may be missing if there is a default. On return, those in
+    :const:`COMPUTED_PARAMETERS` are filled in too.
+
+    It chooses the first antenna in `preferred_refants` that is in the antlist,
+    or the first antenna from antlist if there are no matches.
 
     Parameters
     ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telescope State
-    antlist : list of str
-        Antenna names
-    logger : :class:`logging.Logger`
-        logger
+    parameters : dict
+        Dictionary mapping parameter names from :const:`USER_PARAMETERS`
+    telstate_l0 : :class:`katsdptelstate.TelescopeState`
+        Telescope state with a view of the L0 attributes
+    rfi_filename : str
+        Filename containing a pickled RFI mask
 
-    Notes
-    -----
-    Assumed ending ts entries
-    cal_antlist           - list of antennas present in the data
-    cal_preferred_refants - ordered list of refant preference
-    cal_refant            - reference antenna
+    Raises
+    ------
+    ValueError
+        if some element of `parameters` is not set and there is no default
     """
+    baselines = telstate_l0['bls_ordering']
+    ants = set()
+    for a, b in baselines:
+        ants.add(a[:-1])
+        ants.add(b[:-1])
+    antlist = sorted(ants)
+    _, bls_ordering, pol_ordering = calprocs.get_reordering(antlist, telstate_l0['bls_ordering'])
+    parameters['antlist'] = antlist
+    parameters['antennas'] = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)])
+                              for ant in antlist]
+    parameters['bls_ordering'] = bls_ordering
+    parameters['pol_ordering'] = pol_ordering
+    # TODO: eliminate, compute when needed?
+    parameters['bls_lookup'] = calprocs.get_bls_lookup(antlist, bls_ordering)
 
-    ts.add('cal_antlist', antlist)
+    n_chans = telstate_l0['n_chans']
+    center_freq = telstate_l0['center_freq']
+    bandwidth = telstate_l0['bandwidth']
+    parameters['channel_freqs'] = center_freq \
+        + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
 
-    # cal_preferred_refants
-    if 'cal_preferred_refants' not in ts:
-        logger.info('Preferred antenna list set to antenna mask list:')
-        ts.add('cal_preferred_refants', antlist)
-        logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
-    else:
-        # change cal_preferred_refants to lists of strings (not single csv string)
-        csv_to_list_ts(ts, 'cal_preferred_refants')
-        # reduce the preferred antenna list to only antennas present in cal_antlist
-        preferred = [ant for ant in ts.cal_preferred_refants if ant in antlist]
-        if preferred != ts.cal_preferred_refants:
-            if preferred == []:
-                logger.info('No antennas from the antenna mask in the preferred antenna list')
-                logger.info(' - preferred antenna list set to antenna mask list:')
-                ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants', antlist)
+    # array_position can be set by user, but if not specified we need to
+    # get the default from one of the antennas.
+    if 'array_position' not in USER_PARAMETERS:
+        parameters['array_position'] = katpoint.Antenna(
+            'array_position', *parameters['antennas'][0].ref_position_wgs84)
+
+    # Set the defaults. Needs to be done after dealing with array_position
+    # but before interpreting preferred_refants.
+    for parameter in USER_PARAMETERS:
+        if parameter.name not in parameters:
+            if parameter.default is None:
+                raise ValueError('No value specified for ' + parameter.name)
+            elif isinstance(parameter.default, attr.Factory):
+                parameters[parameter.name] = parameter.default.factory()
             else:
-                logger.info(
-                    'Preferred antenna list reduced to only include antennas in antenna mask:')
-                ts.delete('cal_preferred_refants')
-                ts.add('cal_preferred_refants', preferred)
-            logger.info('{0} : {1}'.format('cal_preferred_refants', ts.cal_preferred_refants))
+                parameters[parameter.name] = parameter.default
 
-    # cal_refant
-    if 'cal_refant' not in ts:
-        ts.add('cal_refant', ts.cal_preferred_refants[0])
-        logger.info('Reference antenna: {0}'.format(ts.cal_refant))
+    refant = None
+    for ant in parameters['preferred_refants']:
+        if ant in ants:
+            refant = next(antenna for antenna in parameters['antennas'] if antenna.name == ant)
+            break
+    if refant is None:
+        logger.warning('No antennas from the antenna mask in the preferred antenna list')
+        refant = parameters['antennas'][0]
+        logger.info('Reference antenna set to %s', refant.name)
+    parameters['refant'] = refant
+    if rfi_filename is not None:
+        parameters['rfi_mask'] = pickle.load(open(rfi_filename))
     else:
-        if ts.cal_refant not in antlist:
-            ts.delete('cal_refant')
-            ts.add('cal_refant', ts.cal_preferred_refants[0])
-            logger.info('Requested reference antenna not present in subarray. '
-                        'Change to reference antenna: {0}'.format(ts.cal_refant))
+        parameters['rfi_mask'] = None
 
+    # Sanity check: make sure we didn't set any parameters for which we don't
+    # have a description.
+    valid_parameters = set(parameter.name for parameter in USER_PARAMETERS + COMPUTED_PARAMETERS)
+    for key in parameters:
+        if key not in valid_parameters:
+            raise ValueError('Unexpected parameter {}'.format(key))
 
-def csv_to_list_ts(ts, keyname):
-    """
-    Change Telescope State entry for immutable key from csv string to list of strings
-
-    Parameters
-    ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telescope State
-    keyname : str
-        key to change
-    """
-    if isinstance(ts[keyname], str):
-        keyvallist = [val.strip() for val in ts[keyname].split(',')]
-        ts.delete(keyname)
-        ts.add(keyname, keyvallist, immutable=True)
+    return parameters
 
 
 def get_model(name, lsm_dir_list=[]):

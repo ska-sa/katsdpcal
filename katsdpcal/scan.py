@@ -127,12 +127,12 @@ class Scan(object):
         Name of target observed in the scan.
     chans : array of float
         Array of channel frequencies.
-    ants : array of string
-        Array of antenna description strings.
+    ants : array of :class:`katpoint.Antenna`
+        Array of antennas.
     refant : int
         Index of reference antenna in antenna description list.
-    array_position : string
-        Description string of array centre position.
+    array_position : :class:`katpoint.Antenna`
+        Array centre position.
     corr : string, optional
         String to select correlation product, 'xc' for cross-correlations.
     logger : logger
@@ -175,12 +175,12 @@ class Scan(object):
         Number of polarisations in the data.
     nant : int
         Number of antennas in the data
-    antenna_descriptions : list of string
-        Description strings for each antenna
+    antennas : list of :class:`katpoint.Antenna`
+        The antennas
     refant : int
         Index of reference antenna in antenna description list
-    array_position : string
-        Description sctring for array position
+    array_position : :class:`katpoint.Antenna`
+        Array centre position
     model_raw_params : list
         List of model components
     model : scalar or array
@@ -229,7 +229,7 @@ class Scan(object):
             self.channel_freqs = np.array(chans, dtype=np.float32)
         self.npol = npol
         self.nant = nant
-        self.antenna_descriptions = ants
+        self.antennas = ants
         self.refant = refant
         self.array_position = array_position
 
@@ -588,7 +588,7 @@ class Scan(object):
         first_source = katpoint.construct_radec_target(self.model_raw_params[0]['RA'].item(),
                                                        self.model_raw_params[0]['DEC'].item())
         position_offset = self.target.separation(first_source,
-                                                 antenna=katpoint.Antenna(self.array_position))
+                                                 antenna=self.array_position)
 
         # deal with easy case first - single point at the phase centre
         if (self.model_raw_params.size == 1) \
@@ -636,7 +636,7 @@ class Scan(object):
                 wl = light_speed / self.channel_freqs
                 self.uvw = calprocs.calc_uvw_wave(
                     self.target, self.timestamps, self.corrprod_lookup,
-                    self.antenna_descriptions, wl, self.array_position)
+                    self.antennas, wl, self.array_position)
 
             # set up model visibility
             complexmodel = np.zeros_like(self.vis)
