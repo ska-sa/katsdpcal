@@ -2,41 +2,40 @@
 # ----------------------------------------------------------
 # Simulate the Telescope State from a file
 
-from katsdpcal import pipelineprocs, param_dir
-from katsdpcal.simulator import init_simdata
-from katsdpservices import ArgumentParser
 import os
+import logging
+
+from katsdpcal import pipelineprocs, param_dir
+from katsdpcal.simulator import SimData
+from katsdpservices import ArgumentParser, setup_logging
+
+
+logger = logging.getLogger(__name__)
+
 
 def parse_opts():
     parser = ArgumentParser(description = 'Simulate Telescope State from h5 or MS file')    
     parser.add_argument('--file', type=str, help='H5 or MS file for simulated data')
-    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument('--bchan', type=int, default=0, help='First channel to take from file')
+    parser.add_argument('--echan', type=int, default=None, help='Last channel to take from file')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-opts = parse_opts()
-ts = opts.telstate
 
-print "Open file"
-simdata = init_simdata(opts.file)
+def main():
+    setup_logging()
+    opts = parse_opts()
+    telstate = opts.telstate
 
-print "Clear TS."
-ts.clear()
+    logging.info("Opening file %s", opts.file)
+    simdata = SimData(opts.file, bchan=opts.bchan, echan=opts.echan)
 
-print "Add to and override TS data from simulator."
-simdata.setup_ts(ts)
+    logging.info("Clearing telescope state")
+    telstate.clear()
 
-print "Use parameters from parameter file."
-param_file = opts.parameter_file
-if param_file == '':
-    if ts.sdp_l0_n_chans == 4096:
-        param_filename = 'pipeline_parameters_meerkat_L_4k.txt'
-        param_file = os.path.join(param_dir,param_filename)
-        print 'Parameter file for 4k mode: {0}'.format(param_file,)
-    else:
-        param_filename = 'pipeline_parameters_meerkat_L_32k.txt'
-        param_file = os.path.join(param_dir,param_filename)
-        print 'Parameter file for 32k mode: {0}'.format(param_file,)
-pipelineprocs.ts_from_file(ts, param_file)
+    logging.info("Setting values in telescope state")
+    simdata.setup_telstate(telstate)
 
-print "Done."
+
+if __name__ == '__main__':
+    main()

@@ -5,6 +5,11 @@ Simulator class for HDF5 files produced by KAT-7 correlator,
 for testing of the MeerKAT pipeline.
 """
 
+from __future__ import print_function, division, absolute_import
+
+import logging
+import time
+
 from casacore.tables import table
 import spead2
 from spead2 import send
@@ -16,44 +21,19 @@ import katpoint
 import katcp
 
 import numpy as np
-import time
 from random import random
 import ephem
+
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
 # --- simdata classes
 # -------------------------------------------------------------------------------------------------
 
 
-def get_file_format(file_name):
-    """
-    Determine format of file used for simulation (H5 or MS)
-
-    Parameters
-    ----------
-    file_name : Name of H5 or MS file, string
-
-    Returns
-    -------
-    data_class : Class for simulated data, SimDataH5 or SimDataMS
-    """
-    try:
-        # Is it a katdal H5 file?
-        # open in r+ mode so we don't inadvertantly lock it into readonly mode for later
-        f = katdal.open(file_name, mode='r+')
-        data_class = SimDataH5V3 if f.version == '3.0' else SimDataH5V2
-        print data_class
-    except IOError:
-        try:
-            # Not an H5 file. Is it an MS?
-            table(file_name)
-            data_class = SimDataMS
-        except RuntimeError:
-            # not an MS file either
-            print 'File does not exist, or is not of compatible format! (Must be H5 or MS.)'
-            data_class = None
-
-    return data_class
+class WrongFileType(IOError):
+    """Could not open the file with the lower-level API"""
 
 
 def get_antdesc_relative(names, diameters, positions):
@@ -85,282 +65,225 @@ def get_antdesc_relative(names, diameters, positions):
     return antdesc
 
 
-def init_simdata(file_name, server=None, wait=0.0, **kwargs):
-    """
-    Initialise simulated data class, using either H5 or MS files for simulation.
+class SimData(object):
+    """Base class for simulated data.
+
+    Subclasses wrap an existing data set to provide a common interface.
+
+    Note that this is a factory class: constructing it will return an instance
+    of a subclass.
 
     Parameters
     ----------
-    file_name : name of H5 or MS file, string
-    server    : katcp server for cal
-    wait      : pause between sending heaps (potentially necessary to rate limit simulator transmit)
-
-    Returns
-    -------
-    SimData : data simulator, SimData object
+    filename : str
+        name of katdal or MS file
+    server : :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server for cal
+    bchan,echan : int
+        Channel range to select out of the file. If `echan` is ``None``, the
+        range extends to the last channel.
     """
-    # determine if simulator file is H5 or MS
-    data_class = get_file_format(file_name)
+    def __init__(self, filename, server=None, bchan=0, echan=None):
+        if server is not None:
+            self.client = katcp.BlockingClient(server.host, server.port)
+            self.client.start()
+        else:
+            self.client = None
+        self.filename = filename
+        self.bchan = bchan
+        self.echan = echan
+        # Subclass must provide num_scans
 
-    # ---------------------------------------------------------------------------------------------
-    class SimData(data_class):
+    def __new__(cls, filename, server=None, bchan=0, echan=None, *args, **kwargs):
+        args = (filename, server, bchan, echan) + args
+        for sub_cls in [SimDataKatdal, SimDataMS]:
+            try:
+                return super(SimData, cls).__new__(sub_cls, *args, **kwargs)
+            except WrongFileType:
+                pass
+        raise WrongFileType('File does not exist, or is not of compatible format! '
+                            '(Must be katdal or MS.)')
+
+    def capture_init(self):
+        if self.client is not None:
+            self.client.wait_protocol()
+            reply, informs = self.client.blocking_request(katcp.Message.request('capture-init'))
+            if not reply.reply_ok():
+                raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
+
+    def capture_done(self):
+        if self.client is not None:
+            self.client.wait_protocol(10)
+            reply, informs = self.client.blocking_request(katcp.Message.request('capture-done'))
+            if not reply.reply_ok():
+                raise RuntimeError('capture-done failed: {}'.format(reply.arguments[1]))
+
+    def close(self):
+        if self.client is not None:
+            self.client.stop()
+            self.client.join()
+            self.client = None
+
+    def setup_telstate(self, telstate):
         """
-        Simulated data class.
-        Uses file to simulate MeerKAT pipeline data SPEAD stream and Telescope State.
-        Subclasses either SimDataH5 or SimDataMS, depending on whether an H5 or
-        MS file is used for simulation.
+        Add key-value pairs from file to the Telescope State. This only sets
+        up the immutables needed to get run_cal.py going. Sensors are added
+        during transmission.
 
         Parameters
         ----------
-        file_name : str
-            Name of MS file, string
-        server : :class:`katsdptelstate.endpoint.Endpoint`
-            Katcp server for cal
-        wait : float
-            Pause between sending heaps (potentially necessary to rate-limit
-            simulator transmit).
-
-        Attributes
-        ----------
-        wait : float
-            Pause between sending heaps (potentially necessary to rate-limit
-            simulator transmit).
+        telstate : :class:`~katsdptelstate.TelescopeState`
+            Telescope state.
         """
-        def __init__(self, file_name, server=None, wait=wait, **kwargs):
-            data_class.__init__(self, file_name, **kwargs)
-            if server is not None:
-                self.client = katcp.BlockingClient(server.host, server.port)
-                self.client.start()
-            else:
-                self.client = None
-            self.wait = wait
+        # get parameters from subclass
+        parameter_dict = self.get_params()
+        # check that the minimum necessary parameters are set
+        min_keys = ['sdp_l0_int_time', 'sdp_l0_bandwidth', 'sdp_l0_center_freq',
+                    'sdp_l0_n_chans', 'sdp_l0_bls_ordering',
+                    'sdp_l0_sync_time']
+        for key in min_keys:
+            if key not in parameter_dict:
+                raise KeyError('Required parameter {0} not set by simulator.'.format(key))
 
-        def capture_init(self):
-            if self.client is not None:
-                self.client.wait_protocol()
-                reply, informs = self.client.blocking_request(katcp.Message.request('capture-init'))
-                if not reply.reply_ok():
-                    raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
+        # add fake subarray_id to parameter_dict
+        parameter_dict['subarray_product_id'] = 'unknown_subarray'
 
-        def capture_done(self):
-            if self.client is not None:
-                self.client.wait_protocol(10)
-                reply, informs = self.client.blocking_request(katcp.Message.request('capture-done'))
-                if not reply.reply_ok():
-                    raise RuntimeError('capture-done failed: {}'.format(reply.arguments[1]))
+        # Adjust the frequency parameters for account for bchan, echan
+        n_chans = parameter_dict['sdp_l0_n_chans']
+        bandwidth = parameter_dict['sdp_l0_bandwidth']
+        center_freq = parameter_dict['sdp_l0_center_freq']
+        channel_width = bandwidth / n_chans
 
-        def close(self):
-            if self.client is not None:
-                self.client.stop()
-                self.client.join()
-                self.client = None
+        bchan = self.bchan
+        echan = self.echan if self.echan is not None else n_chans
+        if not 0 <= bchan < echan <= n_chans:
+            raise ValueError('Invalid channel range {}:{}'.format(bchan, echan))
+        center_freq += (bchan + echan - n_chans) / 2 * channel_width
+        parameter_dict['sdp_l0_center_freq'] = center_freq
+        parameter_dict['sdp_l0_bandwidth'] = bandwidth * (echan - bchan) / n_chans
+        parameter_dict['sdp_l0_n_chans'] = echan - bchan
 
-        def setup_ts(self, ts):
-            """
-            Add key value pairs from file to the Telescope State
+        # fill in counts that depend on others
+        parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
+        parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
+        # add parameters to telescope state
+        for key, value in sorted(parameter_dict.items()):
+            logger.info('Setting %s = %s', key, value)
+            telstate.add(key, value, immutable=True)
 
-            Parameters
-            ----------
-            ts : :class:`~katsdptelstate.TelescopeState`
-                Telescope state.
-            """
-            # get parameters from data file
-            parameter_dict = self.get_params()
-            # add fake subarray_id to parameter_dict
-            parameter_dict['subarray_product_id'] = 'unknown_subarray'
+    def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
+        """
+        Iterates through file and transmits data as a SPEAD stream.
 
-            # get/edit extra parameters from TS (set at run time)
+        Parameters
+        ----------
+        telstate : :class:`katsdptelstate.TelescopeState`
+            Telescope State
+        l0_endoint : :class:`katsdptelstate.endpoint.Endpoint`
+            Endpoint for SPEAD stream
+        spead_rate : float
+            SPEAD data transmission rate (bytes per second)
+        max_scans : int, optional
+            Maximum number of scans to transmit
+        """
+        logging.info('TX: Initializing...')
+        # configure SPEAD - may need to rate-limit transmission for laptops etc.
+        config = send.StreamConfig(max_packet_size=8972, rate=spead_rate)
+        tx = send.UdpStream(spead2.ThreadPool(), l0_endpoint.host, l0_endpoint.port, config)
 
-            # simulator channel frequency range
-            if 'cal_sim_echan' in ts:
-                # if bchan and echan are set, use them to override number of channels
-                if ts['cal_sim_echan'] == 0:
-                    ts.delete('cal_sim_echan')
-                    ts.add('cal_sim_echan', parameter_dict['sdp_l0_n_chans'], immutable=True)
+        # if the maximum number of scans to transmit has not been
+        # specified, set to total number of scans
+        if max_scans is None or max_scans > self.num_scans:
+            max_scans = self.num_scans
 
-                parameter_dict['sdp_l0_n_chans'] = ts.cal_sim_echan-ts.cal_sim_bchan
-            else:
-                # else set bchan and echan to be full channel range
-                ts.delete('cal_sim_bchan')
-                ts.add('cal_sim_bchan', 0, immutable=True)
-                ts.delete('cal_sim_echan')
-                ts.add('cal_sim_echan', parameter_dict['sdp_l0_n_chans'], immutable=True)
+        # transmit data timestamp by timestamp and update telescope state
+        self.tx_data(telstate, tx, max_scans)
 
-            # use channel freqs to determine parameters sdp_l0_center_freq and
-            # sdp_l0_bandwidth which will be given by the real system
-            subset_channel_freqs = \
-                parameter_dict['cal_channel_freqs'][ts.cal_sim_bchan:ts.cal_sim_echan]
-            channel_width = np.abs(subset_channel_freqs[1] - subset_channel_freqs[0])
-            ts.add('sdp_l0_bandwidth',
-                   np.abs(subset_channel_freqs[0]-subset_channel_freqs[-1]) + channel_width,
-                   immutable=True)
-            ts.add('sdp_l0_center_freq', subset_channel_freqs[len(subset_channel_freqs)/2],
-                   immutable=True)
-            ts.delete('cal_channel_freqs')
+    def setup_ig(self, ig, correlator_data, flags, weights):
+        """
+        Initialises data transmit ItemGroup for SPEAD transmit
 
-            # check that the minimum necessary prameters are set
-            min_keys = ['sdp_l0_int_time',
-                        'sdp_l0_n_chans', 'sdp_l0_bls_ordering',
-                        'sdp_l0_sync_time', 'subarray_product_id']
-            for key in min_keys:
-                if key not in parameter_dict:
-                    raise KeyError('Required parameter {0} not set by simulator.'.format(key,))
-            # fill in counts that depend on others
-            parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
-            parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
-            # add parameters to telescope state
-            for param in parameter_dict:
-                print param, parameter_dict[param]
-                ts.add(param, parameter_dict[param])
+        Parameters
+        ----------
+        ig : :class:`spead2.ItemGroup`
+            Item group to populate
+        correlator_data : array-like
+            visibilities
+        flags : array-like
+            flags
+        weights : array-like
+            weights
+        """
+        ig.add_item(id=None, name='correlator_data', description="Visibilities",
+                    shape=correlator_data.shape, dtype=correlator_data.dtype)
+        ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                    shape=flags.shape, dtype=flags.dtype)
+        ig.add_item(id=None, name='weights', description="Weights for visibilities",
+                    shape=weights.shape, dtype=np.uint8)
+        ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
+                    shape=(weights.shape[0],), dtype=np.float32)
+        ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                    shape=(), dtype=None, format=[('f', 64)])
+        ig.add_item(id=None, name='dump_index', description='Index in time',
+                    shape=(), dtype=None, format=[('u', 64)])
+        ig.add_item(id=0x4103, name='frequency', description="Channel index of first channel in the heap",
+                    shape=(), dtype=np.uint32)
 
-        def datatoSPEAD(self, ts, l0_endpoint, spead_rate=5e8, max_scans=None):
-            """
-            Iterates through file and transmits data as a SPEAD stream.
+    def setup_obs_params(self, telstate, t=None):
+        """
+        Set up fake obs params
 
-            Parameters
-            ----------
-            ts         : Telescope State
-            l0_endoint : Endpoint for SPEAD stream
-            spead_rate : SPEAD data transmission rate
-            max_scans  : Maximum number of scans to transmit
-            """
-            print 'TX: Initializing...'
-            # configure SPEAD - may need to rate limit transmission for laptops etc.
-            config = send.StreamConfig(max_packet_size=8972, rate=spead_rate)
-            tx = send.UdpStream(spead2.ThreadPool(), l0_endpoint.host, l0_endpoint.port, config)
+        Parameters
+        ----------
+        telstate : :class:`katsdptelstate.TelescopeState`
+            Telescope State
+        t : float, optional
+            time for setting parameters (UNIX timestamp in seconds)
+        """
 
-            # if the maximum number of scans to transmit has not been
-            # specified, set to total number of scans
-            if max_scans is None or max_scans > self.num_scans:
-                max_scans = self.num_scans
+        # fake obs params for now
+        telstate.add('obs_params', "experiment_id '2016_{0}'".format(int(time.time()),), ts=t)
+        telstate.add('obs_params', "observer 'AR1'", ts=t)
+        telstate.add('obs_params', "proposal_id 'PIPELINE-AR1'", ts=t)
+        telstate.add('obs_params', "project_id 'PIPELINETEST'", ts=t)
+        telstate.add('obs_params', "sim_file '{0}'".format(self.filename,), ts=t)
 
-            # transmit data timestamp by timestamp and update telescope state
-            self.tx_data(ts, tx, max_scans)
+    def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
+        """
+        Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
 
-        def setup_ig(self, ig, correlator_data, flags, weights):
-            """
-            Initialises data transmit ItemGroup for SPEAD transmit
-
-            Parameters
-            ----------
-            ig              : ItemGroup
-            correlator_data : visibilities, numpy array
-            flags           : flags, numpy array
-            weights         : weights, numpy array
-            """
-            ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                        shape=correlator_data.shape, dtype=correlator_data.dtype)
-            ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                        shape=flags.shape, dtype=flags.dtype)
-            ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                        shape=weights.shape, dtype=np.uint8)
-            ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
-                        shape=(weights.shape[0],), dtype=np.float32)
-            ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                        shape=(), dtype=None, format=[('f', 64)])
-            ig.add_item(id=None, name='dump_index', description='Index in time',
-                        shape=(), dtype=None, format=[('u', 64)])
-            ig.add_item(id=0x4103, name='frequency', description="Channel index of first channel in the heap",
-                        shape=(), dtype=np.uint32)
-
-        def setup_obs_params(self, ts, t=None):
-            """
-            Set up fake obs params
-
-            Parameters
-            ----------
-            ts : Telescope State
-            t  : time for setting parameters, seconds, float, optional
-            """
-
-            # fake obs params for now
-            ts.add('obs_params', "experiment_id '2016_{0}'".format(int(time.time()),), ts=t)
-            ts.add('obs_params', "observer 'AR1'", ts=t)
-            ts.add('obs_params', "proposal_id 'PIPELINE-AR1'", ts=t)
-            ts.add('obs_params', "project_id 'PIPELINETEST'", ts=t)
-            ts.add('obs_params', "sim_file '{0}'".format(self.file_name,), ts=t)
-
-        def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
-            """
-            Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
-
-            Parameters
-            ----------
-            tx : :class:`spead2.send.UdpStream`
-                SPEAD stream
-            ig : :class:`spead2.send.ItemGroup`
-                Item group
-            dump_index : int
-                Index in time
-            timestamp : :class:`np.float64`
-                Timestamp
-            correlator_data : :class:`np.ndarray`
-                Visibilities
-            flags : :class:`np.ndarray`
-                Flags
-            weights : :class:`np.ndarray`
-                Weights
-            wait : float
-                Pause between sending heaps (potentially necessary to
-                rate-limit simulator transmit).
-            """
-            # transmit vis, flags and weights, timestamp
-            ig['correlator_data'].value = correlator_data
-            ig['flags'].value = flags
-            weights_channel = np.require(np.max(weights, axis=1), dtype=np.float32) / np.float32(255)
-            # Avoid divide-by-zero issues if all the weights are zero
-            weights_channel = np.maximum(weights_channel, np.float32(2.0**-96))
-            scaled_weights = np.round(weights / weights_channel[:, np.newaxis] * np.float32(255))
-            scaled_weights = scaled_weights.astype(np.uint8)
-            ig['weights_channel'].value = weights_channel
-            ig['weights'].value = scaled_weights
-            ig['timestamp'].value = timestamp
-            ig['dump_index'].value = dump_index
-            ig['frequency'].value = 0
-            # send all of the descriptors with every heap
-            tx.send_heap(ig.get_heap(descriptors='all'))
-            time.sleep(self.wait)
-
-        def write(self, ts, data):
-            """
-            Writes data into file
-
-            Parameters
-            ----------
-            ts   : TelescopeState
-            data : data to write into the file: [times, visibilities, flags]
-            """
-            data_times, data_vis, data_flags = data
-            vis = np.array(data_vis)
-            times = np.array(data_times)
-            flags = np.array(data_flags)
-            # number of timestamps in collected data
-            ti_max = len(data_times)
-
-            # check for missing timestamps
-            if not np.all(self.to_ut(self.timestamps[0:ti_max]) == times):
-                start_repeat = np.squeeze(np.where(times[ti_max-1] == times))[0]
-
-                if np.all(self.to_ut(self.timestamps[0:start_repeat]) == times[0:start_repeat]):
-                    print 'SPEAD error: {0} extra final L1 time stamp(s). ' \
-                        'Ignoring last time stamp(s).'.format(ti_max-start_repeat-1,)
-                    ti_max += -(ti_max-start_repeat-1)
-                else:
-                    raise ValueError(
-                        'Received L1 array and data file array have different timestamps!')
-
-            # get data format parameters from TS
-            cal_bls_ordering = ts.cal_bls_ordering
-            cal_pol_ordering = ts.cal_pol_ordering
-            bchan = ts.cal_sim_bchan
-            echan = ts.cal_sim_echan
-
-            # write the data into the file
-            self.write_data(vis, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
-                            bchan=bchan, echan=echan)
-
-    # ---------------------------------------------------------------------------------------------
-    return SimData(file_name, server, **kwargs)
+        Parameters
+        ----------
+        tx : :class:`spead2.send.UdpStream`
+            SPEAD stream
+        ig : :class:`spead2.send.ItemGroup`
+            Item group
+        dump_index : int
+            Index in time
+        timestamp : :class:`np.float64`
+            Timestamp
+        correlator_data : :class:`np.ndarray`
+            Visibilities
+        flags : :class:`np.ndarray`
+            Flags
+        weights : :class:`np.ndarray`
+            Weights
+        """
+        # transmit vis, flags and weights, timestamp
+        ig['correlator_data'].value = correlator_data
+        ig['flags'].value = flags
+        weights_channel = np.require(np.max(weights, axis=1), dtype=np.float32) / np.float32(255)
+        # Avoid divide-by-zero issues if all the weights are zero
+        weights_channel = np.maximum(weights_channel, np.float32(2.0**-96))
+        scaled_weights = np.round(weights / weights_channel[:, np.newaxis] * np.float32(255))
+        scaled_weights = scaled_weights.astype(np.uint8)
+        ig['weights_channel'].value = weights_channel
+        ig['weights'].value = scaled_weights
+        ig['timestamp'].value = timestamp
+        ig['dump_index'].value = dump_index
+        ig['frequency'].value = 0
+        # send all of the descriptors with every heap
+        tx.send_heap(ig.get_heap(descriptors='all'))
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
@@ -376,12 +299,12 @@ class SimDataMS(table):
 
     Parameters
     ----------
-    file_name : str
+    filename : str
         Name of MS file
 
     Attributes
     ----------
-    file_name : str
+    filename : str
         name of MS file
     data_mask : :class:`np.ndarray`
         mask for selecting data
@@ -404,10 +327,10 @@ class SimDataMS(table):
     correlation (including auto-corrs).
     """
 
-    def __init__(self, file_name, **kwargs):
+    def __init__(self, filename, **kwargs):
         readonly = False if kwargs.get('mode') == 'r+' else True
-        table.__init__(self, file_name, readonly=readonly)
-        self.file_name = file_name
+        table.__init__(self, filename, readonly=readonly)
+        self.filename = filename
         self.data_mask = None
         self.intent_to_tag = {
             'CALIBRATE_PHASE,CALIBRATE_AMPLI': 'gaincal',
@@ -484,7 +407,6 @@ class SimDataMS(table):
         param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
         param_dict['sdp_l0_bls_ordering'] = self.corr_products
         param_dict['sdp_l0_sync_time'] = 0.0
-        param_dict['config'] = {'MS_simulator': True}
         # antenna descriptions for all antennas
         antenna_descriptions = self.get_antdesc()
         for antname in self.ants:
@@ -525,7 +447,7 @@ class SimDataMS(table):
             pol_order = np.array([['h', 'h']])
         else:
             raise ValueError('Weird polarisation setup!')
-        # combine antenna and polarisation strongs to get full correlator product ordering
+        # combine antenna and polarisation strings to get full correlator product ordering
         corrprods = np.array([[c1+p1, c2+p2] for c1, c2 in corrprods_nopol for p1, p2 in pol_order])
 
         return corrprods, corrprods_nopol
@@ -538,14 +460,14 @@ class SimDataMS(table):
         chan_slice = None if 'channels' not in kwargs else kwargs['channels']
         self.data_mask = np.s_[:, chan_slice, ...]
 
-    def tx_data(self, ts, tx, max_scans):
+    def tx_data(self, telstate, tx, max_scans):
         """
         Iterates through MS file and transmits data as a SPEAD stream,
         also updating the telescope state accordingly.
 
         Parameters
         ----------
-        ts : :class:`katsdptelstate.TelescopeState`
+        telstate : :class:`katsdptelstate.TelescopeState`
             Telescope State
         tx : :class:`spead2.send.UdpStream`
             SPEAD transmitter
@@ -564,7 +486,7 @@ class SimDataMS(table):
         ig = send.ItemGroup(flavour=flavour)
 
         # fake obs params for now
-        self.setup_obs_params(ts, t=self.to_ut(self.getcol('TIME')[0]))
+        self.setup_obs_params(telstate, t=self.to_ut(self.getcol('TIME')[0]))
 
         time_ind = 0
         # send data scan by scan
@@ -592,13 +514,12 @@ class SimDataMS(table):
             scan_time = tscan.getcol('TIME', startrow=0, nrow=1)[0]
             scan_time_ut = self.to_ut(scan_time)
             for ant in antlist:
-                ts.add('{0}_target'.format(ant,), target_desc, ts=scan_time_ut-random()*0.1)
-                ts.add('{0}_activity'.format(ant,), scan_state, ts=scan_time_ut-random()*0.1)
-            ts.add('cbf_target', target_desc, ts=scan_time_ut-random()*0.1)
-            print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
+                telstate.add('{0}_target'.format(ant,), target_desc, ts=scan_time_ut-random()*0.1)
+                telstate.add('{0}_activity'.format(ant,), scan_state, ts=scan_time_ut-random()*0.1)
+            telstate.add('cbf_target', target_desc, ts=scan_time_ut-random()*0.1)
             n_ts = len(tscan.select('unique TIME'))
-            print 'timestamps:', n_ts, ' -- ',
-            print scan_state, target_desc
+            logger.info('Scan %d/%d -- timestamps: %d -- %s %s',
+                        scan_ind+1, max_scans, n_ts, scan_state, target_desc)
 
             # transmit the data timestamp by timestamp
             for ttime in tscan.iter('TIME'):
@@ -631,9 +552,9 @@ class SimDataMS(table):
         tx.send_heap(ig.get_end())
 
         # MS only has 'track' scans?
-        print 'Track timestamps:', time_ind
-        print 'Slew timestamps: ', 0
-        print 'Total timestamps:', time_ind
+        logger.info('Track timestamps: %d', time_ind)
+        logger.info('Slew timestamps:  %d', 0)
+        logger.info('Total timestamps: %d', time_ind)
 
     def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
                    bchan=1, echan=0):
@@ -651,7 +572,7 @@ class SimDataMS(table):
         cal_bls_ordering : list of lists
             baseline ordering of visibility data in the pipleine, shape (nbl, 2)
         cal_pol_ordering : list of lists
-            polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
+            polarisation pair ordering of visibility data in the pipeline, shape (npol, 2)
         bchan : int
             start channel to write
         echan : int
@@ -688,290 +609,156 @@ class SimDataMS(table):
                 break
 
 # -------------------------------------------------------------------------------------------------
-# --- SimDataH5 class
-# ---   simulates pipeline data from H5 file
+# --- SimDataKatdal class
+# ---   simulates pipeline data from katdal file
 # -------------------------------------------------------------------------------------------------
 
-# generic functions for H5 simulator, for V2 and V3 katdal H5 files
 
+class SimDataKatdal(SimData):
+    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
+        super(SimDataKatdal, self).__init__(filename, server, bchan, echan)
+        try:
+            self.file = katdal.open(filename, mode=mode)
+        except IOError as error:
+            raise WrongFileType(str(error))
+        self.file.select(channels=slice(bchan, echan))
+        self.num_scans = len(self.file.scan_indices)
 
-def h5_get_params(h5data):
-    """
-    Add key value pairs from H5 file to to parameter dictionary.
+    def get_params(self):
+        param_dict = {}
+        spw = self.file.spectral_windows[self.file.spw]
+        if spw.sideband != 1:
+            raise ValueError('Lower sideband is not supported')
+        # spw will describe the whole band, ignoring bchan:echan. The caller
+        # takes care of the adjustment.
+        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
+        param_dict['sdp_l0_center_freq'] = spw.centre_freq
+        param_dict['sdp_l0_n_chans'] = spw.num_chans
+        param_dict['sdp_l0_int_time'] = self.file.dump_period
+        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
+        param_dict['sdp_l0_sync_time'] = 0.0
 
-    Returns
-    -------
-    param_dict : dictionary of observation parameters
-    """
-    param_dict = {}
+        # antenna descriptions for all antennas
+        for ant in self.file.ants:
+            param_dict['{0}_observer'.format(ant.name)] = ant.description
 
-    param_dict['cal_channel_freqs'] = h5data.channel_freqs
-    param_dict['sdp_l0_int_time'] = h5data.dump_period
-    param_dict['sdp_l0_n_chans'] = len(h5data.channels)
-    param_dict['sdp_l0_bls_ordering'] = h5data.corr_products
-    param_dict['sdp_l0_sync_time'] = 0.0
-    param_dict['config'] = {'h5_simulator': True}
+        return param_dict
 
-    # antenna descriptions for all antennas
-    for ant in h5data.ants:
-        param_dict['{0}_observer'.format(ant.name)] = ant.description
-
-    return param_dict
-
-
-def h5_tx_data(h5data, ts, tx, max_scans):
-    """
-    Iterates through H5 file and transmits data as a spead stream,
-    also updating the telescope state accordingly.
-
-    Parameters
-    ----------
-    ts        : Telescope State
-    tx        : SPEAD transmitter
-    max_scans : Maximum number of scans to transmit
-    """
-    total_ts, track_ts, slew_ts = 0, 0, 0
-
-    flavour = spead2.Flavour(4, 64, 48)
-    ig = send.ItemGroup(flavour=flavour)
-
-    # fake obs params for now
-    h5data.setup_obs_params(ts, t=h5data.timestamps[0])
-
-    for scan_ind, scan_state, target in h5data.scans():
-        # update telescope state with scan information
-        #   subtract random offset to time, <= 0.1 seconds, to simulate
-        #   slight differences in times of different sensors
-        for ant in h5data.ants:
-            ts.add('{0}_target'.format(ant.name,), target.description,
-                   ts=h5data.timestamps[0]-random()*0.1)
-            ts.add('{0}_activity'.format(ant.name,), scan_state,
-                   ts=h5data.timestamps[0]-random()*0.1)
-        ts.add('cbf_target', target.description, ts=h5data.timestamps[0] - random()*0.1)
-        print 'Scan', scan_ind+1, '/', max_scans, ' -- ',
-        n_ts = len(h5data.timestamps)
-        print 'timestamps:', n_ts, ' -- ',
-        print scan_state, target.description
-
-        # keep track of number of timestamps (total_ts is handled separately)
-        if scan_state == 'track':
-            track_ts += n_ts
-        if scan_state == 'slew':
-            slew_ts += n_ts
-
-        # transmit the data from this scan, timestamp by timestamp
-        scan_data = h5data.vis[:]
-        # Hack to get around h5data.flags returning a bool of selected flags
-        flags_indexer = h5data.flags
-        flags_indexer.transforms = []
-        scan_flags = flags_indexer[:]
-        scan_weights = h5data.weights
-
-        # set up item group, using info from first data item
-        if 'correlator_data' not in ig:
-            h5data.setup_ig(ig, scan_data[0], scan_flags[0], scan_weights[0])
-
-        # transmit data timestamp by timestamp
-        for i in range(scan_data.shape[0]):  # time axis
-
-            # data values to transmit
-            tx_time = h5data.timestamps[i]  # timestamp
-            # visibilities for this time stamp, for specified channel range
-            tx_vis = scan_data[i, :, :]
-            # flags for this time stamp, for specified channel range
-            tx_flags = scan_flags[i, :, :]
-            tx_weights = scan_weights[i, :, :]
-
-            # transmit timestamps, vis, flags, weights
-            h5data.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
-            total_ts += 1
-
-        if scan_ind+1 == max_scans:
-            break
-
-    # end transmission
-    tx.send_heap(ig.get_end())
-
-    print 'Track timestamps:', track_ts
-    print 'Slew timestamps: ', slew_ts
-    print 'Total timestamps:', total_ts
-
-
-def h5_write_data(h5data, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
-                  bchan=1, echan=0):
-    """
-    Writes data into H5 file.
-
-    Parameters
-    ----------
-    correlator_data : :class:`np.ndarray`
-        visibilities
-    flags : :class:`np.ndarray`
-        flags
-    ti_max : int
-        index of highest timestamp of supplies correlator_data and flag arrays
-    cal_bls_ordering : list of list
-        baseline ordering of visibility data in the pipleine, shape (nbl, 2)
-    cal_pol_ordering : list of list
-        polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
-    bchan : int
-        start channel to write
-    echan : int
-        end channel to write
-    """
-    if echan == 0:
-        echan = None
-    # pack data into H5 correlation product list
-    #    by iterating through H5 correlation product list
-    for i, [ant1, ant2] in enumerate(h5data.corr_products):
-
-        # find index of this pair in the cal product array
-        antpair = [ant1[:-1], ant2[:-1]]
-        cal_indx = cal_bls_ordering.index(antpair)
-        # find index of this element in the pol dimension
-        polpair = [ant1[-1], ant2[-1]]
-        pol_indx = cal_pol_ordering.index(polpair)
-
-        # vis shape is (ntimes, nchan, ncorrprod) for real and imag
-        h5data._vis[0:ti_max, bchan:echan, i, 0] = \
-            correlator_data[0:ti_max, :, pol_indx, cal_indx].real
-        h5data._vis[0:ti_max, bchan:echan, i, 1] = \
-            correlator_data[0:ti_max, :, pol_indx, cal_indx].imag
-
-
-# katdal v3 data
-class SimDataH5V3(katdal.H5DataV3):
-    """
-    Simulated data class.
-    Uses H5 file to simulate MeerKAT pipeline data SPEAD stream and Telescope
-    State, subclassing katdal H5DataV3.
-
-    Parameters
-    ----------
-    file_name : str
-        Name of MS file
-
-    Attributes
-    ----------
-    num_scans : int
-        Total number of scans
-    """
-
-    def __init__(self, file_name, **kwargs):
-        mode = kwargs['mode'] if 'mode' in kwargs else 'r'
-        super(SimDataH5V3, self).__init__(file_name, mode=mode)
-        self.num_scans = len(self.scan_indices)
-        self.file_name = file_name
-
-    def close(self):
+    def tx_data(self, telstate, tx, max_scans):
         """
-        Allows H5 simulator to emulate casacore MS close function.
-        (Does nothing)
-        """
-        pass
-
-    def to_ut(self, t):
-        """
-        Allows H5 simulator to emulate MS Unix time conversion
-        (Conversion unnecessary for H5)
+        Iterates through katdal file and transmits data as a spead stream,
+        also updating the telescope state accordingly.
 
         Parameters
         ----------
-        t : float
-            Unix time in seconds
-
-        Returns
-        -------
-        Unix time in seconds
+        telstate : :class:`katsdptelstate.TelescopeState`
+            Telescope State
+        tx : :class:`spead2.send.UdpSender`
+            SPEAD transmitter
+        max_scans : int
+            Maximum number of scans to transmit
         """
-        return t
+        total_ts, track_ts, slew_ts = 0, 0, 0
 
-    def field_ids(self):
-        """
-        Field IDs in the data set
+        flavour = spead2.Flavour(4, 64, 48)
+        ig = send.ItemGroup(flavour=flavour)
 
-        Returns
-        -------
-        List of field IDs
-        """
-        return self.target_indices
+        # fake obs params for now
+        self.setup_obs_params(telstate, t=self.file.timestamps[0])
 
-    def get_params(self):
-        return h5_get_params(self)
+        for scan_ind, scan_state, target in self.file.scans():
+            # update telescope state with scan information
+            #   subtract random offset to time, <= 0.1 seconds, to simulate
+            #   slight differences in times of different sensors
+            ts0 = self.file.timestamps[0]    # First timestamp in scan
+            for ant in self.file.ants:
+                telstate.add('{0}_target'.format(ant.name), target.description,
+                             ts=ts0-random()*0.1)
+                telstate.add('{0}_activity'.format(ant.name,), scan_state,
+                             ts=ts0-random()*0.1)
+            telstate.add('cbf_target', target.description, ts=ts0 - random()*0.1)
+            n_ts = len(self.file.timestamps)
+            logger.info('Scan %d/%d -- timestamps: %d -- %s, %s',
+                        scan_ind+1, max_scans, n_ts, scan_state, target.description)
 
-    def tx_data(self, ts, tx, max_scans):
-        return h5_tx_data(self, ts, tx, max_scans)
+            # keep track of number of timestamps (total_ts is handled separately)
+            if scan_state == 'track':
+                track_ts += n_ts
+            if scan_state == 'slew':
+                slew_ts += n_ts
+
+            # transmit the data from this scan, timestamp by timestamp
+            scan_data = self.file.vis[:]
+            # Hack to get around flags returning a bool of selected flags
+            flags_indexer = self.file.flags
+            flags_indexer.transforms = []
+            scan_flags = flags_indexer[:]
+            scan_weights = self.file.weights
+
+            # set up item group, using info from first data item
+            if 'correlator_data' not in ig:
+                self.setup_ig(ig, scan_data[0], scan_flags[0], scan_weights[0])
+
+            # transmit data timestamp by timestamp
+            for i in range(scan_data.shape[0]):  # time axis
+
+                # data values to transmit
+                tx_time = self.file.timestamps[i]  # timestamp
+                # visibilities for this time stamp, for specified channel range
+                tx_vis = scan_data[i, :, :]
+                # flags for this time stamp, for specified channel range
+                tx_flags = scan_flags[i, :, :]
+                tx_weights = scan_weights[i, :, :]
+
+                # transmit timestamps, vis, flags, weights
+                self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
+                total_ts += 1
+
+            if scan_ind+1 == max_scans:
+                break
+
+        # end transmission
+        tx.send_heap(ig.get_end())
+
+        logger.info('Track timestamps: %d', track_ts)
+        logger.info('Slew timestamps:  %d', slew_ts)
+        logger.info('Total timestamps: %d', total_ts)
 
     def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
-                   bchan=1, echan=0):
-        return h5_write_data(self, correlator_data, flags, ti_max,
-                             cal_bls_ordering, cal_pol_ordering, bchan, echan)
-
-
-# katdal v2 data
-class SimDataH5V2(katdal.H5DataV2):
-    """
-    Simulated data class.
-    Uses H5 file to simulate MeerKAT pipeline data SPEAD stream and Telescope
-    State, subclassing katdal H5DataV2.
-
-    Parameters
-    ----------
-    file_name : str
-        Name of MS file
-
-    Attributes
-    ----------
-    num_scans : int
-        Total number of scans in the MS data set
-    """
-
-    def __init__(self, file_name, **kwargs):
-        mode = kwargs['mode'] if 'mode' in kwargs else 'r'
-        super(SimDataH5V2, self).__init__(file_name, mode=mode)
-        self.num_scans = len(self.scan_indices)
-        self.file_name = file_name
-
-    def close(self):
+                   bchan=0, echan=None):
         """
-        Allows H5 simulator to emulate casacore MS close function.
-        (Does nothing)
-        """
-        pass
-
-    def to_ut(self, t):
-        """
-        Allows H5 simulator to emulate MS Unix time conversion
-        (Conversion unnecessary for H5)
+        Writes data into katdal file.
 
         Parameters
         ----------
-        t : float
-            Unix time in seconds
-
-        Returns
-        -------
-        Unix time in seconds
+        correlator_data : :class:`np.ndarray`
+            visibilities
+        flags : :class:`np.ndarray`
+            flags
+        ti_max : int
+            index of highest timestamp of supplied correlator_data and flag arrays
+        cal_bls_ordering : list of list
+            baseline ordering of visibility data in the pipeline, shape (nbl, 2)
+        cal_pol_ordering : list of list
+            polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
+        bchan : int, optional
+            start channel to write
+        echan : int, optional
+            end channel to write
         """
-        return t
+        # pack data into katdal correlation product list
+        #    by iterating through katdal correlation product list
+        for i, [ant1, ant2] in enumerate(self.file.corr_products):
 
-    def field_ids(self):
-        """
-        Field IDs in the data set
+            # find index of this pair in the cal product array
+            antpair = [ant1[:-1], ant2[:-1]]
+            cal_indx = cal_bls_ordering.index(antpair)
+            # find index of this element in the pol dimension
+            polpair = [ant1[-1], ant2[-1]]
+            pol_indx = cal_pol_ordering.index(polpair)
 
-        Returns
-        -------
-        List of field IDs
-        """
-        return self.target_indices
-
-    def get_params(self):
-        return h5_get_params(self)
-
-    def tx_data(self, ts, tx, max_scans):
-        return h5_tx_data(self, ts, tx, max_scans)
-
-    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
-                   bchan=1, echan=0):
-        return h5_write_data(self, correlator_data, flags, ti_max,
-                             cal_bls_ordering, cal_pol_ordering, bchan, echan)
+            # vis shape is (ntimes, nchan, ncorrprod) for real and imag
+            self.file._vis[0:ti_max, bchan:echan, i, 0] = \
+                correlator_data[0:ti_max, :, pol_indx, cal_indx].real
+            self.file._vis[0:ti_max, bchan:echan, i, 1] = \
+                correlator_data[0:ti_max, :, pol_indx, cal_indx].imag
