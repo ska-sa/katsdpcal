@@ -207,14 +207,15 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
             M[b, a] = weights[i]
     g_old = init_gain.copy()
 
-   # Remove completely flagged antennas, where flags are indicated by a weight of zero.  
-    row_sum = np.zeros((num_ants), rawvis.dtype)
+    # Remove completely flagged antennas,
+    # where flags are indicated by a weight of zero
+    row_sum = np.zeros(num_ants, rawvis.dtype)
     for p in range(num_ants):
         for i in range(num_ants):
             row_sum[p] += M[p, i]
-         
-    good_ant = row_sum != 0 
-    antlist = np.arange(num_ants)[good_ant] # list of good antennas to iterate over. 
+
+    good_ant = row_sum != 0
+    antlist = np.arange(num_ants)[good_ant]  # list of good antennas to iterate over.
     for n in range(num_iters[0]):
         for p in antlist:
             gn = g.dtype.type(0)
@@ -239,14 +240,15 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
             if dnorm2 >= conv_thresh[0] * conv_thresh[0] * gnorm2:
                 # Avoid getting stuck bouncing between two gain vectors by
                 # going halfway in between
-                for i in range(len(g_old)):
+                for i in antlist:
                     g[i] = (g[i] + g_old[i]) / 2
             else:
                 break
         g_old[:] = g
-    
-    # replace gains of completely flagged antennas with NaNs to indicate that no gain was found by stefcal. 
-    g[~good_ant]=np.nan*1j
+
+    # replace gains of completely flagged antennas with NaNs to indicate
+    # that no gain was found by stefcal.
+    g[~good_ant] = np.nan*1j
 
     ref = g[ref_ant2]
     g *= np.conj(ref) / np.abs(ref)
@@ -427,11 +429,10 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     kdelay = []
     for p in range(num_pol):
         pol_data = data[:, p, :] if len(data.shape) > 2 else data
-        # Suppress NaNs by linearly interpolating across them. 
-        valid=np.isnan(pol_data)
-        _linearly_interpolate_nans(pol_data)
-       
-
+        # Suppress NaNs by setting them to zero. This masking step broadens
+        # the delay peak in Fourier space and potentially introduces spurious
+        # sidelobes if severe, like a dirty image suffering from poor uv coverage.
+        good_pol_data = np.nan_to_num(pol_data)
         # -----------------------------------------------------
         # FT to find visibility space delays
         # NOTE: This is a bit inefficient at the moment as the FFT for al
@@ -441,7 +442,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # single-precision input, unlike np.fft.fft which converts it to
         # double precision.
         # NB: The coarse delay part assumes regularly spaced frequencies in chans
-        ft_vis = scipy.fftpack.fft(pol_data, axis=0)
+        ft_vis = scipy.fftpack.fft(good_pol_data, axis=0)
         # get index of FT maximum
         k_arg = np.argmax(np.abs(ft_vis), axis=0)
         # calculate vis space K from FT sample frequencies
@@ -460,21 +461,23 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # apply coarse K values to the data and solve for bandpass
         # The baseline delay is calculated as delay(ant2) - delay(ant1)
         bl_delays = np.diff(coarse_k[corrprod_lookup])
-        pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
-        
-        # Set value of flagged data to zero, and weights of flagged data to zero 
-        pol_data[valid] = 0*1j
-        flag_weights = np.asarray(~valid).astype(int)
+        good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
 
-        bpass = stefcal(pol_data, num_ants, corrprod_lookup, weights=flag_weights, 
+        # Set weights of flagged data to zero,
+        # this allows stefcal to ignore flagged antennas
+        invalid = np.isnan(pol_data)
+        flag_weights = np.asarray(~invalid).astype(np.float32)
+
+        bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
                         num_iters=100, ref_ant=refant, init_gain=None)
 
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
         for i, bp in enumerate(bpass.T):
             # np.unwrap falls over in the case of bad RFI - robustify this later
-            # np.unwrap and np.linalg.lstsq will not work with NaNs, thus mask NaN values in these routines
-            valid=~np.isnan(bp)
+            # np.unwrap and np.linalg.lstsq will not work with NaNs,
+            # thus mask NaN values in these routines
+            valid = ~np.isnan(bp)
             bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
             A = np.array([chans[valid], np.ones(len(chans[valid]))])
             delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
@@ -601,69 +604,6 @@ def solint_from_nominal(solint, dump_period, num_times):
         logger.debug('solint index: {0}'.format(solint_index,))
         dumps_per_solint = solint_check_range[solint_index]
     return dumps_per_solint * dump_period, dumps_per_solint
-
-
-@numba.jit(nopython=True)
-def _linearly_interpolate_nans1d(data):
-    """Replace NaNs in `data` by linear interpolation in-place.
-    Interpolate amplitude and phase separately 
-
-    Extrapolation is done by repeating the first/last valid element.  If all
-    input data are NaNs, they are all replaced by zeros.
-
-    Parameters
-    ----------
-    data : ndarray, complex
-        Data to interpolate, 1D. It is modified in-place.
-    """
-    n = data.size
-    # Find first valid value
-    p = 0
-    while p < n and np.isnan(data[p]):
-        p += 1
-    if p == n:
-        data[:] = 0
-        return
-    data[:p] = data[p]     # Extrapolate backwards
-    p += 1
-    while p < n:
-        if np.isnan(data[p]):
-            # Find next valid value
-            q = p + 1
-            while q < n and np.isnan(data[q]):
-                q += 1
-            if q == n:
-                data[p:] = data[p - 1]   # Extrapolate forwards
-            else:
-                start_mag = np.abs(data[p - 1])
-                grad_mag = (np.abs(data[q]) - start_mag) / (q - (p - 1))
-                
-                start_angle = np.angle(data[p - 1])
-                grad_angle = (np.angle(data[q]) - start_angle) / (q - (p - 1))
-                for i in range(p, q):
-                    mag=start_mag + (i -(p - 1))*grad_mag
-                    angle=start_angle + (i - (p - 1))*grad_angle
-                    
-                    data[i] = mag*np.cos(angle)+mag*np.sin(angle)*1j
-            p = q
-        else:
-            p += 1
-
-
-@numba.jit(nopython=True)
-def _linearly_interpolate_nans(data):
-    """Replace nans in `data` by linear interpolation across frequencies. 
-    Interpolate amplitude and phase separately 
-
-    Extrapolation is done by repeating the first/last valid element.
-
-    Parameters
-    ----------
-    data : ndarray, complex
-        Data to interpolate, with shape (frequency, baseline).
-    """
-    for i in range(data.shape[1]):
-        _linearly_interpolate_nans1d(data[:,i])
 
 
 # --------------------------------------------------------------------------------------------------
