@@ -30,11 +30,11 @@ print "Use parameters from parameter file."
 param_file = opts.parameter_file
 if param_file == '':
     if ts.sdp_l0_n_chans == 4096:
-        param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
+        param_filename = 'pipeline_parameters_meerkat_L_4k.txt'
         param_file = os.path.join(param_dir,param_filename)
         print 'Parameter file for 4k mode: {0}'.format(param_file,)
     else:
-        param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
+        param_filename = 'pipeline_parameters_meerkat_L_32k.txt'
         param_file = os.path.join(param_dir,param_filename)
         print 'Parameter file for 32k mode: {0}'.format(param_file,)
 pipelineprocs.ts_from_file(ts, param_file)

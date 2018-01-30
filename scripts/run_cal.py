@@ -180,14 +180,14 @@ def run(opts, log_path, full_log):
     # determine parameter file to use
     if opts.parameter_file == '':
         if n_chans == 4096:
-            param_filename = 'pipeline_parameters_meerkat_ar1_4k.txt'
+            param_filename = 'pipeline_parameters_meerkat_L_4k.txt'
             param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 4k mode: %s', param_file)
             rfi_filename = 'rfi_mask.pickle'
             rfi_file = os.path.join(rfi_dir, rfi_filename)
             logger.info('RFI mask file for 4k mode: %s', rfi_file)
         else:
-            param_filename = 'pipeline_parameters_meerkat_ar1_32k.txt'
+            param_filename = 'pipeline_parameters_meerkat_L_32k.txt'
             param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 32k mode: %s', param_file)
             rfi_filename = 'rfi_mask32K.pickle'

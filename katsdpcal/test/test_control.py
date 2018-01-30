@@ -229,7 +229,7 @@ class TestCalDeviceServer(unittest.TestCase):
                 '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
                 '-0:05:44.7 0 0:00:22.6 -0:09:04.2 0:00:11.9 -0:00:12.8 -0:04:03.5 0 0 '
                 '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(antenna))
-        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_ar1_4k.txt')
+        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_4k.txt')
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0, rfi_file)
