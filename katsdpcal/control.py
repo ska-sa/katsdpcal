@@ -506,8 +506,9 @@ class Accumulator(object):
     def set_ordering_parameters(self):
         # determine re-ordering necessary to convert from supplied bls
         # ordering to desired bls ordering
-        antlist = self.parameters['antlist']
-        self.ordering, _, _ = calprocs.get_reordering(antlist, self.telstate_l0['bls_ordering'])
+        antenna_names = self.parameters['antenna_names']
+        bls_ordering = self.telstate_l0['bls_ordering']
+        self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
 
     @classmethod
     def _update_buffer(cls, out, l0, ordering):
@@ -969,7 +970,7 @@ class Sender(Task):
         self.pipeline_sender_queue = pipeline_sender_queue
         # Compute the permutation to get back to L0 ordering. get_reordering gives
         # the inverse of what is needed.
-        rev_ordering = calprocs.get_reordering(parameters['antlist'], self.l0_bls)[0]
+        rev_ordering = calprocs.get_reordering(parameters['antenna_names'], self.l0_bls)[0]
         self.ordering = np.full(n_bls, -1)
         for i, idx in enumerate(rev_ordering):
             self.ordering[idx] = i

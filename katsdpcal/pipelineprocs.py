@@ -30,7 +30,6 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
-    telstate = attr.ib(default=True)    # Whether to store into telstate
 
 
 def comma_list(type_):
@@ -77,11 +76,12 @@ USER_PARAMETERS = [
 COMPUTED_PARAMETERS = [
     Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
     Parameter('refant', 'selected reference antenna', katpoint.Antenna),
-    Parameter('antlist', 'antenna names', list),    # TODO: eliminate, use antennas?
+    Parameter('refant_index', 'index of refant in antennas', int),
+    Parameter('antenna_names', 'antenna names', list),
     Parameter('antennas', 'antenna objects', list),
     Parameter('bls_ordering', 'list of baselines', list),
     Parameter('pol_ordering', 'list of polarisations', list),
-    Parameter('bls_lookup', 'list of baselines as indices into antlist', list),  # TODO: eliminate?
+    Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz', np.ndarray)
 ]
 
@@ -132,8 +132,8 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
     may be missing if there is a default. On return, those in
     :const:`COMPUTED_PARAMETERS` are filled in too.
 
-    It chooses the first antenna in `preferred_refants` that is in the antlist,
-    or the first antenna from antlist if there are no matches.
+    It chooses the first antenna in `preferred_refants` that is in the antenna
+    list, or the first antenna if there are no matches.
 
     Parameters
     ----------
@@ -154,15 +154,15 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
     for a, b in baselines:
         ants.add(a[:-1])
         ants.add(b[:-1])
-    antlist = sorted(ants)
-    _, bls_ordering, pol_ordering = calprocs.get_reordering(antlist, telstate_l0['bls_ordering'])
-    parameters['antlist'] = antlist
-    parameters['antennas'] = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)])
-                              for ant in antlist]
+    antenna_names = sorted(ants)
+    _, bls_ordering, pol_ordering = calprocs.get_reordering(antenna_names,
+                                                            telstate_l0['bls_ordering'])
+    antennas = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)]) for ant in antenna_names]
+    parameters['antenna_names'] = antenna_names
+    parameters['antennas'] = antennas
     parameters['bls_ordering'] = bls_ordering
     parameters['pol_ordering'] = pol_ordering
-    # TODO: eliminate, compute when needed?
-    parameters['bls_lookup'] = calprocs.get_bls_lookup(antlist, bls_ordering)
+    parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
 
     n_chans = telstate_l0['n_chans']
     center_freq = telstate_l0['center_freq']
@@ -174,7 +174,7 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
     # get the default from one of the antennas.
     if 'array_position' not in USER_PARAMETERS:
         parameters['array_position'] = katpoint.Antenna(
-            'array_position', *parameters['antennas'][0].ref_position_wgs84)
+            'array_position', *antennas[0].ref_position_wgs84)
 
     # Set the defaults. Needs to be done after dealing with array_position
     # but before interpreting preferred_refants.
@@ -187,16 +187,19 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
             else:
                 parameters[parameter.name] = parameter.default
 
-    refant = None
+    refant_index = None
     for ant in parameters['preferred_refants']:
-        if ant in ants:
-            refant = next(antenna for antenna in parameters['antennas'] if antenna.name == ant)
+        try:
+            refant_index = antenna_names.index(ant)
             break
-    if refant is None:
+        except ValueError:
+            pass
+    if refant_index is None:
         logger.warning('No antennas from the antenna mask in the preferred antenna list')
-        refant = parameters['antennas'][0]
-        logger.info('Reference antenna set to %s', refant.name)
-    parameters['refant'] = refant
+        refant_index = 0
+    logger.info('Reference antenna set to %s', antennas[refant_index].name)
+    parameters['refant_index'] = refant_index
+    parameters['refant'] = antennas[refant_index]
     if rfi_filename is not None:
         parameters['rfi_mask'] = pickle.load(open(rfi_filename))
     else:

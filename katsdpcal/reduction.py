@@ -191,11 +191,10 @@ def pipeline(data, ts, parameters, stream_name):
             'Parameter %s_int_time not present in TS. Will be derived from data.', stream_name)
         dump_period = data['times'][1] - data['times'][0]
 
-    antlist = parameters['antlist']
-    n_ants = len(antlist)
+    n_ants = len(parameters['antennas'])
     n_pols = len(parameters['pol_ordering'])
     # refant index number in the antenna list
-    refant_ind = antlist.index(parameters['refant'].name)
+    refant_ind = parameters['refant_index']
 
     # Set up flaggers
     calib_flagger, targ_flagger = init_flagger(parameters, dump_period)
