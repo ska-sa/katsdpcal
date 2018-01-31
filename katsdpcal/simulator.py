@@ -94,11 +94,11 @@ class SimData(object):
         self.echan = echan
         # Subclass must provide num_scans
 
-    def __new__(cls, filename, server=None, bchan=0, echan=None, *args, **kwargs):
-        args = (filename, server, bchan, echan) + args
+    @classmethod
+    def factory(cls, *args, **kwargs):
         for sub_cls in [SimDataKatdal, SimDataMS]:
             try:
-                return super(SimData, cls).__new__(sub_cls, *args, **kwargs)
+                return sub_cls(*args, **kwargs)
             except WrongFileType:
                 pass
         raise WrongFileType('File does not exist, or is not of compatible format! '
@@ -291,7 +291,7 @@ class SimData(object):
 # -------------------------------------------------------------------------------------------------
 
 
-class SimDataMS(table):
+class SimDataMS(SimData):
     """
     Simulated data class.
     Uses MS file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
@@ -301,9 +301,18 @@ class SimDataMS(table):
     ----------
     filename : str
         Name of MS file
+    server : :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server for cal
+    bchan,echan : int, optional
+        Channel range to select out of the file. If `echan` is ``None``, the
+        range extends to the last channel.
+    mode : {'r', 'r+'}, optional
+        Either 'r' to open the table read-only or 'r+' to open it read-write
 
     Attributes
     ----------
+    file : :class:casacore.tables.table`
+        main table
     filename : str
         name of MS file
     data_mask : :class:`np.ndarray`
@@ -327,11 +336,13 @@ class SimDataMS(table):
     correlation (including auto-corrs).
     """
 
-    def __init__(self, filename, **kwargs):
-        readonly = False if kwargs.get('mode') == 'r+' else True
-        table.__init__(self, filename, readonly=readonly)
-        self.filename = filename
-        self.data_mask = None
+    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
+        super(SimDataMS, self).__init__(filename, server, bchan, echan)
+        readonly = mode != 'r+'
+        try:
+            self.file = table(filename, readonly=readonly)
+        except RuntimeError as error:
+            raise WrongFileType(str(error))
         self.intent_to_tag = {
             'CALIBRATE_PHASE,CALIBRATE_AMPLI': 'gaincal',
             'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY,CALIBRATE_POLARIZATION':
@@ -342,11 +353,17 @@ class SimDataMS(table):
             'UNKNOWN': 'unknown',
             'TARGET,CALIBRATE_POLARIZATION': 'target polcal',
             'TARGET': 'target'}
-        self.num_scans = max(self.getcol('SCAN_NUMBER'))
+        self.num_scans = max(self.file.getcol('SCAN_NUMBER'))
         self.timestamps = np.unique(
-            self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
-        self.ants = table(self.getkeyword('ANTENNA')).getcol('NAME')
+            self.file.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2').getcol('TIME'))
+        with self.subtable('ANTENNA') as t:
+            self.ants = t.getcol('NAME')
         self.corr_products, self.bls_ordering = self.get_corrprods(self.ants)
+
+    def subtable(self, name, *args, **kwargs):
+        if 'ack' not in kwargs:
+            kwargs['ack'] = False
+        return table(self.file.getkeyword(name), *args, **kwargs)
 
     def to_ut(self, t):
         """
@@ -372,8 +389,9 @@ class SimDataMS(table):
         -------
         Antenna description dictionary
         """
-        positions = table(self.getkeyword('ANTENNA')).getcol('POSITION')
-        diameters = table(self.getkeyword('ANTENNA')).getcol('DISH_DIAMETER')
+        with self.subtable('ANTENNA')  as t:
+            positions = t.getcol('POSITION')
+            diameters = t.getcol('DISH_DIAMETER')
         names = [ant for ant in self.ants]
 
         # determine an antenna description dictionary using a reference
@@ -388,7 +406,8 @@ class SimDataMS(table):
         -------
         List of field IDs
         """
-        return range(table(self.getkeyword('FIELD')).nrows())
+        with self.subtable('FIELD') as t:
+            return range(t.nrows())
 
     def get_params(self):
         """
@@ -401,12 +420,24 @@ class SimDataMS(table):
         """
         param_dict = {}
 
-        param_dict['cal_channel_freqs'] = table(
-            self.getkeyword('SPECTRAL_WINDOW')).getcol('CHAN_FREQ')[0]
-        param_dict['sdp_l0_n_chans'] = table(self.getkeyword('SPECTRAL_WINDOW')).getcol('NUM_CHAN')[0]
-        param_dict['sdp_l0_int_time'] = self.getcol('EXPOSURE')[0]
+        with self.subtable('SPECTRAL_WINDOW') as spw:
+            row = 0
+            chan_freq = spw.getcell('CHAN_FREQ', row)
+            n_chans = len(chan_freq)
+            bandwidth = spw.getcell('TOTAL_BANDWIDTH', row)
+            chan_width = bandwidth / n_chans
+            if n_chans > 1:
+                # Check that channels are evenly spaced and in increasing order
+                if chan_freq[1] < chan_freq[0]:
+                    raise ValueError('Only channels in increasing order are supported')
+                if not np.allclose(np.diff(chan_freq), chan_width):
+                    raise ValueError('Only regularly spaced frequency channels are supported')
+        param_dict['sdp_l0_n_chans'] = n_chans
+        param_dict['sdp_l0_int_time'] = self.file.getcell('EXPOSURE', 0)
         param_dict['sdp_l0_bls_ordering'] = self.corr_products
         param_dict['sdp_l0_sync_time'] = 0.0
+        param_dict['sdp_l0_bandwidth'] = bandwidth
+        param_dict['sdp_l0_center_freq'] = chan_freq[n_chans // 2]
         # antenna descriptions for all antennas
         antenna_descriptions = self.get_antdesc()
         for antname in self.ants:
@@ -420,7 +451,8 @@ class SimDataMS(table):
 
         Parameters
         ----------
-        antlist : antenna names, list of strings
+        antlist : list of str
+            antenna names, list of strings
 
         Returns
         -------
@@ -430,15 +462,16 @@ class SimDataMS(table):
             correlation product pairs, shape (nbl, 2)
         """
         # get baseline ordering for first timestamp
-        time = self.getcol('TIME')
-        a1 = self.getcol('ANTENNA1')[time == time[0]]
-        a2 = self.getcol('ANTENNA2')[time == time[0]]
+        time = self.file.getcol('TIME')
+        a1 = self.file.getcol('ANTENNA1')[time == time[0]]
+        a2 = self.file.getcol('ANTENNA2')[time == time[0]]
 
         # determine antenna name ordering of antennas from MS baseline ordering indices
         corrprods_nopol = np.array([[antlist[a1i], antlist[a2i]] for a1i, a2i in zip(a1, a2)])
 
         # determine polarisation ordering of the MS data
-        npols = table(self.getkeyword('POLARIZATION')).getcol('NUM_CORR')
+        with self.subtable('POLARIZATION') as t:
+            npols = t.getcol('NUM_CORR')
         if npols == 4:
             pol_order = np.array([['h', 'h'], ['h', 'v'], ['v', 'h'], ['v', 'v']])
         elif npols == 2:
@@ -451,14 +484,6 @@ class SimDataMS(table):
         corrprods = np.array([[c1+p1, c2+p2] for c1, c2 in corrprods_nopol for p1, p2 in pol_order])
 
         return corrprods, corrprods_nopol
-
-    def select(self, **kwargs):
-        """
-        Allows MS simulator to emulate katdal style data selection.
-        Currently only selects on channel.
-        """
-        chan_slice = None if 'channels' not in kwargs else kwargs['channels']
-        self.data_mask = np.s_[:, chan_slice, ...]
 
     def tx_data(self, telstate, tx, max_scans):
         """
@@ -475,18 +500,20 @@ class SimDataMS(table):
             Maximum number of scans to transmit
         """
         # order the data for transmission
-        ordered_table = self.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
+        ordered_table = self.file.sort('SCAN_NUMBER, TIME, ANTENNA1, ANTENNA2')
         # get metadata information for the telescope state
-        field_names = table(self.getkeyword('FIELD')).getcol('NAME')
-        positions = table(self.getkeyword('FIELD')).getcol('DELAY_DIR')
-        intents = table(self.getkeyword('STATE')).getcol('OBS_MODE')
-        antlist = table(self.getkeyword('ANTENNA')).getcol('NAME')
+        with self.subtable('FIELD') as t:
+            field_names = t.getcol('NAME')
+            positions = t.getcol('DELAY_DIR')
+        with self.subtable('STATE') as t:
+            intents = t.getcol('OBS_MODE')
+        antlist = self.ants
         # set up ItemGroup for transmission
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
 
         # fake obs params for now
-        self.setup_obs_params(telstate, t=self.to_ut(self.getcol('TIME')[0]))
+        self.setup_obs_params(telstate, t=self.to_ut(self.file.getcell('TIME', 0)))
 
         time_ind = 0
         # send data scan by scan
@@ -511,11 +538,11 @@ class SimDataMS(table):
             # MS files only have tracks (?)
             scan_state = 'track'
 
-            scan_time = tscan.getcol('TIME', startrow=0, nrow=1)[0]
+            scan_time = tscan.getcell('TIME', 0)
             scan_time_ut = self.to_ut(scan_time)
             for ant in antlist:
-                telstate.add('{0}_target'.format(ant,), target_desc, ts=scan_time_ut-random()*0.1)
-                telstate.add('{0}_activity'.format(ant,), scan_state, ts=scan_time_ut-random()*0.1)
+                telstate.add('{0}_target'.format(ant), target_desc, ts=scan_time_ut-random()*0.1)
+                telstate.add('{0}_activity'.format(ant), scan_state, ts=scan_time_ut-random()*0.1)
             telstate.add('cbf_target', target_desc, ts=scan_time_ut-random()*0.1)
             n_ts = len(tscan.select('unique TIME'))
             logger.info('Scan %d/%d -- timestamps: %d -- %s %s',
@@ -523,16 +550,19 @@ class SimDataMS(table):
 
             # transmit the data timestamp by timestamp
             for ttime in tscan.iter('TIME'):
+                # getcolslice takes inclusive end coordinates, hence the - 1
+                chan_kw = dict(blc=[self.bchan, 0],
+                               trc=[-1 if self.echan is None else self.echan - 1, -1])
                 # get data to transmit from MS
-                tx_time = self.to_ut(ttime.getcol('TIME')[0])  # time
+                tx_time = self.to_ut(ttime.getcell('TIME', 0))  # time
                 # visibilities for this time stamp, for specified channel range
-                tx_vis = np.hstack(ttime.getcol('DATA')[self.data_mask])
+                tx_vis = np.hstack(ttime.getcolslice('DATA', **chan_kw))
                 # flags for this time stamp, for specified channel range
-                tx_flags = np.hstack(ttime.getcol('FLAG')[self.data_mask])
+                tx_flags = np.hstack(ttime.getcolslice('FLAG', **chan_kw))
                 tx_flags = tx_flags * np.uint8(2**FLAG_NAMES.index('ingest_rfi'))
                 try:
                     # weights for this time stamp, for specified channel range
-                    tx_weights = np.hstack(ttime.getcol('WEIGHT_SPECTRUM')[self.data_mask])
+                    tx_weights = np.hstack(ttime.getcolslice('WEIGHT_SPECTRUM', **chan_kw))
                 except RuntimeError:
                     # WEIGHT_SPECTRUM column doesn't exist: mock up weights as zeros
                     tx_weights = np.zeros_like(tx_flags, dtype=np.float32)
@@ -557,7 +587,7 @@ class SimDataMS(table):
         logger.info('Total timestamps: %d', time_ind)
 
     def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
-                   bchan=1, echan=0):
+                   bchan=0, echan=None):
         """
         Writes data into MS file.
 
@@ -573,9 +603,9 @@ class SimDataMS(table):
             baseline ordering of visibility data in the pipleine, shape (nbl, 2)
         cal_pol_ordering : list of lists
             polarisation pair ordering of visibility data in the pipeline, shape (npol, 2)
-        bchan : int
+        bchan : int, optional
             start channel to write
-        echan : int
+        echan : int, optional
             end channel to write
         """
         # determine re-ordering necessary to munge pipeline visibility ordering
@@ -589,12 +619,12 @@ class SimDataMS(table):
         pol_type_array = np.array([pol_types[p1+p2] for p1, p2 in cal_pol_ordering])[np.newaxis, :]
         pol_index_array = np.array([[pol_num[p1], pol_num[p2]] for p1, p2 in cal_pol_ordering],
                                    dtype=np.int32)[np.newaxis, :]
-        poltable = table(self.getkeyword('POLARIZATION'), readonly=False)
-        poltable.putcol('CORR_TYPE', pol_type_array)
-        poltable.putcol('CORR_PRODUCT', pol_index_array)
+        with self.subtable('POLARIZATION', readonly=False) as poltable:
+            poltable.putcol('CORR_TYPE', pol_type_array)
+            poltable.putcol('CORR_PRODUCT', pol_index_array)
 
         # sort data by time for writing to MS
-        ms_sorted = self.sort('TIME')
+        ms_sorted = self.file.sort('TIME')
         # write data to MS timestamp by timestamp
         data = None
         for ti, ms_time in enumerate(ms_sorted.iter('TIME')):
@@ -607,6 +637,11 @@ class SimDataMS(table):
             # break when we have reached the max timestamp index in the vis data
             if ti == ti_max-1:
                 break
+
+    def close(self):
+        self.file.close()
+        super(SimDataMS, self).close()
+
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataKatdal class

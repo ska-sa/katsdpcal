@@ -4,6 +4,7 @@
 
 import os
 import logging
+import contextlib
 
 from katsdpcal import pipelineprocs, param_dir
 from katsdpcal.simulator import SimData
@@ -28,13 +29,14 @@ def main():
     telstate = opts.telstate
 
     logging.info("Opening file %s", opts.file)
-    simdata = SimData(opts.file, bchan=opts.bchan, echan=opts.echan)
+    simdata = SimData.factory(opts.file, bchan=opts.bchan, echan=opts.echan)
 
-    logging.info("Clearing telescope state")
-    telstate.clear()
+    with contextlib.closing(simdata):
+        logging.info("Clearing telescope state")
+        telstate.clear()
 
-    logging.info("Setting values in telescope state")
-    simdata.setup_telstate(telstate)
+        logging.info("Setting values in telescope state")
+        simdata.setup_telstate(telstate)
 
 
 if __name__ == '__main__':

@@ -34,7 +34,7 @@ if __name__ == '__main__':
     logger.info("Use TS set up by sim_ts.py and run_cal.py scripts.")
     telstate = opts.telstate
 
-    simdata = SimData(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan)
+    simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan)
     with contextlib.closing(simdata):
         logger.info("Issuing capture-init")
         simdata.capture_init()
