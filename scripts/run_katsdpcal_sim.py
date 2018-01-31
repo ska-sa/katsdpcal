@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 # ---------------------------------------------------------------------------------------
 # Runs simulator using tmux
 # ---------------------------------------------------------------------------------------
@@ -37,8 +37,8 @@ def parse_args():
     parser.add_argument('--no-auto', action='store_true', help='Pipeline data DOESNT include autocorrelations [default: False (autocorrelations included)]')
     parser.set_defaults(no_auto=False)
     parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
-    parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 0.2e7. Default: 0.4e7')
-    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file (will be over written by TelescopeState.')
+    parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. Default: %(default)s')
+    parser.add_argument('--parameter-file', type=str, default='', help='Default pipeline parameter file.')
     parser.add_argument('--report-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline report. [default: current directory]')
     parser.add_argument('--log-path', type=str, default=os.path.abspath('.'), help='Path under which to save pipeline logs. [default: current directory]')
     parser.add_argument('--threading', action='store_true', help='Use threading to control pipeline and accumulator [default: use multiprocessing]')
@@ -93,12 +93,8 @@ if __name__ == '__main__':
     redis_pane.enter()
 
     # set up TS in tmux pane
-    #  we use the parameter file to initialise  the telescope state for the simulator
-    #  ( in the real system we expect the TS to be initialised, and use the parameter file as defaults
-    #  for parameter missing from the TS)
-    param_string = '--parameter-file {0}'.format(opts.parameter_file,) if opts.parameter_file != '' else ''
     sim_ts_pane = create_pane('sim_ts',tmserver,keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1} {2}'.format(opts.telstate, first_file_fullpath, param_string))
+    sim_ts_pane.cmd('send-keys','sim_ts.py --telstate {0} --file {1}'.format(opts.telstate, first_file_fullpath))
     sim_ts_pane.enter()
 
     # wait a few seconds for TS to be set up
@@ -108,9 +104,9 @@ if __name__ == '__main__':
     threading_option = '--threading' if opts.threading else ''
     no_auto = '--no-auto' if opts.no_auto else ''
     pipeline_pane = create_pane('pipeline',tmserver,keep_session=opts.keep_sessions)
-    pipeline_pane.cmd('send-keys','run_cal.py --telstate {0} --buffer-maxsize {1} \
-        {2} --report-path {3} --log-path {4} {5} {6}'.format(opts.telstate, opts.buffer_maxsize,
-        param_string, opts.report_path, opts.log_path, threading_option, no_auto))
+    pipeline_pane.cmd('send-keys','run_cal.py --telstate {} --buffer-maxsize {} \
+        --report-path {} --log-path {} {} {}'.format(opts.telstate, opts.buffer_maxsize,
+        opts.report_path, opts.log_path, threading_option, no_auto))
     pipeline_pane.enter()
 
     # wait a couple of seconds to start data flowing
@@ -127,6 +123,3 @@ if __name__ == '__main__':
         sim_data_pane.cmd('send-keys','sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} \
             --max-scans {3}; sleep 60. ; '.format(opts.telstate, file_fullpath, opts.l0_rate, opts.max_scans))
     sim_data_pane.enter()
-
-
-
