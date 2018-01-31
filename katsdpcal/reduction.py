@@ -272,9 +272,9 @@ def pipeline(data, ts, parameters, stream_name):
         # Calibrator RFI flagging
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
-            s.rfi(calib_flagger, ts.get('cal_rfi_mask'))
+            s.rfi(calib_flagger, parameters['rfi_mask'])
             # TODO: setup separate flagger for cross-pols
-            s.rfi(calib_flagger, ts.get('cal_rfi_mask'), cross=True)
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross=True)
 
         # run_t0 = time.time()
 
@@ -454,7 +454,7 @@ def pipeline(data, ts, parameters, stream_name):
 
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi_mask = ts.get('cal_rfi_mask')
+            rfi_mask = parameters['rfi_mask']
             s.rfi(targ_flagger, rfi_mask)
             # TODO: setup separate flagger for cross-pols
             s.rfi(targ_flagger, rfi_mask, cross=True)
