@@ -125,6 +125,12 @@ def parse_opts():
         '--port', '-p', type=int, default=2048, help='katcp host port [%(default)s]')
     parser.add_argument(
         '--host', '-a', type=str, default='', help='katcp host address [all hosts]')
+    parser.add_argument(
+        '--servers', type=int, default=1,
+        help='number of parallel servers producing the output [default: %(default)s]')
+    parser.add_argument(
+        '--server-id', type=int, default=1,
+        help='index of this server amongst parallel servers (1-based) [default: %(default)s]')
     register_argparse_parameters(parser)
     args = parser.parse_args()
     if args.flags_rate_ratio <= 1.0:
@@ -175,11 +181,11 @@ def run(opts, log_path, full_log):
 
     # deal with required input parameters
     telstate_l0 = opts.telstate.view(opts.l0_name)
-    n_chans = telstate_l0['n_chans']
+    n_chans_all = telstate_l0['n_chans']
 
     # determine parameter file to use
     if opts.parameter_file == '':
-        if n_chans == 4096:
+        if n_chans_all == 4096:
             param_filename = 'pipeline_parameters_meerkat_L_4k.txt'
             param_file = os.path.join(param_dir, param_filename)
             logger.info('Parameter file for 4k mode: %s', param_file)
@@ -202,16 +208,18 @@ def run(opts, log_path, full_log):
     # Override file settings with command-line settings
     parameters.update(parameters_from_argparse(opts))
     logger.info('Finalising parameters')
-    parameters = finalise_parameters(parameters, telstate_l0, rfi_file)
+    parameters = finalise_parameters(parameters, telstate_l0,
+                                     opts.servers, opts.server_id - 1, rfi_file)
 
     nant = len(parameters['antennas'])
     # number of baselines (may include autocorrelations)
     nbl = len(parameters['bls_ordering'])
     npols = len(parameters['pol_ordering'])
+    n_chans = len(parameters['channel_freqs'])
 
     logger.info('Pipeline system input parameters')
     logger.info('   - antennas: %s', nant)
-    logger.info('   - number of channels: %s', n_chans)
+    logger.info('   - number of channels: %d (of %d)', n_chans, n_chans_all)
     logger.info('   - number of polarisation products: %s', npols)
 
     if nant < 4:

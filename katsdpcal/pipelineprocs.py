@@ -30,6 +30,7 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
+    channel = attr.ib(default=False)  # Whether it is a channel number needing offset
 
 
 def comma_list(type_):
@@ -48,15 +49,15 @@ USER_PARAMETERS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'first channel for K fit', int),
-    Parameter('k_echan', 'last channel for K fit', int),
+    Parameter('k_bchan', 'first channel for K fit', int, channel=True),
+    Parameter('k_echan', 'last channel for K fit', int, channel=True),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit', int),
-    Parameter('g_echan', 'last channel for g fit', int),
+    Parameter('g_bchan', 'first channel for g fit', int, channel=True),
+    Parameter('g_echan', 'last channel for g fit', int, channel=True),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
@@ -82,7 +83,9 @@ COMPUTED_PARAMETERS = [
     Parameter('bls_ordering', 'list of baselines', list),
     Parameter('pol_ordering', 'list of polarisations', list),
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
-    Parameter('channel_freqs', 'frequency of each channel in Hz', np.ndarray)
+    Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
+    Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
+    Parameter('channel_slice', 'Portion of channels handled by this server', slice)
 ]
 
 
@@ -125,7 +128,7 @@ def register_argparse_parameters(parser):
                             metavar=parameter.metavar)
 
 
-def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
+def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filename=None):
     """Set the defaults and computed parameters in `parameters`.
 
     On input, `parameters` contains the keys in :const:`USER_PARAMETERS`. Keys
@@ -141,14 +144,37 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
         Dictionary mapping parameter names from :const:`USER_PARAMETERS`
     telstate_l0 : :class:`katsdptelstate.TelescopeState`
         Telescope state with a view of the L0 attributes
+    servers : int
+        Number of cooperating servers
+    server_id : int
+        Number of this server amongst `servers` (0-based)
     rfi_filename : str
         Filename containing a pickled RFI mask
 
     Raises
     ------
     ValueError
-        if some element of `parameters` is not set and there is no default
+        - if some element of `parameters` is not set and there is no default
+        - if `servers` doesn't divide into the number of channels
+        - if any unknown parameters are set in `parameters`
+        - if `server_id` is out of range
+        - if the RFI file has the wrong number of channels
     """
+    n_chans = telstate_l0['n_chans']
+    if not 0 <= server_id < servers:
+        raise ValueError('Server ID {} is out of range [0, {})'.format(server_id, servers))
+    if n_chans % servers != 0:
+        raise ValueError('Number of channels ({}) is not a multiple of number of servers ({})'
+                         .format(n_chans, servers))
+    center_freq = telstate_l0['center_freq']
+    bandwidth = telstate_l0['bandwidth']
+    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
+    channel_slice = slice(n_chans * server_id // servers,
+                          n_chans * (server_id + 1) // servers)
+    parameters['channel_freqs_all'] = channel_freqs
+    parameters['channel_freqs'] = channel_freqs[channel_slice]
+    parameters['channel_slice'] = channel_slice
+
     baselines = telstate_l0['bls_ordering']
     ants = set()
     for a, b in baselines:
@@ -163,12 +189,6 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
     parameters['bls_ordering'] = bls_ordering
     parameters['pol_ordering'] = pol_ordering
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
-
-    n_chans = telstate_l0['n_chans']
-    center_freq = telstate_l0['center_freq']
-    bandwidth = telstate_l0['bandwidth']
-    parameters['channel_freqs'] = center_freq \
-        + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
 
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.
@@ -186,6 +206,8 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
                 parameters[parameter.name] = parameter.default.factory()
             else:
                 parameters[parameter.name] = parameter.default
+        if parameter.channel:
+            parameters[parameter.name] -= channel_slice.start
 
     refant_index = None
     for ant in parameters['preferred_refants']:
@@ -202,8 +224,12 @@ def finalise_parameters(parameters, telstate_l0, rfi_filename=None):
     parameters['refant'] = antennas[refant_index]
     if rfi_filename is not None:
         parameters['rfi_mask'] = pickle.load(open(rfi_filename))
+        if parameters['rfi_mask'].shape != (n_chans,):
+            raise ValueError('Incorrect shape in RFI mask ({}, expected {})'
+                             .format(parameters['rfi_mask'].shape, (n_chans,)))
     else:
-        parameters['rfi_mask'] = None
+        parameters['rfi_mask'] = np.ones((n_chans,), np.bool_)
+    parameters['rfi_mask'] = parameters['rfi_mask'][channel_slice]
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.

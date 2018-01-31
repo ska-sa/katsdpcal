@@ -161,7 +161,7 @@ def write_summary(report, ts, stream_name, parameters, st=None, et=None):
     # telescope state values
     telstate_l0 = ts.view(stream_name)
     write_bullet_if_present(report, telstate_l0, 'Int time', 'int_time')
-    write_bullet_if_present(report, telstate_l0, 'Channels', 'n_chans')
+    write_bullet_if_present(report, parameters, 'Channels', 'channel_freqs', transform=len)
     write_bullet_if_present(report, parameters, 'Antennas', 'antenna_names', transform=len)
     write_bullet_if_present(report, parameters, 'Antenna list', 'antenna_names',
                             transform=', '.join)

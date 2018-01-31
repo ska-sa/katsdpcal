@@ -232,7 +232,7 @@ class TestCalDeviceServer(unittest.TestCase):
         param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_4k.txt')
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
         parameters = pipelineprocs.parameters_from_file(param_file)
-        pipelineprocs.finalise_parameters(parameters, telstate_l0, rfi_file)
+        pipelineprocs.finalise_parameters(parameters, telstate_l0, 1, 0, rfi_file)
         return parameters
 
     def add_items(self, ig):
