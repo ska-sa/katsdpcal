@@ -11,6 +11,7 @@ import functools
 import os
 import glob
 import copy
+import itertools
 from collections import deque
 
 import numpy as np
@@ -294,7 +295,7 @@ class TestCalDeviceServer(unittest.TestCase):
 
         # Time, channels, pols, baselines
         buffer_shape = (40, self.n_channels, 4, self.n_baselines // 4)
-        buffers = control.create_buffer_arrays(buffer_shape, False)
+        self.buffers = buffers = control.create_buffer_arrays(buffer_shape, False)
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test',
@@ -541,10 +542,18 @@ class TestCalDeviceServer(unittest.TestCase):
             np.testing.assert_array_equal(out_flags & ~mask, flags)
 
     def prepare_heaps(self, rs, n_times):
-        """Produce a list of heaps with arbitrary data."""
+        """Produce a list of heaps with arbitrary data.
+
+        Parameters
+        ----------
+        rs : :class:`numpy.random.RandomState`
+            Random generator used to shuffle the heaps of one dump. If
+            ``None``, they are not shuffled.
+        n_times : int
+            Number of dumps
+        """
         vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
         weights = np.ones(vis.shape, np.uint8)
-        weights_channel = np.ones((self.n_channels,), np.float32)
         flags = np.zeros(vis.shape, np.uint8)
         ts = 0.0
         channel_slices = [np.s_[i * self.n_channels_per_substream
@@ -553,6 +562,9 @@ class TestCalDeviceServer(unittest.TestCase):
         heaps = []
         for i in range(n_times):
             dump_heaps = []
+            # Create a value with a pattern, to help in tests that check that
+            # heaps are written to the correct slots.
+            weights_channel = np.arange(self.n_channels, dtype=np.float32) + i * self.n_channels + 1
             for s in channel_slices:
                 self.ig['correlator_data'].value = vis[s]
                 self.ig['flags'].value = flags[s]
@@ -562,7 +574,8 @@ class TestCalDeviceServer(unittest.TestCase):
                 self.ig['dump_index'].value = i
                 self.ig['frequency'].value = np.uint32(s.start)
                 dump_heaps.append(self.ig.get_heap())
-            rs.shuffle(dump_heaps)
+            if rs is not None:
+                rs.shuffle(dump_heaps)
             heaps.extend(dump_heaps)
             ts += self.telstate.sdp_l0test_int_time
         return heaps
@@ -610,13 +623,27 @@ class TestCalDeviceServer(unittest.TestCase):
     @async_test
     @tornado.gen.coroutine
     def test_out_of_order(self):
-        """A heap received from the past should be processed (if possible)."""
-        rs = np.random.RandomState(seed=1)
-        n_times = 4
-        heaps = self.prepare_heaps(rs, n_times)
-        # Delay one heap to the end
-        victim = 3
-        heaps = heaps[: victim] + heaps[victim + 1 :] + heaps[victim : victim + 1]
+        """A heap received from the past should be processed (if possible).
+
+        Missing heaps are filled with data_lost.
+        """
+        # We want to prevent the pipeline fiddling with data in place.
+        for antenna in self.antennas:
+            self.telstate.add('{}_activity'.format(antenna), 'slew', ts=1.0)
+
+        n_times = 6
+        heaps = self.prepare_heaps(None, n_times)
+        # Drop some heaps and delay others
+        early_heaps = []
+        late_heaps = []
+        for heap, (t, s) in zip(heaps, itertools.product(range(n_times), range(self.n_substreams))):
+            if t == 2 or (t == 4 and s == 2):
+                continue    # drop these completely
+            elif s == 3:
+                late_heaps.append(heap)
+            else:
+                early_heaps.append(heap)
+        heaps = early_heaps + late_heaps
         for heap in heaps:
             self.stream.send_heap(heap)
         # Run the capture
@@ -624,8 +651,24 @@ class TestCalDeviceServer(unittest.TestCase):
         yield tornado.gen.sleep(1)
         informs = yield self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
-        assert_equal(n_times * self.n_substreams,
-                     int((yield self.get_sensor('accumulator-input-heaps'))))
+        assert_equal(len(heaps), int((yield self.get_sensor('accumulator-input-heaps'))))
+        # Check that they were written to the right places and that timestamps are correct
+        for t in range(n_times):
+            for s in range(self.n_substreams):
+                channel_slice = np.s_[s * self.n_channels_per_substream
+                                      : (s+1) * self.n_channels_per_substream]
+                flags = self.buffers['flags'][t, channel_slice]
+                if t == 2 or (t == 4 and s == 2):
+                    np.testing.assert_equal(flags, 2 ** control.FLAG_NAMES.index('data_lost'))
+                else:
+                    np.testing.assert_equal(flags, 0)
+                    # Check that the heap was written in the correct position
+                    weights = self.buffers['weights'][t, channel_slice]
+                    expected = np.arange(self.n_channels_per_substream, dtype=np.float32)
+                    expected += t * self.n_channels + channel_slice.start + 1
+                    expected = expected[..., np.newaxis, np.newaxis]  # Add pol, baseline axes
+                    expected = np.broadcast_to(expected, weights.shape)
+                    np.testing.assert_equal(weights, expected)
 
     @async_test
     @tornado.gen.coroutine
