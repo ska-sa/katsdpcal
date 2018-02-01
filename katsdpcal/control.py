@@ -814,21 +814,21 @@ class Accumulator(object):
             # Intersection of the two
             common_range = slice(max(src_range.start, trg_range.start),
                                  min(src_range.stop, trg_range.stop))
-            # Compute slice to apply to src/trg to get the common part
-            src_subset = slice(common_range.start - src_range.start,
-                               common_range.stop - src_range.start)
-            trg_subset = slice(common_range.start - trg_range.start,
-                               common_range.stop - trg_range.start)
-
-            # reshape data and put into relevant arrays
-            self._update_buffer(self.buffers['vis'][slot, trg_subset],
-                                ig['correlator_data'].value[src_subset], self.ordering)
-            self._update_buffer(self.buffers['flags'][slot, trg_subset],
-                                ig['flags'].value[src_subset], self.ordering)
-            weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
-            weights = ig['weights'].value[src_subset]
-            self._update_buffer(self.buffers['weights'][slot, trg_subset],
-                                weights * weights_channel, self.ordering)
+            if common_range.start < common_range.stop:
+                # Compute slice to apply to src/trg to get the common part
+                src_subset = slice(common_range.start - src_range.start,
+                                   common_range.stop - src_range.start)
+                trg_subset = slice(common_range.start - trg_range.start,
+                                   common_range.stop - trg_range.start)
+                # reshape data and put into relevant arrays
+                self._update_buffer(self.buffers['vis'][slot, trg_subset],
+                                    ig['correlator_data'].value[src_subset], self.ordering)
+                self._update_buffer(self.buffers['flags'][slot, trg_subset],
+                                    ig['flags'].value[src_subset], self.ordering)
+                weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
+                weights = ig['weights'].value[src_subset]
+                self._update_buffer(self.buffers['weights'][slot, trg_subset],
+                                    weights * weights_channel, self.ordering)
             # These will get overwritten on each heap of the dump, but that
             # should be harmless.
             self.buffers['times'][slot] = data_ts
