@@ -264,7 +264,6 @@ class Accumulator(object):
                  l0_name, l0_endpoints, l0_interface_address, telstate, parameters):
         self.buffers = buffers
         self.telstate = telstate
-        self.l0_endpoints = l0_endpoints
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
         self.master_queue = master_queue
@@ -312,6 +311,17 @@ class Accumulator(object):
         self._thread_pool = spead2.ThreadPool()
         self._memory_pool = spead2.MemoryPool(heap_size, heap_size + 4096,
                                               4 * self.n_substreams, 4 * self.n_substreams)
+
+        if stream_n_chans % len(l0_endpoints):
+            raise ValueError('Number of channels ({}) not a multiple of number of endpoints ({})'
+                             .format(stream_n_chans, len(l0_endpoints)))
+        self.l0_endpoints = []
+        for i, endpoint in enumerate(l0_endpoints):
+            start = i * stream_n_chans // len(l0_endpoints)
+            stop = (i + 1) * stream_n_chans // len(l0_endpoints)
+            if (start < parameters['channel_slice'].stop
+                    and stop > parameters['channel_slice'].start):
+                self.l0_endpoints.append(endpoint)
 
         # Sensors for the katcp server to report
         sensors = [
