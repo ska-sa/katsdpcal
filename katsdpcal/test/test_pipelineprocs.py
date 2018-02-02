@@ -1,6 +1,7 @@
 """Tests for :mod:`katsdpcal.pipelineprocs`"""
 
 from __future__ import print_function, division, absolute_import
+import argparse
 import unittest
 
 import numpy as np
@@ -11,6 +12,28 @@ import mock
 import pickle
 
 from .. import pipelineprocs
+
+
+class TestArgparseParameters(unittest.TestCase):
+    def test_basic(self):
+        parser = argparse.ArgumentParser()
+        pipelineprocs.register_argparse_parameters(parser)
+        argv = ['--preferred-refants=m000,m002,m063', '--rfi-windows-freq=1,2,4,8', '--g-solint=1']
+        args = parser.parse_args(argv)
+        parameters = pipelineprocs.parameters_from_argparse(args)
+        self.assertEqual(['m000', 'm002', 'm063'], parameters['preferred_refants'])
+        self.assertEqual([1, 2, 4, 8], parameters['rfi_windows_freq'])
+        self.assertEqual(1.0, parameters['g_solint'])
+        # Non-specified arguments must not appear at all
+        self.assertNotIn('g_bchan', parameters)
+
+    def test_empty_list(self):
+        parser = argparse.ArgumentParser()
+        pipelineprocs.register_argparse_parameters(parser)
+        argv = ['--preferred-refants=']
+        args = parser.parse_args(argv)
+        parameters = pipelineprocs.parameters_from_argparse(args)
+        self.assertEqual([], parameters['preferred_refants'])
 
 
 class TestFinaliseParameters(unittest.TestCase):
