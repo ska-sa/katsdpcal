@@ -30,7 +30,6 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
-    channel = attr.ib(default=False)  # Whether it is a channel number needing offset
 
 
 def comma_list(type_):
@@ -49,15 +48,15 @@ USER_PARAMETERS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'first channel for K fit', int, channel=True),
-    Parameter('k_echan', 'last channel for K fit', int, channel=True),
+    Parameter('k_bchan', 'first channel for K fit', int),
+    Parameter('k_echan', 'last channel for K fit', int),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit', int, channel=True),
-    Parameter('g_echan', 'last channel for g fit', int, channel=True),
+    Parameter('g_bchan', 'first channel for g fit', int),
+    Parameter('g_echan', 'last channel for g fit', int),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
@@ -159,6 +158,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         - if any unknown parameters are set in `parameters`
         - if `server_id` is out of range
         - if the RFI file has the wrong number of channels
+        - if a channel range for a solver crosses server boundaries
     """
     n_chans = telstate_l0['n_chans']
     if not 0 <= server_id < servers:
@@ -206,8 +206,6 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                 parameters[parameter.name] = parameter.default.factory()
             else:
                 parameters[parameter.name] = parameter.default
-        if parameter.channel:
-            parameters[parameter.name] -= channel_slice.start
 
     refant_index = None
     for ant in parameters['preferred_refants']:
@@ -230,6 +228,18 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     else:
         parameters['rfi_mask'] = np.ones((n_chans,), np.bool_)
     parameters['rfi_mask'] = parameters['rfi_mask'][channel_slice]
+
+    for prefix in ['k', 'g']:
+        parameters[prefix + '_bchan'] -= channel_slice.start
+        parameters[prefix + '_echan'] -= channel_slice.start
+        bchan = parameters[prefix + '_bchan']
+        echan = parameters[prefix + '_echan']
+        if echan <= bchan:
+            raise ValueError('{0}_echan <= {0}_bchan ({1} <= {2})'
+                             .format(prefix, bchan, echan))
+        if bchan // (n_chans // servers) != (echan - 1) // (n_chans // servers):
+            raise ValueError('{} channel range [{}, {}) spans multiple servers'
+                             .format(prefix, bchan, echan))
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
