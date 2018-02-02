@@ -27,7 +27,7 @@ def _rfi(vis, flags, flagger, out_bit):
     # flagger doesn't handle a separate pol axis, so the caller must use
     # a chunk size of 1
     assert flags.shape[2] == 1
-    # Mask out the output but from the input. This ensures that the process
+    # Mask out the output bit from the input. This ensures that the process
     # gives invariant values even if some chunks are updated in-place before
     # they are used to compute other chunks (which shouldn't happen, but the
     # safety check in the inplace module isn't smart enough to detect this).
