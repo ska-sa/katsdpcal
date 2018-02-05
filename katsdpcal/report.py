@@ -764,9 +764,9 @@ def write_K(report, report_path, times, vals, antenna_mask, pol=[0, 1]):
     vals = 1e9 * vals
     # iterate through polarisation
     for p in range(vals.shape[-2]):
-        report.writeln('**POL {0}**'.format(p,))
+        report.writeln('**POL {0}**'.format(pol[p],))
         kpol = vals[:, p, :]
-        logger.info('  pol{0} shape: {1}'.format(p, kpol.shape))
+        logger.info('  pol {0} shape: {1}'.format(pol[p], kpol.shape))
         write_table_timecol(report, antenna_mask, times, kpol)
 
     for idx in range(0, vals.shape[-1], ANT_CHUNKS):
