@@ -7,6 +7,7 @@ from . import plotting
 from . import calprocs
 from . import calprocs_dask
 import numpy as np
+import dask
 import dask.array as da
 
 from docutils.core import publish_file
@@ -479,7 +480,7 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_mask,
             amp = True
         # Only plot a maximum of 16 antennas per plot
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
-            data = av_data[..., idx : idx + ANT_CHUNKS].compute()
+            data = av_data[..., idx : idx + ANT_CHUNKS].compute(get=dask.get)
             plot = plotting.plot_spec(
                 data, idx_chan, antenna_mask[idx : idx + ANT_CHUNKS],
                 freq_range, plot_title, amp=amp, pol=pol)
