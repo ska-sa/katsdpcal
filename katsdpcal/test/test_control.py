@@ -497,7 +497,7 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(1, len(report_files))
         assert_true(os.path.samefile(report, (yield self.get_sensor('report-last-path'))))
 
-        cal_product_B = self.telstate.get_range('cal_product_B', st=0)
+        cal_product_B = self.telstate.get_range('cal_product_B0', st=0)
         assert_equal(1, len(cal_product_B))
         ret_B, ret_B_ts = cal_product_B[0]
         assert_equal(np.complex64, ret_B.dtype)

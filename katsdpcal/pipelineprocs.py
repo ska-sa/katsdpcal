@@ -84,7 +84,8 @@ COMPUTED_PARAMETERS = [
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
     Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
-    Parameter('channel_slice', 'Portion of channels handled by this server', slice)
+    Parameter('channel_slice', 'Portion of channels handled by this server', slice),
+    Parameter('product_names', 'Names to use in telstate for solutions', dict)
 ]
 
 
@@ -241,6 +242,13 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         if bchan // (n_chans // servers) != (echan - 1) // (n_chans // servers):
             raise ValueError('{} channel range [{}, {}) spans multiple servers'
                              .format(prefix, bchan, echan))
+
+    parameters['product_names'] = {
+        'G': 'cal_product_G',
+        'K': 'cal_product_K',
+        'KCROSS': 'cal_product_KCROSS',
+        'B': 'cal_product_B{}'.format(server_id)
+    }
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
