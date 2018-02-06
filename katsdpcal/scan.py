@@ -3,6 +3,7 @@
 from time import time
 import functools
 import logging
+import operator
 
 import numpy as np
 import dask.array as da
@@ -44,11 +45,11 @@ class ScanData(object):
 
     TODO: document parameters
     """
-    def __init__(self, vis, flags, weights, chunks=None, keep_splits=True):
+    def __init__(self, vis, flags, weights, chunks=None):
         if chunks is not None:
-            vis = self._rechunk(vis, chunks, keep_splits)
-            flags = self._rechunk(flags, chunks, keep_splits)
-            weights = self._rechunk(weights, chunks, keep_splits)
+            vis = self._rechunk(vis, chunks)
+            flags = self._rechunk(flags, chunks)
+            weights = self._rechunk(weights, chunks)
         self.vis = vis
         self.flags = flags
         self.weights = weights
@@ -60,18 +61,15 @@ class ScanData(object):
     def shape(self):
         return self.vis.shape
 
-    def rechunk(self, chunks, keep_splits=True):
+    def rechunk(self, chunks):
         """Create a new view of the data with specified chunk sizes.
 
         Parameters
         ----------
         chunks
             New chunking scheme, in any format accepted by dask
-        keep_splits : bool
-            If true (default), existing chunk boundaries will remain in the new
-            scheme.
         """
-        return ScanData(self.vis, self.flags, self.weights, chunks, keep_splits)
+        return ScanData(self.vis, self.flags, self.weights, chunks)
 
     @classmethod
     def _intersect_chunks(cls, chunks1, chunks2):
@@ -81,11 +79,19 @@ class ScanData(object):
         return tuple(np.diff(sorted(splits)))
 
     @classmethod
-    def _rechunk(cls, array, chunks, keep_splits):
+    def _rechunk(cls, array, chunks):
         chunks = da.core.normalize_chunks(chunks, array.shape)
-        if keep_splits:
-            chunks = tuple(cls._intersect_chunks(c, e) for (c, e) in zip(chunks, array.chunks))
-        return da.rechunk(array, chunks)
+        chunks = tuple(cls._intersect_chunks(c, e) for (c, e) in zip(chunks, array.chunks))
+        if chunks != array.chunks:
+            array = da.rechunk(array, chunks)
+            # Workaround for https://github.com/dask/dask/issues/3139
+            # This flattens the graph to be simply a bunch of getitem calls on
+            # the original arrays, which for unknown reasons works around
+            # the performance issue.
+            array.dask = array.__dask_optimize__(array.dask, array.__dask_keys__(),
+                                                 fast_functions=(da.core.getter, operator.getitem),
+                                                 rename_fused_keys=False)
+        return array
 
 
 class ScanDataPair(object):
