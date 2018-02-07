@@ -3,6 +3,7 @@ argcomplete==1.0.0      # for tmuxp
 attrs==17.4.0
 backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
+bokeh==0.12.13
 certifi                 # for tornado
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
@@ -22,6 +23,7 @@ futures                 # for trollius, distributed
 h5py
 heapdict==1.0.0         # for distributed
 ipaddress               # for katsdptelstate
+jinja2==2.10            # for bokeh
 katcp
 kaptan==0.5.8           # for tmuxp
 katversion
