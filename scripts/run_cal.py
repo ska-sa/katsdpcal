@@ -116,8 +116,8 @@ def parse_opts():
         '--log-path', type=str, default=os.path.abspath('.'),
         help='Path under which to save pipeline logs. [default: current directory]')
     parser.add_argument(
-        '--dask-diagnostics', type=str, metavar='FILENAME.HTML',
-        help='Write a file with dask diagnostics (requires bokeh). [default: none]')
+        '--dask-diagnostics', type=str, metavar='PORT',
+        help='Provide a web server with dask diagnostics. [default: none]')
     parser.add_argument(
         '--pipeline-profile', type=str, metavar='FILENAME',
         help='Write a file with a profile of the pipeline process. [default: none]')

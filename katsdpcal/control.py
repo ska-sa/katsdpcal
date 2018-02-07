@@ -21,6 +21,7 @@ import enum
 import numpy as np
 import dask.array as da
 import dask.diagnostics
+import dask.distributed
 import trollius
 from trollius import From, Return
 import tornado.gen
@@ -858,7 +859,7 @@ class Pipeline(Task):
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
                  l0_name, telstate, parameters,
-                 diagnostics_file=None, profile_file=None, num_workers=None):
+                 diagnostics_port=None, profile_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -867,7 +868,7 @@ class Pipeline(Task):
         self.telstate = telstate
         self.parameters = parameters
         self.l0_name = l0_name
-        self.diagnostics_file = diagnostics_file
+        self.diagnostics_port = diagnostics_port
         if num_workers is None:
             # Leave a core free to avoid starving the accumulator
             num_workers = max(1, multiprocessing.cpu_count() - 1)
@@ -894,24 +895,11 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
-        pool = multiprocessing.pool.ThreadPool(self.num_workers)
-        try:
-            with dask.set_options(pool=pool):
-                if self.diagnostics_file is not None:
-                    profilers = [
-                        dask.diagnostics.Profiler(),
-                        dask.diagnostics.ResourceProfiler(),
-                        dask.diagnostics.CacheProfiler()]
-                    with profilers[0], profilers[1], profilers[2]:
-                        self._run_impl()
-                    dask.diagnostics.visualize(
-                        profilers, file_path=self.diagnostics_file, show=False)
-                    logger.info('wrote diagnostics to %s', self.diagnostics_file)
-                else:
-                    self._run_impl()
-        finally:
-            pool.close()
-            pool.join()
+        cluster = dask.distributed.LocalCluster(
+            n_workers=1, threads_per_worker=self.num_workers,
+            processes=False, memory_limit=0, diagnostics_port=self.diagnostics_port)
+        with cluster, dask.distributed.Client(cluster) as client:
+            self._run_impl()
 
     def _run_impl(self):
         """
@@ -1390,7 +1378,7 @@ def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
                   telstate, parameters, report_path, log_path, full_log,
-                  diagnostics_file=None, pipeline_profile_file=None, num_workers=None):
+                  diagnostics_port=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
         logger.info("Using multiprocessing")
@@ -1409,7 +1397,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-        l0_name, telstate, parameters, diagnostics_file, pipeline_profile_file, num_workers)
+        l0_name, telstate, parameters, diagnostics_port, pipeline_profile_file, num_workers)
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
