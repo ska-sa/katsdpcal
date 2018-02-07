@@ -12,7 +12,6 @@ cycler                  # for matplotlib
 Cython                  # for h5py
 dask==0.16.1
 decorator
-distributed==1.20.2
 docutils
 enum34                  # for numba
 fakenewsredis           # for katsdptelstate
@@ -64,3 +63,5 @@ git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
 git+ssh://git@github.com/ska-sa/katsdpsigproc
 git+ssh://git@github.com/ska-sa/katsdptelstate
+# For https://github.com/dask/distributed/pull/1744
+git+https://github.com/bmerry/distributed@aef552636522e8b8e5e39e2e4810eac8b2f03142#egg=distributed
