@@ -16,7 +16,7 @@ import katsdpservices
 from katsdpcal.control import create_server, create_buffer_arrays
 from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
-    finalise_parameters)
+    finalise_parameters, parameters_to_telstate)
 
 from katsdpcal import param_dir, rfi_dir
 
@@ -97,6 +97,9 @@ def parse_opts():
     parser.add_argument(
         '--l0-name', default='sdp_l0',
         help='Name of the L0 stream for telstate metadata. [default: %(default)s]', metavar='NAME')
+    parser.add_argument(
+        '--cal-name', default='cal',
+        help='Name of the cal output in telstate. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
         '--flags-spead', type=endpoint.endpoint_parser(7202),
         help='destination for L1 flags. [default=%(default)s]', metavar='ENDPOINT')
@@ -192,6 +195,7 @@ def run(opts, log_path, full_log):
 
     # deal with required input parameters
     telstate_l0 = opts.telstate.view(opts.l0_name)
+    telstate_cal = opts.telstate.view(opts.cal_name)
     n_chans_all = telstate_l0['n_chans']
 
     # determine parameter file to use
@@ -221,6 +225,7 @@ def run(opts, log_path, full_log):
     logger.info('Finalising parameters')
     parameters = finalise_parameters(parameters, telstate_l0,
                                      opts.servers, opts.server_id - 1, rfi_file)
+    parameters_to_telstate(parameters, telstate_cal)
 
     nant = len(parameters['antennas'])
     # number of baselines (may include autocorrelations)
@@ -278,7 +283,7 @@ def run(opts, log_path, full_log):
                            opts.l0_name, opts.l0_spead, l0_interface_address,
                            opts.flags_name, opts.flags_spead, flags_interface_address,
                            opts.flags_rate_ratio,
-                           opts.telstate, parameters, opts.report_path, log_path, full_log,
+                           telstate_cal, parameters, opts.report_path, log_path, full_log,
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers)
     with server:
         ioloop.add_callback(server.start)

@@ -30,6 +30,8 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
+    telstate = attr.ib(default=None)   # Set to true or false to override default
+    telstate_transform = attr.ib(default=lambda x: x)
 
 
 def comma_list(type_):
@@ -44,7 +46,7 @@ def comma_list(type_):
 
 USER_PARAMETERS = [
     Parameter('preferred_refants', 'preferred reference antennas', comma_list(str),
-              default=attr.Factory(list)),
+              default=attr.Factory(list), telstate=False),
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
@@ -69,23 +71,27 @@ USER_PARAMETERS = [
     Parameter('rfi_spike_width_time',
               '1sigma time width of smoothing Gaussian (in seconds)', float),
     Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags', int),
-    Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna)
+    Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
+              telstate_transform=lambda x: x.description)
 ]
 
 # Parameters that the user cannot set directly (the type is not used)
 COMPUTED_PARAMETERS = [
     Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
-    Parameter('refant', 'selected reference antenna', katpoint.Antenna),
+    Parameter('refant', 'selected reference antenna', katpoint.Antenna,
+              telstate=True, telstate_transform=lambda x: x.name),
     Parameter('refant_index', 'index of refant in antennas', int),
     Parameter('antenna_names', 'antenna names', list),
     Parameter('antennas', 'antenna objects', list),
-    Parameter('bls_ordering', 'list of baselines', list),
-    Parameter('pol_ordering', 'list of polarisations', list),
+    Parameter('bls_ordering', 'list of baselines', list, telstate=True),
+    Parameter('pol_ordering', 'list of polarisations', list, telstate=True),
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
     Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
     Parameter('channel_slice', 'Portion of channels handled by this server', slice),
-    Parameter('product_names', 'Names to use in telstate for solutions', dict)
+    Parameter('product_names', 'Names to use in telstate for solutions', dict),
+    Parameter('product_B_parts', 'Number of separate keys forming bandpass solution', int,
+              telstate=True)
 ]
 
 
@@ -244,11 +250,12 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                              .format(prefix, bchan, echan))
 
     parameters['product_names'] = {
-        'G': 'cal_product_G',
-        'K': 'cal_product_K',
-        'KCROSS': 'cal_product_KCROSS',
-        'B': 'cal_product_B{}'.format(server_id)
+        'G': 'product_G',
+        'K': 'product_K',
+        'KCROSS': 'product_KCROSS',
+        'B': 'product_B{}'.format(server_id)
     }
+    parameters['product_B_parts'] = servers
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
@@ -258,6 +265,23 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
             raise ValueError('Unexpected parameter {}'.format(key))
 
     return parameters
+
+
+def parameters_to_telstate(parameters, telstate_cal):
+    """Take certain parameters and store them in telstate for the benefit of consumers.
+
+    The `telstate_cal` should be a view in the cal_name namespace.
+    """
+    for parameter in USER_PARAMETERS:
+        # Put them in unless explicitly set to False
+        if parameter.telstate is None or parameter.telstate:
+            value = parameter.telstate_transform(parameters[parameter.name])
+            telstate_cal.add('param_' + parameter.name, value, immutable=True)
+    for parameter in COMPUTED_PARAMETERS:
+        # Only put them in if explicitly set to True
+        if parameter.telstate:
+            value = parameter.telstate_transform(parameters[parameter.name])
+            telstate_cal.add(parameter.name, value, immutable=True)
 
 
 def get_model(name, lsm_dir_list=[]):
