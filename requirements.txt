@@ -64,4 +64,4 @@ git+ssh://git@github.com/ska-sa/katsdpservices
 git+ssh://git@github.com/ska-sa/katsdpsigproc
 git+ssh://git@github.com/ska-sa/katsdptelstate
 # For https://github.com/dask/distributed/pull/1744
-git+https://github.com/bmerry/distributed@aef552636522e8b8e5e39e2e4810eac8b2f03142#egg=distributed
+git+https://github.com/dask/distributed@5685d02d2e66d31adf3fe8e6a4fd6af27514f3d5
