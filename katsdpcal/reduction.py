@@ -112,7 +112,7 @@ def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
 
     Returns
     -------
-    solns_to_apply : list of :class:`CalSolution`
+    solns_to_apply : list of :class:`~.CalSolution`
         solutions
     """
     solns_to_apply = []
@@ -141,6 +141,119 @@ def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
             logger.info('No {} solutions found in Telescope State'.format(X))
 
     return solns_to_apply
+
+
+_shared_solve_seq = 0
+
+
+def shared_solve(telstate, parameters, name, bchan, echan,
+                 solver, *args, **kwargs):
+    """Run a solver on one of the cal nodes.
+
+    The one containing the relevant data actually does the calculation and
+    stores it in telstate, while the others simply wait for the result.
+
+    Parameters
+    ----------
+    telstate : :class:`katsdptelstate.TelescopeState`
+        Telescope state in which the solution is stored
+    parameters : dict
+        Pipeline parameters
+    name : str
+        Name of the solution, looked up via ``parameters['product_names']``, or
+        ``None`` if it does not formed a named solution.
+    bchan,echan : int
+        Channel range containing the data, relative to the channels held by
+        this server. It must lie either entirely inside or entirely outside
+        [0, n_chans).
+    solver : callable
+        Function to do the actual computation. It is passed the remaining
+        arguments, and is also passed `bchan` and `echan` by keyword. It must
+        return a :class:`~.CalSolution` or `~.CalSolutions`.
+    _seq : int, optional
+        If specified, it is used as the sequence number instead of using the
+        global counter. This is intended strictly for unit testing.
+    """
+    # telstate doesn't quite provide the sort of barrier primitives we'd like,
+    # but we can kludge it. Each server maintains a sequence number of calls to
+    # this function (which MUST be kept synchronised). Metadata needed to fetch the
+    # actual result is inserted into an immutable key, whose name includes the
+    # sequence number. If `name` is not given, the metadata contains the actual
+    # values.
+    def add_info(info):
+        telstate.add(shared_key, info, immutable=True)
+
+    global _shared_solve_seq
+    if '_seq' in kwargs:
+        seq = kwargs.pop('_seq')
+    else:
+        seq = _shared_solve_seq
+        _shared_solve_seq += 1
+    shared_key = 'shared_solve_{}'.format(seq)
+
+    if name is not None:
+        telstate_key = parameters['product_names'][name]
+    else:
+        telstate_key = None
+
+    n_chans = len(parameters['channel_freqs'])
+    if 0 <= bchan and echan <= n_chans:
+        kwargs['bchan'] = bchan
+        kwargs['echan'] = echan
+        try:
+            soln = solver(*args, **kwargs)
+            assert isinstance(soln, (calprocs.CalSolution, calprocs.CalSolutions))
+            values = soln.values
+            if isinstance(soln, calprocs.CalSolution):
+                if name is not None:
+                    telstate.add(telstate_key, values, ts=soln.time)
+                    values = None
+                info = ('CalSolution', soln.soltype, values, soln.time)
+            else:
+                if name is not None:
+                    for v, t in zip(soln.values, soln.times):
+                        telstate.add(telstate_key, v, ts=t)
+                    values = None
+                info = ('CalSolutions', soln.soltype, values, soln.times)
+        except Exception as error:
+            add_info(('Exception', error))
+            raise
+        else:
+            add_info(info)
+            return soln
+    else:
+        assert echan <= 0 or bchan >= n_chans, 'partial channel overlap'
+        telstate.wait_key(shared_key)
+        info = telstate[shared_key]
+        if info[0] == 'Exception':
+            raise info[1]
+        elif info[0] == 'CalSolution':
+            soltype, values, time = info[1:]
+            if values is None:
+                saved = telstate.get_range(telstate_key, st=time, et=time, include_end=True)
+                if len(saved) != 1:
+                    print(len(telstate.get_range(telstate_key, st=0)))
+                    raise ValueError('Expected exactly one solution with timestamp {}, found {}'
+                                     .format(time, len(saved)))
+                values = saved[0][0]
+            return calprocs.CalSolution(soltype, values, time)
+        elif info[0] == 'CalSolutions':
+            soltype, values, times = info[1:]
+            if values is None:
+                # Reassemble from telstate
+                saved = telstate.get_range(telstate_key, st=times[0], et=times[-1], include_end=True)
+                if not saved:
+                    raise ValueError('Key {} not found in time interval [{}, {}]'
+                                     .format(telstate_key, times[0], times[-1]))
+                # Split (value, ts) pairs into separate lists
+                values, saved_times = zip(*saved)
+                if list(saved_times) != list(times):
+                    raise ValueError('Timestamps for {} did not match expected values'
+                                     .format(telstate_key))
+                values = np.stack(values)
+            return calprocs.CalSolutions(soltype, values, times)
+        else:
+            raise ValueError('Unknown info type {}'.format(info[0]))
 
 
 def pipeline(data, ts, parameters, stream_name):
