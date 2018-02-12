@@ -153,7 +153,7 @@ def pipeline(data, ts, parameters, stream_name):
         Dictionary of data buffers. Keys `vis`, `flags` and `weights` reference
         :class:`dask.Arrays`, while `times` references a numpy array.
     ts : :class:`katsdptelstate.TelescopeState`
-        Telescope state
+        Telescope state, scoped to the cal namespace within the capture block
     parameters : dict
         The pipeline parameters
     stream_name : str
@@ -258,15 +258,17 @@ def pipeline(data, ts, parameters, stream_name):
             continue
 
         # Do we have a model for this source?
-        model_key = 'cal_model_{0}'.format(target_name,)
-        if model_key in ts.keys():
-            s.add_model(ts[model_key])
-        else:
+        model_key = 'model_{0}'.format(target_name)
+        try:
+            model_params = ts[model_key]
+        except KeyError:
             model_params, model_file = pp.get_model(target_name, lsm_dir)
             if model_params is not None:
                 s.add_model(model_params)
                 ts.add(model_key, model_params, immutable=True)
-                logger.info('   Model file: {0}'.format(model_file,))
+                logger.info('   Model file: {0}'.format(model_file))
+        else:
+            s.add_model(model_params)
         logger.debug('Model parameters for source {0}: {1}'.format(
             target_name, s.model_raw_params))
 
