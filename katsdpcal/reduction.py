@@ -291,7 +291,7 @@ def pipeline(data, ts, parameters, stream_name):
             logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
             k_soln = s.k_sol(parameters['k_bchan'], parameters['k_echan'])
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
-            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.times)
+            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.time)
 
             # ---------------------------------------
             # B solution
@@ -300,7 +300,7 @@ def pipeline(data, ts, parameters, stream_name):
             solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K'])
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
             logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.times)
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
 
             # ---------------------------------------
             # G solution
@@ -341,7 +341,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # update TS
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
-            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.times)
+            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.time)
 
             # ---------------------------------------
             # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -380,7 +380,7 @@ def pipeline(data, ts, parameters, stream_name):
                 logger.info(
                     "  - Saving solution '{}' to Telescope State".format(kcross_soln))
                 ts.add(parameters['product_names']['KCROSS'],
-                       kcross_soln.values, ts=kcross_soln.times)
+                       kcross_soln.values, ts=kcross_soln.time)
 
                 # ---------------------------------------
                 # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -409,7 +409,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # update TS
             logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.times)
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
 
             # ---------------------------------------
             # timing_file.write("B cal:    %s \n" % (np.round(time.time()-run_t0,3),))
