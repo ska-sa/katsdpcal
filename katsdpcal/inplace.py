@@ -9,7 +9,7 @@ import numpy as np
 import dask.array as da
 import dask.base
 import dask.core
-import dask.optimize
+import dask.optimization
 import dask.array.optimization
 
 
@@ -75,10 +75,10 @@ def _safe_in_place(dsk, source_keys, target_keys):
     2. If a source and target corresponding to *different* chunks depend on
     overlapping numpy arrays, the operation is unsafe.
     """
-    dependencies = dict((k, dask.optimize.get_dependencies(dsk, k)) for k in dsk)
+    dependencies = dict((k, dask.optimization.get_dependencies(dsk, k)) for k in dsk)
     # For each key, contains a set of _ArrayDependencys
     arrays = {}
-    for k in dask.optimize.toposort(dsk, dependencies=dependencies):
+    for k in dask.optimization.toposort(dsk, dependencies=dependencies):
         v = dsk[k]
         if isinstance(v, np.ndarray):
             arrays[k] = set([_ArrayDependency(v, True)])
