@@ -32,6 +32,7 @@ class Parameter(object):
     default = attr.ib(default=None)
     telstate = attr.ib(default=None)   # Set to true or false to override default
     telstate_transform = attr.ib(default=lambda x: x)
+    is_channel = attr.ib(default=False)  # Set to true if the parameter is a channel number
 
 
 def comma_list(type_):
@@ -50,15 +51,15 @@ USER_PARAMETERS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'first channel for K fit', int),
-    Parameter('k_echan', 'last channel for K fit', int),
+    Parameter('k_bchan', 'first channel for K fit', int, is_channel=True),
+    Parameter('k_echan', 'last channel for K fit', int, is_channel=True),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit', int),
-    Parameter('g_echan', 'last channel for g fit', int),
+    Parameter('g_bchan', 'first channel for g fit', int, is_channel=True),
+    Parameter('g_echan', 'last channel for g fit', int, is_channel=True),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
@@ -213,6 +214,9 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                 parameters[parameter.name] = parameter.default.factory()
             else:
                 parameters[parameter.name] = parameter.default
+        # Bias channel indices to refer to the local server
+        if parameter.is_channel:
+            parameters[parameter.name] -= channel_slice.start
 
     refant_index = None
     for ant in parameters['preferred_refants']:
@@ -238,8 +242,6 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     parameters['rfi_mask'] = parameters['rfi_mask'][channel_slice]
 
     for prefix in ['k', 'g']:
-        parameters[prefix + '_bchan'] -= channel_slice.start
-        parameters[prefix + '_echan'] -= channel_slice.start
         bchan = parameters[prefix + '_bchan']
         echan = parameters[prefix + '_echan']
         if echan <= bchan:
@@ -276,6 +278,9 @@ def parameters_to_telstate(parameters, telstate_cal):
         # Put them in unless explicitly set to False
         if parameter.telstate is None or parameter.telstate:
             value = parameter.telstate_transform(parameters[parameter.name])
+            if parameter.is_channel:
+                # Convert back to global channel index
+                value += parameters['channel_slice'].start
             telstate_cal.add('param_' + parameter.name, value, immutable=True)
     for parameter in COMPUTED_PARAMETERS:
         # Only put them in if explicitly set to True
