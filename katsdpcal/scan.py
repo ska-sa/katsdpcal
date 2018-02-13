@@ -158,7 +158,7 @@ class Scan(object):
         Cross polarisation flag data.
     cross_weights : array of float32, shape (ntime, nchan, 2, nbl)
         Cross polarisation weight data.
-    timestamps : array of float, shape (ntime, nchan, npol, nbl)
+    timestamps : array of float, shape (ntime,)
         Times.
     target : katpoint Target
         Phase centre of the scan.
@@ -464,21 +464,21 @@ class Scan(object):
     def apply(self, soln, vis):
         # set up more complex interpolation methods later
         soln_values = da.asarray(soln.values)
-        if soln.soltype is 'G':
+        if soln.soltype == 'G':
             # add empty channel dimension if necessary
             full_sol = soln_values[:, np.newaxis, :, :] \
                 if soln_values.ndim < 4 else soln_values
             return self._apply(full_sol, vis)
-        elif soln.soltype is 'K':
+        elif soln.soltype == 'K':
             # want shape (ntime, nchan, npol, nant)
             channel_freqs = da.asarray(self.channel_freqs)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis)
-        elif soln.soltype is 'B':
+        elif soln.soltype == 'B':
             return self._apply(soln_values, vis)
         else:
-            raise ValueError('Solution type is invalid.')
+            raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
 
     def pre_apply(self, pre_apply_solns, data=None):
         """Apply a set of solutions to the visibilities.
