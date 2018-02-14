@@ -94,7 +94,7 @@ def get_tracks(data, ts, parameters, dump_period):
     return [segment for (segment, track) in all_tracking.segments() if track]
 
 
-def get_solns_to_apply(s, ts, sol_list, time_range=[]):
+def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
     """
     For a given scan, extract and interpolate specified calibration solutions
     from TelescopeState.
@@ -105,6 +105,8 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
         scan
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
+    parameters : dict
+        pipeline parameters
     sol_list : list of str
         calibration solutions to extract and interpolate
 
@@ -116,7 +118,7 @@ def get_solns_to_apply(s, ts, sol_list, time_range=[]):
     solns_to_apply = []
 
     for X in sol_list:
-        ts_solname = 'cal_product_{0}'.format(X,)
+        ts_solname = parameters['product_names'][X]
         try:
             # get most recent solution value
             sol, soltime = ts.get_range(ts_solname)[0]
@@ -287,22 +289,22 @@ def pipeline(data, ts, parameters, stream_name):
             logger.info('Solving for K on beamformer calibrator {0}'.format(target_name,))
             k_soln = s.k_sol(parameters['k_bchan'], parameters['k_echan'])
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
-            ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
+            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.times)
 
             # ---------------------------------------
             # B solution
             logger.info('Solving for B on beamformer calibrator {0}'.format(target_name,))
             # get K solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K'])
+            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K'])
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
             logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
-            ts.add(b_soln.ts_solname, b_soln.values, ts=b_soln.times)
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.times)
 
             # ---------------------------------------
             # G solution
             logger.info('Solving for G on beamformer calibrator {0}'.format(target_name,))
             # get B solutions to apply and interpolate them to scan timestamps along with K
-            solns_to_apply.extend(get_solns_to_apply(s, ts, ['B']))
+            solns_to_apply.extend(get_solns_to_apply(s, ts, parameters, ['B']))
 
             # use single solution interval
             dumps_per_solint = scan_slice.stop - scan_slice.start
@@ -312,7 +314,7 @@ def pipeline(data, ts, parameters, stream_name):
             logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v, t in zip(g_soln.values, g_soln.times):
-                ts.add(g_soln.ts_solname, v, ts=t)
+                ts.add(parameters['product_names']['G'], v, ts=t)
 
             # ---------------------------------------
             # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -337,7 +339,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # update TS
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
-            ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
+            ts.add(parameters['product_names']['K'], k_soln.values, ts=k_soln.times)
 
             # ---------------------------------------
             # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -351,7 +353,7 @@ def pipeline(data, ts, parameters, stream_name):
                 # ---------------------------------------
                 # get K solutions to apply and interpolate them to scan timestamps
                 pre_apply_solns = ['K', 'B']
-                solns_to_apply = get_solns_to_apply(s, ts, pre_apply_solns)
+                solns_to_apply = get_solns_to_apply(s, ts, parameters, pre_apply_solns)
                 # solns_to_apply.append(g_to_apply)
 
                 # ---------------------------------------
@@ -375,7 +377,8 @@ def pipeline(data, ts, parameters, stream_name):
                 # update TS
                 logger.info(
                     "  - Saving solution '{}' to Telescope State".format(kcross_soln))
-                ts.add(kcross_soln.ts_solname, kcross_soln.values, ts=kcross_soln.times)
+                ts.add(parameters['product_names']['KCROSS'],
+                       kcross_soln.values, ts=kcross_soln.times)
 
                 # ---------------------------------------
                 # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -385,7 +388,7 @@ def pipeline(data, ts, parameters, stream_name):
         if any('bpcal' in k for k in taglist):
             # ---------------------------------------
             # get K solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K'])
+            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K'])
 
             # ---------------------------------------
             # Preliminary G solution
@@ -404,7 +407,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # update TS
             logger.info("  - Saving solution '{}' to Telescope State".format(b_soln))
-            ts.add(b_soln.ts_solname, b_soln.values, ts=b_soln.times)
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.times)
 
             # ---------------------------------------
             # timing_file.write("B cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -414,7 +417,7 @@ def pipeline(data, ts, parameters, stream_name):
         if any('gaincal' in k for k in taglist):
             # ---------------------------------------
             # get K and B solutions to apply and interpolate them to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B'])
+            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K', 'B'])
 
             # ---------------------------------------
             # G solution
@@ -431,7 +434,7 @@ def pipeline(data, ts, parameters, stream_name):
             logger.info("  - Saving solution '{}' to Telescope State".format(g_soln))
             # add gains to TS, iterating through solution times
             for v, t in zip(g_soln.values, g_soln.times):
-                ts.add(g_soln.ts_solname, v, ts=t)
+                ts.add(parameters['product_names']['G'], v, ts=t)
 
             # ---------------------------------------
             # timing_file.write("G cal:    %s \n" % (np.round(time.time()-run_t0,3),))
@@ -445,7 +448,7 @@ def pipeline(data, ts, parameters, stream_name):
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'],
+            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
             s.apply_inplace(solns_to_apply)
 
@@ -460,7 +463,8 @@ def pipeline(data, ts, parameters, stream_name):
             s.rfi(targ_flagger, rfi_mask, cross=True)
 
         # apply solutions and average the corrected data
-        solns_to_apply = get_solns_to_apply(s, ts, ['K', 'B', 'G'], time_range=[t0, t1])
+        solns_to_apply = get_solns_to_apply(s, ts, parameters,
+                                            ['K', 'B', 'G'], time_range=[t0, t1])
         logger.info('Applying solutions to {0}:'.format(target_name,))
         vis = s.tf.auto.vis
         for soln in solns_to_apply:

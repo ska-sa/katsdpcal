@@ -643,7 +643,8 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         report.writeln()
 
 
-def write_products(report, report_path, ts, st, et, antenna_names, correlator_freq, pol=[0, 1]):
+def write_products(report, report_path, ts, parameters,
+                   st, et, antenna_names, correlator_freq, pol=[0, 1]):
     """
     Include calibration product plots in the report
 
@@ -655,6 +656,8 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
         path where report is written
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
+    parameters : dict
+        pipeline parameters
     st : float
         start time for reporting parameters, seconds
     et : float
@@ -667,13 +670,14 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
     """
 
     cal_list = ['K', 'KCROSS', 'B', 'G']
-    solns_exist = any(['cal_product_' + cal in ts.keys() for cal in cal_list])
+    product_names = parameters['product_names']
+    solns_exist = any([product_names[cal] in ts for cal in cal_list])
     if not solns_exist:
         logger.info(' - no calibration solutions')
 
     # delay
     cal = 'K'
-    vals, times = get_cal(ts, cal, st, et)
+    vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Delay', '([ns])')
         write_K(report, report_path, times, vals, antenna_names, pol)
@@ -681,7 +685,7 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
     # ---------------------------------
     # cross pol delay
     cal = 'KCROSS'
-    vals, times = get_cal(ts, cal, st, et)
+    vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Cross polarisation delay', '([ns])')
         # convert delays to nano seconds
@@ -691,7 +695,7 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
     # ---------------------------------
     # bandpass
     cal = 'B'
-    vals, times = get_cal(ts, cal, st, et)
+    vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Bandpass')
         write_B(report, report_path, times, vals, antenna_names, correlator_freq, pol)
@@ -699,7 +703,7 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
     # ---------------------------------
     # gain
     cal = 'G'
-    vals, times = get_cal(ts, cal, st, et)
+    vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Gain')
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
@@ -709,7 +713,7 @@ def write_products(report, report_path, ts, st, et, antenna_names, correlator_fr
             insert_fig(report_path, report, plot, name='{0}'.format(cal))
 
 
-def get_cal(ts, cal, st, et):
+def get_cal(ts, cal, ts_name, st, et):
     """
     Fetch a calibration product from telstate
 
@@ -717,8 +721,10 @@ def get_cal(ts, cal, st, et):
     -----------
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
-    cal: str
+    cal : str
         string indicating calibration product type
+    ts_name : str
+        name of the telescope state key holding the cal solution
     st : float
         start time for reporting parameters, seconds
     et : float
@@ -730,10 +736,9 @@ def get_cal(ts, cal, st, et):
     times : :class:`np.ndarray`
         times of calibration product
     """
-    cal_product = 'cal_product_' + cal
     vals, times = [], []
-    if cal_product in ts:
-        product = ts.get_range(cal_product, st=st, et=et, return_format='recarray')
+    if ts_name in ts:
+        product = ts.get_range(ts_name, st=st, et=et, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
             vals = product['value']
@@ -1097,7 +1102,8 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
         # --------------------------------------------------------------------
         # add cal products to report
         antenna_names = parameters['antenna_names']
-        write_products(cal_rst, report_path, ts, st, et, antenna_names, correlator_freq, pol)
+        write_products(cal_rst, report_path, ts, parameters,
+                       st, et, antenna_names, correlator_freq, pol)
         logger.info('Calibration solution summary')
 
         # --------------------------------------------------------------------

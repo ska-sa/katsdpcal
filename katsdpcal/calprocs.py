@@ -975,7 +975,6 @@ class CalSolution(object):
         self.soltype = soltype
         self.values = solvalues
         self.times = soltimes
-        self.ts_solname = 'cal_product_{}'.format(soltype)
 
     def __str__(self):
         """String representation of calibration solution to help identify it."""
