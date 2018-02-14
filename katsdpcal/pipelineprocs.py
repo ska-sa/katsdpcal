@@ -227,7 +227,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
             raise ValueError('Incorrect shape in RFI mask ({}, expected {})'
                              .format(parameters['rfi_mask'].shape, (n_chans,)))
     else:
-        parameters['rfi_mask'] = np.ones((n_chans,), np.bool_)
+        parameters['rfi_mask'] = np.zeros((n_chans,), np.bool_)
     parameters['rfi_mask'] = parameters['rfi_mask'][channel_slice]
 
     for prefix in ['k', 'g']:

@@ -106,7 +106,7 @@ class TestFinaliseParameters(unittest.TestCase):
         np.testing.assert_allclose(expected_freqs, parameters['channel_freqs'])
         np.testing.assert_allclose(expected_freqs_all, parameters['channel_freqs_all'])
         self.assertEqual(slice(2048, 3072), parameters['channel_slice'])
-        np.testing.assert_array_equal(np.ones(1024, np.bool_), parameters['rfi_mask'])
+        np.testing.assert_array_equal(np.zeros(1024, np.bool_), parameters['rfi_mask'])
         # Check the channel indices are offset
         self.assertEqual(202, parameters['k_bchan'])
         self.assertEqual(402, parameters['k_echan'])
