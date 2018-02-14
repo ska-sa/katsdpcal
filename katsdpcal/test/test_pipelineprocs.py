@@ -9,7 +9,6 @@ import numpy as np
 import katsdptelstate
 import katpoint
 import mock
-import pickle
 
 from .. import pipelineprocs
 
@@ -130,14 +129,14 @@ class TestFinaliseParameters(unittest.TestCase):
         with mock.patch('__builtin__.open'):   # To suppress trying to open a real file
             with mock.patch('pickle.load', return_value=mask.copy()):
                 with self.assertRaises(ValueError):
-                    parameters = pipelineprocs.finalise_parameters(
+                    pipelineprocs.finalise_parameters(
                         self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
 
     def test_no_matching_preferred_refants(self):
         self.parameters['preferred_refants'] = ['m005', 'm007']
         parameters = pipelineprocs.finalise_parameters(
             self.parameters, self.telstate_l0, 4, 2, None)
-        self.assertEqual('m001', self.parameters['refant'].name)
+        self.assertEqual('m001', parameters['refant'].name)
 
     def test_invalid_server_id(self):
         with self.assertRaises(ValueError):

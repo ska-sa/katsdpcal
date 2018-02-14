@@ -2,7 +2,6 @@
 
 from __future__ import print_function, division, absolute_import
 import unittest
-import threading
 import katsdptelstate
 import concurrent.futures
 import numpy as np
