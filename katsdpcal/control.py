@@ -32,6 +32,7 @@ import katsdpcal
 from .reduction import pipeline
 from .report import make_cal_report
 from . import calprocs
+from . import solutions
 
 
 logger = logging.getLogger(__name__)
@@ -894,6 +895,15 @@ class Pipeline(Task):
             # Leave a core free to avoid starving the accumulator
             num_workers = max(1, multiprocessing.cpu_count() - 1)
         self.num_workers = num_workers
+        self._reset_solution_stores()
+
+    def _reset_solution_stores(self):
+        self.solution_stores = {
+            'K': solutions.CalSolutionStoreLatest('K'),
+            'KCROSS': solutions.CalSolutionStoreLatest('KCROSS'),
+            'B': solutions.CalSolutionStoreLatest('B'),
+            'G': solutions.CalSolutionStore('G')
+        }
 
     def get_sensors(self):
         return [
@@ -983,7 +993,8 @@ class Pipeline(Task):
     def run_pipeline(self, capture_block_id, data):
         # run pipeline calibration
         telstate_cb = make_telstate_cb(self.telstate_cal, capture_block_id)
-        target_slices, avg_corr = pipeline(data, telstate_cb, self.parameters, self.l0_name)
+        target_slices, avg_corr = pipeline(data, telstate_cb, self.parameters,
+                                           self.solution_stores, self.l0_name)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 

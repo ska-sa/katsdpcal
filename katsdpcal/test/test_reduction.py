@@ -7,7 +7,7 @@ import katsdptelstate
 import concurrent.futures
 import numpy as np
 
-from ..calprocs import CalSolution, CalSolutions
+from ..solutions import CalSolution, CalSolutions, CalSolutionStore, CalSolutionStoreLatest
 from .. import reduction
 
 
@@ -35,6 +35,11 @@ class TestSharedSolve(unittest.TestCase):
                 },
                 'channel_freqs': np.arange(self.server_chans)  # only length matters
             } for i in range(self.n_servers)]
+        self.solution_stores = {
+            'K': CalSolutionStoreLatest('K'),
+            'B': CalSolutionStoreLatest('B'),
+            'G': CalSolutionStore('G')
+        }
 
     def tearDown(self):
         self.executor.shutdown()
@@ -44,9 +49,10 @@ class TestSharedSolve(unittest.TestCase):
 
         kwargs['_seq'] = self._seq
         self._seq += 1
+        solution_store = self.solution_stores[name] if name else None
         return [self.executor.submit(
             reduction.shared_solve,
-            self.telstate, self.parameters[i], name,
+            self.telstate, self.parameters[i], solution_store,
             bchan - i * self.server_chans, echan - i * self.server_chans,
             solver, *args, **kwargs) for i in range(self.n_servers)]
 
@@ -59,7 +65,7 @@ class TestSharedSolve(unittest.TestCase):
             values = np.arange(123)
             values[0] = bchan
             values[1] = echan
-            return CalSolution('K', values, 12345.5)
+            return CalSolution(name or 'K', values, 12345.5)
 
         results = self.call(name, self.bchan, self.echan, solver)
         expected = np.arange(123)

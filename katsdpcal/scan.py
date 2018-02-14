@@ -13,7 +13,7 @@ from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 
 from . import calprocs, calprocs_dask, inplace
-from .calprocs import CalSolution, CalSolutions
+from .solutions import CalSolution, CalSolutions
 
 logger = logging.getLogger(__name__)
 

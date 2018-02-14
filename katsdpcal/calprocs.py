@@ -6,7 +6,6 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
 from __future__ import print_function
-import time
 import logging
 
 import numpy as np
@@ -963,40 +962,6 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
     av_weights = np.stack(av_weights, axis=3)
 
     return av_data, av_flags, av_weights
-
-
-# --------------------------------------------------------------------------------------------------
-# --- CLASS :  CalSolution
-# --------------------------------------------------------------------------------------------------
-
-class CalSolution(object):
-    """Calibration solution store."""
-    def __init__(self, soltype, solvalues, soltime):
-        self.soltype = soltype
-        self.values = solvalues
-        self.time = soltime
-
-    def __str__(self):
-        """String representation of calibration solution to help identify it."""
-        # Obtain human-friendly timestamp representing the centre of solutions
-        timestamp = time.strftime("%H:%M:%S", time.gmtime(self.time))
-        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
-
-
-class CalSolutions(object):
-    """Calibration solutions store. This stores multiple solutions (in time)
-    in a single array.
-    """
-    def __init__(self, soltype, solvalues, soltimes):
-        self.soltype = soltype
-        self.values = solvalues
-        self.times = soltimes
-
-    def __str__(self):
-        """String representation of calibration solution to help identify it."""
-        # Obtain human-friendly timestamp representing the centre of solutions
-        timestamp = time.strftime("%H:%M:%S", time.gmtime(np.mean(self.times)))
-        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 
 # --------------------------------------------------------------------------------------------------

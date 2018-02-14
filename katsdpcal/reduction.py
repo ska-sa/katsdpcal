@@ -10,8 +10,7 @@ from katdal.h5datav3 import SENSOR_PROPS
 
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
 
-from . import calprocs
-from . import calprocs_dask
+from . import calprocs, calprocs_dask, solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
@@ -94,22 +93,17 @@ def get_tracks(data, ts, parameters, dump_period):
     return [segment for (segment, track) in all_tracking.segments() if track]
 
 
-def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
+def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
     """
     For a given scan, extract and interpolate specified calibration solutions
-    from TelescopeState.
-
-    TODO: in a multi-server environment this will give non-deterministic
-    answers.
+    from the solution stores.
 
     Inputs
     ------
     s : :class:`Scan`
         scan
-    ts : :class:`katsdptelstate.TelescopeState`
-        telescope state
-    parameters : dict
-        pipeline parameters
+    solution_stores : dict of :class:`solutions.SolutionStore`
+        stored solutions
     sol_list : list of str
         calibration solutions to extract and interpolate
 
@@ -121,27 +115,19 @@ def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
     solns_to_apply = []
 
     for X in sol_list:
-        ts_solname = parameters['product_names'][X]
-        try:
-            if X != 'G':
-                # get most recent solution value
-                sol, soltime = ts.get_range(ts_solname)[0]
-                soln = calprocs.CalSolution(X, sol, soltime)
-            else:
-                # get G values for an hour range on either side of target scan
-                t0, t1 = time_range
-                gsols = ts.get_range(ts_solname, st=t0 - 2. * 60. * 60., et=t1 + 2. * 60. * 60,
-                                     return_format='recarray')
-                solval, soltimes = gsols['value'], gsols['time']
-                soln = calprocs.CalSolutions('G', solval, soltimes)
+        if X != 'G':
+            # get most recent solution value
+            soln = solution_stores[X].latest
+        else:
+            # get G values for a two hour range on either side of target scan
+            t0, t1 = time_range
+            soln = solution_stores[X].get_range(t0 - 2. * 60. * 60., t1 + 2. * 60. * 60)
 
-            if len(soln.values) > 0:
-                solns_to_apply.append(s.interpolate(soln))
-            logger.info("Loaded solution '{}' from Telescope State".format(soln))
-
-        except KeyError:
-            # TS doesn't yet contain 'X'
-            logger.info('No {} solutions found in Telescope State'.format(X))
+        if soln is not None and len(soln.values) > 0:
+            solns_to_apply.append(s.interpolate(soln))
+            logger.info("Loaded solution '%s' from solution store", soln)
+        else:
+            logger.info("No '%s' solutions found in solution store", soln)
 
     return solns_to_apply
 
@@ -149,21 +135,27 @@ def get_solns_to_apply(s, ts, parameters, sol_list, time_range=[]):
 _shared_solve_seq = 0
 
 
-def save_solution(telstate, key, soln):
-    """Write a calibration solution to telescope state.
+def save_solution(telstate, key, solution_store, soln):
+    """Write a calibration solution to telescope state and the solution store.
 
     The `soln` may be either a :class:`CalSolution` or a :class:`CalSolutions`.
+    The `telstate` may be ``None`` to save only to the solution store.
     """
+    def save_one(soln):
+        if telstate is not None:
+            telstate.add(key, soln.values, ts=soln.time)
+        solution_store.add(soln)
+
     logger.info("  - Saving solution '%s' to Telescope State", soln)
-    assert isinstance(soln, (calprocs.CalSolution, calprocs.CalSolutions))
-    if isinstance(soln, calprocs.CalSolution):
-        telstate.add(key, soln.values, ts=soln.time)
+    assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
+    if isinstance(soln, solutions.CalSolution):
+        save_one(soln)
     else:
         for v, t in zip(soln.values, soln.times):
-            telstate.add(key, v, ts=t)
+            save_one(solutions.CalSolution(soln.soltype, v, t))
 
 
-def shared_solve(telstate, parameters, name, bchan, echan,
+def shared_solve(telstate, parameters, solution_store, bchan, echan,
                  solver, *args, **kwargs):
     """Run a solver on one of the cal nodes.
 
@@ -176,9 +168,10 @@ def shared_solve(telstate, parameters, name, bchan, echan,
         Telescope state in which the solution is stored
     parameters : dict
         Pipeline parameters
-    name : str
-        Name of the solution, looked up via ``parameters['product_names']``, or
-        ``None`` if it does not formed a named solution.
+    solution_store : :class:`CalSolutionStore`-like
+        Store in which to place the solution, in addition to the `telstate`. If it
+        is ``None``, the solution is returned but not placed in any store (nor in
+        a public part of telstate).
     bchan,echan : int
         Channel range containing the data, relative to the channels held by
         this server. It must lie either entirely inside or entirely outside
@@ -208,8 +201,8 @@ def shared_solve(telstate, parameters, name, bchan, echan,
         _shared_solve_seq += 1
     shared_key = 'shared_solve_{}'.format(seq)
 
-    if name is not None:
-        telstate_key = parameters['product_names'][name]
+    if solution_store is not None:
+        telstate_key = parameters['product_names'][solution_store.soltype]
     else:
         telstate_key = None
 
@@ -219,12 +212,12 @@ def shared_solve(telstate, parameters, name, bchan, echan,
         kwargs['echan'] = echan
         try:
             soln = solver(*args, **kwargs)
-            assert isinstance(soln, (calprocs.CalSolution, calprocs.CalSolutions))
+            assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
             values = soln.values
-            if name is not None:
-                save_solution(telstate, telstate_key, soln)
+            if solution_store is not None:
+                save_solution(telstate, telstate_key, solution_store, soln)
                 values = None
-            if isinstance(soln, calprocs.CalSolution):
+            if isinstance(soln, solutions.CalSolution):
                 info = ('CalSolution', soln.soltype, values, soln.time)
             else:
                 info = ('CalSolutions', soln.soltype, values, soln.times)
@@ -249,7 +242,7 @@ def shared_solve(telstate, parameters, name, bchan, echan,
                     raise ValueError('Expected exactly one solution with timestamp {}, found {}'
                                      .format(time, len(saved)))
                 values = saved[0][0]
-            return calprocs.CalSolution(soltype, values, time)
+            soln = solutions.CalSolution(soltype, values, time)
         elif info[0] == 'CalSolutions':
             soltype, values, times = info[1:]
             if values is None:
@@ -264,12 +257,16 @@ def shared_solve(telstate, parameters, name, bchan, echan,
                     raise ValueError('Timestamps for {} did not match expected values'
                                      .format(telstate_key))
                 values = np.stack(values)
-            return calprocs.CalSolutions(soltype, values, times)
+            soln = solutions.CalSolutions(soltype, values, times)
         else:
             raise ValueError('Unknown info type {}'.format(info[0]))
+        if solution_store is not None:
+            # We don't pass telstate, because we got the value from telstate
+            save_solution(None, None, solution_store, soln)
+        return soln
 
 
-def pipeline(data, ts, parameters, stream_name):
+def pipeline(data, ts, parameters, solution_stores, stream_name):
     """
     Pipeline calibration
 
@@ -282,6 +279,8 @@ def pipeline(data, ts, parameters, stream_name):
         Telescope state, scoped to the cal namespace within the capture block
     parameters : dict
         The pipeline parameters
+    solution_stores : dict of :class:`~.CalSolutionStore`-like
+        Solution stores for the capture block, indexed by solution type
     stream_name : str
         Name of the L0 data stream
 
@@ -415,7 +414,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
-            k_soln = shared_solve(ts, parameters, 'K',
+            k_soln = shared_solve(ts, parameters, solution_stores['K'],
                                   parameters['k_bchan'], parameters['k_echan'], s.k_sol)
 
             # ---------------------------------------
@@ -424,7 +423,7 @@ def pipeline(data, ts, parameters, stream_name):
             # get K solutions to apply and interpolate it to scan timestamps
             solns_to_apply = [s.interpolate(k_soln)]
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
-            save_solution(ts, parameters['product_names']['B'], b_soln)
+            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
             # ---------------------------------------
             # G solution
@@ -435,7 +434,8 @@ def pipeline(data, ts, parameters, stream_name):
             # use single solution interval
             dumps_per_solint = scan_slice.stop - scan_slice.start
             g_solint = dumps_per_solint * dump_period
-            shared_solve(ts, parameters, 'G', parameters['g_bchan'], parameters['g_echan'],
+            shared_solve(ts, parameters, solution_stores['G'],
+                         parameters['g_bchan'], parameters['g_echan'],
                          s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
         # DELAY
@@ -452,7 +452,7 @@ def pipeline(data, ts, parameters, stream_name):
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on delay calibrator %s', target_name)
-            shared_solve(ts, parameters, 'K',
+            shared_solve(ts, parameters, solution_stores['K'],
                          parameters['k_bchan'], parameters['k_echan'],
                          s.k_sol, chan_sample=k_chan_sample, pre_apply=[g_to_apply])
 
@@ -464,7 +464,7 @@ def pipeline(data, ts, parameters, stream_name):
                 # ---------------------------------------
                 # get K solutions to apply and interpolate them to scan timestamps
                 pre_apply_solns = ['K', 'B']
-                solns_to_apply = get_solns_to_apply(s, ts, parameters, pre_apply_solns)
+                solns_to_apply = get_solns_to_apply(s, solution_stores, pre_apply_solns)
                 # solns_to_apply.append(g_to_apply)
 
                 # ---------------------------------------
@@ -482,7 +482,7 @@ def pipeline(data, ts, parameters, stream_name):
                 # ---------------------------------------
                 # KCROSS solution
                 logger.info('Solving for KCROSS on cross-hand delay calibrator %s', target_name)
-                shared_solve(ts, parameters, 'KCROSS',
+                shared_solve(ts, parameters, solution_stores['KCROSS'],
                              s.kcross_sol,
                              chan_ave=parameters['kcross_chanave'], pre_apply=solns_to_apply)
 
@@ -490,7 +490,7 @@ def pipeline(data, ts, parameters, stream_name):
         if any('bpcal' in k for k in taglist):
             # ---------------------------------------
             # get K solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K'])
+            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K'])
 
             # ---------------------------------------
             # Preliminary G solution
@@ -506,13 +506,13 @@ def pipeline(data, ts, parameters, stream_name):
             logger.info('Solving for B on bandpass calibrator %s', target_name)
             solns_to_apply.append(g_to_apply)
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
-            save_solution(ts, parameters['product_names']['B'], b_soln)
+            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
             # ---------------------------------------
             # get K and B solutions to apply and interpolate them to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K', 'B'])
+            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
 
             # ---------------------------------------
             # G solution
@@ -521,7 +521,8 @@ def pipeline(data, ts, parameters, stream_name):
             # (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop - scan_slice.start - 1) / 2.0)
             g_solint = dumps_per_solint * dump_period
-            shared_solve(ts, parameters, 'G', parameters['g_bchan'], parameters['g_echan'],
+            shared_solve(ts, parameters, solution_stores['G'],
+                         parameters['g_bchan'], parameters['g_echan'],
                          s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
         # TARGET
@@ -531,7 +532,7 @@ def pipeline(data, ts, parameters, stream_name):
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, ts, parameters, ['K', 'B', 'G'],
+            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
                                                 time_range=[t0, t1])
             s.apply_inplace(solns_to_apply)
 
@@ -546,7 +547,7 @@ def pipeline(data, ts, parameters, stream_name):
             s.rfi(targ_flagger, rfi_mask, cross=True)
 
         # apply solutions and average the corrected data
-        solns_to_apply = get_solns_to_apply(s, ts, parameters,
+        solns_to_apply = get_solns_to_apply(s, solution_stores,
                                             ['K', 'B', 'G'], time_range=[t0, t1])
         logger.info('Applying solutions to {0}:'.format(target_name,))
         vis = s.tf.auto.vis
