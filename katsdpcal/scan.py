@@ -152,18 +152,12 @@ class Scan(object):
         Slice for selecting susbset of the correlation products.
     corrprod_lookup : list of int, shape (number_of_baselines, 2)
         List of antenna pairs for each baseline.
-    vis : array of float, complex64 (ntime, nchan, 2, nbl)
-        Visibility data.
-    flags : array of uint8, shape (ntime, nchan, 2, nbl)
-        Flag data.
-    weights : array of float32, shape (ntime, nchan, 2, nbl)
-        Weight data.
-    cross_vis : array of float, complex64 (ntime, nchan, 2, nbl)
-        Cross polarisation visibility data.
-    cross_flags : array of uint8, shape (ntime, nchan, 2, nbl)
-        Cross polarisation flag data.
-    cross_weights : array of float32, shape (ntime, nchan, 2, nbl)
-        Cross polarisation weight data.
+    ac_mask : numpy array of bool
+        Mask for selecting auto-correlation data
+    orig : :class:`ScanDataPair` of :class:`ScanData`
+        Cross-correlation data for time_slice
+    auto : :class:`ScanDataPair` of :class:`ScanData`
+        Auto-correlation data for time_slice
     timestamps : array of float, shape (ntime, nchan, npol, nbl)
         Times.
     target : katpoint Target
@@ -215,9 +209,23 @@ class Scan(object):
         # get references to this time chunk of data
         # data format is:   (time x channels x pol x bl).
         all_data = ScanData(data['vis'], data['flags'], data['weights'])
-        all_data = all_data[time_slice, :, :, self.bl_slice]
-        self.orig = ScanDataPair(all_data[:, :, 0:2, :], all_data[:, :, 2:, :])
+        cross_data = all_data[time_slice, :, :, self.bl_slice]
+        self.orig = ScanDataPair(cross_data[:, :, 0:2, :], cross_data[:, :, 2:, :])
         self.reset_chunked()
+
+        # get AC data
+        self.ac_mask = np.array([b0 == b1 for b0, b1 in bls_lookup])
+        try:
+            ac_slice = slice(np.where(self.ac_mask)[0][0], np.where(self.ac_mask)[0][-1]+1)
+        except IndexError:
+            # not AC data
+            ac_slice = slice(None)
+        self.ac_lookup = bls_lookup[ac_slice]
+
+        # get references to AC data at this time chunk of data
+        auto_data = all_data[time_slice, :, :, ac_slice]
+        self.auto = ScanDataPair(auto_data[:, :, 0:2, :], auto_data[:, :, 2:, :])
+        self.reset_chunked('auto_', 'auto')
 
         self.timestamps = data['times'][time_slice]
         self.target = katpoint.Target(target)
@@ -245,12 +253,13 @@ class Scan(object):
 
         self.logger = logger
 
-    def reset_chunked(self):
-        """Recreate the :attr:`tf` and :attr:`pb` attributes after changing :attr:`orig`."""
+    def reset_chunked(self, prefix='', corr='orig'):
+        """Create/recreate the :attr:`prefix + tf` and :attr:`prefix + pb`
+           attributes after changing :attr:`corr`."""
         # Arrays chunked up in time and frequency
-        self.tf = self.orig.rechunk((4, 4096, None, None))
+        setattr(self, prefix+'tf', getattr(self, corr).rechunk((4, 4096, None, None)))
         # Arrays chunked up in polarization and baseline
-        self.pb = self.orig.rechunk((None, None, 1, 16))
+        setattr(self, prefix+'pb', getattr(self, corr).rechunk((None, None, 1, 16)))
 
     def logsolutiontime(f):
         """
@@ -316,45 +325,66 @@ class Scan(object):
         return CalSolution('G', g_soln, ave_times)
 
     @logsolutiontime
-    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[]):
+    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[], ac=False):
         """
         Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
 
         Parameters
         ----------
-        bchan : start channel for fit, int, optional
-        echan : end channel for fit, int, optional
-        chan_ave : channels to average together prior during fit, int, optional
-        pre_apply : calibration solutions to apply, list of CalSolutions, optional
+        bchan : int, optional
+            start channel for fit
+        echan : int, optional
+            end channel for fit
+        chan_ave : int, optional
+            channels to average together prior during fit
+        pre_apply :  list of CalSolutions, optional
+            calibration solutions to apply
+        ac : bool, optional
+            if True solve for KCROSS_DIODE using auto-correlations, else solve for KCROSS
+            using cross-correlations
 
         Returns
         -------
-        Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape (nant)
+        Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape(1)
+        or 'KCROSS_DIODE', shape (nant)
         """
-        if self.npol < 4:
-            self.logger.info('Cant solve for KCROSS without four polarisation products')
-            return
+
+        if ac:
+            corr = 'auto_tf'
+            soln_type = 'KCROSS_DIODE'
         else:
-            # TODO: pre_apply doesn't do the right thing for cross-hand data
-            modvis = self.pre_apply(pre_apply, self.tf.cross)
+            corr = 'tf'
+            soln_type = 'KCROSS'
 
-            # average over all time, for specified channel range (no averaging over channel)
-            if echan == 0:
-                echan = None
-            chan_slice = np.s_[:, bchan:echan, :, :]
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
-                modvis[chan_slice], self.tf.cross.flags[chan_slice],
-                self.tf.cross.weights[chan_slice])
+        # TODO: pre_apply doesn't do the right thing for cross-hand data
+        modvis = self.pre_apply(pre_apply, getattr(self, corr).cross)
 
-            # solve for cross hand delay KCROSS
-            # note that the kcross solver needs the flags because it averages the data
-            #  (strictly it should need weights too, but deal with that leter
-            #  when weights are meaningful)
-            av_vis, av_flags = da.compute(av_vis, av_flags)
+        # average over all time, for specified channel range (no averaging over channel)
+        if echan == 0:
+            echan = None
+        chan_slice = np.s_[:, bchan:echan, :, :]
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
+            modvis[chan_slice], getattr(self, corr).cross.flags[chan_slice],
+            getattr(self, corr).cross.weights[chan_slice])
+
+        # solve for cross hand delay KCROSS or KCROSS_DIODE if ac is True.
+        # note that the kcross solver needs the flags because it averages the data
+        #  (strictly it should need weights too, but deal with that later
+        #  when weights are meaningful)
+        av_vis, av_flags = da.compute(av_vis, av_flags)
+        if ac:
+            kcross_soln = np.zeros(av_vis.shape[-1])
+            for a in range(av_vis.shape[-1]):
+                k = calprocs.kcross_fit(av_vis[..., a][..., np.newaxis],
+                                        av_flags[..., a][..., np.newaxis],
+                                        self.channel_freqs[bchan:echan], chan_ave=chan_ave)
+                kcross_soln[a] = k
+            logger.info('kcross solns are {0}'.format(kcross_soln))
+        else:
             kcross_soln = calprocs.kcross_fit(av_vis, av_flags, self.channel_freqs[bchan:echan],
                                               chan_ave=chan_ave)
-            return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
+        return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
     def k_sol(self, bchan=1, echan=0, chan_sample=1, pre_apply=[]):

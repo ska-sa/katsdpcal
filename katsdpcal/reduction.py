@@ -3,6 +3,7 @@ import logging
 
 import numpy as np
 import dask.array as da
+import katpoint
 
 from katdal.sensordata import TelstateSensorData, SensorCache
 from katdal.categorical import CategoricalData
@@ -90,6 +91,34 @@ def get_tracks(data, ts, dump_period):
     all_tracking = CategoricalData(tracking, range(num_dumps + 1))
     all_tracking.remove_repeats()
     return [segment for (segment, track) in all_tracking.segments() if track]
+
+
+def get_noise_diode(ts, ant_names, time_range=[]):
+    """
+    For a given timerange check if the noise diode is on for
+    antennas in ant_names
+
+    Inputs
+    ------
+    ts : :class:`katsdptelstate.TelescopeState`
+        telescope state
+    ant_names : list of str
+        names of antennas
+    time_range : list of float
+        timerange to check the noise diode is on for
+
+    Returns
+    -------
+    nd_on : list of bool
+        True for antennas with noise diode on during time_range, otherwise False
+    """
+    nd_at_start = [ts.get_range('{0}_dig_l_band_noise_diode'.format(a),
+                   et=time_range[0], return_format='recarray')['value'][0] for a in ant_names]
+    nd_during = [ts.get_range('{0}_dig_l_band_noise_diode'.format(a),
+                 st=time_range[0], et=time_range[1], return_format='recarray')['value']
+                 for a in ant_names]
+    nd_on = [x > 0 and np.all(y > 0) for x, y in zip(nd_at_start, nd_during)]
+    return np.asarray(nd_on)
 
 
 def get_solns_to_apply(s, ts, sol_list, time_range=[]):
@@ -324,6 +353,30 @@ def pipeline(data, ts, stream_name):
             k_soln = s.k_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan)
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
+
+            # ----------------------------------------
+            # KCROSS solution
+            logger.info('Checking if the noise diode was fired')
+            ant_names = [katpoint.Antenna(a).name for a in s.antenna_descriptions]
+            nd_on = get_noise_diode(ts, ant_names, [t0, t1])
+            if any(nd_on):
+                logger.info('Noise diode was fired')
+                logger.info('Solving for KCROSS_DIODE on beamformer calibrator {0}'
+                            .format(target_name))
+                if n_pols < 4:
+                    logger.info('Can\'t solve for KCROSS_DIODE without four polarisation products')
+                elif s.ac_mask.size == 0:
+                    logger.info('No AC data, can\'t solve for KCROSS_DIODE without AC data')
+                else:
+                    kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
+                                               ts.cal_param_kcross_chanave, ac=True)
+                    logger.info(
+                        "  - Saving solution '{}' to Telescope State".format(kcross_soln))
+                    # replace solutions on antennas where the noise_diode didn't
+                    # fire with nan's to indicate their solutions aren't reliable.
+                    ts.add(kcross_soln.ts_solname,
+                           np.where(~nd_on, np.nan, kcross_soln.values),
+                           ts=kcross_soln.times)
 
             # ---------------------------------------
             # B solution
