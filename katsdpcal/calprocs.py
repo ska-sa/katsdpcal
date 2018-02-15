@@ -470,7 +470,6 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
 
         bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
                         num_iters=100, ref_ant=refant, init_gain=None)
-
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
         for i, bp in enumerate(bpass.T):
@@ -520,6 +519,9 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     nchans = len(ave_chans)
     chan_increment = ave_chans[1] - ave_chans[0]
 
+    # replace nans with zeros in data
+    valid =~ np.isnan(ave_crosshand)
+    ave_crosshand = np.nan_to_num(ave_crosshand)
     # FT the visibilities to get course estimate of kcross
     #   with noisy data, this is more robust than unwrapping the phase
     ft_vis = np.fft.fft(ave_crosshand)
@@ -537,14 +539,16 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     coarse_kcross = k_arg / (chan_increment*nchans)
 
     # correst data with course kcross to solve for residual delta kcross
-    corrected_crosshand = ave_crosshand*np.exp(-2.0j * np.pi * coarse_kcross * ave_chans)
+    corr_crosshand = ave_crosshand[valid] * np.exp(-2.0j * np.pi * coarse_kcross * ave_chans[valid])
     # solve for residual kcross through linear phase fit
-    crossphase = np.angle(corrected_crosshand)
+    crossphase = np.angle(corr_crosshand)
+    # unwrap phases
+    crossphase = np.unwrap(crossphase, discont=1.9 * np.pi)
     # remove any offset from zero
     crossphase -= np.median(crossphase)
     # linear fit
-    A = np.array([ave_chans, np.ones(len(ave_chans))])
-    delta_kcross = np.linalg.lstsq(A.T, crossphase)[0][0]/(2. * np.pi)
+    A = np.array([ave_chans[valid], np.ones(len(ave_chans[valid]))])
+    delta_kcross = np.linalg.lstsq(A.T, crossphase, rcond=-1)[0][0]/(2. * np.pi)
 
     # total kcross
     return coarse_kcross + delta_kcross
