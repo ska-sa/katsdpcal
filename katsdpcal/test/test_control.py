@@ -218,6 +218,8 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate_l0.add('n_chans', self.n_channels, immutable=True)
         telstate_l0.add('n_chans_per_substream', self.n_channels_per_substream, immutable=True)
         telstate_l0.add('sync_time', 1400000000.0, immutable=True)
+        telstate_cb_l0 = telstate.view(telstate.SEPARATOR.join(('cb', 'sdp_l0test')))
+        telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
@@ -366,9 +368,9 @@ class TestCalDeviceServer(unittest.TestCase):
 
         It must also correctly remove the capture block from capture-block-state.
         """
-        yield self.make_request('capture-init', 'empty_cb')
+        yield self.make_request('capture-init', 'cb')
         state = yield self.get_sensor('capture-block-state')
-        assert_equal('{"empty_cb": "CAPTURING"}', state)
+        assert_equal('{"cb": "CAPTURING"}', state)
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
@@ -385,7 +387,7 @@ class TestCalDeviceServer(unittest.TestCase):
         """capture-init fails when already capturing"""
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
-        yield self.make_request('capture-init', 'cb-init-when-capturing')
+        yield self.make_request('capture-init', 'cb')
         yield self.assert_request_fails(r'capture already in progress', 'capture-init', 'cb')
 
     @async_test
@@ -393,7 +395,7 @@ class TestCalDeviceServer(unittest.TestCase):
     def test_done_when_not_capturing(self):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
-        yield self.make_request('capture-init', 'done-when-not-capturing')
+        yield self.make_request('capture-init', 'cb')
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
@@ -417,7 +419,7 @@ class TestCalDeviceServer(unittest.TestCase):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        first_ts = ts = 100
+        first_ts = ts = 100.0
         n_times = 25
         corrupt_times = (4, 17)
         rs = np.random.RandomState(seed=1)
@@ -468,10 +470,10 @@ class TestCalDeviceServer(unittest.TestCase):
             for heap in dump_heaps:
                 self.stream.send_heap(heap)
             ts += self.telstate.sdp_l0test_int_time
-        yield self.make_request('capture-init', 'cb-capture')
+        yield self.make_request('capture-init', 'cb')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        assert_equal('{"cb-capture": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
+        assert_equal('{"cb": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
         informs = yield self.make_request('shutdown', timeout=180)
@@ -497,7 +499,7 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_true(os.path.isfile(os.path.join(report, 'calreport.html')))
         assert_true(os.path.samefile(report, (yield self.get_sensor('report-last-path'))))
 
-        telstate_cb = control.make_telstate_cb(self.telstate_cal, 'cb-capture')
+        telstate_cb = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb['product_B_parts']
         assert_equal(1, cal_product_B_parts)
         cal_product_B = telstate_cb.get_range('product_B0', st=0)
@@ -567,7 +569,7 @@ class TestCalDeviceServer(unittest.TestCase):
         vis = np.ones((self.n_channels, self.n_baselines), np.complex64)
         weights = np.ones(vis.shape, np.uint8)
         flags = np.zeros(vis.shape, np.uint8)
-        ts = 0.0
+        ts = 100.0
         channel_slices = [np.s_[i * self.n_channels_per_substream
                                 : (i+1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
@@ -614,7 +616,7 @@ class TestCalDeviceServer(unittest.TestCase):
             self.telstate.add('{}_activity'.format(antenna), 'slew', ts=slew_start)
             self.telstate.add('{}_activity'.format(antenna), 'track', ts=slew_end)
         # Start the capture
-        yield self.make_request('capture-init', 'cb-buffer-wrap')
+        yield self.make_request('capture-init', 'cb')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
         for i in range(240):
@@ -659,7 +661,7 @@ class TestCalDeviceServer(unittest.TestCase):
         for heap in heaps:
             self.stream.send_heap(heap)
         # Run the capture
-        yield self.make_request('capture-init', 'cb-out-of-order')
+        yield self.make_request('capture-init', 'cb')
         yield tornado.gen.sleep(1)
         yield self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
@@ -689,9 +691,9 @@ class TestCalDeviceServer(unittest.TestCase):
             assert_equal(0, int((yield self.get_sensor('pipeline-exceptions'))))
             for heap in self.prepare_heaps(np.random.RandomState(seed=1), 5):
                 self.stream.send_heap(heap)
-            yield self.make_request('capture-init', 'cb-pipeline-exception')
+            yield self.make_request('capture-init', 'cb')
             yield tornado.gen.sleep(1)
-            assert_equal('{"cb-pipeline-exception": "CAPTURING"}',
+            assert_equal('{"cb": "CAPTURING"}',
                          (yield self.get_sensor('capture-block-state')))
             for i in range(self.n_endpoints):
                 self.stream.send_heap(self.ig.get_end())
