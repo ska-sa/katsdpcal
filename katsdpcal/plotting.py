@@ -555,7 +555,8 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
     if antlist is not None:
-        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+        axes[0, npols-1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0),
+                                loc="upper left", frameon=False)
 
     return fig
 

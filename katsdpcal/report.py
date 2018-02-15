@@ -665,7 +665,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
 
     """
 
-    cal_list = ['K', 'KCROSS', 'B', 'G']
+    cal_list = ['K', 'KCROSS', 'KCROSS_DIODE', 'B', 'G']
     solns_exist = any(['cal_product_' + cal in ts.keys() for cal in cal_list])
     if not solns_exist:
         logger.info(' - no calibration solutions')
@@ -686,6 +686,20 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
         # convert delays to nano seconds
         vals = 1e9 * vals
         write_table_timerow(report, [cal], times, vals)
+
+    # ---------------------------------
+    # cross pol delay from noise diode
+    cal = 'KCROSS_DIODE'
+    vals, times = get_cal(ts, cal, st, et)
+    if len(times) > 0:
+        cal_heading(report, cal, 'Cross polarisation delay {0}'.format(pol[0]+pol[1]), '([ns])')
+        # convert delays to nano seconds
+        vals = 1e9 * vals
+        write_table_timecol(report, antenna_mask, times, vals)
+        for idx in range(0, vals.shape[-1], ANT_CHUNKS):
+            plot = plotting.plot_delays(times, vals[:, np.newaxis, :],
+                                        antlist=antenna_mask, pol=[pol[0]+pol[1]])
+            insert_fig(report_path, report, plot, name='KCROSS_DIODE')
 
     # ---------------------------------
     # bandpass
