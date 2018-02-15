@@ -209,9 +209,17 @@ def init_simdata(file_name, server=None, wait=0.0, **kwargs):
             parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
             parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
             # add parameters to telescope state
-            for param in parameter_dict:
+            param_notime = [param for param in parameter_dict if not param.endswith('noise_diode')]
+            param_time = [param for param in parameter_dict if param.endswith('noise_diode')]
+
+            for param in param_notime:
                 print param, parameter_dict[param]
                 ts.add(param, parameter_dict[param])
+
+            for param in param_time:
+                print param, parameter_dict[param]
+                for idx, times in enumerate(parameter_dict[param]['timestamp']):
+                    ts.add(param, parameter_dict[param]['value'][idx], ts=times, immutable=False)
 
         def datatoSPEAD(self, ts, l0_endpoint, spead_rate=5e8, max_scans=None):
             """
@@ -489,7 +497,9 @@ class SimDataMS(table):
         antenna_descriptions = self.get_antdesc()
         for antname in self.ants:
             param_dict['{0}_observer'.format(antname)] = antenna_descriptions[antname]
-
+            # a dummy noise diode sensor per antenna
+            param_dict['{0}_dig_l_band_noise_diode'.format(antname)] = \
+                np.array([(self.timestamps[0]), (0.0)], dtype=[('timestamp', float), ('value', float)])
         return param_dict
 
     def get_corrprods(self, antlist):
@@ -715,7 +725,8 @@ def h5_get_params(h5data):
     # antenna descriptions for all antennas
     for ant in h5data.ants:
         param_dict['{0}_observer'.format(ant.name)] = ant.description
-
+        param_dict['{0}_dig_l_band_noise_diode'.format(ant.name)] = \
+            h5data.sensor.get('Antennas/{0}/nd_coupler'.format(ant.name), extract=False)
     return param_dict
 
 
