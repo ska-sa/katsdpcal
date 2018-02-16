@@ -230,7 +230,7 @@ def run(opts, log_path, full_log):
     nant = len(parameters['antennas'])
     # number of baselines (may include autocorrelations)
     nbl = len(parameters['bls_ordering'])
-    npols = len(parameters['pol_ordering'])
+    npols = len(parameters['bls_pol_ordering'])
     n_chans = len(parameters['channel_freqs'])
 
     logger.info('Pipeline system input parameters')

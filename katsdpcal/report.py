@@ -1083,8 +1083,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
         correlator_freq = parameters['channel_freqs'] / 1e6
         cal_bls_lookup = parameters['bls_lookup']
-        pol_order = parameters['pol_ordering']
-        pol = [_[0].upper() for _ in pol_order if _[0] == _[1]]
+        pol = [_[0].upper() for _ in parameters['pol_ordering']]
         if len(av_corr['targets']) > 0:
             dist = calc_enu_sep(antennas, cal_bls_lookup)
             write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq, pol)

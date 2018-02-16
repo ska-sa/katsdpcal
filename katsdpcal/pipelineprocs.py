@@ -86,6 +86,7 @@ COMPUTED_PARAMETERS = [
     Parameter('antennas', 'antenna objects', list),
     Parameter('bls_ordering', 'list of baselines', list, telstate=True),
     Parameter('pol_ordering', 'list of polarisations', list, telstate=True),
+    Parameter('bls_pol_ordering', 'list of polarisation products', list),
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
     Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
@@ -191,13 +192,14 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         ants.add(a[:-1])
         ants.add(b[:-1])
     antenna_names = sorted(ants)
-    _, bls_ordering, pol_ordering = calprocs.get_reordering(antenna_names,
-                                                            telstate_l0['bls_ordering'])
+    _, bls_ordering, bls_pol_ordering = calprocs.get_reordering(antenna_names,
+                                                                telstate_l0['bls_ordering'])
     antennas = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)]) for ant in antenna_names]
     parameters['antenna_names'] = antenna_names
     parameters['antennas'] = antennas
     parameters['bls_ordering'] = bls_ordering
-    parameters['pol_ordering'] = pol_ordering
+    parameters['bls_pol_ordering'] = bls_pol_ordering
+    parameters['pol_ordering'] = [p[0] for p in bls_pol_ordering if p[0] == p[1]]
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
 
     # array_position can be set by user, but if not specified we need to
