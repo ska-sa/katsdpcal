@@ -273,7 +273,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     return parameters
 
 
-def parameters_to_telstate(parameters, telstate_cal, telstate_l0):
+def parameters_to_telstate(parameters, telstate_cal, l0_name):
     """Take certain parameters and store them in telstate for the benefit of consumers.
 
     The `telstate_cal` should be a view in the cal_name namespace.
@@ -293,9 +293,12 @@ def parameters_to_telstate(parameters, telstate_cal, telstate_l0):
             telstate_cal.add(parameter.name, value, immutable=True)
 
     # Transfer some keys from L0 stream to cal "stream", to help consumers compute
-    # frequencies
+    # frequencies.
+    telstate_l0 = telstate_cal.root().view(l0_name)
     for key in ['bandwidth', 'n_chans', 'center_freq']:
         telstate_cal.add(key, telstate_l0[key], immutable=True)
+    # Add the L0 stream name too, so that any other information can be found there.
+    telstate_cal.add('src_streams', [l0_name], immutable=True)
 
 
 def get_model(name, lsm_dir_list=[]):
