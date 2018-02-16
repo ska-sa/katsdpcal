@@ -30,7 +30,7 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
-    telstate = attr.ib(default=None)   # Set to true or false to override default
+    telstate = attr.ib(default=None)   # Set to true or false to override default, or a name
     telstate_transform = attr.ib(default=lambda x: x)
     is_channel = attr.ib(default=False)  # Set to true if the parameter is a channel number
 
@@ -82,7 +82,7 @@ COMPUTED_PARAMETERS = [
     Parameter('refant', 'selected reference antenna', katpoint.Antenna,
               telstate=True, telstate_transform=lambda x: x.name),
     Parameter('refant_index', 'index of refant in antennas', int),
-    Parameter('antenna_names', 'antenna names', list),
+    Parameter('antenna_names', 'antenna names', list, telstate='antlist'),
     Parameter('antennas', 'antenna objects', list),
     Parameter('bls_ordering', 'list of baselines', list, telstate=True),
     Parameter('pol_ordering', 'list of polarisations', list, telstate=True),
@@ -281,16 +281,24 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
     for parameter in USER_PARAMETERS:
         # Put them in unless explicitly set to False
         if parameter.telstate is None or parameter.telstate:
+            if isinstance(parameter.telstate, str):
+                key = parameter.telstate
+            else:
+                key = 'param_' + parameter.name
             value = parameter.telstate_transform(parameters[parameter.name])
             if parameter.is_channel:
                 # Convert back to global channel index
                 value += parameters['channel_slice'].start
-            telstate_cal.add('param_' + parameter.name, value, immutable=True)
+            telstate_cal.add(key, value, immutable=True)
     for parameter in COMPUTED_PARAMETERS:
         # Only put them in if explicitly set to True
         if parameter.telstate:
+            if isinstance(parameter.telstate, str):
+                key = parameter.telstate
+            else:
+                key = parameter.name
             value = parameter.telstate_transform(parameters[parameter.name])
-            telstate_cal.add(parameter.name, value, immutable=True)
+            telstate_cal.add(key, value, immutable=True)
 
     # Transfer some keys from L0 stream to cal "stream", to help consumers compute
     # frequencies.
