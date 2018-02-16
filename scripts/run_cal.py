@@ -225,7 +225,7 @@ def run(opts, log_path, full_log):
     logger.info('Finalising parameters')
     parameters = finalise_parameters(parameters, telstate_l0,
                                      opts.servers, opts.server_id - 1, rfi_file)
-    parameters_to_telstate(parameters, telstate_cal)
+    parameters_to_telstate(parameters, telstate_cal, telstate_l0)
 
     nant = len(parameters['antennas'])
     # number of baselines (may include autocorrelations)

@@ -234,7 +234,7 @@ class TestCalDeviceServer(unittest.TestCase):
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0, 1, 0, rfi_file)
-        pipelineprocs.parameters_to_telstate(parameters, telstate)
+        pipelineprocs.parameters_to_telstate(parameters, telstate, telstate_l0)
         return parameters
 
     def add_items(self, ig):
