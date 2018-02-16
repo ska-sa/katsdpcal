@@ -70,6 +70,16 @@ def comma_list(type_):
     return convert
 
 
+def diagnostics_endpoint(value):
+    try:
+        return int(value)
+    except ValueError:
+        addr = endpoint.endpoint_parser(None)(value)
+        if addr.port is None:
+            raise ValueError('port missing')
+        return (addr.host, addr.port)
+
+
 def parse_opts():
     parser = katsdpservices.ArgumentParser(
         description='Set up and wait for spead stream to run the pipeline.')
@@ -116,8 +126,9 @@ def parse_opts():
         '--log-path', type=str, default=os.path.abspath('.'),
         help='Path under which to save pipeline logs. [default: current directory]')
     parser.add_argument(
-        '--dask-diagnostics', type=str, metavar='FILENAME.HTML',
-        help='Write a file with dask diagnostics (requires bokeh). [default: none]')
+        '--dask-diagnostics', type=diagnostics_endpoint, metavar='HOST:PORT',
+        help='Provide a web server with dask diagnostics (PORT binds to localhost, '
+             'but :PORT binds to all interfaces). [default: none]')
     parser.add_argument(
         '--pipeline-profile', type=str, metavar='FILENAME',
         help='Write a file with a profile of the pipeline process. [default: none]')
