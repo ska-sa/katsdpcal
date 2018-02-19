@@ -425,7 +425,9 @@ class TestCalDeviceServer(unittest.TestCase):
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
-
+        for antenna in self.antennas:
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              0, ts, immutable=False)
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
