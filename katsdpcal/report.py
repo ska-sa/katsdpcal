@@ -222,7 +222,7 @@ def write_table_timerow(report, colnames, times, data):
     report.writeln()
 
 
-def write_table_timecol(report, antennas, times, data):
+def write_table_timecol(report, antennas, times, data, ave=False):
     """
     Write RST style table to report, rows: antenna, columns: time
 
@@ -234,8 +234,10 @@ def write_table_timecol(report, antennas, times, data):
         list of antenna names or single string of comma-separated antenna names
     times : list
         list of times (equates to number of columns in the table)
-    data
+    data :
         table data, shape (time, antenna)
+    ave : bool
+        if True write the mean values in each column, else don't
     """
     n_entries = len(times) + 1
     col_width = 30
@@ -259,6 +261,10 @@ def write_table_timecol(report, antennas, times, data):
         report.write(a.ljust(col_width + 1))
         report.writeln(data_string)
 
+    if ave:
+        report.write("MEAN".ljust(col_width + 1))
+        report.writeln(" ".join(["{:.3f}".format(np.nanmean(di[0],)).ljust(col_width)
+                       for di in data]))
     # table footer
     report.writeln(col_header * n_entries)
     report.writeln()
@@ -344,6 +350,53 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
     plot = plotting.flags_t_v_chan(bl_flags, idx_chan, target_names, freq_range, pol=pol)
     insert_fig(report_path, report, plot, name='Flags_s_v_chan')
     report.writeln()
+
+
+def write_hv(report, report_path, av_corr, antenna_mask, correlator_freq, pol=[0, 1]):
+    """
+    Include plots of the delay corrected phases of the auto-correlated data
+    report : file-like
+        report file to write to
+    report_path : str
+        path where report is written
+    av_corr : dict
+        dictionary of averaged corrected data from which to
+        select target data
+    antenna_mask : list
+        list of antenna names
+    correlator_freq : :class:`np.ndarray`
+        real (nchan) correlator channel frequencies
+    pol : list
+        description of polarisation axes, optional
+    """
+    if av_corr['auto_cross'].shape[0] > 0:
+        report.write_heading_1(
+            'Calibrated Cross Hand Phase')
+        report.write_heading_2(
+            'Delay Corrected Phase vs Frequency')
+        report.write_heading_3(
+            'Cross Hand Auto-correlations, all antennas')
+        av_data = av_corr['auto_cross']
+
+        # Get channel index in correlator channels
+        n_av_chan = av_data.shape[-3]
+        idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
+        freq_range = [freq_chan[0], freq_chan[-1]]
+
+        for ti in range(av_data.shape[0]):
+            report.writeln()
+            t = utc_tstr(av_corr['auto_timestamps'][ti])
+            report.writeln('Time : {0}'.format(t))
+            for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
+                data = av_data[ti, ..., idx : idx + ANT_CHUNKS]
+                plot_title = 'Cross Hand Phase vs Frequency'
+                plot = plotting.plot_phaseonly_spec(
+                    data, idx_chan, antenna_mask[idx : idx + ANT_CHUNKS],
+                    freq_range, plot_title, pol=pol)
+
+                insert_fig(report_path, report, plot,
+                           name='HV_v_Freq_{0}_{1}'.format(ti, idx))
+            report.writeln()
 
 
 def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
@@ -695,10 +748,10 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
         cal_heading(report, cal, 'Cross polarisation delay {0}'.format(pol[0]+pol[1]), '([ns])')
         # convert delays to nano seconds
         vals = 1e9 * vals
-        write_table_timecol(report, antenna_mask, times, vals)
+        write_table_timecol(report, antenna_mask, times, vals[:, 0, :], True)
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
-            plot = plotting.plot_delays(times, vals[:, np.newaxis, :],
-                                        antlist=antenna_mask, pol=[pol[0]+pol[1]])
+            plot = plotting.plot_delays(times, vals[:, 0, :][:, np.newaxis, :],
+                                        antlist=antenna_mask, pol=[pol[0]+pol[1], pol[1]+pol[0]])
             insert_fig(report_path, report, plot, name='KCROSS_DIODE')
 
     # ---------------------------------
@@ -1113,6 +1166,9 @@ def make_cal_report(ts, stream_name, report_path, av_corr, project_name=None, st
         write_products(cal_rst, report_path, ts, st, et, antenna_mask, correlator_freq, pol)
         logger.info('Calibration solution summary')
 
+        # Corrected data : HV delay Noise Diode
+        write_hv(cal_rst, report_path, av_corr, antenna_mask, correlator_freq,
+                 pol=[pol[0]+pol[1], pol[1]+pol[0]])
         # --------------------------------------------------------------------
         # Corrected data : Calibrators
         cal_rst.write_heading_1('Calibrator Summary Plots')

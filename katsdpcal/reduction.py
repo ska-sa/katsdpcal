@@ -285,7 +285,7 @@ def pipeline(data, ts, stream_name):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_flags': [], 'timestamps': []}
+               'times': [], 'n_flags': [], 'timestamps': [], 'auto_cross':[], 'auto_timestamps':[]}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
@@ -377,6 +377,22 @@ def pipeline(data, ts, stream_name):
                     ts.add(kcross_soln.ts_solname,
                            np.where(~nd_on, np.nan, kcross_soln.values),
                            ts=kcross_soln.times)
+
+                # apply solutions and put corrected data into the av_corr dictionary
+                solns_to_apply = get_solns_to_apply(s, ts, ['KCROSS_DIODE'])
+                av_vis = s.apply(solns_to_apply[0], s.auto_tf.cross.vis, xhand=True)
+
+                logger.info('Averaging corrected auto-corr data for {0}:'.format(target_name,))
+                av_flags, av_weights = s.auto_tf.cross.flags, s.auto_tf.cross.weights
+                if av_vis.shape[1] > 1024:
+                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
+                                                                             av_flags,
+                                                                             av_weights,
+                                                                             chanav=av_vis.shape[1]
+                                                                             // 1024)
+                av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
+                av_corr['auto_cross'].insert(0, av_vis.compute())
+                av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
 
             # ---------------------------------------
             # B solution

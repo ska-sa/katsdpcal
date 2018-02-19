@@ -522,7 +522,7 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     # replace nans with zeros in data
     valid =~ np.isnan(ave_crosshand)
     ave_crosshand = np.nan_to_num(ave_crosshand)
-    # FT the visibilities to get course estimate of kcross
+    # FT the visibilities to get coarse estimate of kcross
     #   with noisy data, this is more robust than unwrapping the phase
     ft_vis = np.fft.fft(ave_crosshand)
 
@@ -538,7 +538,7 @@ def kcross_fit(data, flags, chans=None, chan_ave=1):
     # calculate kcross from FT sample frequencies
     coarse_kcross = k_arg / (chan_increment*nchans)
 
-    # correst data with course kcross to solve for residual delta kcross
+    # correct data with coarse kcross to solve for residual delta kcross
     corr_crosshand = ave_crosshand[valid] * np.exp(-2.0j * np.pi * coarse_kcross * ave_chans[valid])
     # solve for residual kcross through linear phase fit
     crossphase = np.angle(corr_crosshand)
@@ -720,8 +720,8 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
             for pp in unique_pol:
                 if pp[0] == pp[1]:
                     pol_order.insert(0, pp)
-                else:
-                    pol_order.append(pp)
+            pol_order.append([pol_order[0][0], pol_order[1][0]])
+            pol_order.append([pol_order[1][0], pol_order[0][0]])
     npol = len(pol_order)
 
     if output_order_bls is None:

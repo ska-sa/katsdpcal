@@ -155,7 +155,8 @@ class Scan(object):
     ac_mask : numpy array of bool
         Mask for selecting auto-correlation data
     orig : :class:`ScanDataPair` of :class:`ScanData`
-        Cross-correlation data for time_slice
+        data for time_slice, cross-correlation data only if corr='xc',
+        else xc and ac data
     auto : :class:`ScanDataPair` of :class:`ScanData`
         Auto-correlation data for time_slice
     timestamps : array of float, shape (ntime, nchan, npol, nbl)
@@ -357,8 +358,8 @@ class Scan(object):
             corr = 'tf'
             soln_type = 'KCROSS'
 
-        # TODO: pre_apply doesn't do the right thing for cross-hand data
-        modvis = self.pre_apply(pre_apply, getattr(self, corr).cross)
+        # pre_apply solutions
+        modvis = self.pre_apply(pre_apply, getattr(self, corr).cross, xhand=True)
 
         # average over all time, for specified channel range (no averaging over channel)
         if echan == 0:
@@ -384,6 +385,9 @@ class Scan(object):
         else:
             kcross_soln = calprocs.kcross_fit(av_vis, av_flags, self.channel_freqs[bchan:echan],
                                               chan_ave=chan_ave)
+
+        # Set delay in the second polarisation axis to zero
+        kcross_soln = np.stack([kcross_soln, np.zeros(len(kcross_soln))], axis=0)
         return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
@@ -463,7 +467,7 @@ class Scan(object):
     # ---------------------------------------------------------------------------------------------
     # solution application
 
-    def _apply(self, solval, vis):
+    def _apply(self, solval, vis, xhand=False):
         """
         Applies calibration solutions.
         Must already be interpolated to either full time or full frequency.
@@ -488,31 +492,39 @@ class Scan(object):
             logger.warn('Applying solution of type %s to visibilities of type %s',
                         solval.dtype, vis.dtype)
         inv_solval = da.reciprocal(solval, dtype=vis.dtype)
-        index0 = [cp[0] for cp in self.corrprod_lookup]
-        index1 = [cp[1] for cp in self.corrprod_lookup]
-        correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
+        # check if data is auto-corr or cross-corr
+        if vis.shape[-1] == self.nant:
+            index0 = range(vis.shape[-1])
+            index1 = range(vis.shape[-1])
+        else:
+            index0 = [cp[0] for cp in self.corrprod_lookup]
+            index1 = [cp[1] for cp in self.corrprod_lookup]
+        if xhand:
+            correction = inv_solval[..., index0] * np.flip(inv_solval, axis=2).conj()[..., index1]
+        else:
+            correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
         return vis * correction
 
-    def apply(self, soln, vis):
+    def apply(self, soln, vis, xhand=False):
         # set up more complex interpolation methods later
         soln_values = da.asarray(soln.values)
         if soln.soltype is 'G':
             # add empty channel dimension if necessary
             full_sol = soln_values[:, np.newaxis, :, :] \
                 if soln_values.ndim < 4 else soln_values
-            return self._apply(full_sol, vis)
-        elif soln.soltype is 'K':
+            return self._apply(full_sol, vis, xhand)
+        elif soln.soltype in ['K', 'KCROSS', 'KCROSS_DIODE']:
             # want shape (ntime, nchan, npol, nant)
             channel_freqs = da.asarray(self.channel_freqs)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
-            return self._apply(g_from_k, vis)
+            return self._apply(g_from_k, vis, xhand)
         elif soln.soltype is 'B':
-            return self._apply(soln_values, vis)
+            return self._apply(soln_values, vis, xhand)
         else:
             raise ValueError('Solution type is invalid.')
 
-    def pre_apply(self, pre_apply_solns, data=None):
+    def pre_apply(self, pre_apply_solns, data=None, xhand=False):
         """Apply a set of solutions to the visibilities.
 
         Parameters
@@ -521,8 +533,10 @@ class Scan(object):
             Solutions to apply
         data : :class:`ScanData`
             Data view to which to apply solutions. Defaults to
-            ``self.tf.auto``. Cross-hand visibilities are not currently
-            supported.
+            ``self.tf.auto``.
+        xhand : bool, optional
+            Apply corrections appropriate for cross hand data if True, else apply
+            parallel hand corrections.
 
         Returns
         -------
@@ -537,7 +551,7 @@ class Scan(object):
         for soln in pre_apply_solns:
             self.logger.info(
                 '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
-            modvis = self.apply(soln, modvis)
+            modvis = self.apply(soln, modvis, xhand)
         return modvis
 
     @logsolutiontime
@@ -570,6 +584,8 @@ class Scan(object):
             return self.linear_interpolate(solns)
         if soltype is 'K':
             return self.inf_interpolate(solns)
+        if soltype in ['KCROSS', 'KCROSS_DIODE']:
+            return self.inf_ave_interpolate(solns)
         if soltype is 'B':
             return self.inf_interpolate(solns)
 
@@ -592,6 +608,12 @@ class Scan(object):
 
     def inf_interpolate(self, solns):
         values = solns.values
+        interp_solns = np.expand_dims(values, axis=0)
+        return CalSolution(solns.soltype, interp_solns, self.timestamps)
+
+    def inf_ave_interpolate(self, solns):
+        values = solns.values
+        values[0] = np.nanmean(values[0])
         interp_solns = np.expand_dims(values, axis=0)
         return CalSolution(solns.soltype, interp_solns, self.timestamps)
 

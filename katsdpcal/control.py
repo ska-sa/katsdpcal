@@ -160,18 +160,20 @@ def _corr_total(corr_data):
     --------
     dict
         Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
-        of averaged, corrected data for all scans. Key 'targets' contains a list of target
-        strings corresponding to each scan, while 'timestamps' contains a list of numpy arrays
-        of timestamps for each scan.
+        of averaged, corrected parallel-hand, cross correlation data for all scans.
+        Key 'targets' contains a list of target strings corresponding to each scan,
+        while 'timestamps' contains a list of numpy arrays of timestamps for each scan.
+        Key 'auto_cross' contains HV delay corrected cross-hand, auto-correlation data and
+        `auto_timestamps` are the timestamps for the auto correlated data.
     """
     total = {}
-    for key in ['vis', 'flags', 'weights', 'times', 'n_flags']:
+    for key in ['vis', 'flags', 'weights', 'times', 'n_flags', 'auto_cross']:
         stack = [d[key] for d in corr_data if len(d[key]) > 0]
         if len(stack) > 0:
             total[key] = np.concatenate(stack, axis=0)
         else:
             total[key] = np.asarray(stack)
-    for key in ['targets', 'timestamps']:
+    for key in ['targets', 'timestamps', 'auto_timestamps']:
         stack = [d[key] for d in corr_data]
         stack_flat = [y for z in stack for y in z]
         total[key] = stack_flat

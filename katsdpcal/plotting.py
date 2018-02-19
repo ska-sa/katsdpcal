@@ -561,6 +561,51 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
     return fig
 
 
+def plot_phaseonly_spec(data, chan, antlist=None, freq_range=None, title=None, pol=[0, 1]):
+    """ Plots spectrum of corrected data
+
+    Parameters
+    ----------
+    data : :class:`np.ndarray`
+        complex, shape(num_chans, num_pol, num_ant/num_bl)
+    chan : : class:`np.ndarray`
+        real, (nchan) channel numbers for x-axis
+    antlist : list of str
+        list of antenna/baseline names for plot legend, optional
+    freq_range : list
+        start and stop frequencies of the array, optional
+    title : str, optional
+        plot title
+    amp : bool, optional
+        plot only amplitudes if True, else plot amplitude and phase
+    pol : list, optional
+        list of polarisation descriptions
+    """
+    npols = data.shape[-2]
+    nrows, ncols = 1, npols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * FIG_X, nrows * FIG_Y),
+                             squeeze=False, sharey='row')
+    if title is not None:
+        fig.suptitle(title)
+
+    for p in range(npols):
+        # plot full range amplitude plots
+        p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.')
+        axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+        axes[0, p].set_xlabel('Channels')
+
+    if antlist is not None:
+        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+
+    # If frequency range supplied, plot a frequency axis for the top row
+    if freq_range is not None:
+        for ax in axes.flatten()[0:2]:
+            add_freq_axis(ax, [chan[0], chan[-1]], freq_range)
+
+    fig.subplots_adjust(hspace=0.1)
+    return fig
+
+
 def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, pol=[0, 1]):
     """ Plots spectrum of corrected data
 
