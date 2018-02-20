@@ -350,7 +350,7 @@ class Scan(object):
             av_vis, av_flags = da.compute(av_vis, av_flags)
             kcross_soln = calprocs.kcross_fit(av_vis, av_flags, self.channel_freqs[bchan:echan],
                                               chan_ave=chan_ave)
-            return CalSolutions('KCROSS', kcross_soln, np.average(self.timestamps))
+            return CalSolution('KCROSS', kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
     def k_sol(self, bchan=1, echan=0, chan_sample=1, pre_apply=[]):
