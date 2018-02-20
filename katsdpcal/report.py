@@ -170,14 +170,13 @@ def write_summary(report, ts, stream_name, parameters, st=None, et=None):
     report.writeln('Source list:')
     report.writeln()
     try:
-        target_list = \
-            ts.get_range('cal_info_sources', st=st, et=et, return_format='recarray')['value'] \
-            if 'cal_info_sources' in ts else []
-        for target in target_list:
-            report.writeln('* {0:s}'.format(target))
-    except AttributeError:
+        target_list = ts.get_range('info_sources', st=0, return_format='recarray')['value']
+    except KeyError:
         # key not present
         report.writeln('* Unknown')
+    else:
+        for target in target_list:
+            report.writeln('* {0:s}'.format(target))
 
     report.writeln()
 
@@ -738,7 +737,7 @@ def get_cal(ts, cal, ts_name, st, et):
     """
     vals, times = [], []
     if ts_name in ts:
-        product = ts.get_range(ts_name, st=st, et=et, return_format='recarray')
+        product = ts.get_range(ts_name, st=0, return_format='recarray')
         if len(product['time']) > 0:
             logger.info('Calibration product: {0}'.format(cal,))
             vals = product['value']
@@ -1036,7 +1035,7 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
     Parameters
     ----------
     ts : :class:`katsdptelstate.TelescopeState`
-        telescope state
+        telescope state, with prefixes for calname and cbid_calname
     stream_name : str
         name of the L0 data stream
     parameters : dict

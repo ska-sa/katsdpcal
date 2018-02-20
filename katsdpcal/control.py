@@ -77,7 +77,8 @@ class StopEvent(object):
 
 class BufferReadyEvent(object):
     """Transfers ownership of buffer slots."""
-    def __init__(self, slots):
+    def __init__(self, capture_block_id, slots):
+        self.capture_block_id = capture_block_id
         self.slots = slots
 
 
@@ -179,6 +180,20 @@ def _corr_total(corr_data):
     return total
 
 
+def make_telstate_cb(telstate_cal, capture_block_id):
+    """Create a telstate view that is capture-block specific.
+
+    Parameters
+    ----------
+    telstate_cal : :class:`katsdptelstate.TelescopeState`
+        Telescope name whose first prefix corresponds to the `--cal-name` option
+    capture_block_id : str
+        Capture block ID
+    """
+    prefix = telstate_cal.SEPARATOR.join([capture_block_id, telstate_cal.prefixes[0]])
+    return telstate_cal.view(prefix)
+
+
 class Task(object):
     """Base class for tasks (threads or processes).
 
@@ -262,9 +277,11 @@ class Accumulator(object):
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue, master_queue,
-                 l0_name, l0_endpoints, l0_interface_address, telstate, parameters):
+                 l0_name, l0_endpoints, l0_interface_address, telstate_cal, parameters):
         self.buffers = buffers
-        self.telstate = telstate
+        self.telstate = telstate_cal.root()
+        self.telstate_cal = telstate_cal
+        self.telstate_cb = None    # Capture block-specific view
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
         self.master_queue = master_queue
@@ -422,7 +439,7 @@ class Accumulator(object):
     def _run_observation(self, capture_block_id):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
-            yield From(self._accumulate())
+            yield From(self._accumulate(capture_block_id))
             # Tell the pipeline that the observation ended, but only if there
             # was something to work on.
             if self._obs_end is not None:
@@ -450,6 +467,8 @@ class Accumulator(object):
         assert not self._running, "inconsistent state"
         logger.info('===========================')
         logger.info('   Starting new observation')
+        # Prevent the CBID to the cal_name to form a new namespace
+        self.telstate_cb = make_telstate_cb(self.telstate_cal, capture_block_id)
         self._obs_start = None
         self._obs_end = None
         # Initialise SPEAD receiver
@@ -494,6 +513,7 @@ class Accumulator(object):
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
+            self._telstate_cb = None
             self.sensors['accumulator-capture-active'].set_value(False)
 
     @trollius.coroutine
@@ -557,14 +577,14 @@ class Accumulator(object):
         out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
         np.take(l0, ordering, axis=1, out=out_view)
 
-    def _flush_slots(self, slots):
+    def _flush_slots(self, capture_block_id, slots):
         now = time.time()
         logger.info('Accumulated %d timestamps', len(slots))
         _inc_sensor(self.sensors['accumulator-batches'], 1, timestamp=now)
 
         # pass the buffer to the pipeline
         if len(slots) > 0:
-            self.accum_pipeline_queue.put(BufferReadyEvent(slots))
+            self.accum_pipeline_queue.put(BufferReadyEvent(capture_block_id, slots))
             logger.info('accum_pipeline_queue updated by %s', self.name)
             _inc_sensor(self.sensors['pipeline-slots'], len(slots), timestamp=now)
             _inc_sensor(self.sensors['accumulator-slots'], -len(slots), timestamp=now)
@@ -702,16 +722,17 @@ class Accumulator(object):
         return False
 
     def _update_source_list(self, target_name, data_ts):
+        # TODO: will need updating for multi-server to avoid race conditions
         try:
-            target_list = self.telstate.get_range(
-                'cal_info_sources', st=0, return_format='recarray')['value']
+            target_list = self.telstate_cb.get_range(
+                'info_sources', st=0, return_format='recarray')['value']
         except KeyError:
             target_list = []
         if target_name not in target_list:
-            self.telstate.add('cal_info_sources', target_name, ts=data_ts)
+            self.telstate_cb.add('info_sources', target_name, ts=data_ts)
 
     @trollius.coroutine
-    def _accumulate(self):
+    def _accumulate(self, capture_block_id):
         """
         Accumulate SPEAD heaps into arrays and send batches to the pipeline.
 
@@ -790,7 +811,7 @@ class Accumulator(object):
                     # flush a batch if necessary
                     duration = unsync_ts - unsync_start_time
                     if self._is_break(old_state, new_state, slots, duration):
-                        self._flush_slots(slots)
+                        self._flush_slots(capture_block_id, slots)
                         slots = []
                         slot_for_index.clear()
                         old_state = None
@@ -847,7 +868,7 @@ class Accumulator(object):
             _inc_sensor(self.sensors['accumulator-input-heaps'], 1)
 
         # Flush out the final batch
-        self._flush_slots(slots)
+        self._flush_slots(capture_block_id, slots)
         logger.info('Accumulation ended')
 
 
@@ -858,14 +879,14 @@ class Pipeline(Task):
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-                 l0_name, telstate, parameters,
+                 l0_name, telstate_cal, parameters,
                  diagnostics=None, profile_file=None, num_workers=None):
         super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
         self.pipeline_sender_queue = pipeline_sender_queue
         self.pipeline_report_queue = pipeline_report_queue
-        self.telstate = telstate
+        self.telstate_cal = telstate_cal
         self.parameters = parameters
         self.l0_name = l0_name
         self.diagnostics = diagnostics
@@ -928,7 +949,7 @@ class Pipeline(Task):
                     # run the pipeline
                     error = False
                     try:
-                        self.run_pipeline(data)
+                        self.run_pipeline(event.capture_block_id, data)
                     except Exception:
                         logger.exception('Exception in pipeline')
                         error = True
@@ -959,9 +980,10 @@ class Pipeline(Task):
             self.pipeline_sender_queue.put(StopEvent())
             self.pipeline_report_queue.put(StopEvent())
 
-    def run_pipeline(self, data):
+    def run_pipeline(self, capture_block_id, data):
         # run pipeline calibration
-        target_slices, avg_corr = pipeline(data, self.telstate, self.parameters, self.l0_name)
+        telstate_cb = make_telstate_cb(self.telstate_cal, capture_block_id)
+        target_slices, avg_corr = pipeline(data, telstate_cb, self.parameters, self.l0_name)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
@@ -971,8 +993,9 @@ class Sender(Task):
                  pipeline_sender_queue, master_queue,
                  l0_name,
                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-                 telstate, parameters):
+                 telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
+        telstate = telstate_cal.root()
         telstate_l0 = telstate.view(l0_name)
         self.flags_endpoint = flags_endpoint
         self.flags_interface_address = flags_interface_address
@@ -1051,7 +1074,7 @@ class Sender(Task):
                         ig['timestamp'].value = self.buffers['times'][slot] - self.sync_time
                         ig['dump_index'].value = self.buffers['dump_indices'][slot]
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
-                        self.master_queue.put(BufferReadyEvent([slot]))
+                        self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
                 if started:
@@ -1064,14 +1087,15 @@ class Sender(Task):
 
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
-                 l0_name, telstate, parameters,
+                 l0_name, telstate_cal, parameters,
                  report_path, log_path, full_log):
         super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
             report_path = '.'
         report_path = os.path.abspath(report_path)
         self.pipeline_report_queue = pipeline_report_queue
-        self.telstate = telstate
+        self.telstate = telstate_cal.root()
+        self.telstate_cal = telstate_cal
         self.l0_name = l0_name
         self.parameters = parameters
         self.report_path = report_path
@@ -1092,7 +1116,7 @@ class ReportWriter(Task):
                 'report-last-path', 'Directory containing the most recent report')
         ]
 
-    def write_report(self, obs_start, obs_end, av_corr):
+    def write_report(self, telstate_cb, obs_start, obs_end, av_corr):
         now = time.time()
         # get observation name
         try:
@@ -1121,7 +1145,7 @@ class ReportWriter(Task):
 
         # create pipeline report (very basic at the moment)
         try:
-            make_cal_report(self.telstate, self.l0_name, self.parameters,
+            make_cal_report(telstate_cb, self.l0_name, self.parameters,
                             current_obs_dir, av_corr, experiment_id,
                             st=obs_start, et=obs_end)
         except Exception as error:
@@ -1158,7 +1182,9 @@ class ReportWriter(Task):
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     av_corr = _corr_total(av_corr)
-                    obs_dir = self.write_report(event.start_time, event.end_time, av_corr)
+                    telstate_cb = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+                    obs_dir = self.write_report(
+                        telstate_cb, event.start_time, event.end_time, av_corr)
                     end_time = time.time()
                     av_corr = []
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
@@ -1192,9 +1218,6 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             'capture-block-state',
             'JSON dict with the state of each capture block')
         self._capture_block_state_sensor.set_value('{}')
-        # Unique number given to each observation
-        # (used if no capture block ID was provided)
-        self._index = 0
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
@@ -1222,17 +1245,14 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
     def join(self):
         yield From(self._run_queue_task)
 
-    @request(Str(optional=True))
+    @request(Str())
     @return_reply()
-    def request_capture_init(self, msg, capture_block_id=None):
+    def request_capture_init(self, msg, capture_block_id):
         """Start an observation"""
         if self.accumulator.capturing:
             return ('fail', 'capture already in progress')
         if self._stopping:
             return ('fail', 'server is shutting down')
-        if capture_block_id is None:
-            capture_block_id = "cal_cb_{}".format(self._index)
-            self._index += 1
         if capture_block_id in self._capture_block_state:
             return ('fail', 'capture block ID {} is already active'.format(capture_block_id))
         self._set_capture_block_state(capture_block_id, State.CAPTURING)
@@ -1377,7 +1397,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-                  telstate, parameters, report_path, log_path, full_log,
+                  telstate_cal, parameters, report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
@@ -1397,15 +1417,15 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-        l0_name, telstate, parameters, diagnostics, pipeline_profile_file, num_workers)
+        l0_name, telstate_cal, parameters, diagnostics, pipeline_profile_file, num_workers)
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
         flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
-        telstate, parameters)
+        telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
-        module.Process, pipeline_report_queue, master_queue, l0_name, telstate, parameters,
+        module.Process, pipeline_report_queue, master_queue, l0_name, telstate_cal, parameters,
         report_path, log_path, full_log)
 
     # Start the child tasks.
@@ -1421,7 +1441,8 @@ def create_server(use_multiprocessing, host, port, buffers,
         # started, because it creates a ThreadPoolExecutor, and threads and fork()
         # don't play nicely together.
         accumulator = Accumulator(buffers, accum_pipeline_queue, master_queue,
-                                  l0_name, l0_endpoints, l0_interface_address, telstate, parameters)
+                                  l0_name, l0_endpoints, l0_interface_address,
+                                  telstate_cal, parameters)
         return CalDeviceServer(accumulator, pipeline, sender, report_writer,
                                master_queue, host, port)
     except Exception:

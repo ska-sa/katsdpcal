@@ -193,7 +193,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return mock_obj
 
-    def populate_telstate(self, telstate):
+    def populate_telstate(self, telstate_cal):
+        telstate = telstate_cal.root()
         bls_ordering = []
         target = ('3C286, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
                   '(800.0 43200.0 0.956 0.584 -0.1644)')
@@ -234,6 +235,7 @@ class TestCalDeviceServer(unittest.TestCase):
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0, 1, 0, rfi_file)
+        pipelineprocs.parameters_to_telstate(parameters, telstate)
         return parameters
 
     def add_items(self, ig):
@@ -272,7 +274,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.n_baselines = self.n_antennas * (self.n_antennas + 1) * 2
 
         self.telstate = katsdptelstate.TelescopeState()
-        self.parameters = self.populate_telstate(self.telstate)
+        self.telstate_cal = self.telstate.view('cal')
+        self.parameters = self.populate_telstate(self.telstate_cal)
         self.ioloop = AsyncIOMainLoop()
         self.ioloop.install()
         self.addCleanup(tornado.ioloop.IOLoop.clear_instance)
@@ -301,7 +304,7 @@ class TestCalDeviceServer(unittest.TestCase):
             'sdp_l0test',
             [Endpoint('239.102.255.{}'.format(i), 7148) for i in range(self.n_endpoints)], None,
             'sdp_l1_flags_test', Endpoint('239.102.255.2', 7148), None, 64.0,
-            self.telstate, self.parameters, self.report_path, self.log_path, None)
+            self.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)
 
@@ -385,15 +388,15 @@ class TestCalDeviceServer(unittest.TestCase):
         """capture-init fails when already capturing"""
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
-        yield self.make_request('capture-init')
-        yield self.assert_request_fails(r'capture already in progress', 'capture-init')
+        yield self.make_request('capture-init', 'cb-init-when-capturing')
+        yield self.assert_request_fails(r'capture already in progress', 'capture-init', 'cb')
 
     @async_test
     @tornado.gen.coroutine
     def test_done_when_not_capturing(self):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
-        yield self.make_request('capture-init')
+        yield self.make_request('capture-init', 'done-when-not-capturing')
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
@@ -467,10 +470,10 @@ class TestCalDeviceServer(unittest.TestCase):
             for heap in dump_heaps:
                 self.stream.send_heap(heap)
             ts += self.telstate.sdp_l0test_int_time
-        yield self.make_request('capture-init')
+        yield self.make_request('capture-init', 'cb-capture')
         yield tornado.gen.sleep(1)
         assert_equal(1, int((yield self.get_sensor('accumulator-capture-active'))))
-        assert_equal('{"cal_cb_0": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
+        assert_equal('{"cb-capture": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
         for i in range(self.n_endpoints):
             self.stream.send_heap(self.ig.get_end())
         informs = yield self.make_request('shutdown', timeout=180)
@@ -497,12 +500,15 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(1, len(report_files))
         assert_true(os.path.samefile(report, (yield self.get_sensor('report-last-path'))))
 
-        cal_product_B = self.telstate.get_range('cal_product_B0', st=0)
+        telstate_cb = control.make_telstate_cb(self.telstate_cal, 'cb-capture')
+        cal_product_B_parts = telstate_cb['product_B_parts']
+        assert_equal(1, cal_product_B_parts)
+        cal_product_B = telstate_cb.get_range('product_B0', st=0)
         assert_equal(1, len(cal_product_B))
         ret_B, ret_B_ts = cal_product_B[0]
         assert_equal(np.complex64, ret_B.dtype)
 
-        cal_product_G = self.telstate.get_range('cal_product_G', st=0)
+        cal_product_G = telstate_cb.get_range('product_G', st=0)
         assert_equal(1, len(cal_product_G))
         ret_G, ret_G_ts = cal_product_G[0]
         assert_equal(np.complex64, ret_G.dtype)
@@ -517,7 +523,7 @@ class TestCalDeviceServer(unittest.TestCase):
         #                            self.normalise_phase(ret_BG, ret_BG[:, :, [0]]),
         #                            rtol=1e-3)
 
-        cal_product_K = self.telstate.get_range('cal_product_K', st=0)
+        cal_product_K = telstate_cb.get_range('product_K', st=0)
         assert_equal(1, len(cal_product_K))
         ret_K, ret_K_ts = cal_product_K[0]
         assert_equal(np.float32, ret_K.dtype)
@@ -602,7 +608,7 @@ class TestCalDeviceServer(unittest.TestCase):
             self.telstate.add('{}_activity'.format(antenna), 'slew', ts=slew_start)
             self.telstate.add('{}_activity'.format(antenna), 'track', ts=slew_end)
         # Start the capture
-        yield self.make_request('capture-init')
+        yield self.make_request('capture-init', 'cb-buffer-wrap')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
         for i in range(180):
@@ -647,7 +653,7 @@ class TestCalDeviceServer(unittest.TestCase):
         for heap in heaps:
             self.stream.send_heap(heap)
         # Run the capture
-        yield self.make_request('capture-init')
+        yield self.make_request('capture-init', 'cb-out-of-order')
         yield tornado.gen.sleep(1)
         informs = yield self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
@@ -677,9 +683,10 @@ class TestCalDeviceServer(unittest.TestCase):
             assert_equal(0, int((yield self.get_sensor('pipeline-exceptions'))))
             for heap in self.prepare_heaps(np.random.RandomState(seed=1), 5):
                 self.stream.send_heap(heap)
-            yield self.make_request('capture-init', 'testcb')
+            yield self.make_request('capture-init', 'cb-pipeline-exception')
             yield tornado.gen.sleep(1)
-            assert_equal('{"testcb": "CAPTURING"}', (yield self.get_sensor('capture-block-state')))
+            assert_equal('{"cb-pipeline-exception": "CAPTURING"}',
+                         (yield self.get_sensor('capture-block-state')))
             for i in range(self.n_endpoints):
                 self.stream.send_heap(self.ig.get_end())
             yield self.make_request('shutdown')

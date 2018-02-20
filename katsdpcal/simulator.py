@@ -107,7 +107,9 @@ class SimData(object):
     def capture_init(self):
         if self.client is not None:
             self.client.wait_protocol()
-            reply, informs = self.client.blocking_request(katcp.Message.request('capture-init'))
+            cbid = '00000000-00000-{}'.format(int(time.time()))
+            reply, informs = self.client.blocking_request(
+                katcp.Message.request('capture-init', cbid))
             if not reply.reply_ok():
                 raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
 
