@@ -234,26 +234,6 @@ class SimData(object):
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
 
-    def setup_obs_params(self, telstate, t=None):
-        """
-        Set up fake obs params
-
-        Parameters
-        ----------
-        telstate : :class:`katsdptelstate.TelescopeState`
-            Telescope State
-        t : float, optional
-            time for setting parameters (UNIX timestamp in seconds)
-        """
-
-        # fake obs params for now
-        telstate.add('obs_params', "experiment_id '2016_{0}'".format(int(time.time()),), ts=t)
-        telstate.add('obs_params', "observer 'AR1'", ts=t)
-        telstate.add('obs_params', "proposal_id 'PIPELINE-AR1'", ts=t)
-        telstate.add('obs_params', "project_id 'PIPELINETEST'", ts=t)
-        telstate.add('obs_params', "sim_file '{0}'".format(self.filename,), ts=t)
-        telstate.add(self.cbid + '_sdp_l0_first_timestamp', t, immutable=True)
-
     def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
         """
         Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
@@ -518,9 +498,6 @@ class SimDataMS(SimData):
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
 
-        # fake obs params for now
-        self.setup_obs_params(telstate, t=self.to_ut(self.file.getcell('TIME', 0)))
-
         time_ind = 0
         # send data scan by scan
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
@@ -703,9 +680,6 @@ class SimDataKatdal(SimData):
 
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
-
-        # fake obs params for now
-        self.setup_obs_params(telstate, t=self.file.timestamps[0])
 
         for scan_ind, scan_state, target in self.file.scans():
             # update telescope state with scan information
