@@ -1116,37 +1116,23 @@ class ReportWriter(Task):
                 'report-last-path', 'Directory containing the most recent report')
         ]
 
-    def write_report(self, telstate_cb, obs_start, obs_end, av_corr):
-        now = time.time()
-        # get observation name
+    def write_report(self, telstate_cal, capture_block_id, obs_start, obs_end, av_corr):
+        # make directory for this capture block, for logs and report
+        telstate_cb = make_telstate_cb(self.telstate_cal, capture_block_id)
+        base_name = '{}_{}_calreport_{}.{}'.format(
+            capture_block_id, self.l0_name, self.telstate_cal.prefixes[0][:-1],
+            self.parameters['server_id'] + 1)
+        report_dir = os.path.join(self.report_path, base_name)
+        current_report_dir = report_dir + '-current'
         try:
-            obs_params = self.telstate.get_range('obs_params', st=0, et=obs_end,
-                                                 return_format='recarray')
-            obs_keys = obs_params['value']
-            # choose most recent experiment id (last entry in the list), if
-            # there are more than one
-            experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
-            experiment_id = eval(experiment_id_string.split()[-1])
-        except (TypeError, KeyError, AttributeError, IndexError):
-            # TypeError, KeyError because this isn't properly implemented yet
-            # AttributeError in case this key isn't in the telstate for
-            # whatever reason, and IndexError in case experiment_id isn't in
-            # obs_params.
-            experiment_id = '{0}_unknown_project'.format(int(now))
-
-        # make directory for this observation, for logs and report
-        obs_dir = '{0}/{1}_{2}_{3}'.format(
-            self.report_path, int(now), self.subarray_id, experiment_id)
-        current_obs_dir = '{0}-current'.format(obs_dir)
-        try:
-            os.mkdir(current_obs_dir)
+            os.mkdir(current_report_dir)
         except OSError:
-            logger.warning('Experiment ID directory %s already exists', current_obs_dir)
+            logger.warning('Report directory %s already exists', current_report_dir)
 
-        # create pipeline report (very basic at the moment)
+        # create pipeline report
         try:
-            make_cal_report(telstate_cb, self.l0_name, self.parameters,
-                            current_obs_dir, av_corr, experiment_id,
+            make_cal_report(telstate_cb, capture_block_id, self.l0_name, self.parameters,
+                            current_report_dir, av_corr,
                             st=obs_start, et=obs_end)
         except Exception as error:
             logger.warn('Report generation failed: %s', error, exc_info=True)
@@ -1156,12 +1142,12 @@ class ReportWriter(Task):
 
         if self.full_log is not None:
             shutil.copy('{0}/{1}'.format(self.log_path, self.full_log),
-                        '{0}/{1}'.format(current_obs_dir, self.full_log))
+                        '{0}/{1}'.format(current_report_dir, self.full_log))
 
         # change report and log directory to final name for archiving
-        shutil.move(current_obs_dir, obs_dir)
-        logger.info('Moved observation report to %s', obs_dir)
-        return obs_dir
+        os.rename(current_report_dir, report_dir)
+        logger.info('Moved observation report to %s', report_dir)
+        return report_dir
 
     def run(self):
         reports_sensor = self.sensors['reports-written']
@@ -1182,9 +1168,9 @@ class ReportWriter(Task):
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     av_corr = _corr_total(av_corr)
-                    telstate_cb = make_telstate_cb(self.telstate_cal, event.capture_block_id)
                     obs_dir = self.write_report(
-                        telstate_cb, event.start_time, event.end_time, av_corr)
+                        self.telstate_cal, event.capture_block_id,
+                        event.start_time, event.end_time, av_corr)
                     end_time = time.time()
                     av_corr = []
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)

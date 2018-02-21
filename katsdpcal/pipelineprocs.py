@@ -89,10 +89,11 @@ COMPUTED_PARAMETERS = [
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
     Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
-    Parameter('channel_slice', 'Portion of channels handled by this server', slice),
-    Parameter('product_names', 'Names to use in telstate for solutions', dict),
-    Parameter('product_B_parts', 'Number of separate keys forming bandpass solution', int,
-              telstate=True)
+    Parameter('channel_slice', 'portion of channels handled by this server', slice),
+    Parameter('product_names', 'names to use in telstate for solutions', dict),
+    Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
+              telstate=True),
+    Parameter('server_id', 'identity of this server (zero-based)', int)
 ]
 
 
@@ -182,6 +183,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     parameters['channel_freqs_all'] = channel_freqs
     parameters['channel_freqs'] = channel_freqs[channel_slice]
     parameters['channel_slice'] = channel_slice
+    parameters['server_id'] = server_id
 
     baselines = telstate_l0['bls_ordering']
     ants = set()

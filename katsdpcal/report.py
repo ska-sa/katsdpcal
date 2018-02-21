@@ -1,5 +1,4 @@
 import os
-import time
 import logging
 import datetime
 
@@ -1026,8 +1025,8 @@ def calc_enu_sep(antennas, bls_lookup):
     return sep
 
 
-def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
-                    project_name=None, st=None, et=None):
+def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, av_corr,
+                    st=None, et=None):
     """
     Creates pdf calibration pipeline report (from RST source),
     using data from the Telescope State
@@ -1036,6 +1035,8 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
     ----------
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state, with prefixes for calname and cbid_calname
+    capture_block_id : str
+        capture block ID
     stream_name : str
         name of the L0 data stream
     parameters : dict
@@ -1044,26 +1045,17 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
         path where report will be created
     av_corr : dict
         dictionary containing arrays of calibrated data
-    project_name : str, optional
-        ID associated with project
     st : float, optional
         start time for reporting parameters, seconds
     et : float, optional
         end time for reporting parameters, seconds
     """
 
-    if project_name is None:
-        project_name = '{0}_unknown_project'.format(time.time())
-
-    if not report_path:
-        report_path = '.'
-    project_dir = os.path.abspath(report_path)
-    logger.info('Report compiling in directory {0}'.format(project_dir))
+    logger.info('Report compiling in directory {0}'.format(report_path))
 
     # --------------------------------------------------------------------
     # open report file
-    report_file = 'calreport_{0}.rst'.format(project_name)
-    report_file = os.path.join(project_dir, report_file)
+    report_file = os.path.join(report_path, 'calreport.rst')
 
     # --------------------------------------------------------------------
     # write heading
@@ -1073,7 +1065,9 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
         # --------------------------------------------------------------------
         # write observation summary info
         cal_rst.write_heading_1('Observation summary')
-        cal_rst.writeln('Observation: {0:s}'.format(project_name))
+        cal_rst.writeln('Capture block: {}'.format(capture_block_id))
+        cal_rst.writeln()
+        cal_rst.writeln('Stream: {}'.format(stream_name))
         cal_rst.writeln()
         write_summary(cal_rst, ts, stream_name, parameters, st=st, et=et)
 
@@ -1142,5 +1136,6 @@ def make_cal_report(ts, stream_name, parameters, report_path, av_corr,
         cal_rst.writeln()
 
     # convert to html
-    publish_file(source_path=report_file, destination_path=report_file.replace('rst', 'html'),
+    report_file_html = os.path.join(report_path, 'calreport.html')
+    publish_file(source_path=report_file, destination_path=report_file_html,
                  writer_name='html')

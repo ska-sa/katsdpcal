@@ -971,6 +971,22 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
 
 class CalSolution(object):
     """Calibration solution store."""
+    def __init__(self, soltype, solvalues, soltime):
+        self.soltype = soltype
+        self.values = solvalues
+        self.time = soltime
+
+    def __str__(self):
+        """String representation of calibration solution to help identify it."""
+        # Obtain human-friendly timestamp representing the centre of solutions
+        timestamp = time.strftime("%H:%M:%S", time.gmtime(self.time))
+        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
+
+
+class CalSolutions(object):
+    """Calibration solutions store. This stores multiple solutions (in time)
+    in a single array.
+    """
     def __init__(self, soltype, solvalues, soltimes):
         self.soltype = soltype
         self.values = solvalues

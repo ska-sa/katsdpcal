@@ -9,7 +9,6 @@ import tempfile
 import shutil
 import functools
 import os
-import glob
 import copy
 import itertools
 from collections import deque
@@ -496,8 +495,7 @@ class TestCalDeviceServer(unittest.TestCase):
         reports = os.listdir(self.report_path)
         assert_equal(1, len(reports))
         report = os.path.join(self.report_path, reports[0])
-        report_files = glob.glob(os.path.join(report, 'calreport_*.html'))
-        assert_equal(1, len(report_files))
+        assert_true(os.path.isfile(os.path.join(report, 'calreport.html')))
         assert_true(os.path.samefile(report, (yield self.get_sensor('report-last-path'))))
 
         telstate_cb = control.make_telstate_cb(self.telstate_cal, 'cb-capture')
