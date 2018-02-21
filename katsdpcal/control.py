@@ -1075,24 +1075,13 @@ class ReportWriter(Task):
                 'report-last-path', 'Directory containing the most recent report')
         ]
 
-    def write_report(self, obs_start, obs_end, av_corr):
+    def write_report(self, capture_block_id, obs_start, obs_end, av_corr):
         now = time.time()
         # get observation name
-        try:
-            obs_params = self.telstate.get_range('obs_params', st=0, et=obs_end,
-                                                 return_format='recarray')
-            obs_keys = obs_params['value']
-            # choose most recent experiment id (last entry in the list), if
-            # there are more than one
-            experiment_id_string = [x for x in obs_keys if 'experiment_id' in x][-1]
-            experiment_id = eval(experiment_id_string.split()[-1])
-        except (TypeError, KeyError, AttributeError, IndexError):
-            # TypeError, KeyError because this isn't properly implemented yet
-            # AttributeError in case this key isn't in the telstate for
-            # whatever reason, and IndexError in case experiment_id isn't in
-            # obs_params.
-            experiment_id = '{0}_unknown_project'.format(int(now))
-
+        key = self.telstate.SEPARATOR.join((capture_block_id, 'obs_params'))
+        obs_params = self.telstate.get(key, {})
+        experiment_id = obs_params.get('experiment_id',
+                                       '{0}_unknown_project'.format(int(now)))
         # make directory for this observation, for logs and report
         obs_dir = '{0}/{1}_{2}_{3}'.format(
             self.report_path, int(now), self.subarray_id, experiment_id)
@@ -1141,7 +1130,8 @@ class ReportWriter(Task):
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     av_corr = _corr_total(av_corr)
-                    obs_dir = self.write_report(event.start_time, event.end_time, av_corr)
+                    obs_dir = self.write_report(event.capture_block_id,
+                                                event.start_time, event.end_time, av_corr)
                     end_time = time.time()
                     av_corr = []
                     reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
