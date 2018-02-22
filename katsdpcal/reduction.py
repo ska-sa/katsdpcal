@@ -247,7 +247,8 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
             soltype, values, times = info[1:]
             if values is None:
                 # Reassemble from telstate
-                saved = telstate.get_range(telstate_key, st=times[0], et=times[-1], include_end=True)
+                saved = telstate.get_range(telstate_key, st=times[0], et=times[-1],
+                                           include_end=True)
                 if not saved:
                     raise ValueError('Key {} not found in time interval [{}, {}]'
                                      .format(telstate_key, times[0], times[-1]))

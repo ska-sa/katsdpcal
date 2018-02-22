@@ -929,7 +929,7 @@ class Pipeline(Task):
         cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=self.num_workers,
             processes=False, memory_limit=0, diagnostics_port=self.diagnostics)
-        with cluster, dask.distributed.Client(cluster) as client:
+        with cluster, dask.distributed.Client(cluster):
             self._run_impl()
 
     def _run_impl(self):

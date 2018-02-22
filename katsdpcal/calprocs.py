@@ -40,7 +40,7 @@ def radec_to_lm(ra, dec, ra0, dec0):
     l, m : float
         direction cosines
     """
-    l = np.cos(dec)*np.sin(ra - ra0)
+    l = np.cos(dec)*np.sin(ra - ra0)    # noqa: E741
     m = np.sin(dec)*np.cos(dec0) - np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
     return l, m
 

@@ -9,9 +9,7 @@ import tempfile
 import shutil
 import functools
 import os
-import copy
 import itertools
-from collections import deque
 
 import numpy as np
 from nose.tools import (
@@ -663,7 +661,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Run the capture
         yield self.make_request('capture-init', 'cb-out-of-order')
         yield tornado.gen.sleep(1)
-        informs = yield self.make_request('shutdown', timeout=60)
+        yield self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
         assert_equal(len(heaps), int((yield self.get_sensor('accumulator-input-heaps'))))
         # Check that they were written to the right places and that timestamps are correct

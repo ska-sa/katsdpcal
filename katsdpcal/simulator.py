@@ -228,7 +228,8 @@ class SimData(object):
                     shape=(), dtype=None, format=[('f', 64)])
         ig.add_item(id=None, name='dump_index', description='Index in time',
                     shape=(), dtype=None, format=[('u', 64)])
-        ig.add_item(id=0x4103, name='frequency', description="Channel index of first channel in the heap",
+        ig.add_item(id=0x4103, name='frequency',
+                    description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
 
     def setup_obs_params(self, telstate, t=None):
@@ -391,7 +392,7 @@ class SimDataMS(SimData):
         -------
         Antenna description dictionary
         """
-        with self.subtable('ANTENNA')  as t:
+        with self.subtable('ANTENNA') as t:
             positions = t.getcol('POSITION')
             diameters = t.getcol('DISH_DIAMETER')
         names = [ant for ant in self.ants]

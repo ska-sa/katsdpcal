@@ -7,10 +7,10 @@ import matplotlib.dates as md
 from matplotlib import use
 use('Agg', warn=False)
 
-import matplotlib.pylab as plt
+import matplotlib.pylab as plt     # noqa: E402
 
 # for multiple page pdf plotting
-from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.backends.backend_pdf import PdfPages     # noqa: E402
 
 # PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
 
