@@ -296,7 +296,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.log_path)
 
         # Time, channels, pols, baselines
-        buffer_shape = (40, self.n_channels, 4, self.n_baselines // 4)
+        buffer_shape = (60, self.n_channels, 4, self.n_baselines // 4)
         self.buffers = buffers = control.create_buffer_arrays(buffer_shape, False)
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
@@ -415,13 +415,13 @@ class TestCalDeviceServer(unittest.TestCase):
 
     @async_test
     @tornado.gen.coroutine
-    def test_capture(self):
+    def test_capture(self, expected_g=1):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
         first_ts = ts = 100
-        n_times = 10
-        corrupt_times = (3, 7)
+        n_times = 25
+        corrupt_times = (4, 17)
         rs = np.random.RandomState(seed=1)
 
         bandwidth = self.telstate.sdp_l0test_bandwidth
@@ -457,7 +457,8 @@ class TestCalDeviceServer(unittest.TestCase):
             # Corrupt some times, to check that the RFI flagging is working
             dump_heaps = []
             for s in channel_slices:
-                self.ig['correlator_data'].value = corrupted_vis[s] if i in (3, 7) else vis[s]
+                self.ig['correlator_data'].value = \
+                    corrupted_vis[s] if i in corrupt_times else vis[s]
                 self.ig['flags'].value = flags[s]
                 self.ig['weights'].value = weights[s]
                 self.ig['weights_channel'].value = weights_channel[s]
@@ -486,10 +487,10 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(n_times, int((yield self.get_sensor('pipeline-last-slots'))))
         assert_equal(1, int((yield self.get_sensor('reports-written'))))
         # Check that the slot accounting all balances
-        assert_equal(40, int((yield self.get_sensor('slots'))))
+        assert_equal(60, int((yield self.get_sensor('slots'))))
         assert_equal(0, int((yield self.get_sensor('accumulator-slots'))))
         assert_equal(0, int((yield self.get_sensor('pipeline-slots'))))
-        assert_equal(40, int((yield self.get_sensor('free-slots'))))
+        assert_equal(60, int((yield self.get_sensor('free-slots'))))
         assert_equal('{}', (yield self.get_sensor('capture-block-state')))
 
         reports = os.listdir(self.report_path)
@@ -507,9 +508,10 @@ class TestCalDeviceServer(unittest.TestCase):
         assert_equal(np.complex64, ret_B.dtype)
 
         cal_product_G = telstate_cb.get_range('product_G', st=0)
-        assert_equal(1, len(cal_product_G))
+        assert_equal(expected_g, len(cal_product_G))
         ret_G, ret_G_ts = cal_product_G[0]
         assert_equal(np.complex64, ret_G.dtype)
+        assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
         ret_BG = ret_B * ret_G[np.newaxis, :, :]
         BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
         # TODO: enable when fixed.
@@ -544,6 +546,14 @@ class TestCalDeviceServer(unittest.TestCase):
             # Mask out the ones that get changed by cal
             mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
             np.testing.assert_array_equal(out_flags & ~mask, flags)
+
+    def test_capture_separate_tags(self):
+        # Change the target to one with different tags
+        target = ('3C286, radec delaycal gaincal bpcal kcrosscal single_accumulation, '
+                  '13:31:08.29, +30:30:33.0, (800.0 43200.0 0.956 0.584 -0.1644)')
+        for antenna in self.antennas:
+            self.telstate.add('{}_target'.format(antenna), target, ts=0.001)
+        self.test_capture(expected_g=2)
 
     def prepare_heaps(self, rs, n_times):
         """Produce a list of heaps with arbitrary data.
@@ -591,7 +601,7 @@ class TestCalDeviceServer(unittest.TestCase):
         wrapping around the end of the buffer.
         """
         rs = np.random.RandomState(seed=1)
-        n_times = 90
+        n_times = 130
         for heap in self.prepare_heaps(rs, n_times):
             self.stream.send_heap(heap)
         # Add a target change at an uneven time, so that the batches won't
@@ -609,7 +619,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield self.make_request('capture-init', 'cb-buffer-wrap')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
-        for i in range(180):
+        for i in range(240):
             yield tornado.gen.sleep(0.5)
             heaps = int((yield self.get_sensor('accumulator-input-heaps')))
             if heaps == n_times * self.n_substreams:
