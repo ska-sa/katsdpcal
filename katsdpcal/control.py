@@ -723,16 +723,6 @@ class Accumulator(object):
 
         return False
 
-    def _update_source_list(self, target_name, data_ts):
-        # TODO: will need updating for multi-server to avoid race conditions
-        try:
-            target_list = self.telstate_cb.get_range(
-                'info_sources', st=0, return_format='recarray')['value']
-        except KeyError:
-            target_list = []
-        if target_name not in target_list:
-            self.telstate_cb.add('info_sources', target_name, ts=data_ts)
-
     @trollius.coroutine
     def _accumulate(self, capture_block_id):
         """
@@ -808,10 +798,6 @@ class Accumulator(object):
                         if old_state is None:
                             start_idx = idx
                             logger.info('accumulating data from targets:')
-
-                        if old_state is None or new_state.target_name != old_state.target_name:
-                            # update source list if necessary
-                            self._update_source_list(new_state.target_name, data_ts)
 
                     # flush a batch if necessary
                     duration = (idx - start_idx) * self.int_time

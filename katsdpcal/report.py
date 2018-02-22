@@ -134,7 +134,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     report.writeln('* {0}:  {1}'.format(var_text, value))
 
 
-def write_summary(report, ts, stream_name, parameters, st=None, et=None):
+def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None):
     """
     Write observation summary information to report
 
@@ -148,6 +148,8 @@ def write_summary(report, ts, stream_name, parameters, st=None, et=None):
         name of the L0 data stream
     parameters : dict
         Pipeline parameters
+    targets : list of str
+        Target description strings (without duplicates)
     st : float, optional
         start time for reporting parameters, seconds
     et : float, optional
@@ -168,14 +170,11 @@ def write_summary(report, ts, stream_name, parameters, st=None, et=None):
 
     report.writeln('Source list:')
     report.writeln()
-    try:
-        target_list = ts.get_range('info_sources', st=0, return_format='recarray')['value']
-    except KeyError:
-        # key not present
+    target_names = list(set(katpoint.Target(target).name for target in targets))
+    for target in target_names:
+        report.writeln('* {0:s}'.format(target))
+    if not target_names:
         report.writeln('* Unknown')
-    else:
-        for target in target_list:
-            report.writeln('* {0:s}'.format(target))
 
     report.writeln()
 
@@ -1069,10 +1068,10 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
         cal_rst.writeln()
         cal_rst.writeln('Stream: {}'.format(stream_name))
         cal_rst.writeln()
-        write_summary(cal_rst, ts, stream_name, parameters, st=st, et=et)
+        unique_targets = list(set(av_corr['targets']))
+        write_summary(cal_rst, ts, stream_name, parameters, unique_targets, st=st, et=et)
 
         # Plot elevation vs time for reference antenna
-        unique_targets = list(set(av_corr['targets']))
         refant_index = parameters['refant_index']
         antennas = parameters['antennas']
         if len(av_corr['targets']) > 0:
