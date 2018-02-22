@@ -547,16 +547,20 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             # TODO: setup separate flagger for cross-pols
             s.rfi(targ_flagger, rfi_mask, cross=True)
 
-        # apply solutions and average the corrected data
-        solns_to_apply = get_solns_to_apply(s, solution_stores,
-                                            ['K', 'B', 'G'], time_range=[t0, t1])
-        logger.info('Applying solutions to {0}:'.format(target_name,))
         vis = s.tf.auto.vis
-        for soln in solns_to_apply:
-            vis = s.apply(soln, vis)
+        target_type = 'target'
+        # apply solutions to calibrators
+        if not any('target' in k for k in taglist):
+            target_type = 'calibrator'
+            solns_to_apply = get_solns_to_apply(s, solution_stores,
+                                                ['K', 'B', 'G'], time_range=[t0, t1])
+            logger.info('Applying solutions to calibrator %s:', target_name)
+            for soln in solns_to_apply:
+                vis = s.apply(soln, vis)
 
+        # average the corrected data
         av_vis, av_flags, av_weights = vis, s.tf.auto.flags, s.tf.auto.weights
-        logger.info('Averaging corrected data for {0}:'.format(target_name,))
+        logger.info('Averaging corrected data for {0} {1}:'.format(target_type, target_name,))
         if vis.shape[1] > 1024:
             av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
                                                                      av_flags,

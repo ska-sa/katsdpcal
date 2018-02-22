@@ -201,23 +201,31 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
             M[a, b] = weights[i]
             M[b, a] = weights[i]
     g_old = init_gain.copy()
+
+    # Remove completely flagged antennas,
+    # where flags are indicated by a weight of zero
+    row_sum = np.zeros(num_ants, rawvis.dtype)
+    for p in range(num_ants):
+        for i in range(num_ants):
+            row_sum[p] += M[p, i]
+
+    good_ant = row_sum != 0
+    antlist = np.arange(num_ants)[good_ant]  # list of good antennas to iterate over.
     for n in range(num_iters[0]):
-        for p in range(num_ants):
+        for p in antlist:
             gn = g.dtype.type(0)
             gd = g.real.dtype.type(0)
-            for i in range(num_ants):
+            for i in antlist:
                 z = g_old[i] * M[p, i]
                 gn += R[p, i] * z       # exploiting R[p, i] = R[i, p].conj()
                 gd += z.real * z.real + z.imag * z.imag
             g[p] = gn / gd
-        ref = g[ref_ant2]
-        g *= np.conj(ref) / np.abs(ref)
         # Salvini & Wijnholds tweak gains every *even* iteration but their counter starts at 1
         if n % 2:
             # Check for convergence of relative l_2 norm of change in gain vector
             dnorm2 = g.real.dtype.type(0)
             gnorm2 = g.real.dtype.type(0)
-            for i in range(num_ants):
+            for i in antlist:
                 delta = g[i] - g_old[i]
                 dnorm2 += delta.real * delta.real + delta.imag * delta.imag
                 gnorm2 += g[i].real * g[i].real + g[i].imag * g[i].imag
@@ -227,11 +235,19 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
             if dnorm2 >= conv_thresh[0] * conv_thresh[0] * gnorm2:
                 # Avoid getting stuck bouncing between two gain vectors by
                 # going halfway in between
-                for i in range(num_ants):
+                for i in antlist:
                     g[i] = (g[i] + g_old[i]) / 2
             else:
                 break
         g_old[:] = g
+
+    # replace gains of completely flagged antennas with NaNs to indicate
+    # that no gain was found by stefcal.
+    g[~good_ant] = np.nan*1j
+
+    ref = g[ref_ant2]
+    g *= np.conj(ref) / np.abs(ref)
+
     if ref_ant[0] < 0:
         middle_angle = np.median(g.real) - np.median(g.imag) * g.dtype.type(1j)
         middle_angle /= np.abs(middle_angle)
@@ -441,15 +457,24 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # The baseline delay is calculated as delay(ant2) - delay(ant1)
         bl_delays = np.diff(coarse_k[corrprod_lookup])
         good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
-        bpass = stefcal(good_pol_data, num_ants, corrprod_lookup,
+
+        # Set weights of flagged data to zero,
+        # this allows stefcal to ignore flagged antennas
+        invalid = np.isnan(pol_data)
+        flag_weights = np.asarray(~invalid).astype(np.float32)
+
+        bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
                         num_iters=100, ref_ant=refant, init_gain=None)
 
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
         for i, bp in enumerate(bpass.T):
             # np.unwrap falls over in the case of bad RFI - robustify this later
-            bp_phase = np.unwrap(np.angle(bp), discont=1.9 * np.pi)
-            A = np.array([chans, np.ones(len(chans))])
+            # np.unwrap and np.linalg.lstsq will not work with NaNs,
+            # thus mask NaN values in these routines
+            valid = ~np.isnan(bp)
+            bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
+            A = np.array([chans[valid], np.ones(len(chans[valid]))])
             delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
