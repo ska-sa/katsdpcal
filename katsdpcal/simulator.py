@@ -479,15 +479,15 @@ class SimDataMS(SimData):
         with self.subtable('POLARIZATION') as t:
             npols = t.getcol('NUM_CORR')
         if npols == 4:
-            pol_order = np.array([['h', 'h'], ['h', 'v'], ['v', 'h'], ['v', 'v']])
+            bls_pol_order = np.array([['h', 'h'], ['h', 'v'], ['v', 'h'], ['v', 'v']])
         elif npols == 2:
-            pol_order = np.array([['h', 'h'], ['v', 'v']])
+            bls_pol_order = np.array([['h', 'h'], ['v', 'v']])
         elif npols == 1:
-            pol_order = np.array([['h', 'h']])
+            bls_pol_order = np.array([['h', 'h']])
         else:
             raise ValueError('Weird polarisation setup!')
         # combine antenna and polarisation strings to get full correlator product ordering
-        corrprods = np.array([[c1+p1, c2+p2] for c1, c2 in corrprods_nopol for p1, p2 in pol_order])
+        corrprods = np.array([[c1+p1, c2+p2] for c1, c2 in corrprods_nopol for p1, p2 in bls_pol_order])
 
         return corrprods, corrprods_nopol
 
@@ -592,7 +592,7 @@ class SimDataMS(SimData):
         logger.info('Slew timestamps:  %d', 0)
         logger.info('Total timestamps: %d', time_ind)
 
-    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
+    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
                    bchan=0, echan=None):
         """
         Writes data into MS file.
@@ -607,7 +607,7 @@ class SimDataMS(SimData):
             index of highest timestamp of supplies correlator_data and flag arrays
         cal_bls_ordering : list of lists
             baseline ordering of visibility data in the pipleine, shape (nbl, 2)
-        cal_pol_ordering : list of lists
+        cal_bls_pol_ordering : list of lists
             polarisation pair ordering of visibility data in the pipeline, shape (npol, 2)
         bchan : int, optional
             start channel to write
@@ -622,8 +622,8 @@ class SimDataMS(SimData):
         # write MS polarisation table
         pol_num = {'h': 0, 'v': 1}
         pol_types = {'hh': 9, 'vv': 12, 'hv': 10, 'vh': 11}
-        pol_type_array = np.array([pol_types[p1+p2] for p1, p2 in cal_pol_ordering])[np.newaxis, :]
-        pol_index_array = np.array([[pol_num[p1], pol_num[p2]] for p1, p2 in cal_pol_ordering],
+        pol_type_array = np.array([pol_types[p1+p2] for p1, p2 in cal_bls_pol_ordering])[np.newaxis, :]
+        pol_index_array = np.array([[pol_num[p1], pol_num[p2]] for p1, p2 in cal_bls_pol_ordering],
                                    dtype=np.int32)[np.newaxis, :]
         with self.subtable('POLARIZATION', readonly=False) as poltable:
             poltable.putcol('CORR_TYPE', pol_type_array)
@@ -765,7 +765,7 @@ class SimDataKatdal(SimData):
         logger.info('Slew timestamps:  %d', slew_ts)
         logger.info('Total timestamps: %d', total_ts)
 
-    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_pol_ordering,
+    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
                    bchan=0, echan=None):
         """
         Writes data into katdal file.
@@ -780,7 +780,7 @@ class SimDataKatdal(SimData):
             index of highest timestamp of supplied correlator_data and flag arrays
         cal_bls_ordering : list of list
             baseline ordering of visibility data in the pipeline, shape (nbl, 2)
-        cal_pol_ordering : list of list
+        cal_bls_pol_ordering : list of list
             polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
         bchan : int, optional
             start channel to write
@@ -796,7 +796,7 @@ class SimDataKatdal(SimData):
             cal_indx = cal_bls_ordering.index(antpair)
             # find index of this element in the pol dimension
             polpair = [ant1[-1], ant2[-1]]
-            pol_indx = cal_pol_ordering.index(polpair)
+            pol_indx = cal_bls_pol_ordering.index(polpair)
 
             # vis shape is (ntimes, nchan, ncorrprod) for real and imag
             self.file._vis[0:ti_max, bchan:echan, i, 0] = \

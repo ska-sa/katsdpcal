@@ -320,7 +320,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
         dump_period = data['times'][1] - data['times'][0]
 
     n_ants = len(parameters['antennas'])
-    n_pols = len(parameters['pol_ordering'])
+    n_pols = len(parameters['bls_pol_ordering'])
     # refant index number in the antenna list
     refant_ind = parameters['refant_index']
 
@@ -373,7 +373,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
 
         # ---------------------------------------
         # set up scan
-        s = Scan(data, scan_slice, dump_period, n_ants, n_pols,
+        s = Scan(data, scan_slice, dump_period,
                  parameters['bls_lookup'], target,
                  chans=parameters['channel_freqs'],
                  ants=parameters['antennas'],

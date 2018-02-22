@@ -30,7 +30,7 @@ class Parameter(object):
     type = attr.ib()
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
-    telstate = attr.ib(default=None)   # Set to true or false to override default
+    telstate = attr.ib(default=None)   # Set to true or false to override default, or a name
     telstate_transform = attr.ib(default=lambda x: x)
     is_channel = attr.ib(default=False)  # Set to true if the parameter is a channel number
 
@@ -82,10 +82,11 @@ COMPUTED_PARAMETERS = [
     Parameter('refant', 'selected reference antenna', katpoint.Antenna,
               telstate=True, telstate_transform=lambda x: x.name),
     Parameter('refant_index', 'index of refant in antennas', int),
-    Parameter('antenna_names', 'antenna names', list),
+    Parameter('antenna_names', 'antenna names', list, telstate='antlist'),
     Parameter('antennas', 'antenna objects', list),
     Parameter('bls_ordering', 'list of baselines', list, telstate=True),
     Parameter('pol_ordering', 'list of polarisations', list, telstate=True),
+    Parameter('bls_pol_ordering', 'list of polarisation products', list),
     Parameter('bls_lookup', 'list of baselines as indices into antennas', list),
     Parameter('channel_freqs', 'frequency of each channel in Hz, for this server', np.ndarray),
     Parameter('channel_freqs_all', 'frequency of each channel in Hz, for all servers', np.ndarray),
@@ -191,13 +192,14 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         ants.add(a[:-1])
         ants.add(b[:-1])
     antenna_names = sorted(ants)
-    _, bls_ordering, pol_ordering = calprocs.get_reordering(antenna_names,
-                                                            telstate_l0['bls_ordering'])
+    _, bls_ordering, bls_pol_ordering = calprocs.get_reordering(antenna_names,
+                                                                telstate_l0['bls_ordering'])
     antennas = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)]) for ant in antenna_names]
     parameters['antenna_names'] = antenna_names
     parameters['antennas'] = antennas
     parameters['bls_ordering'] = bls_ordering
-    parameters['pol_ordering'] = pol_ordering
+    parameters['bls_pol_ordering'] = bls_pol_ordering
+    parameters['pol_ordering'] = [p[0] for p in bls_pol_ordering if p[0] == p[1]]
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
 
     # array_position can be set by user, but if not specified we need to
@@ -271,7 +273,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     return parameters
 
 
-def parameters_to_telstate(parameters, telstate_cal):
+def parameters_to_telstate(parameters, telstate_cal, l0_name):
     """Take certain parameters and store them in telstate for the benefit of consumers.
 
     The `telstate_cal` should be a view in the cal_name namespace.
@@ -279,16 +281,32 @@ def parameters_to_telstate(parameters, telstate_cal):
     for parameter in USER_PARAMETERS:
         # Put them in unless explicitly set to False
         if parameter.telstate is None or parameter.telstate:
+            if isinstance(parameter.telstate, str):
+                key = parameter.telstate
+            else:
+                key = 'param_' + parameter.name
             value = parameter.telstate_transform(parameters[parameter.name])
             if parameter.is_channel:
                 # Convert back to global channel index
                 value += parameters['channel_slice'].start
-            telstate_cal.add('param_' + parameter.name, value, immutable=True)
+            telstate_cal.add(key, value, immutable=True)
     for parameter in COMPUTED_PARAMETERS:
         # Only put them in if explicitly set to True
         if parameter.telstate:
+            if isinstance(parameter.telstate, str):
+                key = parameter.telstate
+            else:
+                key = parameter.name
             value = parameter.telstate_transform(parameters[parameter.name])
-            telstate_cal.add(parameter.name, value, immutable=True)
+            telstate_cal.add(key, value, immutable=True)
+
+    # Transfer some keys from L0 stream to cal "stream", to help consumers compute
+    # frequencies.
+    telstate_l0 = telstate_cal.root().view(l0_name)
+    for key in ['bandwidth', 'n_chans', 'center_freq']:
+        telstate_cal.add(key, telstate_l0[key], immutable=True)
+    # Add the L0 stream name too, so that any other information can be found there.
+    telstate_cal.add('src_streams', [l0_name], immutable=True)
 
 
 def get_model(name, lsm_dir_list=[]):

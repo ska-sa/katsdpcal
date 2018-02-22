@@ -225,12 +225,12 @@ def run(opts, log_path, full_log):
     logger.info('Finalising parameters')
     parameters = finalise_parameters(parameters, telstate_l0,
                                      opts.servers, opts.server_id - 1, rfi_file)
-    parameters_to_telstate(parameters, telstate_cal)
+    parameters_to_telstate(parameters, telstate_cal, opts.l0_name)
 
     nant = len(parameters['antennas'])
     # number of baselines (may include autocorrelations)
     nbl = len(parameters['bls_ordering'])
-    npols = len(parameters['pol_ordering'])
+    npols = len(parameters['bls_pol_ordering'])
     n_chans = len(parameters['channel_freqs'])
 
     logger.info('Pipeline system input parameters')

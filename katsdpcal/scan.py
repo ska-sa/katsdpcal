@@ -117,10 +117,6 @@ class Scan(object):
         Time slice of the scan in the buffer arrays.
     dump_period : float
         Dump period of correlator data.
-    nant : int
-        Number of antennas in the array.
-    npol : int
-        Number of polarisation products in the data.
     bls_lookup : list of int, shape (2, number of baselines)
         List of antenna pairs for each baseline.
     target : string
@@ -173,8 +169,6 @@ class Scan(object):
         the absence of frequencies).
     npol : int
         Number of polarisations in the data.
-    nant : int
-        Number of antennas in the data
     antennas : list of :class:`katpoint.Antenna`
         The antennas
     refant : int
@@ -189,8 +183,8 @@ class Scan(object):
         logger
     """
 
-    def __init__(self, data, time_slice, dump_period, nant, npol, bls_lookup, target,
-                 chans=None, ants=None, refant=0, array_position=None, corr='xc', logger=logger):
+    def __init__(self, data, time_slice, dump_period, bls_lookup, target,
+                 chans, ants, refant=0, array_position=None, corr='xc', logger=logger):
 
         # cross-correlation mask. Must be np array so it can be used for indexing
         # if scan has explicitly been set up as a cross-correlation scan, select XC data only
@@ -223,12 +217,8 @@ class Scan(object):
         self.dump_period = dump_period
         self.nchan = self.orig.auto.shape[1]
         # note - keep an eye on ordering of frequencies - increasing with index, or decreasing?
-        if chans is None:
-            self.channel_freqs = np.arange(self.nchan, dtype=np.float32)
-        else:
-            self.channel_freqs = np.array(chans, dtype=np.float32)
-        self.npol = npol
-        self.nant = nant
+        self.channel_freqs = np.array(chans, dtype=np.float32)
+        self.npol = all_data.vis.shape[3]
         self.antennas = ants
         self.refant = refant
         self.array_position = array_position
