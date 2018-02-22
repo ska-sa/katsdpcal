@@ -92,6 +92,7 @@ class SimData(object):
         self.filename = filename
         self.bchan = bchan
         self.echan = echan
+        self.cbid = None
         # Subclass must provide num_scans
 
     @classmethod
@@ -112,6 +113,7 @@ class SimData(object):
                 katcp.Message.request('capture-init', cbid))
             if not reply.reply_ok():
                 raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
+            self.cbid = cbid
 
     def capture_done(self):
         if self.client is not None:
@@ -250,6 +252,7 @@ class SimData(object):
         telstate.add('obs_params', "proposal_id 'PIPELINE-AR1'", ts=t)
         telstate.add('obs_params', "project_id 'PIPELINETEST'", ts=t)
         telstate.add('obs_params', "sim_file '{0}'".format(self.filename,), ts=t)
+        telstate.add(self.cbid + '_sdp_l0_first_timestamp', t, immutable=True)
 
     def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
         """

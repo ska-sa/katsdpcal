@@ -283,6 +283,7 @@ class Accumulator(object):
         self.telstate = telstate_cal.root()
         self.telstate_cal = telstate_cal
         self.telstate_cb = None    # Capture block-specific view
+        self.l0_name = l0_name
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
         self.master_queue = master_queue
@@ -290,8 +291,8 @@ class Accumulator(object):
         # Extract useful parameters from telescope state
         self.telstate_l0 = self.telstate.view(l0_name)
         self.parameters = parameters
-        self.sync_time = self.telstate_l0['sync_time']
         self.int_time = self.telstate_l0['int_time']
+        self.sync_time = self.telstate_l0['sync_time']
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
@@ -468,7 +469,7 @@ class Accumulator(object):
         assert not self._running, "inconsistent state"
         logger.info('===========================')
         logger.info('   Starting new observation')
-        # Prevent the CBID to the cal_name to form a new namespace
+        # Prepend the CBID to the cal_name to form a new namespace
         self.telstate_cb = make_telstate_cb(self.telstate_cal, capture_block_id)
         self._obs_start = None
         self._obs_end = None
@@ -613,7 +614,7 @@ class Accumulator(object):
                 logger.info('==== empty heap received ====')
                 continue
             have_items = True
-            for key in ('timestamp', 'dump_index', 'frequency',
+            for key in ('dump_index', 'frequency',
                         'correlator_data', 'flags', 'weights', 'weights_channel'):
                 if key not in updated:
                     logger.warn('heap received without %s', key)
@@ -745,20 +746,22 @@ class Accumulator(object):
            flags
            weights
            weights_channel
-           timestamp
+           dump_index
         """
 
         rx = self._rx
         ig = spead2.ItemGroup()
         n_stop = 0                   # Number of stop heaps received
         old_state = None
-        unsync_start_time = None     # Batch start time, raw
+        start_idx = None             # Batch first index
+        first_timestamp = None
         last_idx = -1                # Previous value of data_idx
         # list of slots that have been filled
         slots = []
         # Look up dump index by slot
         slot_for_index = {}
         refant_name = self.parameters['refant'].name
+        telstate_cb_l0 = make_telstate_cb(self.telstate_l0, capture_block_id)
 
         # receive SPEAD stream
         logger.info('waiting to start accumulating data')
@@ -776,13 +779,15 @@ class Accumulator(object):
                 else:
                     continue
 
-            data_ts = ig['timestamp'].value + self.sync_time
+            if first_timestamp is None:
+                first_timestamp = telstate_cb_l0['first_timestamp']
             data_idx = int(ig['dump_index'].value)  # Convert from np.uint64, which behaves oddly
+            data_ts = first_timestamp + data_idx * self.int_time + self.sync_time
             if data_idx < last_idx:
                 try:
                     slot = slot_for_index[data_idx]
-                    logger.warning('Dump index went backwards (%d < %d), but managed to accept it',
-                                   data_idx, last_idx)
+                    logger.info('Dump index went backwards (%d < %d), but managed to accept it',
+                                data_idx, last_idx)
                 except KeyError:
                     logger.warning('Dump index went backwards (%d < %d), skipping heap',
                                    data_idx, last_idx)
@@ -791,8 +796,7 @@ class Accumulator(object):
                 # Create slots for all entries we haven't seen yet
                 stopped = False
                 for idx in range(last_idx + 1, data_idx + 1):
-                    unsync_ts = ig['timestamp'].value - self.int_time * (data_idx - idx)
-                    data_ts = unsync_ts + self.sync_time
+                    data_ts = first_timestamp + idx * self.int_time + self.sync_time
                     if self._obs_start is None:
                         self._obs_start = data_ts - 0.5 * self.int_time
                     self._obs_end = data_ts + 0.5 * self.int_time
@@ -802,7 +806,7 @@ class Accumulator(object):
                     if new_state is not None:
                         # if this is the first heap of the batch, set up some values
                         if old_state is None:
-                            unsync_start_time = unsync_ts
+                            start_idx = idx
                             logger.info('accumulating data from targets:')
 
                         if old_state is None or new_state.target_name != old_state.target_name:
@@ -810,13 +814,13 @@ class Accumulator(object):
                             self._update_source_list(new_state.target_name, data_ts)
 
                     # flush a batch if necessary
-                    duration = unsync_ts - unsync_start_time
+                    duration = (idx - start_idx) * self.int_time
                     if self._is_break(old_state, new_state, slots, duration):
                         self._flush_slots(capture_block_id, slots)
                         slots = []
                         slot_for_index.clear()
                         old_state = None
-                        unsync_start_time = unsync_ts
+                        start_idx = idx
 
                     # print name of target and activity type on changes (and start of batch)
                     if new_state is not None and old_state != new_state:
@@ -1007,15 +1011,14 @@ class Sender(Task):
                  telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate = telstate_cal.root()
-        telstate_l0 = telstate.view(l0_name)
+        self.telstate_l0 = telstate.view(l0_name)
         self.flags_endpoint = flags_endpoint
         self.flags_interface_address = flags_interface_address
         if self.flags_interface_address is None:
             self.flags_interface_address = ''
-        self.int_time = telstate_l0['int_time']
-        self.n_chans = telstate_l0['n_chans']
-        self.sync_time = telstate_l0['sync_time']
-        self.l0_bls = np.asarray(telstate_l0['bls_ordering'])
+        self.int_time = self.telstate_l0['int_time']
+        self.n_chans = self.telstate_l0['n_chans']
+        self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
         n_bls = len(self.l0_bls)
         self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
 
@@ -1030,13 +1033,13 @@ class Sender(Task):
         if np.any(self.ordering < 0):
             raise RuntimeError('accumulator discards some baselines')
 
-        telstate_flags = telstate.view(flags_name)
+        self.telstate_flags = telstate.view(flags_name)
         # The flags stream is mostly the same shape/layout as the L0 stream,
         # with the exception of the division into substreams.
         for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
                     'n_bls', 'n_chans', 'sync_time']:
-            telstate_flags.add(key, telstate_l0[key])
-        telstate_flags.add('n_chans_per_substream', self.n_chans)
+            self.telstate_flags.add(key, self.telstate_l0[key])
+        self.telstate_flags.add('n_chans_per_substream', self.n_chans)
 
     def run(self):
         if self.flags_endpoint is not None:
@@ -1073,6 +1076,11 @@ class Sender(Task):
                 else:
                     logger.info('starting transmission of %d slots', len(event.slots))
                     if not started:
+                        cbid = event.capture_block_id
+                        telstate_cb_l0 = make_telstate_cb(self.telstate_l0, cbid)
+                        telstate_cb_flags = make_telstate_cb(self.telstate_flags, cbid)
+                        first_timestamp = telstate_cb_l0['first_timestamp']
+                        telstate_cb_flags.add('first_timestamp', first_timestamp, immutable=True)
                         tx.send_heap(ig.get_start())
                         started = True
                     for slot in event.slots:
@@ -1082,8 +1090,9 @@ class Sender(Task):
                         # Permute into the same order as the L0 stream
                         np.take(flags, self.ordering, axis=1, out=out_flags)
                         ig['flags'].value = out_flags
-                        ig['timestamp'].value = self.buffers['times'][slot] - self.sync_time
-                        ig['dump_index'].value = self.buffers['dump_indices'][slot]
+                        idx = self.buffers['dump_indices'][slot]
+                        ig['timestamp'].value = first_timestamp + idx * self.int_time
+                        ig['dump_index'].value = idx
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
                         self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
