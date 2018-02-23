@@ -990,7 +990,7 @@ class Sender(Task):
 
     def run(self):
         if self.flags_endpoint is not None:
-            config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.rate)
+            config = spead2.send.StreamConfig(max_packet_size=8872, rate=self.rate)
             tx = spead2.send.UdpStream(
                 spead2.ThreadPool(), self.flags_endpoint.host, self.flags_endpoint.port,
                 config, ttl=1, interface_address=self.flags_interface_address)
