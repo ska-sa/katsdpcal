@@ -3,7 +3,7 @@
 cal_buffer_size : 20.0e9                    # buffer size for single buffer (two created), Bytes
 
 cal_refant : m024
-cal_preferred_refants : m024,m025,m034
+cal_preferred_refants : m005,m012,m011,m014,m024,m000,m016,m020,m028,m039,m042,m050
 
 cal_sideband : 1                            # for frequency calculation
 
