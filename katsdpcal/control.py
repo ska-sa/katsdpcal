@@ -798,11 +798,11 @@ class Accumulator(object):
 
                     # get activity and target tag from telescope state
                     new_state = self._get_activity_state(refant_name, data_ts)
-                    if new_state is not None:
-                        # if this is the first heap of the batch, set up some values
-                        if old_state is None:
-                            start_idx = idx
-                            logger.info('accumulating data from targets:')
+
+                    # if this is the first heap of the batch, set up some values
+                    if start_idx is None:
+                        start_idx = idx
+                        logger.info('accumulating data from targets:')
 
                     # flush a batch if necessary
                     duration = (idx - start_idx) * self.int_time
