@@ -1005,6 +1005,7 @@ class Sender(Task):
         self.int_time = self.telstate_l0['int_time']
         self.n_chans = self.telstate_l0['n_chans']
         self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
+        self.channel_slice = parameters['channel_slice']
         n_bls = len(self.l0_bls)
         self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
 
@@ -1047,8 +1048,9 @@ class Sender(Task):
                     shape=(), dtype=None, format=[('u', 64)])
         ig.add_item(id=0x4103, name='frequency',
                     description="Channel index of first channel in the heap",
-                    shape=(), dtype=np.uint32, value=0)
-        # TODO: add capture block ID
+                    shape=(), dtype=np.uint32, value=self.channel_slice.start)
+        ig.add_item(id=None, name='capture_block_id', description='SDP capture block ID',
+                    shape=(None,), dtype=None, format=[('c', 8)])
 
         started = False
         out_flags = np.zeros(ig['flags'].shape, np.uint8)
@@ -1068,6 +1070,7 @@ class Sender(Task):
                         first_timestamp = telstate_cb_l0['first_timestamp']
                         telstate_cb_flags.add('first_timestamp', first_timestamp, immutable=True)
                         tx.send_heap(ig.get_start())
+                        ig['capture_block_id'].value = cbid
                         started = True
                     for slot in event.slots:
                         flags = self.buffers['flags'][slot]
