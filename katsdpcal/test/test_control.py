@@ -481,7 +481,7 @@ class TestCalDeviceServer(unittest.TestCase):
         self._check_stopped(progress)
         assert_equal(0, int((yield self.get_sensor('accumulator-capture-active'))))
         assert_equal(n_times * self.n_substreams,
-                     int((yield self.get_sensor('accumulator-input-heaps'))))
+                     int((yield self.get_sensor('input-heaps-total'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-batches'))))
         assert_equal(1, int((yield self.get_sensor('accumulator-observations'))))
         assert_equal(n_times, int((yield self.get_sensor('pipeline-last-slots'))))
@@ -621,7 +621,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # This will take a while because it needs to allow the pipeline to run.
         for i in range(240):
             yield tornado.gen.sleep(0.5)
-            heaps = int((yield self.get_sensor('accumulator-input-heaps')))
+            heaps = int((yield self.get_sensor('input-heaps-total')))
             if heaps == n_times * self.n_substreams:
                 print('all heaps received')
                 break
@@ -665,7 +665,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield tornado.gen.sleep(1)
         yield self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
-        assert_equal(len(heaps), int((yield self.get_sensor('accumulator-input-heaps'))))
+        assert_equal(len(heaps), int((yield self.get_sensor('input-heaps-total'))))
         # Check that they were written to the right places and that timestamps are correct
         for t in range(n_times):
             for s in range(self.n_substreams):

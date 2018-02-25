@@ -358,7 +358,11 @@ class Accumulator(object):
                 'number of batches completed by the accumulator',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
-                'accumulator-input-heaps',
+                'input-bytes-total',
+                'number of bytes of L0 data received',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'input-heaps-total',
                 'number of L0 heaps received',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
@@ -492,7 +496,8 @@ class Accumulator(object):
         self._run_future = trollius.ensure_future(self._run_observation(capture_block_id))
         self._running = True
         self.sensors['accumulator-capture-active'].set_value(True)
-        self.sensors['accumulator-input-heaps'].set_value(0)
+        self.sensors['input-bytes-total'].set_value(0)
+        self.sensors['input-heaps-total'].set_value(0)
 
     @trollius.coroutine
     def capture_done(self):
@@ -856,7 +861,12 @@ class Accumulator(object):
             # should be harmless.
             self.buffers['times'][slot] = data_ts
             self.buffers['dump_indices'][slot] = data_idx
-            _inc_sensor(self.sensors['accumulator-input-heaps'], 1)
+            heap_nbytes = 0
+            for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
+                heap_nbytes += ig[field].value.nbytes
+            now = time.time()
+            _inc_sensor(self.sensors['input-bytes-total'], heap_nbytes, timestamp=now)
+            _inc_sensor(self.sensors['input-heaps-total'], 1, timestamp=now)
 
         # Flush out the final batch
         self._flush_slots(capture_block_id, slots)
@@ -1028,6 +1038,18 @@ class Sender(Task):
             self.telstate_flags.add(key, self.telstate_l0[key])
         self.telstate_flags.add('n_chans_per_substream', self.n_chans)
 
+    def get_sensors(self):
+        return [
+            katcp.Sensor.integer(
+                'output-bytes-total',
+                'bytes written to the flags L1 stream',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'output-heaps-total',
+                'heaps written to the flags L1 stream',
+                default=0, initial_status=katcp.Sensor.NOMINAL)
+        ]
+
     def run(self):
         if self.flags_endpoint is not None:
             config = spead2.send.StreamConfig(max_packet_size=8972, rate=self.rate)
@@ -1083,6 +1105,11 @@ class Sender(Task):
                         ig['timestamp'].value = first_timestamp + idx * self.int_time
                         ig['dump_index'].value = idx
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
+                        # 8 for timestamp, 8 for dump_index, 4 for channel
+                        heap_bytes = out_flags.nbytes + 20
+                        now = time.time()
+                        _inc_sensor(self.sensors['output-heaps-total'], 1, timestamp=now)
+                        _inc_sensor(self.sensors['output-bytes-total'], heap_bytes, timestamp=now)
                         self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
