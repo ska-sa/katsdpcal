@@ -914,6 +914,10 @@ class Pipeline(Task):
             katcp.Sensor.integer(
                 'pipeline-last-slots',
                 'number of slots filled in the most recent buffer'),
+            katcp.Sensor.boolean(
+                'pipeline-active',
+                'whether pipeline is currently computing',
+                default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'pipeline-exceptions',
                 'number of times the pipeline threw an exception',
@@ -947,6 +951,7 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots acquired by %s',
                                 len(event.slots), self.name)
                     start_time = time.time()
+                    self.sensors['pipeline-active'].set_value(True, timestamp=start_time)
                     # set up dask arrays around the chosen slots
                     data = {'times': self.buffers['times'][event.slots],
                             'dump_indices': self.buffers['dump_indices'][event.slots]}
@@ -968,6 +973,7 @@ class Pipeline(Task):
                     self.sensors['pipeline-last-time'].set_value(elapsed, timestamp=end_time)
                     self.sensors['pipeline-last-slots'].set_value(
                         len(event.slots), timestamp=end_time)
+                    self.sensors['pipeline-active'].set_value(False, timestamp=end_time)
                     if error:
                         _inc_sensor(self.sensors['pipeline-exceptions'], 1,
                                     status=katcp.Sensor.ERROR,
@@ -1148,6 +1154,9 @@ class ReportWriter(Task):
             katcp.Sensor.float(
                 'report-last-time', 'Elapsed time to generate most recent report',
                 unit='s'),
+            katcp.Sensor.boolean(
+                'report-active', 'Whether the report writer is active',
+                default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.string(
                 'report-last-path', 'Directory containing the most recent report')
         ]
@@ -1188,6 +1197,7 @@ class ReportWriter(Task):
     def run(self):
         reports_sensor = self.sensors['reports-written']
         report_time_sensor = self.sensors['report-last-time']
+        report_active_sensor = self.sensors['report-active']
         report_path_sensor = self.sensors['report-last-path']
         # Set initial value of averaged corrected data
         av_corr = []
@@ -1203,20 +1213,22 @@ class ReportWriter(Task):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
+                    report_active_sensor.set_value(True, timestamp=start_time)
                     av_corr = _corr_total(av_corr)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)
                     end_time = time.time()
                     av_corr = []
-                    reports_sensor.set_value(reports_sensor.value() + 1, timestamp=end_time)
+                    _inc_sensor(reports_sensor, 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)
+                    report_active_sensor.set_value(False, timestamp=end_time)
                 finally:
                     self.master_queue.put(event)
             else:
                 logger.error('unknown event type %r', event)
-        logger.info('Pipeline has finished, exiting')
+        logger.info('Report writer has finished, exiting')
 
 
 class CalDeviceServer(katcp.server.AsyncDeviceServer):
