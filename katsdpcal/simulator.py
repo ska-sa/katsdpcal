@@ -192,7 +192,7 @@ class SimData(object):
         """
         logging.info('TX: Initializing...')
         # configure SPEAD - may need to rate-limit transmission for laptops etc.
-        config = send.StreamConfig(max_packet_size=8972, rate=spead_rate)
+        config = send.StreamConfig(max_packet_size=8872, rate=spead_rate)
         tx = send.UdpStream(spead2.ThreadPool(), l0_endpoint.host, l0_endpoint.port, config)
 
         # if the maximum number of scans to transmit has not been
