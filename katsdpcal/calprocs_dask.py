@@ -77,6 +77,25 @@ def _where(condition, x, y):
     return da.core.elemwise(np.where, condition, x, y)
 
 
+def weightdata(data, flags, weights):
+    """
+    Return flagged, weighted data and flagged weights
+
+    Parameters
+    ----------
+    data    : array of complex
+    flags   : array of uint8 or boolean
+    weights : array of floats
+    """
+    flagged_weights = _where(flags, weights.dtype.type(0), weights)
+    weighted_data = data * flagged_weights
+    # Clear the elements that have a nan anywhere
+    isnan = da.isnan(weighted_data)
+    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    return weighted_data, flagged_weights
+
+
 def wavg(data, flags, weights, times=False, axis=0):
     """
     Perform weighted average of data, applying flags,
@@ -94,12 +113,7 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    weighted_data, flagged_weights = weightdata(data, flags, weights)
     vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
@@ -122,12 +136,7 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_weights : weighted average of weights
     """
 
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
-    weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    weighted_data, flagged_weights = weightdata(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis=0)
     av_data = da.sum(weighted_data, axis=0) / av_weights
     n_flags = da.sum(calprocs.asbool(flags), axis=0)

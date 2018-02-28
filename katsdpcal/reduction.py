@@ -109,15 +109,17 @@ def get_noise_diode(ts, ant_names, time_range=[]):
 
     Returns
     -------
-    nd_on : list of bool
+    nd_on : :class:`np.ndarray` of bool
         True for antennas with noise diode on during time_range, otherwise False
     """
-    nd_at_start = [ts.get_range('{0}_dig_l_band_noise_diode'.format(a),
-                   et=time_range[0], return_format='recarray')['value'][0] for a in ant_names]
-    nd_during = [ts.get_range('{0}_dig_l_band_noise_diode'.format(a),
-                 st=time_range[0], et=time_range[1], return_format='recarray')['value']
+    sub_band = ts.get('sub_band')
+    nd_key = '_dig_{0}_band_noise_diode'.format(sub_band)
+    nd_during = [ts.get_range('{0}{1}'.format(a, nd_key),
+                 st=time_range[0], et=time_range[1], include_previous=True)
                  for a in ant_names]
-    nd_on = [x > 0 and np.all(y > 0) for x, y in zip(nd_at_start, nd_during)]
+
+    nd_on = [np.all(zip(*values)[0] > 0) for values in nd_during]
+
     return np.asarray(nd_on)
 
 
@@ -285,7 +287,8 @@ def pipeline(data, ts, stream_name):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_flags': [], 'timestamps': [], 'auto_cross':[], 'auto_timestamps':[]}
+               'times': [], 'n_flags': [], 'timestamps': [],
+               'auto_cross': [], 'auto_timestamps': []}
 
     for scan_slice in reversed(track_slices):
         # start time, end time
@@ -360,23 +363,19 @@ def pipeline(data, ts, stream_name):
             ant_names = [katpoint.Antenna(a).name for a in s.antenna_descriptions]
             nd_on = get_noise_diode(ts, ant_names, [t0, t1])
             if any(nd_on):
-                logger.info('Noise diode was fired')
-                logger.info('Solving for KCROSS_DIODE on beamformer calibrator {0}'
-                            .format(target_name))
+                logger.info('Noise diode was fired, \
+                             solving for KCROSS_DIODE on beamformer calibrator %s', target_name)
                 if n_pols < 4:
-                    logger.info('Can\'t solve for KCROSS_DIODE without four polarisation products')
+                    logger.info("Can't solve for KCROSS_DIODE without four polarisation products")
                 elif s.ac_mask.size == 0:
-                    logger.info('No AC data, can\'t solve for KCROSS_DIODE without AC data')
+                    logger.info("No AC data, can't solve for KCROSS_DIODE without AC data")
                 else:
                     kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
-                                               ts.cal_param_kcross_chanave, ac=True)
+                                               ts.cal_param_kcross_chanave, nd=nd_on, ac=True)
                     logger.info(
                         "  - Saving solution '{}' to Telescope State".format(kcross_soln))
-                    # replace solutions on antennas where the noise_diode didn't
-                    # fire with nan's to indicate their solutions aren't reliable.
-                    ts.add(kcross_soln.ts_solname,
-                           np.where(~nd_on, np.nan, kcross_soln.values),
-                           ts=kcross_soln.times)
+                    # save solns to TS
+                    ts.add(kcross_soln.ts_solname, kcross_soln.values, ts=kcross_soln.times)
 
                 # apply solutions and put corrected data into the av_corr dictionary
                 solns_to_apply = get_solns_to_apply(s, ts, ['KCROSS_DIODE'])

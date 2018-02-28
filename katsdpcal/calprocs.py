@@ -363,13 +363,17 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
 
 
 def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
-    """Fit delay (phase slope across frequency) to visibility data.
+    """
+    Fit delay (phase slope across frequency) to visibility data.
+    If corrprod_lookup is xc, i.e. all baselines have two different antenna indices,
+    it will decompose the delays into solutions per antenna.
+    Else it solves for a delay per element in final axis.
 
     Parameters
     ----------
     data : array of complex, shape (num_chans, num_pols, num_baselines)
         Visibility data (may contain NaNs indicating completely flagged data)
-    corrprod_lookup : array of int, shape (num_baselines, 2)
+    corrprod_lookup : array of int, shape (num_baselines/num_ant, 2)
         Pairs of antenna indices associated with each baseline
     chans : sequence of float, length num_chans
         Channel frequencies in Hz
@@ -380,7 +384,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
 
     Returns
     -------
-    kdelay : array of float, shape (num_pols, num_ants)
+    kdelay : array of float, shape (num_pols, num_ants/data.shape[-1])
         Delay solutions per antenna, in seconds
     """
     # OVER THE TOP NOTE:
@@ -417,7 +421,6 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         chans = chans[::chan_sample]
 
     # set up parameters
-    num_ants = ants_from_bllist(corrprod_lookup)
     num_pol = data.shape[-2] if len(data.shape) > 2 else 1
     chan_spacing = chans[1] - chans[0]
 
@@ -448,28 +451,38 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # calculate vis space K from FT sample frequencies
         vis_k = np.float32(np.fft.fftfreq(ft_vis.shape[0], chan_spacing)[k_arg])
 
-        # now determine per-antenna K values
-        coarse_k = np.zeros(num_ants, np.float32)
-        for ai in range(num_ants):
-            k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
-            if k.size > 0:
-                coarse_k[ai] = np.squeeze(k)
-            k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
-            if k.size > 0:
-                coarse_k[ai] = np.squeeze(-1.0 * k)
+        # test whether data is xc
+        xc_mask = np.array([b0 != b1 for b0, b1 in corrprod_lookup])
+        if np.all(xc_mask):
+            # now determine per-antenna K values
+            num_ants = ants_from_bllist(corrprod_lookup)
+            coarse_k = np.zeros(num_ants, np.float32)
+            for ai in range(num_ants):
+                k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
+                if k.size > 0:
+                    coarse_k[ai] = np.squeeze(-1.0 * k)
+                k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
+                if k.size > 0:
+                    coarse_k[ai] = np.squeeze(k)
 
-        # apply coarse K values to the data and solve for bandpass
-        # The baseline delay is calculated as delay(ant2) - delay(ant1)
-        bl_delays = np.diff(coarse_k[corrprod_lookup])
-        good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
+            # apply coarse K values to the data and solve for bandpass
+            # The baseline delay is calculated as delay(ant2) - delay(ant1)
+            bl_delays = np.diff(coarse_k[corrprod_lookup])
+            good_pol_data *= np.exp(-2j * np.pi * np.outer(chans, bl_delays))
 
-        # Set weights of flagged data to zero,
-        # this allows stefcal to ignore flagged antennas
-        invalid = np.isnan(pol_data)
-        flag_weights = np.asarray(~invalid).astype(np.float32)
+            # Set weights of flagged data to zero,
+            # this allows stefcal to ignore flagged antennas
+            invalid = np.isnan(pol_data)
+            flag_weights = np.asarray(~invalid).astype(np.float32)
 
-        bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
-                        num_iters=100, ref_ant=refant, init_gain=None)
+            bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
+                            num_iters=100, ref_ant=refant, init_gain=None)
+
+        # else assume solution is ac
+        else:
+            coarse_k = vis_k
+            bpass = good_pol_data * np.exp(-2j * np.pi * np.outer(chans, coarse_k))
+
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
         for i, bp in enumerate(bpass.T):
@@ -479,79 +492,11 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             valid = ~np.isnan(bp)
             bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
             A = np.array([chans[valid], np.ones(len(chans[valid]))])
-            delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
+            delta_k[i] = np.linalg.lstsq(A.T, bp_phase, rcond=None)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
 
     return np.atleast_2d(kdelay)
-
-
-def kcross_fit(data, flags, chans=None, chan_ave=1):
-    """
-    Fit delay (phase slope across frequency) offset to visibility data.
-
-    Parameters
-    ----------
-    data : array of complex, shape(num_chans, num_pols, baseline)
-    flags : array of bool or uint8, shape(num_chans, num_pols, baseline)
-    chans : list or array of channel frequencies, shape(num_chans), optional
-    chan_ave : number of channels to average together before fit, int, optional
-
-    Returns
-    -------
-    kcrosssoln : delay, float
-    """
-
-    if not(np.any(chans)):
-        chans = np.arange(data.shape[0])
-    else:
-        chans = np.array(chans)
-
-    # average channels as specified
-    ave_crosshand = np.average(
-        (data[:, 0, :] * ~flags[:, 0, :] + np.conjugate(data[:, 1, :] * ~flags[:, 1, :])) / 2.,
-        axis=-1)
-    ave_crosshand = np.add.reduceat(
-        ave_crosshand, range(0, len(ave_crosshand), chan_ave)) / chan_ave
-    ave_chans = np.add.reduceat(
-        chans, range(0, len(chans), chan_ave)) / chan_ave
-
-    nchans = len(ave_chans)
-    chan_increment = ave_chans[1] - ave_chans[0]
-
-    # replace nans with zeros in data
-    valid =~ np.isnan(ave_crosshand)
-    ave_crosshand = np.nan_to_num(ave_crosshand)
-    # FT the visibilities to get coarse estimate of kcross
-    #   with noisy data, this is more robust than unwrapping the phase
-    ft_vis = np.fft.fft(ave_crosshand)
-
-    # get index of FT maximum
-    k_arg = np.argmax(ft_vis)
-    if nchans % 2 == 0:
-        if k_arg > ((nchans / 2) - 1):
-            k_arg = k_arg - nchans
-    else:
-        if k_arg > ((nchans - 1) / 2):
-            k_arg = k_arg - nchans
-
-    # calculate kcross from FT sample frequencies
-    coarse_kcross = k_arg / (chan_increment*nchans)
-
-    # correct data with coarse kcross to solve for residual delta kcross
-    corr_crosshand = ave_crosshand[valid] * np.exp(-2.0j * np.pi * coarse_kcross * ave_chans[valid])
-    # solve for residual kcross through linear phase fit
-    crossphase = np.angle(corr_crosshand)
-    # unwrap phases
-    crossphase = np.unwrap(crossphase, discont=1.9 * np.pi)
-    # remove any offset from zero
-    crossphase -= np.median(crossphase)
-    # linear fit
-    A = np.array([ave_chans[valid], np.ones(len(ave_chans[valid]))])
-    delta_kcross = np.linalg.lstsq(A.T, crossphase, rcond=-1)[0][0]/(2. * np.pi)
-
-    # total kcross
-    return coarse_kcross + delta_kcross
 
 
 def asbool(arr):

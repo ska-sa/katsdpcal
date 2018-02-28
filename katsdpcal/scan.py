@@ -326,7 +326,7 @@ class Scan(object):
         return CalSolution('G', g_soln, ave_times)
 
     @logsolutiontime
-    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[], ac=False):
+    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[], nd=None, ac=False):
         """
         Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
@@ -341,6 +341,10 @@ class Scan(object):
             channels to average together prior during fit
         pre_apply :  list of CalSolutions, optional
             calibration solutions to apply
+        nd : :class:`np.ndarray` of bool, optional
+            True for antennas with noise diode on, otherwise False.
+            If ac is True and nd is False for an antenna, set the solution
+            for that antenna to NaN
         ac : bool, optional
             if True solve for KCROSS_DIODE using auto-correlations, else solve for KCROSS
             using cross-correlations
@@ -352,42 +356,56 @@ class Scan(object):
         """
 
         if ac:
-            corr = 'auto_tf'
+            corr = getattr(self, 'auto_tf').cross
             soln_type = 'KCROSS_DIODE'
         else:
-            corr = 'tf'
+            corr = getattr(self, 'tf').cross
             soln_type = 'KCROSS'
 
         # pre_apply solutions
-        modvis = self.pre_apply(pre_apply, getattr(self, corr).cross, xhand=True)
+        modvis = self.pre_apply(pre_apply, corr, xhand=True)
 
         # average over all time, for specified channel range (no averaging over channel)
         if echan == 0:
             echan = None
         chan_slice = np.s_[:, bchan:echan, :, :]
         av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
-            modvis[chan_slice], getattr(self, corr).cross.flags[chan_slice],
-            getattr(self, corr).cross.weights[chan_slice])
+            modvis[chan_slice], corr.flags[chan_slice],
+            corr.weights[chan_slice])
+        # average over channel if specified
+        if chan_ave > 1:
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
+                                                                     av_flags,
+                                                                     av_weights,
+                                                                     chan_ave)
 
-        # solve for cross hand delay KCROSS or KCROSS_DIODE if ac is True.
-        # note that the kcross solver needs the flags because it averages the data
-        #  (strictly it should need weights too, but deal with that later
-        #  when weights are meaningful)
-        av_vis, av_flags = da.compute(av_vis, av_flags)
-        if ac:
-            kcross_soln = np.zeros(av_vis.shape[-1])
-            for a in range(av_vis.shape[-1]):
-                k = calprocs.kcross_fit(av_vis[..., a][..., np.newaxis],
-                                        av_flags[..., a][..., np.newaxis],
-                                        self.channel_freqs[bchan:echan], chan_ave=chan_ave)
-                kcross_soln[a] = k
-            logger.info('kcross solns are {0}'.format(kcross_soln))
-        else:
-            kcross_soln = calprocs.kcross_fit(av_vis, av_flags, self.channel_freqs[bchan:echan],
-                                              chan_ave=chan_ave)
+        # solve for cross hand delay KCROSS_DIODE per antenna in ac is True, else
+        # average across all baselines and solve for a single KCROSS
+        weighted_data, flagged_weights = calprocs_dask.weightdata(av_vis, av_flags, av_weights)
+        av_vis = (weighted_data[:, 0, :] +
+                  np.conjugate(weighted_data[:, 1, :]) /
+                  da.sum(flagged_weights, axis=-2))
 
-        # Set delay in the second polarisation axis to zero
-        kcross_soln = np.stack([kcross_soln, np.zeros(len(kcross_soln))], axis=0)
+        if not ac:
+            av_weights = da.sum(flagged_weights, axis=-2)
+            av_flags = da.any(av_flags, axis=-2)
+            av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights, axis=-1)
+            av_vis = av_vis[..., np.newaxis]
+
+        chans = self.channel_freqs[bchan:echan]
+        ave_chans = np.add.reduceat(
+                chans, range(0, len(chans), chan_ave)) / chan_ave
+
+        av_vis = av_vis.compute()
+        kcross_soln = calprocs.k_fit(av_vis, self.ac_lookup,
+                                     ave_chans,
+                                     refant=self.refant,
+                                     chan_sample=1)
+        # set delay in the second polarisation axis to zero
+        kcross_soln = np.vstack([kcross_soln, np.zeros_like(kcross_soln)])
+        # if ac is True set soln to NaN for antennas where the noise diode didn't fire
+        if nd is not None and ac:
+            kcross_soln = np.where(~nd, np.nan, kcross_soln)
         return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
@@ -478,6 +496,9 @@ class Scan(object):
             multiplicative solution values to be divided out of visibility data
         vis : dask.array
             input visibilities to be corrected
+        xhand : bool, optional
+            Apply corrections appropriate for cross hand data if True, else apply
+            parallel hand corrections.
         """
 
         # check solution and vis shapes are compatible
@@ -513,12 +534,21 @@ class Scan(object):
             full_sol = soln_values[:, np.newaxis, :, :] \
                 if soln_values.ndim < 4 else soln_values
             return self._apply(full_sol, vis, xhand)
-        elif soln.soltype in ['K', 'KCROSS', 'KCROSS_DIODE']:
+        elif soln.soltype is 'K':
             # want shape (ntime, nchan, npol, nant)
             channel_freqs = da.asarray(self.channel_freqs)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, xhand)
+        elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
+            # average HV delay over all antennas
+            channel_freqs = da.asarray(self.channel_freqs)
+            soln = np.nanmean(soln.values, axis=-1)[..., np.newaxis]
+            soln = np.repeat(soln, self.nant, -1)
+            g_from_k = da.exp(2j * np.pi * soln[:, np.newaxis, :, :]
+                              * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
+            return self._apply(g_from_k, vis, xhand)
+
         elif soln.soltype is 'B':
             return self._apply(soln_values, vis, xhand)
         else:
@@ -582,10 +612,8 @@ class Scan(object):
         soltype = solns.soltype
         if soltype is 'G':
             return self.linear_interpolate(solns)
-        if soltype is 'K':
+        if soltype in ['K', 'KCROSS', 'KCROSS_DIODE']:
             return self.inf_interpolate(solns)
-        if soltype in ['KCROSS', 'KCROSS_DIODE']:
-            return self.inf_ave_interpolate(solns)
         if soltype is 'B':
             return self.inf_interpolate(solns)
 
@@ -608,12 +636,6 @@ class Scan(object):
 
     def inf_interpolate(self, solns):
         values = solns.values
-        interp_solns = np.expand_dims(values, axis=0)
-        return CalSolution(solns.soltype, interp_solns, self.timestamps)
-
-    def inf_ave_interpolate(self, solns):
-        values = solns.values
-        values[0] = np.nanmean(values[0])
         interp_solns = np.expand_dims(values, axis=0)
         return CalSolution(solns.soltype, interp_solns, self.timestamps)
 
