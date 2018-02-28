@@ -94,6 +94,7 @@ COMPUTED_PARAMETERS = [
     Parameter('product_names', 'names to use in telstate for solutions', dict),
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
+    Parameter('servers', 'number of parallel servers', int),
     Parameter('server_id', 'identity of this server (zero-based)', int)
 ]
 
@@ -184,6 +185,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     parameters['channel_freqs_all'] = channel_freqs
     parameters['channel_freqs'] = channel_freqs[channel_slice]
     parameters['channel_slice'] = channel_slice
+    parameters['servers'] = servers
     parameters['server_id'] = server_id
 
     baselines = telstate_l0['bls_ordering']

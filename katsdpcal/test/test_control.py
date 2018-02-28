@@ -302,7 +302,7 @@ class TestCalDeviceServer(unittest.TestCase):
             False, 'localhost', 0, buffers,
             'sdp_l0test',
             [Endpoint('239.102.255.{}'.format(i), 7148) for i in range(self.n_endpoints)], None,
-            'sdp_l1_flags_test', Endpoint('239.102.255.2', 7148), None, 64.0,
+            'sdp_l1_flags_test', [Endpoint('239.102.254.2', 7148)], None, 64.0,
             self.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         self.addCleanup(self.ioloop.run_sync, self.stop_server)

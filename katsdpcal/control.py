@@ -1009,17 +1009,26 @@ class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
                  l0_name,
-                 flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+                 flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
                  telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate = telstate_cal.root()
         self.telstate_l0 = telstate.view(l0_name)
-        self.flags_endpoint = flags_endpoint
+        if flags_endpoints is not None:
+            n_endpoints = len(flags_endpoints)
+            n_servers = parameters['servers']
+            if n_endpoints != n_servers:
+                raise ValueError(
+                    'Number of flags endpoints ({}) not equal to number of servers ({})'
+                    .format(n_endpoints, n_servers))
+            self.flags_endpoint = flags_endpoints[parameters['server_id']]
+        else:
+            self.flags_endpoint = None
         self.flags_interface_address = flags_interface_address
         if self.flags_interface_address is None:
             self.flags_interface_address = ''
         self.int_time = self.telstate_l0['int_time']
-        self.n_chans = self.telstate_l0['n_chans']
+        self.n_chans = self.telstate_l0['n_chans'] // n_servers
         self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
         self.channel_slice = parameters['channel_slice']
         n_bls = len(self.l0_bls)
@@ -1430,7 +1439,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+                  flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
                   telstate_cal, parameters, report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
@@ -1455,7 +1464,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
-        flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+        flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
         telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
