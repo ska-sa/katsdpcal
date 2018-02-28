@@ -234,7 +234,7 @@ def write_table_timecol(report, antennas, times, data, ave=False):
         list of antenna names or single string of comma-separated antenna names
     times : list
         list of times (equates to number of columns in the table)
-    data :
+    data : :class:`np.ndarray`
         table data, shape (time, antenna)
     ave : bool
         if True write the mean values in each column, else don't
@@ -263,8 +263,10 @@ def write_table_timecol(report, antennas, times, data, ave=False):
 
     if ave:
         report.write("MEAN".ljust(col_width + 1))
-        report.writeln(" ".join(["{:.3f}".format(np.nanmean(di[0],)).ljust(col_width)
-                       for di in data]))
+        for di in data:
+            report.write(" {:<{}.3f}".format(np.nanmean(di), col_width))
+        report.writeln()
+
     # table footer
     report.writeln(col_header * n_entries)
     report.writeln()
@@ -354,7 +356,7 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
 
 def write_hv(report, report_path, av_corr, antenna_mask, correlator_freq, pol=[0, 1]):
     """
-    Include plots of the delay corrected phases of the auto-correlated data
+    Include plots of the delay-corrected phases of the auto-correlated data
     report : file-like
         report file to write to
     report_path : str
@@ -727,7 +729,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     cal = 'K'
     vals, times = get_cal(ts, cal, st, et)
     if len(times) > 0:
-        cal_heading(report, cal, 'Delay', '([ns])')
+        cal_heading(report, cal, 'Delay', '(ns)')
         write_K(report, report_path, times, vals, antenna_mask, pol)
 
     # ---------------------------------
@@ -735,7 +737,7 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     cal = 'KCROSS'
     vals, times = get_cal(ts, cal, st, et)
     if len(times) > 0:
-        cal_heading(report, cal, 'Cross polarisation delay', '([ns])')
+        cal_heading(report, cal, 'Cross polarisation delay', '(ns)')
         # convert delays to nano seconds
         vals = 1e9 * vals
         write_table_timerow(report, [cal], times, vals)
@@ -745,13 +747,13 @@ def write_products(report, report_path, ts, st, et, antenna_mask, correlator_fre
     cal = 'KCROSS_DIODE'
     vals, times = get_cal(ts, cal, st, et)
     if len(times) > 0:
-        cal_heading(report, cal, 'Cross polarisation delay {0}'.format(pol[0]+pol[1]), '([ns])')
+        cal_heading(report, cal, 'Cross polarisation delay {0}'.format(pol[0]+pol[1]), '(ns)')
         # convert delays to nano seconds
         vals = 1e9 * vals
         write_table_timecol(report, antenna_mask, times, vals[:, 0, :], True)
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
-            plot = plotting.plot_delays(times, vals[:, 0, :][:, np.newaxis, :],
-                                        antlist=antenna_mask, pol=[pol[0]+pol[1], pol[1]+pol[0]])
+            plot = plotting.plot_delays(times, vals[:, 0:1, :],
+                                        antlist=antenna_mask, pol=[pol[0]+pol[1]])
             insert_fig(report_path, report, plot, name='KCROSS_DIODE')
 
     # ---------------------------------
