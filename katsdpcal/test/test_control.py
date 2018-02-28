@@ -218,6 +218,7 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate.add('sdp_l0test_n_chans', self.n_channels, immutable=True)
         telstate.add('sdp_l0test_n_chans_per_substream', self.n_channels_per_substream, immutable=True)
         telstate.add('sdp_l0test_sync_time', 1400000000.0, immutable=True)
+        telstate.add('sub_band', 'l', immutable=True)
         for antenna in self.antennas:
             telstate.add('{}_activity'.format(antenna), 'track', ts=0)
             telstate.add('{}_target'.format(antenna), target, ts=0)
@@ -427,7 +428,7 @@ class TestCalDeviceServer(unittest.TestCase):
         freqs = freqs[:, np.newaxis]
         for antenna in self.antennas:
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, ts, immutable=False)
+                              0, ts)
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
