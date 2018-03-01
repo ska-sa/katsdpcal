@@ -118,8 +118,7 @@ def get_noise_diode(ts, ant_names, time_range=[]):
                  st=time_range[0], et=time_range[1], include_previous=True)
                  for a in ant_names]
 
-    nd_on = [np.all(zip(*values)[0] > 0) for values in nd_during]
-
+    nd_on = [min(zip(*values)[0]) > 0 for values in nd_during]
     return np.asarray(nd_on)
 
 
@@ -427,7 +426,8 @@ def pipeline(data, ts, stream_name):
                 av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
                 av_corr['auto_cross'].insert(0, av_vis.compute())
                 av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
-
+        else:
+            logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
         # DELAY
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------

@@ -180,8 +180,6 @@ class Scan(object):
         Index of reference antenna in antenna description list.
     array_position : string
         Description string of array centre position.
-    corr : string, optional
-        String to select correlation product, 'xc' for cross-correlations.
     logger : logger
         Logger
 
@@ -189,15 +187,11 @@ class Scan(object):
     ----------
     xc_mask : numpy array of bool
         Mask for selecting cross-correlation data
-    bl_slice : slice
-        Slice for selecting susbset of the correlation products.
-    corrprod_lookup : list of int, shape (number_of_baselines, 2)
-        List of antenna pairs for each baseline.
     ac_mask : numpy array of bool
         Mask for selecting auto-correlation data
-    orig : :class:`ScanDataPair` of :class:`ScanData`
-        data for time_slice
-    auto : :class:`ScanDataPair` of :class:`ScanData`
+    cross_ant : :class:`ScanDataGroupBl` of :class:`ScanData`
+        Auto-correlation data for time_slice
+    auto_ant : :class:`ScanDataGroupBl` of :class:`ScanData`
         Auto-correlation data for time_slice
     timestamps : array of float, shape (ntime, nchan, npol, nbl)
         Times.
