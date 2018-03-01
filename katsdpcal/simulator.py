@@ -41,7 +41,7 @@ def get_file_format(file_name):
         # Is it a katdal H5 file?
         # open in r+ mode so we don't inadvertantly lock it into readonly mode for later
         f = katdal.open(file_name, mode='r+')
-        data_class = SimDataH5V3 if f.version == '3.0' else SimDataH5V2
+        data_class = SimDataH5V3 #if f.version == '3.0' else SimDataH5V2
         print data_class
     except IOError:
         try:

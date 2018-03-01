@@ -357,42 +357,6 @@ def pipeline(data, ts, stream_name):
             logger.info("  - Saving solution '{}' to Telescope State".format(k_soln))
             ts.add(k_soln.ts_solname, k_soln.values, ts=k_soln.times)
 
-            # ----------------------------------------
-            # KCROSS solution
-            logger.info('Checking if the noise diode was fired')
-            ant_names = [katpoint.Antenna(a).name for a in s.antenna_descriptions]
-            nd_on = get_noise_diode(ts, ant_names, [t0, t1])
-            if any(nd_on):
-                logger.info('Noise diode was fired, \
-                             solving for KCROSS_DIODE on beamformer calibrator %s', target_name)
-                if n_pols < 4:
-                    logger.info("Can't solve for KCROSS_DIODE without four polarisation products")
-                elif s.ac_mask.size == 0:
-                    logger.info("No AC data, can't solve for KCROSS_DIODE without AC data")
-                else:
-                    kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
-                                               ts.cal_param_kcross_chanave, nd=nd_on, ac=True)
-                    logger.info(
-                        "  - Saving solution '{}' to Telescope State".format(kcross_soln))
-                    # save solns to TS
-                    ts.add(kcross_soln.ts_solname, kcross_soln.values, ts=kcross_soln.times)
-
-                # apply solutions and put corrected data into the av_corr dictionary
-                solns_to_apply = get_solns_to_apply(s, ts, ['KCROSS_DIODE'])
-                av_vis = s.apply(solns_to_apply[0], s.auto_tf.cross.vis, xhand=True)
-
-                logger.info('Averaging corrected auto-corr data for {0}:'.format(target_name,))
-                av_flags, av_weights = s.auto_tf.cross.flags, s.auto_tf.cross.weights
-                if av_vis.shape[1] > 1024:
-                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
-                                                                             av_flags,
-                                                                             av_weights,
-                                                                             chanav=av_vis.shape[1]
-                                                                             // 1024)
-                av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
-                av_corr['auto_cross'].insert(0, av_vis.compute())
-                av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
-
             # ---------------------------------------
             # B solution
             logger.info('Solving for B on beamformer calibrator {0}'.format(target_name,))
@@ -421,6 +385,48 @@ def pipeline(data, ts, stream_name):
             # ---------------------------------------
             # timing_file.write("K cal:    %s \n" % (np.round(time.time()-run_t0,3),))
             # run_t0 = time.time()
+
+            # ----------------------------------------
+            # KCROSS solution
+            logger.info('Checking if the noise diode was fired')
+            ant_names = [katpoint.Antenna(a).name for a in s.antenna_descriptions]
+            nd_on = get_noise_diode(ts, ant_names, [t0, t1])
+            if any(nd_on):
+                logger.info("Noise diode was fired,"
+                            " solving for KCROSS_DIODE on beamformer calibrator %s", target_name)
+                if n_pols < 4:
+                    logger.info("Can't solve for KCROSS_DIODE without four polarisation products")
+                elif s.ac_mask.size == 0:
+                    logger.info("No AC data, can't solve for KCROSS_DIODE without AC data")
+                else:
+                    solns_to_apply.extend(get_solns_to_apply(s, ts, ['G'], time_range=[t0, t1]))
+                    kcross_soln = s.kcross_sol(ts.cal_param_k_bchan, ts.cal_param_k_echan,
+                                               ts.cal_param_kcross_chanave, solns_to_apply,
+                                               nd=nd_on, ac=True)
+                    logger.info(
+                        "  - Saving solution '%s' to Telescope State", kcross_soln)
+                    # save solns to TS
+                    ts.add(kcross_soln.ts_solname, kcross_soln.values, ts=kcross_soln.times)
+
+                # apply solutions and put corrected data into the av_corr dictionary
+                solns_to_apply.extend(get_solns_to_apply(s, ts, ['KCROSS_DIODE'],
+                                                         time_range=[t0, t1]))
+                vis = s.auto_ant.tf.cross_pol.vis
+                for soln in solns_to_apply:
+                    vis = s.apply(soln, vis, xhand=True)
+                logger.info('Averaging corrected auto-corr data for %s:', target_name)
+                av_vis = vis
+                av_flags = s.auto_ant.tf.cross_pol.flags
+                av_weights = s.auto_ant.tf.cross_pol.weights
+                if av_vis.shape[1] > 1024:
+                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
+                                                                             av_flags,
+                                                                             av_weights,
+                                                                             chanav=av_vis.shape[1]
+                                                                             // 1024)
+                av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
+                av_corr['auto_cross'].insert(0, av_vis.compute())
+                av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
 
         # DELAY
         if any('delaycal' in k for k in taglist):
@@ -563,7 +569,7 @@ def pipeline(data, ts, stream_name):
             # TODO: setup separate flagger for cross-pols
             s.rfi(targ_flagger, rfi_mask, cross=True)
 
-        vis = s.tf.auto.vis
+        vis = s.cross_ant.tf.auto_pol.vis
         target_type = 'target'
         # apply solutions to calibrators
         if not any('target' in k for k in taglist):
@@ -574,9 +580,12 @@ def pipeline(data, ts, stream_name):
                 vis = s.apply(soln, vis)
 
         # average the corrected data
-        av_vis, av_flags, av_weights = vis, s.tf.auto.flags, s.tf.auto.weights
+        av_vis = vis
+        av_flags = s.cross_ant.tf.auto_pol.flags
+        av_weights = s.cross_ant.tf.auto_pol.weights
+
         logger.info('Averaging corrected data for {0} {1}:'.format(target_type, target_name,))
-        if vis.shape[1] > 1024:
+        if av_vis.shape[1] > 1024:
             av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
                                                                      av_flags,
                                                                      av_weights,
@@ -588,13 +597,13 @@ def pipeline(data, ts, stream_name):
 
         # collect corrected data and calibrator target list to send to report writer
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
-
+        sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags), axis=0).compute()
         av_corr['targets'].insert(0, target)
         av_corr['vis'].insert(0, av_vis)
         av_corr['flags'].insert(0, av_flags)
         av_corr['weights'].insert(0, av_weights)
         av_corr['times'].insert(0, np.average(s.timestamps))
-        av_corr['n_flags'].insert(0, da.sum(calprocs.asbool(s.tf.auto.flags), axis=0).compute())
+        av_corr['n_flags'].insert(0, sum_flags)
         av_corr['timestamps'].insert(0, s.timestamps)
 
     return target_slices, av_corr
