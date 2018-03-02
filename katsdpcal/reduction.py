@@ -45,13 +45,15 @@ def init_flagger(parameters, dump_period):
                                         spike_width_time=spike_width_time,
                                         spike_width_freq=parameters['rfi_calib_spike_width_freq'],
                                         average_freq=parameters['rfi_average_freq'],
-                                        freq_extend=parameters['rfi_extend_freq'])
+                                        freq_extend=parameters['rfi_extend_freq'],
+                                        freq_chunks=parameters['rfi_freq_chunks'])
     targ_flagger = SumThresholdFlagger(outlier_nsigma=parameters['rfi_targ_nsigma'],
                                        windows_freq=rfi_windows_freq,
                                        spike_width_time=spike_width_time,
                                        spike_width_freq=parameters['rfi_targ_spike_width_freq'],
                                        average_freq=parameters['rfi_average_freq'],
-                                       freq_extend=parameters['rfi_extend_freq'])
+                                       freq_extend=parameters['rfi_extend_freq'],
+                                       freq_chunks=parameters['rfi_freq_chunks'])
     return calib_flagger, targ_flagger
 
 

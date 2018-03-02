@@ -3,10 +3,12 @@ Pipeline procedures for MeerKAT calibration pipeline
 ====================================================
 """
 
+from __future__ import print_function, division, absolute_import
 import glob    # for model files
 import pickle
 import logging
 import argparse
+import math
 
 import attr
 import numpy as np
@@ -23,6 +25,55 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------------------------------
 
 
+class Converter(object):
+    """Converts parameters between representations.
+
+    A parameter starts with a requested value, which is directly given by the
+    user e.g. in a config file, and which is "global" (applies to the whole
+    band, not the part handled by a server). It is transformed into a "local"
+    (server-specific) representation for `parameters` dictionaries. From there,
+    it is turned back into a global representation that is stored in the
+    telescope state.
+    """
+    @staticmethod
+    def to_local(value, parameters):
+        return value
+
+    @staticmethod
+    def to_telstate(value, parameters):
+        return value
+
+
+class ChannelConverter(Converter):
+    @staticmethod
+    def to_local(value, parameters):
+        return value - parameters['channel_slice'].start
+
+    @staticmethod
+    def to_telstate(value, parameters):
+        return value + parameters['channel_slice'].start
+
+
+class FreqChunksConverter(Converter):
+    @staticmethod
+    def to_local(value, parameters):
+        # Round up to ensure we always have a positive value
+        return int(math.ceil(value / parameters['servers']))
+
+    @staticmethod
+    def to_telstate(value, parameters):
+        return value * parameters['servers']
+
+
+class AttrConverter(Converter):
+    """Converts to telstate by taking an attribute of the value"""
+    def __init__(self, field):
+        self._field = field
+
+    def to_telstate(self, value, parameters):
+        return getattr(value, self._field)
+
+
 @attr.s
 class Parameter(object):
     name = attr.ib()
@@ -31,8 +82,7 @@ class Parameter(object):
     metavar = attr.ib(default=None)
     default = attr.ib(default=None)
     telstate = attr.ib(default=None)   # Set to true or false to override default, or a name
-    telstate_transform = attr.ib(default=lambda x: x)
-    is_channel = attr.ib(default=False)  # Set to true if the parameter is a channel number
+    converter = attr.ib(default=Converter)
 
 
 def comma_list(type_):
@@ -51,15 +101,15 @@ USER_PARAMETERS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'first channel for K fit', int, is_channel=True),
-    Parameter('k_echan', 'last channel for K fit', int, is_channel=True),
+    Parameter('k_bchan', 'first channel for K fit', int, converter=ChannelConverter),
+    Parameter('k_echan', 'last channel for K fit', int, converter=ChannelConverter),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit', int, is_channel=True),
-    Parameter('g_echan', 'last channel for g fit', int, is_channel=True),
+    Parameter('g_bchan', 'first channel for g fit', int, converter=ChannelConverter),
+    Parameter('g_echan', 'last channel for g fit', int, converter=ChannelConverter),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
@@ -72,15 +122,17 @@ USER_PARAMETERS = [
     Parameter('rfi_spike_width_time',
               '1sigma time width of smoothing Gaussian (in seconds)', float),
     Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags', int),
+    Parameter('rfi_freq_chunks', 'fraction of band on which to do noise estimation', int,
+              converter=FreqChunksConverter),
     Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
-              telstate_transform=lambda x: x.description)
+              converter=AttrConverter('description'))
 ]
 
 # Parameters that the user cannot set directly (the type is not used)
 COMPUTED_PARAMETERS = [
     Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
     Parameter('refant', 'selected reference antenna', katpoint.Antenna,
-              telstate=True, telstate_transform=lambda x: x.name),
+              telstate=True, converter=AttrConverter('name')),
     Parameter('refant_index', 'index of refant in antennas', int),
     Parameter('antenna_names', 'antenna names', list, telstate='antlist'),
     Parameter('antennas', 'antenna objects', list),
@@ -94,6 +146,7 @@ COMPUTED_PARAMETERS = [
     Parameter('product_names', 'names to use in telstate for solutions', dict),
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
+    Parameter('servers', 'number of parallel servers', int),
     Parameter('server_id', 'identity of this server (zero-based)', int)
 ]
 
@@ -178,12 +231,13 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                          .format(n_chans, servers))
     center_freq = telstate_l0['center_freq']
     bandwidth = telstate_l0['bandwidth']
-    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans / 2)
+    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans // 2)
     channel_slice = slice(n_chans * server_id // servers,
                           n_chans * (server_id + 1) // servers)
     parameters['channel_freqs_all'] = channel_freqs
     parameters['channel_freqs'] = channel_freqs[channel_slice]
     parameters['channel_slice'] = channel_slice
+    parameters['servers'] = servers
     parameters['server_id'] = server_id
 
     baselines = telstate_l0['bls_ordering']
@@ -211,16 +265,19 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     # Set the defaults. Needs to be done after dealing with array_position
     # but before interpreting preferred_refants.
     for parameter in USER_PARAMETERS:
-        if parameter.name not in parameters:
+        name = parameter.name
+        if name not in parameters:
             if parameter.default is None:
-                raise ValueError('No value specified for ' + parameter.name)
+                raise ValueError('No value specified for ' + name)
             elif isinstance(parameter.default, attr.Factory):
-                parameters[parameter.name] = parameter.default.factory()
+                parameters[name] = parameter.default.factory()
             else:
-                parameters[parameter.name] = parameter.default
-        # Bias channel indices to refer to the local server
-        if parameter.is_channel:
-            parameters[parameter.name] -= channel_slice.start
+                parameters[name] = parameter.default
+    # Convert all parameters to server-local values
+    orig_parameters = parameters.copy()
+    for parameter in USER_PARAMETERS:
+        name = parameter.name
+        parameters[name] = parameter.converter.to_local(parameters[name], orig_parameters)
 
     refant_index = None
     for ant in parameters['preferred_refants']:
@@ -285,10 +342,7 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
                 key = parameter.telstate
             else:
                 key = 'param_' + parameter.name
-            value = parameter.telstate_transform(parameters[parameter.name])
-            if parameter.is_channel:
-                # Convert back to global channel index
-                value += parameters['channel_slice'].start
+            value = parameter.converter.to_telstate(parameters[parameter.name], parameters)
             telstate_cal.add(key, value, immutable=True)
     for parameter in COMPUTED_PARAMETERS:
         # Only put them in if explicitly set to True
@@ -297,7 +351,7 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
                 key = parameter.telstate
             else:
                 key = parameter.name
-            value = parameter.telstate_transform(parameters[parameter.name])
+            value = parameter.converter.to_telstate(parameters[parameter.name], parameters)
             telstate_cal.add(key, value, immutable=True)
 
     # Transfer some keys from L0 stream to cal "stream", to help consumers compute
