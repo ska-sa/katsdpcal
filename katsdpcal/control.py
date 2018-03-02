@@ -1120,7 +1120,13 @@ class Sender(Task):
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
                 if started:
-                    tx.send_heap(ig.get_end())
+                    # Create an end-of-stream heap that includes capture block ID
+                    cbid_item = ig['capture_block_id']
+                    cbid_item.value = event.capture_block_id
+                    heap = ig.get_end()
+                    heap.add_descriptor(cbid_item)
+                    heap.add_item(cbid_item)
+                    tx.send_heap(heap)
                     started = False
                 self.master_queue.put(event)
         if started:
