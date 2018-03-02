@@ -426,8 +426,8 @@ def pipeline(data, ts, stream_name):
                 av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
                 av_corr['auto_cross'].insert(0, av_vis.compute())
                 av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
-        else:
-            logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
+            else:
+                logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
         # DELAY
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------

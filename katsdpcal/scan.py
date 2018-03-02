@@ -448,7 +448,6 @@ class Scan(object):
             fitvis = modvis[chan_slice]
         else:
             fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
-
         # average over all time, for specified channel range (no averaging over channel)
         ave_vis, ave_time = calprocs_dask.wavg(fitvis, self.cross_ant.tf.auto_pol.flags[chan_slice],
                                                self.cross_ant.tf.auto_pol.weights[chan_slice],
