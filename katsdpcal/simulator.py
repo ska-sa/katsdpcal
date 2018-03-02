@@ -108,7 +108,7 @@ class SimData(object):
     def capture_init(self):
         if self.client is not None:
             self.client.wait_protocol()
-            cbid = '00000000-00000-{}'.format(int(time.time()))
+            cbid = '{}'.format(int(time.time()))
             reply, informs = self.client.blocking_request(
                 katcp.Message.request('capture-init', cbid))
             if not reply.reply_ok():
@@ -233,6 +233,10 @@ class SimData(object):
         ig.add_item(id=0x4103, name='frequency',
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
+
+    def setup_capture_block(self, telstate, first_timestamp):
+        """Set per-capture-block keys in telstate."""
+        telstate.add(self.cbid + '_sdp_l0_first_timestamp', first_timestamp, immutable=True)
 
     def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
         """
@@ -498,6 +502,8 @@ class SimDataMS(SimData):
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
 
+        self.setup_capture_block(telstate, self.to_ut(self.file.getcell('TIME', 0)))
+
         time_ind = 0
         # send data scan by scan
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
@@ -680,6 +686,8 @@ class SimDataKatdal(SimData):
 
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)
+
+        self.setup_capture_block(telstate, self.file.timestamps[0])
 
         for scan_ind, scan_state, target in self.file.scans():
             # update telescope state with scan information
