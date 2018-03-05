@@ -487,7 +487,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             valid = ~np.isnan(bp)
             bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
             A = np.array([chans[valid], np.ones(len(chans[valid]))])
-            delta_k[i] = np.linalg.lstsq(A.T, bp_phase, rcond=None)[0][0] / (2. * np.pi)
+            delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
 
