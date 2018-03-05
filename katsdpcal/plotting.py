@@ -7,10 +7,10 @@ import matplotlib.dates as md
 from matplotlib import use
 use('Agg', warn=False)
 
-import matplotlib.pylab as plt
+import matplotlib.pylab as plt     # noqa: E402
 
 # for multiple page pdf plotting
-from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.backends.backend_pdf import PdfPages     # noqa: E402
 
 # PLOT_COLORS = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
 
@@ -222,7 +222,7 @@ def plot_g_solns_with_errors(times, data, stddev):
     return fig
 
 
-def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
+def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
     """
     Plots gain solutions
 
@@ -232,7 +232,7 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
         real, shape(num_times)
     data : :class:`np.ndarray`
         complex, shape(num_times,num_pols,num_ants)
-    antlist: list of str
+    antenna_names: list of str
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
@@ -264,8 +264,9 @@ def plot_g_solns_legend(times, data, antlist=None, pol=[0, 1]):
         plt.setp(axes[l_p, i].get_xticklabels(), visible=True)
         time_label(axes[l_p, i], [datetimes[0], datetimes[-1]])
 
-    if antlist is not None:
-        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+    if antenna_names is not None:
+        axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
+                          loc="upper left", frameon=False)
     return fig
 
 
@@ -526,7 +527,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
     return fig
 
 
-def plot_delays(times, data, antlist=None, pol=[0, 1]):
+def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
     """
     Plots delay vs time
 
@@ -536,7 +537,7 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
         real, timestamps of delays
     data : :class:`np.ndarray`
         real, delays in nanoseconds
-    antlist : list of str
+    antenna_names : list of str
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
@@ -554,14 +555,14 @@ def plot_delays(times, data, antlist=None, pol=[0, 1]):
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
-    if antlist is not None:
-        axes[0, npols-1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0),
+    if antenna_names is not None:
+        axes[0, npols-1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
                                 loc="upper left", frameon=False)
 
     return fig
 
 
-def plot_phaseonly_spec(data, chan, antlist=None, freq_range=None, title=None, pol=[0, 1]):
+def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None, pol=[0, 1]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -570,7 +571,7 @@ def plot_phaseonly_spec(data, chan, antlist=None, freq_range=None, title=None, p
         complex, shape(num_chans, num_pol, num_ant/num_bl)
     chan : : class:`np.ndarray`
         real, (nchan) channel numbers for x-axis
-    antlist : list of str
+    antenna_names : list of str
         list of antenna/baseline names for plot legend, optional
     freq_range : list
         start and stop frequencies of the array, optional
@@ -594,8 +595,9 @@ def plot_phaseonly_spec(data, chan, antlist=None, freq_range=None, title=None, p
         axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
 
-    if antlist is not None:
-        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+    if antenna_names is not None:
+        axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
+                          loc="upper left", frameon=False)
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
@@ -606,7 +608,7 @@ def plot_phaseonly_spec(data, chan, antlist=None, freq_range=None, title=None, p
     return fig
 
 
-def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, pol=[0, 1]):
+def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False, pol=[0, 1]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -615,7 +617,7 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
         complex, shape(num_chans, num_pol, num_ant/num_bl)
     chan : : class:`np.ndarray`
         real, (nchan) channel numbers for x-axis
-    antlist : list of str
+    antenna_names : list of str
         list of antenna/baseline names for plot legend, optional
     freq_range : list
         start and stop frequencies of the array, optional
@@ -660,8 +662,9 @@ def plot_spec(data, chan, antlist=None, freq_range=None, title=None, amp=False, 
     axes[l_p, 0].set_xlabel('Channels')
     axes[l_p, 1].set_xlabel('Channels')
 
-    if antlist is not None:
-        axes[0, 1].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+    if antenna_names is not None:
+        axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
+                          loc="upper left", frameon=False)
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
@@ -727,7 +730,7 @@ def amp_range(data):
     return low_lim, upper_lim
 
 
-def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0, 1]):
+def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, pol=[0, 1]):
     """
     Plots amp/phase versus time
 
@@ -739,7 +742,7 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
         complex, shape(num_times,num_chns, num_pol, num_ants)
     plottype : str
         'a' to plot amplitude else plot phase, default is phase
-    antlist : :class:`np.ndarray`, optional
+    antenna_names : :class:`np.ndarray`, optional
         antenna names for plot legend
     title : str, optional
         title of plot
@@ -776,8 +779,9 @@ def plot_corr_v_time(times, data, plottype='p', antlist=None, title=None, pol=[0
     time_label(axes[l_p, 0], [datetimes[0], datetimes[-1]])
     plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
 
-    if antlist is not None:
-        axes[0, 0].legend(p1, antlist, bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+    if antenna_names is not None:
+        axes[0, 0].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
+                          loc="upper left", frameon=False)
 
     fig.subplots_adjust(hspace=0.1)
     return fig

@@ -2,37 +2,44 @@
 # ----------------------------------------------------------
 # Simulate the data stream from a file
 
+import logging
 import contextlib
-from katsdpcal.simulator import init_simdata
+
+from katsdpcal.simulator import SimData
 from katsdptelstate import endpoint
-from katsdpservices import ArgumentParser
+from katsdpservices import ArgumentParser, setup_logging
+
+
+logger = logging.getLogger(__name__)
+
 
 def parse_opts():
-    parser = ArgumentParser(description = 'Simulate SPEAD data stream from H5 file')    
-    parser.add_argument('--l0-spectral-spead', type=endpoint.endpoint_parser(7200), default='127.0.0.1:7200', 
-            help='endpoints to listen for L0 SPEAD stream (including multicast IPs). [<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+    parser = ArgumentParser(description = 'Simulate SPEAD data stream from file')
+    parser.add_argument('--l0-spead', type=endpoint.endpoint_parser(7200), default='127.0.0.1:7200', 
+            help='endpoint to send L0 SPEAD stream (including multicast IPs). [<ip>][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--file', type=str, help='File for simulated data (H5 or MS)')
-    parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 5e7. Default: 5e7')
-    parser.add_argument('--max-scans', type=int, default=0, help='Number of scans to transmit. Default: all')
+    parser.add_argument('--l0-rate', type=float, default=5e7, help='Simulated L0 SPEAD rate. For laptops, recommend rate of 5e7. Default: 5e7', metavar='BYTES/S')
+    parser.add_argument('--max-scans', type=int, default=None, help='Number of scans to transmit. Default: all')
     parser.add_argument('--server', type=endpoint.endpoint_parser(2048), default='localhost:2048', help='Address of cal katcp server. Default: %(default)s', metavar='ENDPOINT')
+    parser.add_argument('--bchan', type=int, default=0, help='First channel to take from file')
+    parser.add_argument('--echan', type=int, default=None, help='Last channel to take from file')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
-opts = parse_opts()
 
-print "Use TS set up by sim_ts.py and run_cal.py scripts."
-ts = opts.telstate
+if __name__ == '__main__':
+    setup_logging()
+    opts = parse_opts()
 
-simdata = init_simdata(opts.file, opts.server)
-with contextlib.closing(simdata):
-    print "Selecting data to transmit. Slice using ts values."
-    simdata.select(channels=slice(ts.cal_sim_bchan,ts.cal_sim_echan))
+    logger.info("Use TS set up by sim_ts.py and run_cal.py scripts.")
+    telstate = opts.telstate
 
-    print "Issuing capture-init"
-    simdata.capture_init()
-    print "TX: start."
-    max_scans = opts.max_scans if not opts.max_scans == 0 else None
-    simdata.datatoSPEAD(ts,opts.l0_spectral_spead,opts.l0_rate,max_scans=max_scans)
-    print "TX: ended."
-    print "Issuing capture-done"
-    simdata.capture_done()
+    simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan)
+    with contextlib.closing(simdata):
+        logger.info("Issuing capture-init")
+        simdata.capture_init()
+        logger.info("TX: start.")
+        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans)
+        logger.info("TX: ended.")
+        logger.info("Issuing capture-done")
+        simdata.capture_done()

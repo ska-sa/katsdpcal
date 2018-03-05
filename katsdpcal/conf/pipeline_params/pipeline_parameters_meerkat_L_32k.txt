@@ -1,0 +1,29 @@
+# parameter file for MeerKAT L band, 32k channels
+
+preferred_refants : m005,m012,m011,m014,m024,m000,m016,m020,m028,m039,m042,m050
+
+# delay calibration
+k_solint : 5.0                      # nominal pre-k g solution interval, seconds
+k_chan_sample : 1                   # sample every 10th channel for pre-K BP soln
+k_bchan : 4500                      # first channel for K fit, int
+k_echan : 5500                      # last channel for K fit, int
+kcross_chanave : 1                  # number of channels to average together to kcross solution
+
+# bandpass calibration
+bp_solint : 5.0                     # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+g_solint: 5.0                       # nominal g solution interval, seconds
+g_bchan : 4500                      # first channel for g fit, int
+g_echan : 5500                      # last channel for g fit, int
+
+# Flagging
+rfi_calib_nsigma : 4.5              # Number of sigma to reject outliers for calibrators
+rfi_targ_nsigma : 7.0               # Number of sigma to reject outliers for targets
+rfi_windows_freq : 1,8,16,32        # Size of windows for SumThreshold
+rfi_average_freq : 4                # Amount to average in frequency before flagging
+rfi_targ_spike_width_freq : 160.0   # 1sigma frequency width of smoothing Gaussian on final target (in channels)
+rfi_calib_spike_width_freq : 80.0   # 1sigma frequency width of smoothing Gaussian on calibrators (in channels)
+rfi_spike_width_time : 100.0        # 1sigma time width of smoothing Gaussian (in seconds)
+rfi_extend_freq : 15                # Convolution width in frequency to extend flags
+

@@ -6,7 +6,6 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
 from __future__ import print_function
-import time
 import logging
 
 import numpy as np
@@ -41,7 +40,7 @@ def radec_to_lm(ra, dec, ra0, dec0):
     l, m : float
         direction cosines
     """
-    l = np.cos(dec)*np.sin(ra - ra0)
+    l = np.cos(dec)*np.sin(ra - ra0)    # noqa: E741
     m = np.sin(dec)*np.cos(dec0) - np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
     return l, m
 
@@ -75,7 +74,7 @@ def to_ut(t):
     return (t/86400. - 2440587.5 + 2400000.5)*86400.
 
 
-def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, ant_descriptions,
+def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, antennas,
                   wavelengths=None, array_centre=None):
     """
     Calculate uvw coordinates
@@ -88,19 +87,19 @@ def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, ant_descriptions,
         times, shape(nrows)
     corrprod_lookup : array
         lookup table of antenna indices for each baseline, shape(nant,2)
-    antenna_descriptions : list of str
-        description strings for the antennas, same order as antlist
+    antennas : list of :class:`katpoint.Antenna`
+        the antennas, same order as antlist
     wavelengths : array or scalar
         wavelengths, single value or array shape(nchans)
-    array_centre : str
-        description string for array centre position
+    array_centre : :class:`katpoint.Antenna`
+        array centre position
 
     Returns
     -------
     uvw_wave
         uvw coordinates, normalised by wavelength
     """
-    uvw = calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_centre)
+    uvw = calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre)
     if wavelengths is None:
         return uvw
     elif np.isscalar(wavelengths):
@@ -109,7 +108,7 @@ def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, ant_descriptions,
         return uvw[:, :, np.newaxis, :]/wavelengths[:, np.newaxis]
 
 
-def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_centre=None):
+def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=None):
     """
     Calculate uvw coordinates
 
@@ -121,31 +120,27 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, ant_descriptions, array_
         times, shape(nrows)
     corrprod_lookup : array
         lookup table of antenna indices for each baseline, shape(nant,2)
-    antenna_descriptions : list of str
-        description strings for the antennas, same order as antlist
+    antennas : list of :class:`katpoint.Antenna`
+        the antennas, same order as antlist
     array_centre : str
-        description string for array centre position
+        array centre position
 
     Returns
     -------
     uvw_wave
         uvw coordinates
     """
-    if array_centre is not None:
-        array_reference_position = katpoint.Antenna(array_centre)
-    else:
+    if array_centre is None:
         # if no array centre position is given, use lat-long-alt of first
         # antenna in the antenna list
-        refant = katpoint.Antenna(ant_descriptions[0])
-        array_reference_position = katpoint.Antenna('array_position', *refant.ref_position_wgs84)
+        array_centre = katpoint.Antenna('array_position', *antennas[0].ref_position_wgs84)
 
     # use the array reference position for the basis
-    basis = phase_centre.uvw_basis(timestamp=timestamps, antenna=array_reference_position)
-    antenna_uvw = np.empty([len(ant_descriptions), 3, len(timestamps)])
+    basis = phase_centre.uvw_basis(timestamp=timestamps, antenna=array_centre)
+    antenna_uvw = np.empty([len(antennas), 3, len(timestamps)])
 
-    for i, antenna in enumerate(ant_descriptions):
-        ant = katpoint.Antenna(antenna)
-        enu = np.array(ant.baseline_toward(array_reference_position))
+    for i, ant in enumerate(antennas):
+        enu = np.array(ant.baseline_toward(array_centre))
         antenna_uvw[i, ...] = np.tensordot(basis, enu, ([1], [0]))
 
     baseline_uvw = np.empty([3, len(timestamps), len(corrprod_lookup)])
@@ -941,25 +936,6 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
     av_weights = np.stack(av_weights, axis=3)
 
     return av_data, av_flags, av_weights
-
-
-# --------------------------------------------------------------------------------------------------
-# --- CLASS :  CalSolution
-# --------------------------------------------------------------------------------------------------
-
-class CalSolution(object):
-    """Calibration solution store."""
-    def __init__(self, soltype, solvalues, soltimes):
-        self.soltype = soltype
-        self.values = solvalues
-        self.times = soltimes
-        self.ts_solname = 'cal_product_{}'.format(soltype)
-
-    def __str__(self):
-        """String representation of calibration solution to help identify it."""
-        # Obtain human-friendly timestamp representing the centre of solutions
-        timestamp = time.strftime("%H:%M:%S", time.gmtime(np.mean(self.times)))
-        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 
 # --------------------------------------------------------------------------------------------------
