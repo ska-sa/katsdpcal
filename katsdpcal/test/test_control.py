@@ -210,7 +210,7 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate.clear()     # Prevent state leaks
         telstate_l0 = telstate.view('sdp_l0test')
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
-	telstate.add('sub_band', 'l', immutable=True)
+        telstate.add('sub_band', 'l', immutable=True)
         telstate_l0.add('int_time', 4.0, immutable=True)
         telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
         telstate_l0.add('n_bls', len(bls_ordering), immutable=True)

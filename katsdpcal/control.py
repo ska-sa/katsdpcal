@@ -1044,8 +1044,12 @@ class Sender(Task):
         # with the exception of the division into substreams.
         for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
                     'n_bls', 'n_chans', 'sync_time']:
-            self.telstate_flags.add(key, self.telstate_l0[key])
-        self.telstate_flags.add('n_chans_per_substream', self.n_chans)
+
+            self.telstate_flags.add(key, self.telstate_l0[key], immutable=True)
+        self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
+        cal_name = telstate_cal.prefixes[0][:-1]
+        self.telstate_flags.add('src_streams', [cal_name], immutable=True)
+
 
     def get_sensors(self):
         return [
@@ -1123,7 +1127,13 @@ class Sender(Task):
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
                 if started:
-                    tx.send_heap(ig.get_end())
+                    # Create an end-of-stream heap that includes capture block ID
+                    cbid_item = ig['capture_block_id']
+                    cbid_item.value = event.capture_block_id
+                    heap = ig.get_end()
+                    heap.add_descriptor(cbid_item)
+                    heap.add_item(cbid_item)
+                    tx.send_heap(heap)
                     started = False
                 self.master_queue.put(event)
         if started:

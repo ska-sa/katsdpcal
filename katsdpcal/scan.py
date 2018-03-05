@@ -219,8 +219,7 @@ class Scan(object):
     """
 
     def __init__(self, data, time_slice, dump_period, bls_lookup, target,
-                 chans=None, ants=None, refant=0, array_position=None, logger=logger):
-
+                 chans, ants, refant=0, array_position=None, logger=logger):
         # cross-correlation and auto-correlation masks.
         # Must be np arrays so they can be used for indexing
         # NOTE: This makes the asumption that the XC data are grouped at the
@@ -532,6 +531,7 @@ class Scan(object):
             full_sol = soln_values[:, np.newaxis, :, :] \
                 if soln_values.ndim < 4 else soln_values
             return self._apply(full_sol, vis, xhand)
+
         elif soln.soltype == 'K':
             # want shape (ntime, nchan, npol, nant)
             channel_freqs = da.asarray(self.channel_freqs)

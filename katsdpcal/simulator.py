@@ -286,7 +286,6 @@ class SimData(object):
         # send all of the descriptors with every heap
         tx.send_heap(ig.get_heap(descriptors='all'))
 
-
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
 # ---   simulates pipeline data from MS
@@ -442,6 +441,7 @@ class SimDataMS(SimData):
         param_dict['sdp_l0_center_freq'] = chan_freq[n_chans // 2]
         # a dummy sub-band
         param_dict['sub_band'] = 'l'
+
         # antenna descriptions for all antennas
         antenna_descriptions = self.get_antdesc()
         for antname in self.ants:
@@ -688,7 +688,6 @@ class SimDataKatdal(SimData):
             param_dict['{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])] = \
                        self.file.sensor.get('Antennas/{0}/nd_coupler'.format(ant.name),
                                             extract=False)
-
         return param_dict
 
     def tx_data(self, telstate, tx, max_scans):

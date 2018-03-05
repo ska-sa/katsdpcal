@@ -123,7 +123,6 @@ def get_noise_diode(ts, ant_names, time_range=[]):
 
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
-
     """
     For a given scan, extract and interpolate specified calibration solutions
     from the solution stores.
@@ -510,6 +509,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
                 av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
+
         # DELAY
         if any('delaycal' in k for k in taglist):
             # ---------------------------------------

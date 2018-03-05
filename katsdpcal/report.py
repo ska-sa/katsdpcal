@@ -721,7 +721,6 @@ def write_products(report, report_path, ts, parameters,
         real (nchans), correlator channel frequencies
 
     """
-
     cal_list = ['K', 'KCROSS', 'KCROSS_DIODE', 'B', 'G']
     product_names = parameters['product_names']
     solns_exist = any([product_names[cal] in ts for cal in cal_list])

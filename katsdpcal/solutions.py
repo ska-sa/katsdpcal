@@ -77,7 +77,6 @@ class CalSolutionStore(object):
         else:
             return None
 
-
 class CalSolutionStoreLatest(object):
     """Tracks the latest value of a calibration solution.
 
