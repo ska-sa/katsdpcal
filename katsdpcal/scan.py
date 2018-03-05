@@ -182,7 +182,6 @@ class Scan(object):
     Attributes
     ----------
     xc_mask : numpy array of bool
-        Mask for selecting cross-correlation data
     ac_mask : numpy array of bool
         Mask for selecting auto-correlation data
     cross_ant : :class:`ScanDataGroupBl` of :class:`ScanData`
@@ -321,7 +320,7 @@ class Scan(object):
         return CalSolutions('G', g_soln, ave_times)
 
     @logsolutiontime
-    def kcross_sol(self, bchan=1, echan=0, chan_ave=1, pre_apply=[], nd=None, ac=False):
+    def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, ac=False):
         """
         Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
@@ -361,8 +360,6 @@ class Scan(object):
         modvis = self.pre_apply(pre_apply, corr, xhand=True)
 
         # average over all time, for specified channel range (no averaging over channel)
-        if echan == 0:
-            echan = None
         chan_slice = np.s_[:, bchan:echan, :, :]
         av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
             modvis[chan_slice], corr.tf.cross_pol.flags[chan_slice],
@@ -404,7 +401,7 @@ class Scan(object):
         return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
-    def k_sol(self, bchan=1, echan=0, chan_sample=1, pre_apply=[]):
+    def k_sol(self, bchan=1, echan=None, chan_sample=1, pre_apply=[]):
         """
         Solve for delay
 
@@ -424,8 +421,6 @@ class Scan(object):
         modvis = self.pre_apply(pre_apply)
 
         # determine channel range for fit
-        if echan == 0:
-            echan = None
         chan_slice = np.s_[:, bchan:echan, :, :]
         # use specified channel range for frequencies
         k_freqs = self.channel_freqs[bchan:echan]
