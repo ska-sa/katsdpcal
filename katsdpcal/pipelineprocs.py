@@ -94,6 +94,7 @@ COMPUTED_PARAMETERS = [
     Parameter('product_names', 'names to use in telstate for solutions', dict),
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
+    Parameter('servers', 'number of parallel servers', int),
     Parameter('server_id', 'identity of this server (zero-based)', int)
 ]
 
@@ -184,6 +185,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     parameters['channel_freqs_all'] = channel_freqs
     parameters['channel_freqs'] = channel_freqs[channel_slice]
     parameters['channel_slice'] = channel_slice
+    parameters['servers'] = servers
     parameters['server_id'] = server_id
 
     baselines = telstate_l0['bls_ordering']
@@ -355,7 +357,7 @@ def get_model(name, lsm_dir_list=[]):
     else:
         model_dtype = [('tag', 'S4'), ('name', 'S16'),
                        ('RA', 'S24'), ('dRA', 'S8'), ('DEC', 'S24'), ('dDEC', 'S8'),
-                       ('a0', 'f16'), ('a1', 'f16'), ('a2', 'f16'), ('a3', 'f16'),
-                       ('fq', 'f16'), ('fu', 'f16'), ('fv', 'f16')]
+                       ('a0', 'f8'), ('a1', 'f8'), ('a2', 'f8'), ('a3', 'f8'),
+                       ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
         model_components = np.genfromtxt(model_file, delimiter=',', dtype=model_dtype)
     return model_components, model_file
