@@ -1009,17 +1009,26 @@ class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
                  l0_name,
-                 flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+                 flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
                  telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate = telstate_cal.root()
         self.telstate_l0 = telstate.view(l0_name)
-        self.flags_endpoint = flags_endpoint
+        if flags_endpoints is not None:
+            n_endpoints = len(flags_endpoints)
+            n_servers = parameters['servers']
+            if n_endpoints != n_servers:
+                raise ValueError(
+                    'Number of flags endpoints ({}) not equal to number of servers ({})'
+                    .format(n_endpoints, n_servers))
+            self.flags_endpoint = flags_endpoints[parameters['server_id']]
+        else:
+            self.flags_endpoint = None
         self.flags_interface_address = flags_interface_address
         if self.flags_interface_address is None:
             self.flags_interface_address = ''
         self.int_time = self.telstate_l0['int_time']
-        self.n_chans = self.telstate_l0['n_chans']
+        self.n_chans = self.telstate_l0['n_chans'] // n_servers
         self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
         self.channel_slice = parameters['channel_slice']
         n_bls = len(self.l0_bls)
@@ -1041,8 +1050,10 @@ class Sender(Task):
         # with the exception of the division into substreams.
         for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
                     'n_bls', 'n_chans', 'sync_time']:
-            self.telstate_flags.add(key, self.telstate_l0[key])
-        self.telstate_flags.add('n_chans_per_substream', self.n_chans)
+            self.telstate_flags.add(key, self.telstate_l0[key], immutable=True)
+        self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
+        cal_name = telstate_cal.prefixes[0][:-1]
+        self.telstate_flags.add('src_streams', [cal_name], immutable=True)
 
     def get_sensors(self):
         return [
@@ -1120,7 +1131,13 @@ class Sender(Task):
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
                 if started:
-                    tx.send_heap(ig.get_end())
+                    # Create an end-of-stream heap that includes capture block ID
+                    cbid_item = ig['capture_block_id']
+                    cbid_item.value = event.capture_block_id
+                    heap = ig.get_end()
+                    heap.add_descriptor(cbid_item)
+                    heap.add_item(cbid_item)
+                    tx.send_heap(heap)
                     started = False
                 self.master_queue.put(event)
         if started:
@@ -1430,7 +1447,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+                  flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
                   telstate_cal, parameters, report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None):
     # threading or multiprocessing imports
@@ -1455,7 +1472,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
-        flags_name, flags_endpoint, flags_interface_address, flags_rate_ratio,
+        flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
         telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(

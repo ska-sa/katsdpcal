@@ -90,7 +90,7 @@ def parse_opts():
         '--l0-spead', type=endpoint.endpoint_list_parser(7200, single_port=True),
         default=':7200',
         help='endpoints to listen for L0 spead stream (including multicast IPs). '
-        + '[<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINT')
+        + '[<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINTS')
     parser.add_argument(
         '--l0-interface',
         help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
@@ -101,8 +101,8 @@ def parse_opts():
         '--cal-name', default='cal',
         help='Name of the cal output in telstate. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
-        '--flags-spead', type=endpoint.endpoint_parser(7202),
-        help='destination for L1 flags. [default=%(default)s]', metavar='ENDPOINT')
+        '--flags-spead', type=endpoint.endpoint_list_parser(7202),
+        help='endpoints for L1 flags. [default=%(default)s]', metavar='ENDPOINTS')
     parser.add_argument(
         '--flags-name', type=str, default='sdp_l1_flags',
         help='name for the flags stream. [default=%(default)s]', metavar='NAME')
@@ -266,7 +266,7 @@ def run(opts, log_path, full_log):
     l0_interface_address = katsdpservices.get_interface_address(opts.l0_interface)
     if opts.flags_spead is not None:
         logger.info('Sending L1 flags to %s via %s',
-                    opts.flags_spead,
+                    endpoints_to_str(opts.flags_spead),
                     'default interface' if opts.flags_interface is None else opts.flags_interface)
         flags_interface_address = katsdpservices.get_interface_address(opts.flags_interface)
     else:
