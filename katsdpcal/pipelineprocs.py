@@ -274,10 +274,10 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
             else:
                 parameters[name] = parameter.default
     # Convert all parameters to server-local values
-    orig_parameters = parameters.copy()
+    global_parameters = parameters.copy()
     for parameter in USER_PARAMETERS:
         name = parameter.name
-        parameters[name] = parameter.converter.to_local(parameters[name], orig_parameters)
+        parameters[name] = parameter.converter.to_local(parameters[name], global_parameters)
 
     refant_index = None
     for ant in parameters['preferred_refants']:
@@ -332,6 +332,8 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
 def parameters_to_telstate(parameters, telstate_cal, l0_name):
     """Take certain parameters and store them in telstate for the benefit of consumers.
+
+    As part of this process, local server values are converted back to global.
 
     The `telstate_cal` should be a view in the cal_name namespace.
     """
