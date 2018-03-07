@@ -1122,11 +1122,9 @@ class Sender(Task):
                         ig['timestamp'].value = first_timestamp + idx * self.int_time
                         ig['dump_index'].value = idx
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
-                        # 8 for timestamp, 8 for dump_index, 4 for channel
-                        heap_bytes = out_flags.nbytes + 20
                         now = time.time()
                         _inc_sensor(self.sensors['output-heaps-total'], 1, timestamp=now)
-                        _inc_sensor(self.sensors['output-bytes-total'], heap_bytes, timestamp=now)
+                        _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes, timestamp=now)
                         self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
