@@ -623,7 +623,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
         for i in range(240):
-            yield tornado.gen.sleep(0.5)
+            yield tornado.gen.sleep(1)
             heaps = int((yield self.get_sensor('input-heaps-total')))
             if heaps == n_times * self.n_substreams:
                 print('all heaps received')
