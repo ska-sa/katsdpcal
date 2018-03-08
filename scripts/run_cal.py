@@ -266,7 +266,7 @@ def run(opts, log_path, full_log):
     l0_interface_address = katsdpservices.get_interface_address(opts.l0_interface)
     if opts.flags_spead is not None:
         logger.info('Sending L1 flags to %s via %s',
-                    endpoints_to_str(opts.flags_spead),
+                    endpoint.endpoints_to_str(opts.flags_spead),
                     'default interface' if opts.flags_interface is None else opts.flags_interface)
         flags_interface_address = katsdpservices.get_interface_address(opts.flags_interface)
     else:
