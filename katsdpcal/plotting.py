@@ -569,7 +569,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
     ----------
     data : :class:`np.ndarray`
         complex, shape(num_chans, num_pol, num_ant/num_bl)
-    chan : : class:`np.ndarray`
+    chan : :class:`np.ndarray`
         real, (nchan) channel numbers for x-axis
     antenna_names : list of str
         list of antenna/baseline names for plot legend, optional

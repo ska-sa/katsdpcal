@@ -77,7 +77,7 @@ def _where(condition, x, y):
     return da.core.elemwise(np.where, condition, x, y)
 
 
-def weightdata(data, flags, weights):
+def weight_data(data, flags, weights):
     """
     Return flagged, weighted data and flagged weights
 
@@ -113,7 +113,7 @@ def wavg(data, flags, weights, times=False, axis=0):
     -------
     vis, times : weighted average of data and, optionally, times
     """
-    weighted_data, flagged_weights = weightdata(data, flags, weights)
+    weighted_data, flagged_weights = weight_data(data, flags, weights)
     vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
@@ -136,7 +136,7 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_weights : weighted average of weights
     """
 
-    weighted_data, flagged_weights = weightdata(data, flags, weights)
+    weighted_data, flagged_weights = weight_data(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis=0)
     av_data = da.sum(weighted_data, axis=0) / av_weights
     n_flags = da.sum(calprocs.asbool(flags), axis=0)

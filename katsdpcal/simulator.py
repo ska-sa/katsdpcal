@@ -174,7 +174,7 @@ class SimData(object):
         notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                        if not key.endswith('noise_diode')}
         time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                          if key.endswith('noise_diode')}
+                     if key.endswith('noise_diode')}
 
         # add parameters to telescope state
         for key, value in sorted(notime_dict.items()):
@@ -183,8 +183,8 @@ class SimData(object):
 
         for key, value in sorted(time_dict.items()):
             logger.info('Setting %s', key)
-            for idx, times in enumerate(value['timestamp']):
-                telstate.add(key, value['value'][idx], ts=times)
+            for idx, sensor_time in enumerate(value['timestamp']):
+                telstate.add(key, value['value'][idx], ts=sensor_time)
 
     def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
         """
@@ -448,7 +448,7 @@ class SimDataMS(SimData):
             param_dict['{0}_observer'.format(antname)] = antenna_descriptions[antname]
             # a dummy noise diode sensor per antenna
             param_dict['{0}_dig_{1}_band_noise_diode'.format(antname, param_dict['sub_band'])] = \
-                np.array([(self.timestamps[0]), (0.0)],
+                np.array([self.timestamps[0], 0.0],
                          dtype=[('timestamp', float), ('value', float)])
 
         return param_dict
@@ -679,15 +679,13 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_int_time'] = self.file.dump_period
         param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
         param_dict['sdp_l0_sync_time'] = 0.0
-        param_dict['sub_band'] = self.file._get_telstate_attr('sub_band', default='',
-                                                              no_unpickle=('l', 's', 'u', 'x'))
+        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
         # antenna descriptions for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             param_dict['{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])] = \
-                       self.file.sensor.get('Antennas/{0}/nd_coupler'.format(ant.name),
-                                            extract=False)
+                self.file.sensor.get('Antennas/{0}/nd_coupler'.format(ant.name), extract=False)
         return param_dict
 
     def tx_data(self, telstate, tx, max_scans):

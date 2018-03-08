@@ -1044,12 +1044,10 @@ class Sender(Task):
         # with the exception of the division into substreams.
         for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
                     'n_bls', 'n_chans', 'sync_time']:
-
             self.telstate_flags.add(key, self.telstate_l0[key], immutable=True)
         self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
         cal_name = telstate_cal.prefixes[0][:-1]
         self.telstate_flags.add('src_streams', [cal_name], immutable=True)
-
 
     def get_sensors(self):
         return [

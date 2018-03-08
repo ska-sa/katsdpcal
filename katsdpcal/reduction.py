@@ -93,14 +93,14 @@ def get_tracks(data, ts, parameters, dump_period):
     return [segment for (segment, track) in all_tracking.segments() if track]
 
 
-def get_noise_diode(ts, ant_names, time_range=[]):
+def get_noise_diode(telstate, ant_names, time_range=[]):
     """
     For a given timerange check if the noise diode is on for
     antennas in ant_names
 
     Inputs
     ------
-    ts : :class:`katsdptelstate.TelescopeState`
+    telstate : :class:`katsdptelstate.TelescopeState`
         telescope state
     ant_names : list of str
         names of antennas
@@ -112,9 +112,9 @@ def get_noise_diode(ts, ant_names, time_range=[]):
     nd_on : :class:`np.ndarray` of bool
         True for antennas with noise diode on during time_range, otherwise False
     """
-    sub_band = ts.get('sub_band')
+    sub_band = telstate['sub_band']
     nd_key = '_dig_{0}_band_noise_diode'.format(sub_band)
-    nd_during = [ts.get_range('{0}{1}'.format(a, nd_key),
+    nd_during = [telstate.get_range('{0}{1}'.format(a, nd_key),
                  st=time_range[0], et=time_range[1], include_previous=True)
                  for a in ant_names]
 
@@ -488,22 +488,18 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
                                                nd=nd_on, ac=True)
 
                 # apply solutions and put corrected data into the av_corr dictionary
-                logger.info('soln to apply {0}'.format(type(solns_to_apply)))
                 solns_to_apply.append(s.interpolate(kcross_soln))
 
                 vis = s.auto_ant.tf.cross_pol.vis
                 for soln in solns_to_apply:
-                    vis = s.apply(soln, vis, xhand=True)
+                    vis = s.apply(soln, vis, cross_pol=True)
                 logger.info('Averaging corrected auto-corr data for %s:', target_name)
                 av_vis = vis
                 av_flags = s.auto_ant.tf.cross_pol.flags
                 av_weights = s.auto_ant.tf.cross_pol.weights
                 if av_vis.shape[1] > 1024:
-                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
-                                                                             av_flags,
-                                                                             av_weights,
-                                                                             chanav=av_vis.shape[1]
-                                                                             // 1024)
+                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(
+                        av_vis, av_flags, av_weights, chanav=av_vis.shape[1] // 1024)
                 av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
                 av_corr['auto_cross'].insert(0, av_vis.compute())
                 av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))

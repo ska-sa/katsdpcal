@@ -455,15 +455,15 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             for ai in range(num_ants):
                 k = vis_k[..., (corrprod_lookup == (ai, refant)).all(axis=1)]
                 if k.size > 0:
-                    coarse_k[ai] = np.squeeze(-1.0 * k)
+                    coarse_k[ai] = np.squeeze(k)
                 k = vis_k[..., (corrprod_lookup == (refant, ai)).all(axis=1)]
                 if k.size > 0:
-                    coarse_k[ai] = np.squeeze(k)
+                    coarse_k[ai] = np.squeeze(-1.0 * k)
 
             # apply coarse K values to the data and solve for bandpass
             # The baseline delay is calculated as delay(ant2) - delay(ant1)
             bl_delays = np.diff(coarse_k[corrprod_lookup])
-            good_pol_data *= np.exp(-2j * np.pi * np.outer(chans, bl_delays))
+            good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
 
             # Set weights of flagged data to zero,
             # this allows stefcal to ignore flagged antennas

@@ -72,10 +72,11 @@ class CalSolutionStore(object):
         parts = list(self._values.irange_key(start_time, end_time))
         if len(parts) > 0:
             values = np.stack([part.values for part in parts])
-            times = np.array([part.time for part in parts])
-            return CalSolutions(self.soltype, values, times)
         else:
-            return None
+            values = np.array([])
+        times = np.array([part.time for part in parts])
+        return CalSolutions(self.soltype, values, times)
+
 
 class CalSolutionStoreLatest(object):
     """Tracks the latest value of a calibration solution.
