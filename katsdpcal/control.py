@@ -1054,6 +1054,7 @@ class Sender(Task):
         self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
         cal_name = telstate_cal.prefixes[0][:-1]
         self.telstate_flags.add('src_streams', [cal_name], immutable=True)
+        self.telstate_flags.add('stream_type', 'sdp.flags')
 
     def get_sensors(self):
         return [
