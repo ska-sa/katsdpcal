@@ -56,7 +56,8 @@ class TestFinaliseParameters(unittest.TestCase):
             'rfi_targ_spike_width_freq': 20.0,
             'rfi_calib_spike_width_freq': 10.0,
             'rfi_spike_width_time': 100.0,
-            'rfi_extend_freq': 3
+            'rfi_extend_freq': 3,
+            'rfi_freq_chunks': 8
         }
 
         self.antenna_names = ['m001', 'm002', 'm004', 'm006']
@@ -111,6 +112,7 @@ class TestFinaliseParameters(unittest.TestCase):
         self.assertEqual(402, parameters['k_echan'])
         self.assertEqual(202, parameters['g_bchan'])
         self.assertEqual(402, parameters['g_echan'])
+        self.assertEqual(2, parameters['rfi_freq_chunks'])
         # bls_ordering, pol_ordering, bls_lookup get tested elsewhere
 
     def test_rfi_mask(self):
