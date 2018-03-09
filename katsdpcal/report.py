@@ -1029,7 +1029,7 @@ def calc_enu_sep(antennas, bls_lookup):
 # This is required as pylab is not multithreading safe, it only required to run
 # unit tests which run several servers in a single process. Real use runs the
 # servers in separate processes.
-lock = threading.Lock()
+_lock = threading.Lock()
 
 
 def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, av_corr,
@@ -1066,7 +1066,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
     # --------------------------------------------------------------------
     # write heading
-    with lock:
+    with _lock:
         with rstReport(report_file, 'w') as cal_rst:
             cal_rst.write_heading_0('Calibration pipeline report')
 
