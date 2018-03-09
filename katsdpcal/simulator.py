@@ -183,8 +183,8 @@ class SimData(object):
 
         for key, value in sorted(time_dict.items()):
             logger.info('Setting %s', key)
-            for idx, sensor_time in enumerate(value['timestamp']):
-                telstate.add(key, value['value'][idx], ts=sensor_time)
+            for t, v in zip(value['timestamp'], value['value']):
+                telstate.add(key, v, ts=t)
 
     def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
         """
