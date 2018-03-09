@@ -1,5 +1,6 @@
 import time
 import logging
+import threading
 
 import numpy as np
 import dask.array as da
@@ -45,13 +46,15 @@ def init_flagger(parameters, dump_period):
                                         spike_width_time=spike_width_time,
                                         spike_width_freq=parameters['rfi_calib_spike_width_freq'],
                                         average_freq=parameters['rfi_average_freq'],
-                                        freq_extend=parameters['rfi_extend_freq'])
+                                        freq_extend=parameters['rfi_extend_freq'],
+                                        freq_chunks=parameters['rfi_freq_chunks'])
     targ_flagger = SumThresholdFlagger(outlier_nsigma=parameters['rfi_targ_nsigma'],
                                        windows_freq=rfi_windows_freq,
                                        spike_width_time=spike_width_time,
                                        spike_width_freq=parameters['rfi_targ_spike_width_freq'],
                                        average_freq=parameters['rfi_average_freq'],
-                                       freq_extend=parameters['rfi_extend_freq'])
+                                       freq_extend=parameters['rfi_extend_freq'],
+                                       freq_chunks=parameters['rfi_freq_chunks'])
     return calib_flagger, targ_flagger
 
 
@@ -161,7 +164,9 @@ def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
     return solns_to_apply
 
 
-_shared_solve_seq = 0
+# For real use it doesn't need to be thread-local, but the unit test runs
+# several servers in the same process.
+_shared_solve_seq = threading.local()
 
 
 def save_solution(telstate, key, solution_store, soln):
@@ -221,13 +226,17 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     # values.
     def add_info(info):
         telstate.add(shared_key, info, immutable=True)
+        logger.debug('Added shared key %s', shared_key)
 
-    global _shared_solve_seq
     if '_seq' in kwargs:
         seq = kwargs.pop('_seq')
     else:
-        seq = _shared_solve_seq
-        _shared_solve_seq += 1
+        try:
+            seq = _shared_solve_seq.value
+        except AttributeError:
+            # First use
+            seq = 0
+        _shared_solve_seq.value = seq + 1
     shared_key = 'shared_solve_{}'.format(seq)
 
     if solution_store is not None:
@@ -258,8 +267,10 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
             return soln
     else:
         assert echan <= 0 or bchan >= n_chans, 'partial channel overlap'
+        logger.debug('Waiting for shared key %s', shared_key)
         telstate.wait_key(shared_key)
         info = telstate[shared_key]
+        logger.debug('Found shared key %s', shared_key)
         if info[0] == 'Exception':
             raise info[1]
         elif info[0] == 'CalSolution':
