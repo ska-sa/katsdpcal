@@ -70,7 +70,10 @@ class CalSolutionStore(object):
         The returned values are combined into a :class:`CalSolutions`.
         """
         parts = list(self._values.irange_key(start_time, end_time))
-        values = np.stack([part.values for part in parts])
+        if len(parts) > 0:
+            values = np.stack([part.values for part in parts])
+        else:
+            values = np.array([])
         times = np.array([part.time for part in parts])
         return CalSolutions(self.soltype, values, times)
 

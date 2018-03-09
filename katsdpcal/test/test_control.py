@@ -292,6 +292,7 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'h', b + 'v'))
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
+        telstate.add('sub_band', 'l', immutable=True)
         telstate_l0.add('int_time', 4.0, immutable=True)
         telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
         telstate_l0.add('n_bls', len(bls_ordering), immutable=True)
@@ -534,7 +535,9 @@ class TestCalDeviceServer(unittest.TestCase):
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
-
+        for antenna in self.antennas:
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              0, ts)
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
@@ -734,7 +737,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
         for i in range(240):
-            yield tornado.gen.sleep(0.5)
+            yield tornado.gen.sleep(1)
             heaps = (yield self.get_sensor('input-heaps-total'))
             total_heaps = sum(int(x) for x in heaps)
             if total_heaps == n_times * self.n_substreams:
