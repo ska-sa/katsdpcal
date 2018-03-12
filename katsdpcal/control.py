@@ -10,6 +10,7 @@ import cProfile
 import json
 
 import spead2
+import spead2.recv
 import spead2.recv.trollius
 import spead2.send
 
@@ -368,6 +369,10 @@ class Accumulator(object):
                 'number of L0 heaps received',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
+                'input-incomplete-heaps-total',
+                'number of incomplete L0 heaps received',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
                 'slots',
                 'total number of buffer slots',
                 default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
@@ -483,7 +488,8 @@ class Accumulator(object):
         logger.info('Initializing SPEAD receiver')
         rx = spead2.recv.trollius.Stream(
             self._thread_pool,
-            max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams)
+            max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams,
+            contiguous_only=False)
         rx.set_memory_allocator(self._memory_pool)
         rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
         rx.stop_on_stop_item = False
@@ -500,6 +506,7 @@ class Accumulator(object):
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['input-bytes-total'].set_value(0)
         self.sensors['input-heaps-total'].set_value(0)
+        self.sensors['input-incomplete-heaps-total'].set_value(0)
 
     @trollius.coroutine
     def capture_done(self):
@@ -616,6 +623,11 @@ class Accumulator(object):
             heap = yield From(rx.get())
             if heap.is_end_of_stream():
                 raise Return({})
+            if isinstance(heap, spead2.recv.IncompleteHeap):
+                logger.debug('dropped incomplete heap %d (%d/%d bytes of payload)',
+                             heap.cnt, heap.received_length, heap.heap_length)
+                _inc_sensor(self.sensors['input-incomplete-heaps-total'], 1)
+                continue
             updated = ig.update(heap)
             if not updated:
                 logger.info('==== empty heap received ====')
