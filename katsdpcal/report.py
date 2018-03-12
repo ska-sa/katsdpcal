@@ -1,6 +1,7 @@
 import os
 import logging
 import datetime
+import threading
 
 from . import plotting
 from . import calprocs
@@ -1093,6 +1094,12 @@ def calc_enu_sep(antennas, bls_lookup):
     return sep
 
 
+# This is required as pylab is not multithreading safe, it only required to run
+# unit tests which run several servers in a single process. Real use runs the
+# servers in separate processes.
+_lock = threading.Lock()
+
+
 def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, av_corr,
                     st=None, et=None):
     """
@@ -1127,85 +1134,87 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
     # --------------------------------------------------------------------
     # write heading
-    with rstReport(report_file, 'w') as cal_rst:
-        cal_rst.write_heading_0('Calibration pipeline report')
+    with _lock:
+        with rstReport(report_file, 'w') as cal_rst:
+            cal_rst.write_heading_0('Calibration pipeline report')
 
-        # --------------------------------------------------------------------
-        # write observation summary info
-        cal_rst.write_heading_1('Observation summary')
-        cal_rst.writeln('Capture block: {}'.format(capture_block_id))
-        cal_rst.writeln()
-        cal_rst.writeln('Stream: {}'.format(stream_name))
-        cal_rst.writeln()
-        unique_targets = list(set(av_corr['targets']))
-        write_summary(cal_rst, ts, stream_name, parameters, unique_targets, st=st, et=et)
+            # --------------------------------------------------------------------
+            # write observation summary info
+            cal_rst.write_heading_1('Observation summary')
+            cal_rst.writeln('Capture block: {}'.format(capture_block_id))
+            cal_rst.writeln()
+            cal_rst.writeln('Stream: {}'.format(stream_name))
+            cal_rst.writeln()
+            unique_targets = list(set(av_corr['targets']))
+            write_summary(cal_rst, ts, stream_name, parameters, unique_targets, st=st, et=et)
 
-        # Plot elevation vs time for reference antenna
-        refant_index = parameters['refant_index']
-        antennas = parameters['antennas']
-        if len(av_corr['targets']) > 0:
-            write_elevation(cal_rst, report_path, unique_targets, antennas[refant_index], av_corr)
+            # Plot elevation vs time for reference antenna
+            refant_index = parameters['refant_index']
+            antennas = parameters['antennas']
+            if len(av_corr['targets']) > 0:
+                write_elevation(cal_rst, report_path, unique_targets,
+                                antennas[refant_index], av_corr)
 
-        # -------------------------------------------------------------------
-        # write RFI summary
-        cal_rst.write_heading_1('RFI and Flagging summary')
+            # -------------------------------------------------------------------
+            # write RFI summary
+            cal_rst.write_heading_1('RFI and Flagging summary')
 
-        correlator_freq = parameters['channel_freqs'] / 1e6
-        cal_bls_lookup = parameters['bls_lookup']
-        pol = [_[0].upper() for _ in parameters['pol_ordering']]
-        if len(av_corr['targets']) > 0:
-            dist = calc_enu_sep(antennas, cal_bls_lookup)
-            write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq, pol)
-        else:
-            logger.info(' - no calibrated data')
+            correlator_freq = parameters['channel_freqs'] / 1e6
+            cal_bls_lookup = parameters['bls_lookup']
+            pol = [_[0].upper() for _ in parameters['pol_ordering']]
+            if len(av_corr['targets']) > 0:
+                dist = calc_enu_sep(antennas, cal_bls_lookup)
+                write_flag_summary(cal_rst, report_path, av_corr, dist, correlator_freq, pol)
+            else:
+                logger.info(' - no calibrated data')
 
-        # --------------------------------------------------------------------
-        # add cal products to report
-        antenna_names = parameters['antenna_names']
-        write_products(cal_rst, report_path, ts, parameters,
-                       st, et, antenna_names, correlator_freq, pol)
-        logger.info('Calibration solution summary')
+            # --------------------------------------------------------------------
+            # add cal products to report
+            antenna_names = parameters['antenna_names']
+            write_products(cal_rst, report_path, ts, parameters,
+                           st, et, antenna_names, correlator_freq, pol)
+            logger.info('Calibration solution summary')
 
-        # Corrected data : HV delay Noise Diode
-        write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
-                 pol=[pol[0]+pol[1], pol[1]+pol[0]])
-        # --------------------------------------------------------------------
-        # Corrected data : Calibrators
-        cal_rst.write_heading_1('Calibrator Summary Plots')
+            # Corrected data : HV delay Noise Diode
+            write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
+                     pol=[pol[0]+pol[1], pol[1]+pol[0]])
+            # --------------------------------------------------------------------
+            # Corrected data : Calibrators
+            cal_rst.write_heading_1('Calibrator Summary Plots')
 
-        # Split observed targets into different types of sources,
-        # according to their pipeline tags
-        nogain, gain, target = split_targets(unique_targets)
+            # Split observed targets into different types of sources,
+            # according to their pipeline tags
+            nogain, gain, target = split_targets(unique_targets)
 
-        # For calibrators which do not have gains applied by the pipeline
-        # plot the baselines to the reference antenna for each timestamp
-        # get idx of baselines to refant
-        ant_idx = np.where((
-            (cal_bls_lookup[:, 0] == refant_index)
-            | (cal_bls_lookup[:, 1] == refant_index))
-            & ((cal_bls_lookup[:, 0] != cal_bls_lookup[:, 1])))[0]
+            # For calibrators which do not have gains applied by the pipeline
+            # plot the baselines to the reference antenna for each timestamp
+            # get idx of baselines to refant
+            ant_idx = np.where((
+                (cal_bls_lookup[:, 0] == refant_index)
+                | (cal_bls_lookup[:, 1] == refant_index))
+                & ((cal_bls_lookup[:, 0] != cal_bls_lookup[:, 1])))[0]
 
-        write_ng_freq(cal_rst, report_path, nogain, av_corr, ant_idx,
-                      refant_index, antenna_names, correlator_freq, pol)
-        write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
-                     cal_bls_lookup, correlator_freq, True, pol)
-        write_g_time(cal_rst, report_path, gain, av_corr, antenna_names, cal_bls_lookup, pol)
+            write_ng_freq(cal_rst, report_path, nogain, av_corr, ant_idx,
+                          refant_index, antenna_names, correlator_freq, pol)
+            write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
+                         cal_bls_lookup, correlator_freq, True, pol)
+            write_g_time(cal_rst, report_path, gain, av_corr, antenna_names, cal_bls_lookup, pol)
 
-        cal_array_position = parameters['array_position']
-        write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
-                   antennas, cal_array_position, correlator_freq, True, pol=pol)
+            cal_array_position = parameters['array_position']
+            write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
+                       antennas, cal_array_position, correlator_freq, True, pol=pol)
 
-        # --------------------------------------------------------------------
-        # Corrected data : Targets
-        cal_rst.write_heading_1('Calibrated Target Fields')
-        write_g_freq(cal_rst, report_path, target, av_corr, antenna_names,
-                     cal_bls_lookup, correlator_freq, False, pol=pol)
-        write_g_uv(cal_rst, report_path, target, av_corr, cal_bls_lookup,
-                   antennas, cal_array_position, correlator_freq, False, pol=pol)
+            # --------------------------------------------------------------------
+            # Corrected data : Targets
+            cal_rst.write_heading_1('Calibrated Target Fields')
+            write_g_freq(cal_rst, report_path, target, av_corr, antenna_names,
+                         cal_bls_lookup, correlator_freq, False, pol=pol)
+            write_g_uv(cal_rst, report_path, target, av_corr, cal_bls_lookup,
+                       antennas, cal_array_position, correlator_freq, False, pol=pol)
 
-        cal_rst.writeln()
+            cal_rst.writeln()
 
-    # convert to html
-    report_file_html = os.path.join(report_path, 'calreport.html')
-    publish_file(source_path=report_file, destination_path=report_file_html,
-                 writer_name='html')
+        # convert to html
+        report_file_html = os.path.join(report_path, 'calreport.html')
+        publish_file(source_path=report_file, destination_path=report_file_html,
+                     writer_name='html')
