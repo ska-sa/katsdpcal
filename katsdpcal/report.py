@@ -1175,6 +1175,9 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                            st, et, antenna_names, correlator_freq, pol)
             logger.info('Calibration solution summary')
 
+            # Corrected data : HV delay Noise Diode
+            write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
+                     pol=[pol[0]+pol[1], pol[1]+pol[0]])
             # --------------------------------------------------------------------
             # Corrected data : Calibrators
             cal_rst.write_heading_1('Calibrator Summary Plots')
