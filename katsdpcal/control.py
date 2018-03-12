@@ -830,6 +830,8 @@ class Accumulator(object):
                         break
                     slots.append(slot)
                     slot_for_index[idx] = slot
+                    self.buffers['times'][slot] = data_ts
+                    self.buffers['dump_indices'][slot] = idx
                     old_state = new_state
                     last_idx = idx
                 if stopped:
@@ -859,10 +861,6 @@ class Accumulator(object):
                 weights = ig['weights'].value[src_subset]
                 self._update_buffer(self.buffers['weights'][slot, trg_subset],
                                     weights * weights_channel, self.ordering)
-            # These will get overwritten on each heap of the dump, but that
-            # should be harmless.
-            self.buffers['times'][slot] = data_ts
-            self.buffers['dump_indices'][slot] = data_idx
             heap_nbytes = 0
             for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
                 heap_nbytes += ig[field].value.nbytes

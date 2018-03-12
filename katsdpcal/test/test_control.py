@@ -810,6 +810,8 @@ class TestCalDeviceServer(unittest.TestCase):
                     expected = expected[..., np.newaxis, np.newaxis]  # Add pol, baseline axes
                     expected = np.broadcast_to(expected, weights.shape)
                     np.testing.assert_equal(weights, expected)
+            assert_equal(buffers['dump_indices'][t], t)
+            assert_equal(buffers['times'][t], 1400000100.0 + 4 * t)
 
     @async_test
     @tornado.gen.coroutine
