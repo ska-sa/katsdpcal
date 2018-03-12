@@ -182,7 +182,7 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     av_flags = da.stack(av_flags)
     av_weights = da.stack(av_weights)
 
-    if np.any(times):
+    if times is not None:
         av_times = np.array([np.average(times[ti:ti+solint], axis=0) for ti in inc_array])
         return av_data, av_flags, av_weights, av_times
     else:
