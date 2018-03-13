@@ -1027,7 +1027,8 @@ class Sender(Task):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate = telstate_cal.root()
         self.telstate_l0 = telstate.view(l0_name)
-        n_servers = parameters['servers']
+        self._n_servers = n_servers = parameters['servers']
+        self._server_id = parameters['server_id']
         if flags_endpoints is not None:
             n_endpoints = len(flags_endpoints)
             if n_endpoints != n_servers:
@@ -1088,6 +1089,7 @@ class Sender(Task):
             tx = spead2.send.UdpStream(
                 spead2.ThreadPool(), self.flags_endpoint.host, self.flags_endpoint.port,
                 config, ttl=1, interface_address=self.flags_interface_address)
+            tx.set_cnt_sequence(self._server_id, self._n_servers)
         else:
             tx = None
         # create SPEAD item group
