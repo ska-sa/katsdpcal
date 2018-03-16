@@ -537,7 +537,9 @@ class TestCalDeviceServer(unittest.TestCase):
         freqs = freqs[:, np.newaxis]
         for antenna in self.antennas:
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, ts)
+                              1, 1400000100 - 2 * 4)
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              0, 1400000100 + (n_times+2) * 4)
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
@@ -641,6 +643,14 @@ class TestCalDeviceServer(unittest.TestCase):
         ret_K, ret_K_ts = cal_product_K[0]
         assert_equal(np.float32, ret_K.dtype)
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
+
+        if 'bfcal' in target.tags:
+            cal_product_KCROSS_DIODE = telstate_cb.get_range('product_KCROSS_DIODE', st=0)
+            assert_equal(1, len(cal_product_KCROSS_DIODE))
+            ret_KCROSS_DIODE, ret_KCROSS_DIODE_ts = cal_product_KCROSS_DIODE[0]
+            assert_equal(np.float32, ret_KCROSS_DIODE.dtype)
+            np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
+                                       ret_KCROSS_DIODE, rtol=1e-3)
 
         # Check that flags were transmitted
         assert_equal(set(self.output_streams.keys()), set(self.flags_endpoints))
