@@ -452,6 +452,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
 
         # BEAMFORMER
         if any('bfcal' in k for k in taglist):
+            logger.info('Calibrator flagging, auto-correlations')
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross=True, ac=True)
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
@@ -500,7 +502,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
 
                 # apply solutions and put corrected data into the av_corr dictionary
                 solns_to_apply.append(s.interpolate(kcross_soln))
-
                 vis = s.auto_ant.tf.cross_pol.vis
                 for soln in solns_to_apply:
                     vis = s.apply(soln, vis, cross_pol=True)

@@ -826,7 +826,7 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, cross=False):
+    def rfi(self, flagger, mask=None, cross=False, ac=False):
         """Detect flags in the visibilities. Detected flags
         are added to the cal_rfi bit of the flag array.
         Optionally provide a channel mask, which is added to
@@ -841,15 +841,24 @@ class Scan(object):
         cross : boolean, optional
             If True, flag the cross-pol data, otherwise
             flag single-pol data (default).
+        cross : boolean, optional
+            If True, flag the auto_ant data, otherwise
+            flag cross_ant data (default).
         """
-        if cross:
-            self.logger.info('  - Flag cross-pols')
-            data = self.cross_ant.pb.cross_pol
-            orig = self.cross_ant.orig.cross_pol
+        if ac:
+            scandata = self.auto_ant
+            label = ', auto-corrs'
         else:
-            self.logger.info('  - Flag single-pols')
-            data = self.cross_ant.pb.auto_pol
-            orig = self.cross_ant.orig.auto_pol
+            scandata = self.cross_ant
+            label = ''
+        if cross:
+            self.logger.info('  - Flag cross-pols%s', label)
+            data = scandata.pb.cross_pol
+            orig = scandata.orig.cross_pol
+        else:
+            self.logger.info('  - Flag single-pols%s', label)
+            data = scandata.pb.auto_pol
+            orig = scandata.orig.auto_pol
         vis = data.vis
         flags = data.flags
 
@@ -879,9 +888,9 @@ class Scan(object):
         inplace.rename(orig.flags)
         self.cross_ant.reset_chunked()
         if cross:
-            flags = self.cross_ant.tf.cross_pol.flags
+            flags = scandata.tf.cross_pol.flags
         else:
-            flags = self.cross_ant.tf.auto_pol.flags
+            flags = scandata.tf.auto_pol.flags
         # Count the new flags
         self.logger.info('  - New flags: %.3f%%',
                          (da.sum(calprocs.asbool(flags)) / total_size).compute())
