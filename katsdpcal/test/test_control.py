@@ -206,7 +206,7 @@ class MockRecvStream(mock.MagicMock):
             raise spead2.Stopped()
         raise Return(heap)
 
-    def add_udp_reader(self, port, bind_hostname):
+    def add_udp_reader(self, port, bind_hostname, buffer_size=None):
         self._endpoints.add(Endpoint(bind_hostname, port))
 
     def stop(self):
