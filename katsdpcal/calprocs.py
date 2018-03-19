@@ -184,7 +184,7 @@ def get_bl_ant_pairs(corrprod_lookup):
 
 @numba.guvectorize(['c8[:], int_[:], int_[:], f4[:], int_[:], c8[:], int_[:], f4[:], c8[:]',
                     'c16[:], int_[:], int_[:], f8[:], int_[:], c16[:], int_[:], f8[:], c16[:]'],
-                   '(n),(n),(n),(n),(),(a),(),()->(a)', nopython=True)
+                   '(n),(n),(n),(n),(),(a),(),()->(a)', nopython=True, cache=True)
 def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, conv_thresh, g):
     ref_ant2 = max(ref_ant[0], 0)
     num_ants = init_gain.shape[0]
