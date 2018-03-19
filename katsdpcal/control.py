@@ -373,6 +373,10 @@ class Accumulator(object):
                 'number of incomplete L0 heaps received',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
+                'input-too-old-heaps-total',
+                'number of L0 heaps rejected because they are too late',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
                 'slots',
                 'total number of buffer slots',
                 default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
@@ -507,6 +511,7 @@ class Accumulator(object):
         self.sensors['input-bytes-total'].set_value(0)
         self.sensors['input-heaps-total'].set_value(0)
         self.sensors['input-incomplete-heaps-total'].set_value(0)
+        self.sensors['input-too-old-heaps-total'].set_value(0)
 
     @trollius.coroutine
     def capture_done(self):
@@ -626,7 +631,8 @@ class Accumulator(object):
             if isinstance(heap, spead2.recv.IncompleteHeap):
                 logger.debug('dropped incomplete heap %d (%d/%d bytes of payload)',
                              heap.cnt, heap.received_length, heap.heap_length)
-                _inc_sensor(self.sensors['input-incomplete-heaps-total'], 1)
+                _inc_sensor(self.sensors['input-incomplete-heaps-total'], 1,
+                            status=katcp.Sensor.WARN)
                 continue
             updated = ig.update(heap)
             if not updated:
@@ -800,6 +806,8 @@ class Accumulator(object):
                 except KeyError:
                     logger.warning('Dump index went backwards (%d < %d), skipping heap',
                                    data_idx, last_idx)
+                    _inc_sensor(self.sensors['input-too-old-heaps-total'], 1,
+                                status=katcp.Sensor.WARN)
                     continue
             else:
                 # Create slots for all entries we haven't seen yet
