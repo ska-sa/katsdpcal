@@ -788,9 +788,6 @@ class Accumulator(object):
             slot = yield From(self._next_slot())
             if slot is None:
                 logger.info('Accumulation interrupted while waiting for a slot')
-                # Actually want to break out of the while True loop,
-                # but Python doesn't have labelled breaks, so set a
-                # flag.
                 raise Return(False)
             self._slots.append(slot)
             self._slot_for_index[idx] = slot
