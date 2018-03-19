@@ -886,6 +886,29 @@ class Accumulator(object):
             _inc_sensor(self.sensors['input-bytes-total'], heap_nbytes, timestamp=now)
             _inc_sensor(self.sensors['input-heaps-total'], 1, timestamp=now)
 
+        # Need to ensure that all parallel cal servers get the same number of
+        # dumps, and hence the same batches. Record the last index of each,
+        # exchange, and take the largest.
+        max_idx = self._last_idx
+        loop = trollius.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(1) as executor:
+            server_id = self.parameters['server_id']
+            n_servers = self.parameters['servers']
+            self.telstate_cb.add('last_dump_index{}'.format(server_id), self._last_idx,
+                                 immutable=True)
+            for i in range(n_servers):
+                if i != server_id:
+                    key = 'last_dump_index{}'.format(i)
+                    logger.debug('Waiting for %s', key)
+                    yield From(loop.run_in_executor(executor, self.telstate_cb.wait_key, key))
+                    other_last_idx = self.telstate_cb[key]
+                    logger.debug('Got %s = %d', key, other_last_idx)
+                    max_idx = max(max_idx, other_last_idx)
+        if max_idx > self._last_idx:
+            logger.info('Adding %d extra slots to align end of observation',
+                        max_idx - self._last_idx)
+            yield From(self._ensure_slots(max_idx))
+
         # Flush out the final batch
         self._flush_slots()
         logger.info('Accumulation ended')

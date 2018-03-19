@@ -416,10 +416,11 @@ class TestCalDeviceServer(unittest.TestCase):
         informs : list of lists
             Informs returned with the reply from each server
         """
+        futures = [server.client.future_request(katcp.Message.request(name, *args), **kwargs)
+                   for server in self.servers]
+        results = yield futures
         all_informs = []
-        for server in self.servers:
-            reply, informs = yield server.client.future_request(
-                katcp.Message.request(name, *args), **kwargs)
+        for reply, informs in results:
             assert_true(reply.reply_ok(), str(reply))
             all_informs.append(informs)
         raise tornado.gen.Return(all_informs)
@@ -761,14 +762,14 @@ class TestCalDeviceServer(unittest.TestCase):
         for antenna in self.antennas:
             self.telstate.add('{}_activity'.format(antenna), 'slew', ts=1.0)
 
-        n_times = 6
+        n_times = 7
         # Each element is actually an (endpoint, heap) pair
         heaps = self.prepare_heaps(None, n_times)
         # Drop some heaps and delay others
         early_heaps = []
         late_heaps = []
         for heap, (t, s) in zip(heaps, itertools.product(range(n_times), range(self.n_substreams))):
-            if t == 2 or (t == 4 and s == 2):
+            if t == 2 or (t == 4 and s == 2) or (t == 6 and s < self.n_substreams // 2):
                 continue    # drop these completely
             elif s == 3:
                 late_heaps.append(heap)
@@ -799,7 +800,7 @@ class TestCalDeviceServer(unittest.TestCase):
                 channel0 = self.servers[server_id].parameters['channel_slice'].start
                 channel0 += channel_slice.start
                 flags = buffers['flags'][t, channel_slice]
-                if t == 2 or (t == 4 and s == 2):
+                if t == 2 or (t == 4 and s == 2) or (t == 6 and s < self.n_substreams // 2):
                     np.testing.assert_equal(flags, 2 ** control.FLAG_NAMES.index('data_lost'))
                 else:
                     np.testing.assert_equal(flags, 0)
