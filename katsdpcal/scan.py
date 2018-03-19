@@ -318,7 +318,7 @@ class Scan(object):
         return CalSolutions('G', g_soln, ave_times)
 
     @logsolutiontime
-    def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, ac=False):
+    def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, auto_ant=False):
         """
         Solve for cross hand delay offset, for full pol data sets (four polarisation products)
         *** doesn't currently use models ***
@@ -335,9 +335,9 @@ class Scan(object):
             calibration solutions to apply
         nd : :class:`np.ndarray` of bool, optional
             True for antennas with noise diode on, otherwise False.
-            If ac is True and nd is False for an antenna, set the solution
+            If auto_ant is True and nd is False for an antenna, set the solution
             for that antenna to NaN
-        ac : bool, optional
+        auto_ant : bool, optional
             if True solve for KCROSS_DIODE using auto-correlations, else solve for KCROSS
             using cross-correlations
 
@@ -347,7 +347,7 @@ class Scan(object):
             Cross hand polarisation delay offset CalSolution with soltype 'KCROSS', shape(pol, 1)
             or 'KCROSS_DIODE', shape (pol, nant). The second polarisation has delays set to zero.
         """
-        if ac:
+        if auto_ant:
             corr = self.auto_ant
             soln_type = 'KCROSS_DIODE'
         else:
@@ -369,7 +369,7 @@ class Scan(object):
                                                                      av_weights,
                                                                      chan_ave)
 
-        # solve for cross hand delay KCROSS_DIODE per antenna if ac is True, else
+        # solve for cross hand delay KCROSS_DIODE per antenna if auto_ant is True, else
         # average across all baselines and solve for a single KCROSS
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
         av_weights = da.sum(flagged_weights, axis=-2)
@@ -377,7 +377,7 @@ class Scan(object):
                   np.conjugate(weighted_data[:, 1, :]) /
                   av_weights)
 
-        if not ac:
+        if not auto_ant:
             av_flags = da.any(av_flags, axis=-2)
             av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights, axis=-1)
             # add antenna axis
@@ -394,8 +394,8 @@ class Scan(object):
                                      chan_sample=1)
         # set delay in the second polarisation axis to zero
         kcross_soln = np.vstack([kcross_soln, np.zeros_like(kcross_soln)])
-        # if ac is True set soln to NaN for antennas where the noise diode didn't fire
-        if nd is not None and ac:
+        # if auto_ant is True set soln to NaN for antennas where the noise diode didn't fire
+        if nd is not None and auto_ant:
             kcross_soln = np.where(~nd, np.nan, kcross_soln)
         return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
@@ -826,7 +826,7 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, cross=False):
+    def rfi(self, flagger, mask=None, cross_pol=False, auto_ant=False):
         """Detect flags in the visibilities. Detected flags
         are added to the cal_rfi bit of the flag array.
         Optionally provide a channel mask, which is added to
@@ -841,15 +841,24 @@ class Scan(object):
         cross : boolean, optional
             If True, flag the cross-pol data, otherwise
             flag single-pol data (default).
+        auto_ant : boolean, optional
+            If True, flag the auto_ant data, otherwise
+            flag cross_ant data (default).
         """
-        if cross:
-            self.logger.info('  - Flag cross-pols')
-            data = self.cross_ant.pb.cross_pol
-            orig = self.cross_ant.orig.cross_pol
+        if auto_ant:
+            scandata = self.auto_ant
+            label = ', auto-corrs'
         else:
-            self.logger.info('  - Flag single-pols')
-            data = self.cross_ant.pb.auto_pol
-            orig = self.cross_ant.orig.auto_pol
+            scandata = self.cross_ant
+            label = ''
+        if cross_pol:
+            self.logger.info('  - Flag cross-pols%s', label)
+            data = scandata.pb.cross_pol
+            orig = scandata.orig.cross_pol
+        else:
+            self.logger.info('  - Flag single-pols%s', label)
+            data = scandata.pb.auto_pol
+            orig = scandata.orig.auto_pol
         vis = data.vis
         flags = data.flags
 
@@ -878,10 +887,10 @@ class Scan(object):
         # Bust any caches of the old values
         inplace.rename(orig.flags)
         self.cross_ant.reset_chunked()
-        if cross:
-            flags = self.cross_ant.tf.cross_pol.flags
+        if cross_pol:
+            flags = scandata.tf.cross_pol.flags
         else:
-            flags = self.cross_ant.tf.auto_pol.flags
+            flags = scandata.tf.auto_pol.flags
         # Count the new flags
         self.logger.info('  - New flags: %.3f%%',
                          (da.sum(calprocs.asbool(flags)) / total_size).compute())
