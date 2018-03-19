@@ -316,9 +316,8 @@ class Accumulator(object):
         # Free space tracking
         self._free_slots = deque(range(buffer_shape[0]))
         self._slots_cond = trollius.Condition()  # Signalled when new slots are available
-        # Whether a capture session is active. However, it is set to false as soon as
-        # capture_done is entered, before the _run_future is actually yielded.
-        self._running = False
+        # Set if stop(force=True) is called, to abort waiting for an available slot
+        self._force_stopping = False
         # Enforce only one capture_done at a time
         self._done_lock = trollius.Lock()
 
@@ -410,7 +409,7 @@ class Accumulator(object):
     def _next_slot(self):
         wait_sensor = self.sensors['accumulator-last-wait']
         with (yield From(self._slots_cond)):
-            if not self._running:
+            if self._force_stopping:
                 raise Return(None)
             elif self._free_slots:
                 wait_sensor.set_value(0.0)
@@ -418,9 +417,9 @@ class Accumulator(object):
                 logger.warn('no slots available - waiting for pipeline to return buffers')
                 loop = trollius.get_event_loop()
                 now = loop.time()
-                while self._running and not self._free_slots:
+                while not self._force_stopping and not self._free_slots:
                     yield From(self._slots_cond.wait())
-                if not self._running:
+                if self._force_stopping:
                     raise Return(None)
                 elapsed = loop.time() - now
                 logger.info('slot acquired')
@@ -481,7 +480,6 @@ class Accumulator(object):
     def capture_init(self, capture_block_id):
         assert self._rx is None, "observation already running"
         assert self._run_future is None, "inconsistent state"
-        assert not self._running, "inconsistent state"
         logger.info('===========================')
         logger.info('   Starting new observation')
         # Prepend the CBID to the cal_name to form a new namespace
@@ -508,7 +506,6 @@ class Accumulator(object):
         logger.info('reader added')
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(capture_block_id))
-        self._running = True
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['input-bytes-total'].set_value(0)
         self.sensors['input-heaps-total'].set_value(0)
@@ -524,13 +521,9 @@ class Accumulator(object):
             # Give it a chance to stop on its own (from stop heaps)
             logger.info('Waiting for capture to finish (5s timeout)...')
             done, _ = yield From(trollius.wait([self._run_future], timeout=5))
-            self._running = False
             if future not in done:
                 logger.info('Stopping receiver')
                 self._rx.stop()
-                with (yield From(self._slots_cond)):
-                    # Interrupts wait for free slot, if any
-                    self._slots_cond.notify()
                 logger.info('Waiting for capture to finish...')
                 yield From(self._run_future)
             logger.info('Joined with _run_observation')
@@ -547,11 +540,17 @@ class Accumulator(object):
         terminated, and it does not try to wake it up; otherwise it sends
         it a stop event.
         """
+        if force:
+            self._force_stopping = True
+            with (yield From(self._slots_cond)):
+                # Interrupts wait for free slot, if any
+                self._slots_cond.notify()
+
         if self._run_future is not None:
             yield From(self.capture_done())
-        if not force:
-            if self.accum_pipeline_queue is not None:
-                self.accum_pipeline_queue.put(StopEvent())
+
+        if not force and self.accum_pipeline_queue is not None:
+            self.accum_pipeline_queue.put(StopEvent())
         self.accum_pipeline_queue = None    # Make safe for concurrent calls to stop
         if self._thread_pool is not None:
             self._thread_pool.stop()
@@ -1151,7 +1150,8 @@ class Sender(Task):
                         tx.send_heap(ig.get_heap(data='all', descriptors='all'))
                         now = time.time()
                         _inc_sensor(self.sensors['output-heaps-total'], 1, timestamp=now)
-                        _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes, timestamp=now)
+                        _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes,
+                                    timestamp=now)
                         self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
@@ -1363,7 +1363,10 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             self._stopping = True
             if force:
-                logger.warn('Forced shutdown - data may be lost')
+                if self._capture_block_state:
+                    logger.warn('Forced shutdown with active capture blocks - data may be lost')
+                else:
+                    logger.info('Forced shutdown, no active capture blocks')
             else:
                 logger.info('Shutting down gracefully')
             if not force:
@@ -1408,6 +1411,8 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             If true, terminate processes immediately rather than waiting for
             them to finish pending work. This can cause data loss!
         """
+        if self._stopping and not force:
+            raise tornado.gen.Return(('fail', 'server is already shutting down'))
         yield to_tornado_future(trollius.ensure_future(self.shutdown(force, req)))
         raise tornado.gen.Return(('ok',))
 
