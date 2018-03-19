@@ -500,9 +500,11 @@ class Accumulator(object):
         for l0_endpoint in self.l0_endpoints:
             if self.l0_interface_address is not None:
                 rx.add_udp_reader(l0_endpoint.host, l0_endpoint.port,
-                                  interface_address=self.l0_interface_address)
+                                  interface_address=self.l0_interface_address,
+                                  buffer_size=64 * 1024**2)
             else:
-                rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host)
+                rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host,
+                                  buffer_size=64 * 1024**2)
         logger.info('reader added')
         self._rx = rx
         self._run_future = trollius.ensure_future(self._run_observation(capture_block_id))
