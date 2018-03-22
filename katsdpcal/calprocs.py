@@ -476,7 +476,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
         # else assume solution is ac
         else:
             coarse_k = vis_k
-            bpass = good_pol_data * np.exp(-2j * np.pi * np.outer(chans, coarse_k))
+            bpass = pol_data * np.exp(-2j * np.pi * np.outer(chans, coarse_k))
 
         # find slope of the residual bandpass
         delta_k = np.empty_like(coarse_k)
