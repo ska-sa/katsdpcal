@@ -494,7 +494,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
                 elif s.ac_mask.size == 0:
                     logger.info("No AC data, can't solve for KCROSS_DIODE without AC data")
                 else:
-                    solns_to_apply.append(s.interpolate(g_soln))
+                    solns_to_apply = [s.interpolate(k_soln)]
                     kcross_soln = shared_solve(ts, parameters, solution_stores['KCROSS_DIODE'],
                                                parameters['k_bchan'], parameters['k_echan'],
                                                s.kcross_sol, pre_apply=solns_to_apply,
