@@ -397,6 +397,10 @@ def time_xtick_fmt(ax, timerange):
         if timerange[0] == timerange[-1]:
             low = md.date2num(timerange[0] - datetime.timedelta(seconds=10))
             high = md.date2num(timerange[-1] + datetime.timedelta(seconds=10))
+        else:
+            plotrange = md.date2num(timerange[-1]) - md.date2num(timerange[0])
+            low = md.date2num(timerange[0]) - 0.05*plotrange
+            high = md.date2num(timerange[-1]) + 0.05*plotrange
             a.set_xlim(low, high)
         a.xaxis.set_major_formatter(xfmt)
 

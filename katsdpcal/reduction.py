@@ -444,7 +444,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, parameters['rfi_mask'])
             # TODO: setup separate flagger for cross-pols
-            s.rfi(calib_flagger, parameters['rfi_mask'], cross=True)
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True)
 
         # run_t0 = time.time()
 
@@ -452,6 +452,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
 
         # BEAMFORMER
         if any('bfcal' in k for k in taglist):
+            logger.info('Calibrator flagging, auto-correlations')
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, auto_ant=True)
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
@@ -492,15 +494,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
                 elif s.ac_mask.size == 0:
                     logger.info("No AC data, can't solve for KCROSS_DIODE without AC data")
                 else:
-                    solns_to_apply.append(s.interpolate(g_soln))
+                    solns_to_apply = [s.interpolate(k_soln)]
                     kcross_soln = shared_solve(ts, parameters, solution_stores['KCROSS_DIODE'],
                                                parameters['k_bchan'], parameters['k_echan'],
                                                s.kcross_sol, pre_apply=solns_to_apply,
-                                               nd=nd_on, ac=True)
+                                               nd=nd_on, auto_ant=True)
 
                 # apply solutions and put corrected data into the av_corr dictionary
                 solns_to_apply.append(s.interpolate(kcross_soln))
-
                 vis = s.auto_ant.tf.cross_pol.vis
                 for soln in solns_to_apply:
                     vis = s.apply(soln, vis, cross_pol=True)
