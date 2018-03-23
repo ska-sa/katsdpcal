@@ -15,7 +15,7 @@ decorator
 distributed==1.21.0
 docutils
 enum34                  # for numba
-fakenewsredis           # for katsdptelstate
+fakeredis               # for katsdptelstate
 funcsigs                # for numba
 functools32             # for matplotlib
 future                  # for katcp
