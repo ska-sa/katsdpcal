@@ -380,7 +380,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     Returns
     -------
     kdelay : array of float, shape (num_pols, num_ants/data.shape[-1])
-        Delay solutions per antenna, in seconds
+        Delay solutions per antenna, in seconds (NaN if fit failed)
     """
     # OVER THE TOP NOTE:
     # This solver was written to deal with extreme gains, which can wrap many
@@ -478,16 +478,17 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             coarse_k = vis_k
             bpass = pol_data * np.exp(-2j * np.pi * np.outer(chans, coarse_k))
 
-        # find slope of the residual bandpass
-        delta_k = np.empty_like(coarse_k)
+        # Find slope of the residual bandpass, per antenna (defaults to NaN)
+        delta_k = np.full_like(coarse_k, np.nan)
         for i, bp in enumerate(bpass.T):
             # np.unwrap falls over in the case of bad RFI - robustify this later
-            # np.unwrap and np.linalg.lstsq will not work with NaNs,
-            # thus mask NaN values in these routines
+            # np.unwrap and np.linalg.lstsq will not work with NaNs, thus mask
+            # NaN values in these routines (but skip if everything is masked)
             valid = ~np.isnan(bp)
-            bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
-            A = np.array([chans[valid], np.ones(len(chans[valid]))])
-            delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
+            if any(valid):
+                bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
+                A = np.array([chans[valid], np.ones(len(chans[valid]))])
+                delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
 
