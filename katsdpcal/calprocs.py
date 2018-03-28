@@ -337,7 +337,7 @@ def ants_from_bllist(bllist):
     return len(set([item for sublist in bllist for item in sublist]))
 
 
-def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
+def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
     """
     Fit complex gains to visibility data.
 
@@ -353,7 +353,7 @@ def g_fit(data, corrprod_lookup, g0=None, refant=0, **kwargs):
     g_array : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_ants = ants_from_bllist(corrprod_lookup)
-    return stefcal(data, num_ants, corrprod_lookup,
+    return stefcal(data, num_ants, corrprod_lookup, weights=weights,
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 

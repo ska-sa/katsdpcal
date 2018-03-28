@@ -309,9 +309,12 @@ class Scan(object):
             fitvis, self.cross_ant.tf.auto_pol.flags[chan_slice],
             self.cross_ant.tf.auto_pol.weights[chan_slice], dumps_per_solint, times=self.timestamps)
         # secondly, average channels
+        _, flagged_weights = calprocs_dask.weight_data(ave_vis, ave_flags, ave_weights)
+        flagged_weights = da.sum(flagged_weights, axis=1)
         ave_vis = calprocs_dask.wavg(ave_vis, ave_flags, ave_weights, axis=1)
+
         # solve for gain
-        g_soln = calprocs.g_fit(ave_vis.compute(),
+        g_soln = calprocs.g_fit(ave_vis.compute(), flagged_weights.compute(),
                                 self.cross_ant.bls_lookup, g0,
                                 self.refant, **kwargs)
 
@@ -465,11 +468,13 @@ class Scan(object):
         fitvis = self._get_solver_model(modvis)
 
         # first average in time
-        ave_vis, ave_time = calprocs_dask.wavg(fitvis, self.cross_ant.tf.auto_pol.flags,
-                                               self.cross_ant.tf.auto_pol.weights,
-                                               times=self.timestamps, axis=0)
+        ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(fitvis,
+                                                                  self.cross_ant.tf.auto_pol.flags,
+                                                                  self.cross_ant.tf.auto_pol.weights)
+        ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
-        b_soln = calprocs_dask.bp_fit(ave_vis, self.cross_ant.bls_lookup, bp0).compute()
+        b_soln = calprocs_dask.bp_fit(ave_vis, ave_weights,
+                                      self.cross_ant.bls_lookup, bp0).compute()
 
         return CalSolution('B', b_soln, ave_time)
 

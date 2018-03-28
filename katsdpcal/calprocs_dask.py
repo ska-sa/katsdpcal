@@ -286,7 +286,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     return av_data, av_flags, av_weights
 
 
-def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
+def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
     """
     Fit bandpass to visibility data.
 
@@ -308,7 +308,7 @@ def bp_fit(data, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
-    bp = stefcal(data, n_ants, corrprod_lookup, num_iters=100,
+    bp = stefcal(data, n_ants, corrprod_lookup, weights=weights, num_iters=100,
                  init_gain=bp0, **kwargs)
     if normalise:
         # centre the phase on zero and scale the average amplitude to one
