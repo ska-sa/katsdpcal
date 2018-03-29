@@ -520,6 +520,7 @@ class SimDataMS(SimData):
         ig = send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.to_ut(self.file.getcell('TIME', 0)))
+        telstate_cb = telstate.view(self.cbid)
 
         time_ind = 0
         # send data scan by scan
@@ -547,7 +548,7 @@ class SimDataMS(SimData):
             scan_time = tscan.getcell('TIME', 0)
             scan_time_ut = self.to_ut(scan_time)
             telstate.add('cbf_target', target_desc, ts=scan_time_ut-random()*0.1)
-            telstate.add('obs_activity', scan_state, ts=scan_time_ut-random()*0.1)
+            telstate_cb.add('obs_activity', scan_state, ts=scan_time_ut-random()*0.1)
             n_ts = len(tscan.select('unique TIME'))
             logger.info('Scan %d/%d -- timestamps: %d -- %s %s',
                         scan_ind+1, max_scans, n_ts, scan_state, target_desc)
@@ -705,6 +706,7 @@ class SimDataKatdal(SimData):
         ig = send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.file.timestamps[0])
+        telstate_cb = telstate.view(self.cbid)
 
         for scan_ind, scan_state, target in self.file.scans():
             # update telescope state with scan information
@@ -712,7 +714,7 @@ class SimDataKatdal(SimData):
             #   slight differences in times of different sensors
             ts0 = self.file.timestamps[0]    # First timestamp in scan
             telstate.add('cbf_target', target.description, ts=ts0 - random()*0.1)
-            telstate.add('obs_activity', scan_state, ts=ts0 - random()*0.1)
+            telstate_cb.add('obs_activity', scan_state, ts=ts0 - random()*0.1)
             n_ts = len(self.file.timestamps)
             logger.info('Scan %d/%d -- timestamps: %d -- %s, %s',
                         scan_ind+1, max_scans, n_ts, scan_state, target.description)

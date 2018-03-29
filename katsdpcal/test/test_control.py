@@ -740,8 +740,9 @@ class TestCalDeviceServer(unittest.TestCase):
         slew_start = self.telstate.sdp_l0test_sync_time + 12.5 * self.telstate.sdp_l0test_int_time
         slew_end = slew_start + 2 * self.telstate.sdp_l0test_int_time
         self.telstate.add('cbf_target', target, ts=slew_start)
-        self.telstate.add('obs_activity', 'slew', ts=slew_start)
-        self.telstate.add('obs_activity', 'track', ts=slew_end)
+        telstate_cb = self.telstate.view('cb')
+        telstate_cb.add('obs_activity', 'slew', ts=slew_start)
+        telstate_cb.add('obs_activity', 'track', ts=slew_end)
         # Start the capture
         yield self.make_request('capture-init', 'cb')
         # Wait until all the heaps have been delivered, timing out eventually.
@@ -768,7 +769,8 @@ class TestCalDeviceServer(unittest.TestCase):
         Missing heaps are filled with data_lost.
         """
         # We want to prevent the pipeline fiddling with data in place.
-        self.telstate.add('obs_activity', 'slew', ts=1.0)
+        telstate_cb = self.telstate.view('cb')
+        telstate_cb.add('obs_activity', 'slew', ts=1.0)
         n_times = 7
         # Each element is actually an (endpoint, heap) pair
         heaps = self.prepare_heaps(None, n_times)
