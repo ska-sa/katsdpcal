@@ -57,14 +57,14 @@ def init_flagger(parameters, dump_period):
     return calib_flagger, targ_flagger
 
 
-def get_tracks(data, ts, dump_period):
+def get_tracks(data, telstate, dump_period):
     """Determine the start and end indices of each track segment in data buffer.
 
     Inputs
     ------
     data : dict
         Data buffer
-    ts : :class:`katsdptelstate.TelescopeState`
+    telstate : :class:`katsdptelstate.TelescopeState`
         The telescope state associated with this pipeline
     dump_period : float
         Dump period in seconds
@@ -75,39 +75,38 @@ def get_tracks(data, ts, dump_period):
         List of slices indicating dumps associated with each track in buffer
     """
     sensor_name = 'obs_activity'
-    cache = {sensor_name: TelstateSensorData(ts, sensor_name)}
+    cache = {sensor_name: TelstateSensorData(telstate, sensor_name)}
     sensors = SensorCache(cache, data['times'], dump_period, props=SENSOR_PROPS)
     activity = sensors.get(sensor_name)
     return [segment for (segment, a) in activity.segments() if a == 'track']
 
 
-def get_noise_diode(telstate, ant_names, time_range=[]):
-    """
-    For a given timerange check if the noise diode is on for
-    antennas in ant_names
+def check_noise_diode(telstate, ant_names, time_range):
+    """Check if the noise diode is on at all per antenna within the time range.
 
     Inputs
     ------
     telstate : :class:`katsdptelstate.TelescopeState`
-        telescope state
-    ant_names : list of str
-        names of antennas
-    time_range : list of float
-        timerange to check the noise diode is on for
+        Telescope state
+    ant_names : sequence of str
+        Antenna names
+    time_range : sequence of 2 floats
+        Time range as [start_time, end_time]
 
     Returns
     -------
-    nd_on : :class:`np.ndarray` of bool
-        True for antennas with noise diode on during time_range, otherwise False
+    nd_on : :class:`np.ndarray` of bool, shape (len(ant_names),)
+        True for each antenna with noise diode on at some time in `time_range`
     """
     sub_band = telstate['sub_band']
-    nd_key = '_dig_{0}_band_noise_diode'.format(sub_band)
-    nd_during = [telstate.get_range('{0}{1}'.format(a, nd_key),
-                 st=time_range[0], et=time_range[1], include_previous=True)
-                 for a in ant_names]
-
-    nd_on = [min(zip(*values)[0]) > 0 for values in nd_during]
-    return np.asarray(nd_on)
+    nd_key = 'dig_{}_band_noise_diode'.format(sub_band)
+    nd_during = [telstate.get_range('{}_{}'.format(ant, nd_key),
+                                    st=time_range[0], et=time_range[1],
+                                    include_previous=True)
+                 for ant in ant_names]
+    values_per_ant = [zip(*value_ts_pairs)[0] for value_ts_pairs in nd_during]
+    # Set to True if any noise diode value is positive, per antenna
+    return np.array([max(values) > 0 for values in values_per_ant])
 
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
@@ -468,7 +467,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             # KCROSS solution
             logger.info('Checking if the noise diode was fired')
             ant_names = [a.name for a in s.antennas]
-            nd_on = get_noise_diode(ts, ant_names, [t0, t1])
+            nd_on = check_noise_diode(ts, ant_names, [t0, t1])
             if any(nd_on):
                 logger.info("Noise diode was fired,"
                             " solving for KCROSS_DIODE on beamformer calibrator %s", target_name)
