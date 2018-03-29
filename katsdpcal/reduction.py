@@ -100,13 +100,19 @@ def check_noise_diode(telstate, ant_names, time_range):
     """
     sub_band = telstate['sub_band']
     nd_key = 'dig_{}_band_noise_diode'.format(sub_band)
-    nd_during = [telstate.get_range('{}_{}'.format(ant, nd_key),
-                                    st=time_range[0], et=time_range[1],
-                                    include_previous=True)
-                 for ant in ant_names]
-    values_per_ant = [zip(*value_ts_pairs)[0] for value_ts_pairs in nd_during]
-    # Set to True if any noise diode value is positive, per antenna
-    return np.array([max(values) > 0 for values in values_per_ant])
+    nd_on = np.full(len(ant_names), False)
+    for n, ant in enumerate(ant_names):
+        try:
+            value_times = telstate.get_range('{}_{}'.format(ant, nd_key),
+                                             st=time_range[0], et=time_range[1],
+                                             include_previous=True)
+        except KeyError:
+            pass
+        else:
+            # Set to True if any noise diode value is positive, per antenna
+            values = zip(*value_times)[0]
+            nd_on[n] = max(values) > 0
+    return nd_on
 
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):

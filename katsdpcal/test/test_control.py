@@ -532,7 +532,7 @@ class TestCalDeviceServer(unittest.TestCase):
         rs = np.random.RandomState(seed=1)
 
         bandwidth = self.telstate.sdp_l0test_bandwidth
-        target = katpoint.Target(self.telstate.m090_target)
+        target = katpoint.Target(self.telstate.cbf_target)
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
