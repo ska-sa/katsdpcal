@@ -187,6 +187,15 @@ def _corr_total(corr_data):
 def make_telstate_cb(telstate, capture_block_id):
     """Create a telstate view that is capture-block specific.
 
+    This adds two views to the base telstate:
+
+    - <`capture_block_id`>_<first prefix of `telstate`>
+    - <`capture_block_id`>
+
+    The first, more specific, namespace will receive updated keys while the
+    second namespace provides read access to the main capture block namespace
+    for keys like obs sensors.
+
     Parameters
     ----------
     telstate : :class:`katsdptelstate.TelescopeState`
@@ -200,7 +209,7 @@ def make_telstate_cb(telstate, capture_block_id):
         Telescope state with `capture_block_id` prepended to the first prefix
     """
     prefix = telstate.SEPARATOR.join([capture_block_id, telstate.prefixes[0]])
-    return telstate.view(prefix)
+    return telstate.view(capture_block_id).view(prefix)
 
 
 class Task(object):
