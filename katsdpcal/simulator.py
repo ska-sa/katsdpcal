@@ -515,7 +515,6 @@ class SimDataMS(SimData):
             positions = t.getcol('DELAY_DIR')
         with self.subtable('STATE') as t:
             intents = t.getcol('OBS_MODE')
-        antlist = self.ants
         # set up ItemGroup for transmission
         flavour = spead2.Flavour(4, 64, 48)
         ig = send.ItemGroup(flavour=flavour)

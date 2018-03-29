@@ -6,7 +6,6 @@ import numpy as np
 import dask.array as da
 
 from katdal.sensordata import TelstateSensorData, SensorCache
-from katdal.categorical import CategoricalData
 from katdal.h5datav3 import SENSOR_PROPS
 
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
