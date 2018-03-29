@@ -58,7 +58,7 @@ def init_flagger(parameters, dump_period):
     return calib_flagger, targ_flagger
 
 
-def get_tracks(data, ts, parameters, dump_period):
+def get_tracks(data, ts, dump_period):
     """Determine the start and end indices of each track segment in data buffer.
 
     Inputs
@@ -67,8 +67,6 @@ def get_tracks(data, ts, parameters, dump_period):
         Data buffer
     ts : :class:`katsdptelstate.TelescopeState`
         The telescope state associated with this pipeline
-    parameters : dict
-        Pipeline parameters
     dump_period : float
         Dump period in seconds
 
@@ -76,24 +74,12 @@ def get_tracks(data, ts, parameters, dump_period):
     -------
     segments : list of slice objects
         List of slices indicating dumps associated with each track in buffer
-
     """
-    # Collect all receptor activity sensors from telstate
-    cache = {}
-    for ant in parameters['antennas']:
-        sensor_name = '{}_activity'.format(ant.name)
-        cache[sensor_name] = TelstateSensorData(ts, sensor_name)
-    num_dumps = data['times'].shape[0]
-    timestamps = data['times']
-    sensors = SensorCache(cache, timestamps, dump_period, props=SENSOR_PROPS)
-    # Interpolate onto data timestamps and find dumps where all receptors track
-    tracking = np.ones(num_dumps, dtype=bool)
-    for activity in sensors:
-        tracking &= (np.array(sensors[activity]) == 'track')
-    # Convert sequence of flags into segments and return the ones that are True
-    all_tracking = CategoricalData(tracking, range(num_dumps + 1))
-    all_tracking.remove_repeats()
-    return [segment for (segment, track) in all_tracking.segments() if track]
+    sensor_name = 'obs_activity'
+    cache = {sensor_name: TelstateSensorData(ts, sensor_name)}
+    sensors = SensorCache(cache, data['times'], dump_period, props=SENSOR_PROPS)
+    activity = sensors.get(sensor_name)
+    return [segment for (segment, a) in activity.segments() if a == 'track']
 
 
 def get_noise_diode(telstate, ant_names, time_range=[]):
@@ -366,9 +352,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
     # Set up flaggers
     calib_flagger, targ_flagger = init_flagger(parameters, dump_period)
 
-    # get names of target TS key, using TS reference antenna
-    target_key = '{0}_target'.format(parameters['refant'].name)
-
     # ----------------------------------------------------------
     # set initial values for fits
     bp0_h = None
@@ -380,7 +363,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
     #    iterate backwards in time through the scans,
     #    for the case where a gains need to be calculated from a gain scan
     #    after a target scan, for application to the target scan
-    track_slices = get_tracks(data, ts, parameters, dump_period)
+    track_slices = get_tracks(data, ts, dump_period)
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
@@ -394,14 +377,16 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
         n_times = scan_slice.stop - scan_slice.start
 
         #  target string contains: 'target name, tags, RA, DEC'
-        target = ts.get_range(target_key, et=t0)[0][0]
+        # XXX Use katpoint at some stage
+        target = ts.get_range('cbf_target', et=t0)[0][0]
         target_list = target.split(',')
         target_name = target_list[0]
         logger.info('-----------------------------------')
         logger.info('Target: {0}'.format(target_name))
         logger.info('  Timestamps: {0}'.format(n_times))
         logger.info('  Time:       {0} - {1}'.format(
-            time.strftime("%H:%M:%S", time.gmtime(t0)), time.strftime("%H:%M:%S", time.gmtime(t1))))
+            time.strftime("%H:%M:%S", time.gmtime(t0)),
+            time.strftime("%H:%M:%S", time.gmtime(t1))))
 
         # if there are no tags, don't process this scan
         if len(target_list) > 1:

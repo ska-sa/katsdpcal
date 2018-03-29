@@ -547,10 +547,8 @@ class SimDataMS(SimData):
 
             scan_time = tscan.getcell('TIME', 0)
             scan_time_ut = self.to_ut(scan_time)
-            for ant in antlist:
-                telstate.add('{0}_target'.format(ant), target_desc, ts=scan_time_ut-random()*0.1)
-                telstate.add('{0}_activity'.format(ant), scan_state, ts=scan_time_ut-random()*0.1)
             telstate.add('cbf_target', target_desc, ts=scan_time_ut-random()*0.1)
+            telstate.add('obs_activity', scan_state, ts=scan_time_ut-random()*0.1)
             n_ts = len(tscan.select('unique TIME'))
             logger.info('Scan %d/%d -- timestamps: %d -- %s %s',
                         scan_ind+1, max_scans, n_ts, scan_state, target_desc)
@@ -714,12 +712,8 @@ class SimDataKatdal(SimData):
             #   subtract random offset to time, <= 0.1 seconds, to simulate
             #   slight differences in times of different sensors
             ts0 = self.file.timestamps[0]    # First timestamp in scan
-            for ant in self.file.ants:
-                telstate.add('{0}_target'.format(ant.name), target.description,
-                             ts=ts0-random()*0.1)
-                telstate.add('{0}_activity'.format(ant.name,), scan_state,
-                             ts=ts0-random()*0.1)
             telstate.add('cbf_target', target.description, ts=ts0 - random()*0.1)
+            telstate.add('obs_activity', scan_state, ts=ts0 - random()*0.1)
             n_ts = len(self.file.timestamps)
             logger.info('Scan %d/%d -- timestamps: %d -- %s, %s',
                         scan_ind+1, max_scans, n_ts, scan_state, target.description)

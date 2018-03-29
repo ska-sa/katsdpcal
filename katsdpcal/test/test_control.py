@@ -293,6 +293,7 @@ class TestCalDeviceServer(unittest.TestCase):
             bls_ordering.append((a + 'v', b + 'h'))
         telstate.add('subarray_product_id', 'c856M4k', immutable=True)
         telstate.add('sub_band', 'l', immutable=True)
+        telstate.add('cbf_target', target, ts=0)
         telstate_l0.add('int_time', 4.0, immutable=True)
         telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
         telstate_l0.add('n_bls', len(bls_ordering), immutable=True)
@@ -303,9 +304,9 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate_l0.add('sync_time', 1400000000.0, immutable=True)
         telstate_cb_l0 = telstate.view(telstate.SEPARATOR.join(('cb', 'sdp_l0test')))
         telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
+        telstate_cb = telstate.view('cb')
+        telstate_cb.add('obs_activity', 'track', ts=0)
         for antenna in self.antennas:
-            telstate.add('{}_activity'.format(antenna), 'track', ts=0)
-            telstate.add('{}_target'.format(antenna), target, ts=0)
             # The position is irrelevant for now, so just give all the
             # antennas the same position.
             telstate.add(
@@ -679,8 +680,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Change the target to one with different tags
         target = ('3C286, radec delaycal gaincal bpcal kcrosscal single_accumulation, '
                   '13:31:08.29, +30:30:33.0, (800.0 43200.0 0.956 0.584 -0.1644)')
-        for antenna in self.antennas:
-            self.telstate.add('{}_target'.format(antenna), target, ts=0.001)
+        self.telstate.add('cbf_target', target, ts=0.001)
         self.test_capture(expected_g=2)
 
     def prepare_heaps(self, rs, n_times):
@@ -739,10 +739,9 @@ class TestCalDeviceServer(unittest.TestCase):
         target = 'dummy, radec target, 13:30:00.00, +30:30:00.0'
         slew_start = self.telstate.sdp_l0test_sync_time + 12.5 * self.telstate.sdp_l0test_int_time
         slew_end = slew_start + 2 * self.telstate.sdp_l0test_int_time
-        for antenna in self.antennas:
-            self.telstate.add('{}_target'.format(antenna), target, ts=slew_start)
-            self.telstate.add('{}_activity'.format(antenna), 'slew', ts=slew_start)
-            self.telstate.add('{}_activity'.format(antenna), 'track', ts=slew_end)
+        self.telstate.add('cbf_target', target, ts=slew_start)
+        self.telstate.add('obs_activity', 'slew', ts=slew_start)
+        self.telstate.add('obs_activity', 'track', ts=slew_end)
         # Start the capture
         yield self.make_request('capture-init', 'cb')
         # Wait until all the heaps have been delivered, timing out eventually.
@@ -769,9 +768,7 @@ class TestCalDeviceServer(unittest.TestCase):
         Missing heaps are filled with data_lost.
         """
         # We want to prevent the pipeline fiddling with data in place.
-        for antenna in self.antennas:
-            self.telstate.add('{}_activity'.format(antenna), 'slew', ts=1.0)
-
+        self.telstate.add('obs_activity', 'slew', ts=1.0)
         n_times = 7
         # Each element is actually an (endpoint, heap) pair
         heaps = self.prepare_heaps(None, n_times)

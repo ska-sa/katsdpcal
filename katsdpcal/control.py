@@ -691,33 +691,23 @@ class Accumulator(object):
         :class:`ActivityState`
             Current state, or ``None`` if no activity was recorded
         """
-        refant_name = self.parameters['refant'].name
-        activity_full = []
         try:
-            activity_full = self.telstate.get_range(
-                refant_name + '_activity', et=data_ts, include_previous=True)
+            activity, activity_time = self.telstate_cb_cal.get_range(
+                'obs_activity', et=data_ts, include_previous=True)[0]
         except KeyError:
-            pass
-        if not activity_full:
-            logger.info('no activity recorded for reference antenna %s - ignoring dump',
-                        refant_name)
+            logger.info('No obs_activity found in telstate - ignoring dump')
             return None
-        activity, activity_time = activity_full[0]
-
-        # get target from telescope state, if it is present (if it
-        # isn't present, set to unknown)
-        target_key = refant_name + '_target'
+        # Get target from telescope state if present (otherwise 'unknown')
         try:
-            target = self.telstate.get_range(target_key, et=data_ts,
+            target = self.telstate.get_range('cbf_target', et=data_ts,
                                              include_previous=True)[0][0]
-            if target == '':
-                target = 'unknown'
         except KeyError:
-            logger.warning('target description %s absent from telescope state', target_key)
-            target = 'unknown'
-        # extract name and tags from target description string
+            logger.warning('No cbf_target found in telstate')
+            target = ''
+        # Extract name and tags from target description string
+        # XXX Rather use katpoint at some stage
         target_split = target.split(',')
-        target_name = target_split[0]
+        target_name = target_split[0] if target else 'unknown'
         target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
         return ActivityState(activity, activity_time, target_name, target_tags)
 
