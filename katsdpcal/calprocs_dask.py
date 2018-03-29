@@ -293,6 +293,7 @@ def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, normalise=True, *
     Parameters
     ----------
     data : array of complex, shape(num_chans, num_pols, baselines)
+    weights : array of real, shape(num_chans, num_pols, baselines)
     bp0 : array of complex, shape(num_chans, num_pols, num_ants) or None
     corrprod_lookup : antenna mappings, for first then second antennas in bl pair
     refant : reference antenna
@@ -308,7 +309,7 @@ def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, normalise=True, *
 
     # -----------------------------------------------------
     # solve for the bandpass over the channel range
-    bp = stefcal(data, n_ants, corrprod_lookup, weights=weights, num_iters=100,
+    bp = stefcal(data, n_ants, corrprod_lookup, weights, num_iters=100,
                  init_gain=bp0, **kwargs)
     if normalise:
         # centre the phase on zero and scale the average amplitude to one

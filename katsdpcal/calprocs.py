@@ -344,6 +344,7 @@ def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
     Parameters
     ----------
     data : visibility data, array of complex, shape(num_sol, num_chans, baseline)
+    weights : weight data, array of real, shape(num_sol, num_chans, baseline)
     g0 : array of complex, shape(num_ants) or None
     corrprod_lookup : antenna mappings, for first then second antennas in bl pair
     refant : reference antenna
@@ -353,7 +354,7 @@ def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
     g_array : Array of gain solutions, shape(num_sol, num_ants)
     """
     num_ants = ants_from_bllist(corrprod_lookup)
-    return stefcal(data, num_ants, corrprod_lookup, weights=weights,
+    return stefcal(data, num_ants, corrprod_lookup, weights,
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
