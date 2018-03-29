@@ -359,7 +359,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             'Parameter %s_int_time not present in TS. Will be derived from data.', stream_name)
         dump_period = data['times'][1] - data['times'][0]
 
-    n_ants = len(parameters['antennas'])
     n_pols = len(parameters['bls_pol_ordering'])
     # refant index number in the antenna list
     refant_ind = parameters['refant_index']
@@ -477,9 +476,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             # use single solution interval
             dumps_per_solint = scan_slice.stop - scan_slice.start
             g_solint = dumps_per_solint * dump_period
-            g_soln = shared_solve(ts, parameters, solution_stores['G'],
-                                  parameters['g_bchan'], parameters['g_echan'],
-                                  s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
+            shared_solve(ts, parameters, solution_stores['G'],
+                         parameters['g_bchan'], parameters['g_echan'],
+                         s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
             # ----------------------------------------
             # KCROSS solution
