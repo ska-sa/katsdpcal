@@ -42,6 +42,7 @@ pkginfo
 ply                     # for katcp
 psutil==5.4.3           # for distributed
 pyephem
+pygelf
 pyparsing
 python-casacore
 python-dateutil
