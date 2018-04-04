@@ -735,11 +735,11 @@ class Scan(object):
             if self.uvw is None:
                 wl = light_speed / self.channel_freqs
                 self.uvw = calprocs.calc_uvw_wave(
-                    self.target, self.timestamps, self.corrprod_lookup,
+                    self.target, self.timestamps, self.cross_ant.bls_lookup,
                     self.antennas, wl, self.array_position)
 
             # set up model visibility
-            complexmodel = np.zeros_like(self.vis)
+            complexmodel = np.zeros_like(self.cross_ant.orig.auto_pol.vis)
 
             # iteratively add sources to the model
             for source in np.atleast_1d(self.model_raw_params):
