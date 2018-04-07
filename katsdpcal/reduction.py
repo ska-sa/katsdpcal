@@ -612,7 +612,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             rfi_mask = parameters['rfi_mask']
             s.rfi(targ_flagger, rfi_mask)
             # TODO: setup separate flagger for cross-pols
-            s.rfi(targ_flagger, rfi_mask, cross=True)
+            s.rfi(targ_flagger, rfi_mask, cross_pol=True)
 
         vis = s.cross_ant.tf.auto_pol.vis
         target_type = 'target'
