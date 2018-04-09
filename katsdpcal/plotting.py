@@ -19,30 +19,6 @@ FIG_X = 10
 FIG_Y = 4
 
 
-def flush_plots(fig_list, report_name='cal_report.pdf'):
-    """
-    Plots accumulated figures to pdf document and screen
-
-    Parameters
-    ----------
-    fig_list : list
-        list of matplotlib figures to plot
-    report_name : str
-        name of pdf to save
-    """
-
-    # create multi-page pdf document for report
-    pdf_pages = PdfPages(report_name)
-    # plot each figure to a separate page
-    #  (till we decide on a better way to do the reporting)
-    for fig in fig_list:
-        pdf_pages.savefig(fig)
-    pdf_pages.close()
-
-    # also plot figures to screen
-    plt.show()
-
-
 def plot_data_v_chan(data, axes, plotnum=0, chans=None, ylabelplus=''):
     """
     Plots data versus channel
