@@ -297,7 +297,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         return soln
 
 
-def pipeline(data, ts, parameters, solution_stores, stream_name):
+def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     """
     Pipeline calibration
 
@@ -314,6 +314,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
         Solution stores for the capture block, indexed by solution type
     stream_name : str
         Name of the L0 data stream
+    sensors : dict, optional
+        Sensors available in the calling parent
 
     Returns
     -------
@@ -430,9 +432,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
         # Calibrator RFI flagging
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
-            s.rfi(calib_flagger, parameters['rfi_mask'])
+            s.rfi(calib_flagger, parameters['rfi_mask'], sensors=sensors)
             # TODO: setup separate flagger for cross-pols
-            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True)
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, sensors=sensors)
 
         # run_t0 = time.time()
 
@@ -441,7 +443,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
         # BEAMFORMER
         if any('bfcal' in k for k in taglist):
             logger.info('Calibrator flagging, auto-correlations')
-            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, auto_ant=True)
+            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, auto_ant=True, sensors=sensors)
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
@@ -610,9 +612,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name):
             # flag calibrated target
             logger.info('Flagging calibrated target {0}'.format(target_name,))
             rfi_mask = parameters['rfi_mask']
-            s.rfi(targ_flagger, rfi_mask)
+            s.rfi(targ_flagger, rfi_mask, sensors=sensors)
             # TODO: setup separate flagger for cross-pols
-            s.rfi(targ_flagger, rfi_mask, cross_pol=True)
+            s.rfi(targ_flagger, rfi_mask, cross_pol=True, sensors=sensors)
 
         vis = s.cross_ant.tf.auto_pol.vis
         target_type = 'target'

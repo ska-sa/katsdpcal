@@ -965,7 +965,13 @@ class Pipeline(Task):
             katcp.Sensor.integer(
                 'pipeline-exceptions',
                 'number of times the pipeline threw an exception',
-                default=0, initial_status=katcp.Sensor.NOMINAL)
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.float(
+                'pipeline-start-flag-fraction',
+                'Starting flag fraction prior to RFI detection'),
+            katcp.Sensor.float(
+                'pipeline-final-flag-fraction',
+                'Final flag fraction post RFI detection')
         ]
 
     def run(self):
