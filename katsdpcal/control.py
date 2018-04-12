@@ -361,54 +361,55 @@ class Accumulator(object):
         sensors = [
             katcp.Sensor.boolean(
                 'accumulator-capture-active',
-                'whether an observation is in progress',
+                'whether an observation is in progress (prometheus: gauge)',
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'accumulator-observations',
-                'number of observations completed by the accumulator',
+                'number of observations completed by the accumulator (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'accumulator-batches',
-                'number of batches completed by the accumulator',
+                'number of batches completed by the accumulator (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'input-bytes-total',
-                'number of bytes of L0 data received',
+                'number of bytes of L0 data received (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'input-heaps-total',
-                'number of L0 heaps received',
+                'number of L0 heaps received (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'input-incomplete-heaps-total',
-                'number of incomplete L0 heaps received',
+                'number of incomplete L0 heaps received (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'input-too-old-heaps-total',
-                'number of L0 heaps rejected because they are too late',
+                'number of L0 heaps rejected because they are too late (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'slots',
-                'total number of buffer slots',
+                'total number of buffer slots (prometheus: gauge)',
                 default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'accumulator-slots',
-                'number of buffer slots the current accumulation has written to',
+                'number of buffer slots the current accumulation has written to '
+                '(prometheus: gauge)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'free-slots',
-                'number of unused buffer slots',
+                'number of unused buffer slots (prometheus: gauge)',
                 default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
             # pipeline-slots gives information about the pipeline, but is
             # produced in the accumulator because the pipeline doesn't get
             # interrupted when more work is added to it.
             katcp.Sensor.integer(
                 'pipeline-slots',
-                'number of buffer slots in use by the pipeline',
+                'number of buffer slots in use by the pipeline (prometheus: gauge)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'accumulator-last-wait',
-                'time the accumulator had to wait for a free buffer',
+                'time the accumulator had to wait for a free buffer (prometheus: gauge)',
                 unit='s')
         ]
         self.sensors = {sensor.name: sensor for sensor in sensors}
