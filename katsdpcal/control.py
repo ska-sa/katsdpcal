@@ -968,16 +968,16 @@ class Pipeline(Task):
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'pipeline-start-flag-fraction-auto-pol',
-                'Starting flag fraction prior to RFI detection (auto-pol)'),
+                'Starting flag fraction prior to RFI detection: auto-pol (prometheus: Gauge)'),
             katcp.Sensor.float(
                 'pipeline-start-flag-fraction-cross-pol',
-                'Starting flag fraction prior to RFI detection (cross-pol)'),
+                'Starting flag fraction prior to RFI detection: cross-pol (prometheus: Gauge)'),
             katcp.Sensor.float(
                 'pipeline-final-flag-fraction-auto-pol',
-                'Final flag fraction post RFI detection (auto-pol)'),
+                'Final flag fraction post RFI detection: auto-pol (prometheus: Gauge)'),
             katcp.Sensor.float(
                 'pipeline-final-flag-fraction-cross-pol',
-                'Final flag fraction post RFI detection (cross-pol)')
+                'Final flag fraction post RFI detection: cross-pol (prometheus: Gauge)')
         ]
 
     def run(self):
