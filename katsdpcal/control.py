@@ -986,6 +986,8 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
+        sensors = self.get_sensors()
+        self.sensors = {sensor.name: sensor for sensor in sensors}
         cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=self.num_workers,
             processes=False, memory_limit=0, diagnostics_port=self.diagnostics)
