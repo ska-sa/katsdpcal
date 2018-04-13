@@ -906,5 +906,6 @@ class Scan(object):
         final_flag_fraction = (da.sum(calprocs.asbool(flags)) / total_size).compute()
         self.logger.info('  - New flags: %.3f%%', final_flag_fraction)
         if sensors:
-            sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(start_flag_fraction)
-            sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(final_flag_fraction)
+            now = time.time()
+            sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(start_flag_fraction, timestamp=now)
+            sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(final_flag_fraction, timestamp=now)
