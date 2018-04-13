@@ -1,6 +1,6 @@
 """Scan class to data and operations on data."""
 
-from time import time
+import time
 import functools
 import logging
 import operator
@@ -257,9 +257,9 @@ class Scan(object):
         """
         @functools.wraps(f)
         def timed(*args, **kw):
-            ts = time()
+            ts = time.time()
             result = f(*args, **kw)
-            te = time()
+            te = time.time()
 
             scanlogger = args[0].logger
             scanlogger.info('  - Solution time ({0}): {1} s'.format(f.__name__, te-ts,))
