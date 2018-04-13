@@ -864,12 +864,12 @@ class Scan(object):
             self.logger.info('  - Flag cross-pols%s', label)
             data = scandata.pb.cross_pol
             orig = scandata.orig.cross_pol
-            flag_type = 'cross'
+            flag_type = 'cross-pol'
         else:
-            self.logger.info('  - Flag single-pols%s', label)
+            self.logger.info('  - Flag auto-pols%s', label)
             data = scandata.pb.auto_pol
             orig = scandata.orig.auto_pol
-            flag_type = 'single'
+            flag_type = 'auto-pol'
         vis = data.vis
         flags = data.flags
 

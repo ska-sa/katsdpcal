@@ -967,16 +967,16 @@ class Pipeline(Task):
                 'number of times the pipeline threw an exception',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
-                'pipeline-start-flag-fraction-single',
-                'Starting flag fraction prior to RFI detection (single-pol)'),
+                'pipeline-start-flag-fraction-auto-pol',
+                'Starting flag fraction prior to RFI detection (auto-pol)'),
             katcp.Sensor.float(
-                'pipeline-start-flag-fraction-cross',
+                'pipeline-start-flag-fraction-cross-pol',
                 'Starting flag fraction prior to RFI detection (cross-pol)'),
             katcp.Sensor.float(
-                'pipeline-final-flag-fraction-single',
-                'Final flag fraction post RFI detection (single-pol)'),
+                'pipeline-final-flag-fraction-auto-pol',
+                'Final flag fraction post RFI detection (auto-pol)'),
             katcp.Sensor.float(
-                'pipeline-final-flag-fraction-cross',
+                'pipeline-final-flag-fraction-cross-pol',
                 'Final flag fraction post RFI detection (cross-pol)')
         ]
 
