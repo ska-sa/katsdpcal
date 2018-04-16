@@ -757,7 +757,7 @@ def write_products(report, report_path, ts, parameters,
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
             plot = plotting.plot_delays(times, vals[:, 0:1, :],
                                         antenna_names, pol=[pol[0]+pol[1]])
-            insert_fig(report_path, report, plot, name='KCROSS_DIODE')
+            insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
     # ---------------------------------
     # bandpass
@@ -777,7 +777,7 @@ def write_products(report, report_path, ts, parameters,
             plot = plotting.plot_g_solns_legend(
                 times, vals[..., idx : idx + ANT_CHUNKS],
                 antenna_names=antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
-            insert_fig(report_path, report, plot, name='{0}'.format(cal))
+            insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
 
 def get_cal(ts, cal, ts_name, st, et):
@@ -845,7 +845,7 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
 
     for idx in range(0, vals.shape[-1], ANT_CHUNKS):
         plot = plotting.plot_delays(times, vals, antenna_names=antenna_names, pol=pol)
-        insert_fig(report_path, report, plot, name='K')
+        insert_fig(report_path, report, plot, name='K_{0}'.format(idx))
 
 
 def write_B(report, report_path, times, vals, antenna_names, correlator_freq, pol=[0, 1]):
