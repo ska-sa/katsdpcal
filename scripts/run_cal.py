@@ -147,6 +147,8 @@ def parse_opts():
         help='index of this server amongst parallel servers (1-based) [default: %(default)s]')
     register_argparse_parameters(parser)
     args = parser.parse_args()
+    if args.telstate is None:
+        parser.error('--telstate is required')
     if args.flags_rate_ratio <= 1.0:
         parser.error('--flags-rate-ratio must be > 1')
     return args
