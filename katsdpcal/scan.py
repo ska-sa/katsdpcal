@@ -1,6 +1,6 @@
 """Scan class to data and operations on data."""
 
-from time import time
+import time
 import functools
 import logging
 import operator
@@ -257,9 +257,9 @@ class Scan(object):
         """
         @functools.wraps(f)
         def timed(*args, **kw):
-            ts = time()
+            ts = time.time()
             result = f(*args, **kw)
-            te = time()
+            te = time.time()
 
             scanlogger = args[0].logger
             scanlogger.info('  - Solution time ({0}): {1} s'.format(f.__name__, te-ts,))
@@ -831,7 +831,7 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, cross_pol=False, auto_ant=False):
+    def rfi(self, flagger, mask=None, cross_pol=False, auto_ant=False, sensors=None):
         """Detect flags in the visibilities. Detected flags
         are added to the cal_rfi bit of the flag array.
         Optionally provide a channel mask, which is added to
@@ -849,6 +849,10 @@ class Scan(object):
         auto_ant : boolean, optional
             If True, flag the auto_ant data, otherwise
             flag cross_ant data (default).
+        sensors : dict, optional
+            Sensors available in the calling parent. If set, it is expected
+            that sensors named pipeline-[start|final]-flag-fraction-[single|cross]
+            will exist in the dict.
         """
         if auto_ant:
             scandata = self.auto_ant
@@ -860,16 +864,18 @@ class Scan(object):
             self.logger.info('  - Flag cross-pols%s', label)
             data = scandata.pb.cross_pol
             orig = scandata.orig.cross_pol
+            flag_type = 'cross-pol'
         else:
-            self.logger.info('  - Flag single-pols%s', label)
+            self.logger.info('  - Flag auto-pols%s', label)
             data = scandata.pb.auto_pol
             orig = scandata.orig.auto_pol
+            flag_type = 'auto-pol'
         vis = data.vis
         flags = data.flags
 
         total_size = np.multiply.reduce(data.flags.shape) / 100.
-        self.logger.info('  - Start flags: %.3f%%',
-                         (da.sum(calprocs.asbool(data.flags)) / total_size).compute())
+        start_flag_fraction = (da.sum(calprocs.asbool(data.flags)) / total_size).compute()
+        self.logger.info('  - Start flags: %.3f%%', start_flag_fraction)
 
         # Get the relevant flag bits from katdal
         static_bit = FLAG_NAMES.index('static')
@@ -897,5 +903,9 @@ class Scan(object):
         else:
             flags = scandata.tf.auto_pol.flags
         # Count the new flags
-        self.logger.info('  - New flags: %.3f%%',
-                         (da.sum(calprocs.asbool(flags)) / total_size).compute())
+        final_flag_fraction = (da.sum(calprocs.asbool(flags)) / total_size).compute()
+        self.logger.info('  - New flags: %.3f%%', final_flag_fraction)
+        if sensors:
+            now = time.time()
+            sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(start_flag_fraction, timestamp=now)
+            sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(final_flag_fraction, timestamp=now)

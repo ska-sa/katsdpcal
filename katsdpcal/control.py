@@ -966,7 +966,19 @@ class Pipeline(Task):
             katcp.Sensor.integer(
                 'pipeline-exceptions',
                 'number of times the pipeline threw an exception',
-                default=0, initial_status=katcp.Sensor.NOMINAL)
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.float(
+                'pipeline-start-flag-fraction-auto-pol',
+                'Starting flag fraction prior to RFI detection: auto-pol (prometheus: Gauge)'),
+            katcp.Sensor.float(
+                'pipeline-start-flag-fraction-cross-pol',
+                'Starting flag fraction prior to RFI detection: cross-pol (prometheus: Gauge)'),
+            katcp.Sensor.float(
+                'pipeline-final-flag-fraction-auto-pol',
+                'Final flag fraction post RFI detection: auto-pol (prometheus: Gauge)'),
+            katcp.Sensor.float(
+                'pipeline-final-flag-fraction-cross-pol',
+                'Final flag fraction post RFI detection: cross-pol (prometheus: Gauge)')
         ]
 
     def run(self):
@@ -1045,7 +1057,7 @@ class Pipeline(Task):
         # run pipeline calibration
         telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
         target_slices, avg_corr = pipeline(data, telstate_cb_cal, self.parameters,
-                                           self.solution_stores, self.l0_name)
+                                           self.solution_stores, self.l0_name, self.sensors)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
