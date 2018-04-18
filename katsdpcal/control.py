@@ -954,18 +954,18 @@ class Pipeline(Task):
         return [
             katcp.Sensor.float(
                 'pipeline-last-time',
-                'time taken to process the most recent buffer',
+                'time taken to process the most recent buffer (prometheus: gauge)',
                 unit='s'),
             katcp.Sensor.integer(
                 'pipeline-last-slots',
-                'number of slots filled in the most recent buffer'),
+                'number of slots filled in the most recent buffer (prometheus: gauge)'),
             katcp.Sensor.boolean(
                 'pipeline-active',
-                'whether pipeline is currently computing',
+                'whether pipeline is currently computing (prometheus: gauge)',
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'pipeline-exceptions',
-                'number of times the pipeline threw an exception',
+                'number of times the pipeline threw an exception (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
                 'pipeline-start-flag-fraction-auto-pol',
@@ -1119,11 +1119,11 @@ class Sender(Task):
         return [
             katcp.Sensor.integer(
                 'output-bytes-total',
-                'bytes written to the flags L1 stream',
+                'bytes written to the flags L1 stream (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'output-heaps-total',
-                'heaps written to the flags L1 stream',
+                'heaps written to the flags L1 stream (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL)
         ]
 
@@ -1226,16 +1226,20 @@ class ReportWriter(Task):
     def get_sensors(self):
         return [
             katcp.Sensor.integer(
-                'reports-written', 'Number of calibration reports written',
+                'reports-written',
+                'Number of calibration reports written (prometheus: counter)',
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.float(
-                'report-last-time', 'Elapsed time to generate most recent report',
+                'report-last-time',
+                'Elapsed time to generate most recent report (prometheus: gauge)',
                 unit='s'),
             katcp.Sensor.boolean(
-                'report-active', 'Whether the report writer is active',
+                'report-active',
+                'Whether the report writer is active (prometheus: gauge)',
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.string(
-                'report-last-path', 'Directory containing the most recent report')
+                'report-last-path',
+                'Directory containing the most recent report')
         ]
 
     def write_report(self, telstate_cal, capture_block_id, obs_start, obs_end, av_corr):
