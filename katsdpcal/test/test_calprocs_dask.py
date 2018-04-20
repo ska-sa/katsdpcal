@@ -112,6 +112,7 @@ class TestWavgFullT(unittest.TestCase):
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => NaNs in output
         self.data[:, 1, 2, 2] = np.nan
+        self.data[:, 2, 0, 3] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         self.flags[:, 2, 0, 3] = 4
 
     def test_basic(self):
@@ -127,7 +128,7 @@ class TestWavgFullT(unittest.TestCase):
         expected_data[:, 1, 2, 2] = np.nan
         expected_weights[:, 1, 2, 2] = 0
 
-        expected_data[:, 2, 0, 3] = np.nan
+        expected_data[:, 2, 0, 3] = 4.5 + 0j
         expected_weights[:, 2, 0, 3] = 0
         expected_flags[:, 2, 0, 3] = True
 
