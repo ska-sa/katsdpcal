@@ -114,7 +114,11 @@ def wavg(data, flags, weights, times=False, axis=0):
     vis, times : weighted average of data and, optionally, times
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
-    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
+    weight_sum = da.sum(flagged_weights, axis=axis)
+    # Avoid zeroes in denominator
+    iszero = da.equal(weight_sum, weight_sum.dtype.type(0))
+    weight_divisor = _where(iszero, weight_sum.dtype.type(weighted_data.shape[axis]), weight_sum)
+    vis = da.sum(weighted_data, axis=axis) / weight_divisor
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
@@ -138,7 +142,10 @@ def wavg_full(data, flags, weights, threshold=0.3):
 
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis=0)
-    av_data = da.sum(weighted_data, axis=0) / av_weights
+    # Avoid zeroes in denominator
+    iszero = da.equal(weight_sum, weight_sum.dtype.type(0))
+    weight_divisor = _where(iszero, weight_sum.dtype.type(weighted_data.shape[axis]), weight_sum)
+    av_data = da.sum(weighted_data, axis=0) / weight_divisor
     n_flags = da.sum(calprocs.asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
     return av_data, av_flags, av_weights
