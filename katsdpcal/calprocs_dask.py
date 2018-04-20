@@ -115,10 +115,11 @@ def wavg(data, flags, weights, times=False, axis=0):
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     weight_sum = da.sum(flagged_weights, axis=axis)
-    # Avoid zeroes in denominator
-    iszero = da.equal(weight_sum, weight_sum.dtype.type(0))
-    weight_divisor = _where(iszero, weight_sum.dtype.type(weighted_data.shape[axis]), weight_sum)
-    vis = da.sum(weighted_data, axis=axis) / weight_divisor
+    # Take unweighted average for data completely flagged along axis
+    isflagged = da.all(flags, axis=axis)
+    weight_sum = _where(isflagged, weight_sum.dtype.type(weighted_data.shape[axis]), weight_sum)
+    wdata_sum = _where(isflagged, da.sum(data, axis=axis), da.sum(weighted_data, axis=axis))
+    vis = wdata_sum / weight_sum
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
