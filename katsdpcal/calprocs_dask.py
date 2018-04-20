@@ -144,7 +144,7 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_weights = da.sum(flagged_weights, axis=0)
     # Avoid zeroes in denominator
     iszero = da.equal(av_weights, av_weights.dtype.type(0))
-    weight_divisor = _where(iszero, av_weights.dtype.type(weighted_data.shape[axis]), av_weights)
+    weight_divisor = _where(iszero, av_weights.dtype.type(weighted_data.shape[0]), av_weights)
     av_data = da.sum(weighted_data, axis=0) / weight_divisor
     n_flags = da.sum(calprocs.asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
