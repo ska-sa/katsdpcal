@@ -114,12 +114,10 @@ def wavg(data, flags, weights, times=False, axis=0):
     vis, times : weighted average of data and, optionally, times
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
-    weight_sum = da.sum(flagged_weights, axis=axis)
-    # Take unweighted average for data completely flagged along axis
-    isflagged = da.all(flags, axis=axis)
-    weight_sum = _where(isflagged, weight_sum.dtype.type(weighted_data.shape[axis]), weight_sum)
-    wdata_sum = _where(isflagged, da.sum(data, axis=axis), da.sum(weighted_data, axis=axis))
-    vis = wdata_sum / weight_sum
+    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
+    # Zero nans caused by flagged_weights all being zero along axis
+    isnan = da.isnan(vis)
+    vis = _where(isnan, vis.dtype.type(0), vis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
@@ -140,14 +138,12 @@ def wavg_full(data, flags, weights, threshold=0.3):
     av_flags   : weighted average of flags
     av_weights : weighted average of weights
     """
-
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis=0)
-    # Take unweighted average for data completely flagged along axis 0
-    isflagged = da.all(flags, axis=0)
-    weight_divisor = _where(isflagged, av_weights.dtype.type(weighted_data.shape[0]), av_weights)
-    wdata_sum = _where(isflagged, da.sum(data, axis=0), da.sum(weighted_data, axis=0))
-    av_data = wdata_sum / weight_divisor
+    av_data = da.sum(weighted_data, axis=0) / av_weights
+    # Zero nans caused by flagged_weights all being zero along axis
+    isnan = da.isnan(av_data)
+    av_data = _where(isnan, av_data.dtype.type(0), av_data)
     n_flags = da.sum(calprocs.asbool(flags), axis=0)
     av_flags = n_flags > flags.shape[0] * threshold
     return av_data, av_flags, av_weights

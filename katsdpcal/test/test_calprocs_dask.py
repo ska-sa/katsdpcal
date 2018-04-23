@@ -87,13 +87,12 @@ class TestWavg(unittest.TestCase):
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => NaNs in output
         self.data[:, 3, 2, 2] = np.nan
-        self.data[:, 4, 0, 3] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         self.flags[:, 4, 0, 3] = 4
 
         expected = np.ones((5, 3, 10), np.complex64)
         expected[0, 1, 1] = 5.6 + 0.2j
-        expected[3, 2, 2] = np.nan
-        expected[4, 0, 3] = 4.5 + 0j
+        expected[3, 2, 2] = 0j
+        expected[4, 0, 3] = 0j
         actual = calprocs_dask.wavg(as_dask(self.data), as_dask(self.flags), as_dask(self.weights))
         self.assertEqual(np.complex64, actual.dtype)
         np.testing.assert_allclose(expected, actual, rtol=1e-6)
@@ -112,7 +111,6 @@ class TestWavgFullT(unittest.TestCase):
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => NaNs in output
         self.data[:, 1, 2, 2] = np.nan
-        self.data[:, 2, 0, 3] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         self.flags[:, 2, 0, 3] = 4
 
     def test_basic(self):
@@ -125,10 +123,10 @@ class TestWavgFullT(unittest.TestCase):
         expected_weights[:, 0, 1, 1] = [1, 9, 0]
         expected_flags[:, 0, 1, 1] = [True, False, True]
 
-        expected_data[:, 1, 2, 2] = np.nan
+        expected_data[:, 1, 2, 2] = 0j
         expected_weights[:, 1, 2, 2] = 0
 
-        expected_data[:, 2, 0, 3] = 4.5 + 0j
+        expected_data[:, 2, 0, 3] = 0j
         expected_weights[:, 2, 0, 3] = 0
         expected_flags[:, 2, 0, 3] = True
 
