@@ -85,7 +85,7 @@ class TestWavg(unittest.TestCase):
         self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
         self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
-        # A completely NaN column and a completely flagged column => NaNs in output
+        # A completely NaN column and a completely flagged column => Zeros in output
         self.data[:, 3, 2, 2] = np.nan
         self.flags[:, 4, 0, 3] = 4
 
@@ -109,7 +109,7 @@ class TestWavgFullT(unittest.TestCase):
         self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
         self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
-        # A completely NaN column and a completely flagged column => NaNs in output
+        # A completely NaN column and a completely flagged column => Zeros in output
         self.data[:, 1, 2, 2] = np.nan
         self.flags[:, 2, 0, 3] = 4
 
@@ -119,16 +119,16 @@ class TestWavgFullT(unittest.TestCase):
         expected_weights = np.ones(out_shape, np.float32) * 4
         expected_weights[2, ...] = 2    # Only two samples added together
         expected_flags = np.zeros(out_shape, np.bool_)
-        expected_data[:, 0, 1, 1] = [2j, 56.0 / 9.0, np.nan]
+        expected_data[:, 0, 1, 1] = [2j, 56.0 / 9.0, 0j]
         expected_weights[:, 0, 1, 1] = [1, 9, 0]
         expected_flags[:, 0, 1, 1] = [True, False, True]
 
-        expected_data[:, 1, 2, 2] = 0j
-        expected_weights[:, 1, 2, 2] = 0
+        expected_data[:, 1, 2, 2] = [0j, 0j, 0j]
+        expected_weights[:, 1, 2, 2] = [0, 0, 0]
 
-        expected_data[:, 2, 0, 3] = 0j
-        expected_weights[:, 2, 0, 3] = 0
-        expected_flags[:, 2, 0, 3] = True
+        expected_data[:, 2, 0, 3] = [0j, 0j, 0j]
+        expected_weights[:, 2, 0, 3] = [0, 0, 0]
+        expected_flags[:, 2, 0, 3] = [True, True, True]
 
         out_data, out_flags, out_weights = calprocs_dask.wavg_full_t(
             self.data, self.flags, self.weights, 4)
