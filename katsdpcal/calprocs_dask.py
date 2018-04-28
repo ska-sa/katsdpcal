@@ -283,7 +283,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
         }
         dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
                                    data.dask, flags.dask, weights.dask)
-        return da.Array(dsk, name, out_chunks, data.dtype)
+        return da.Array(dsk, name, out_chunks, dtype)
 
     av_data = sub_array('wavg_full_f-data-' + token, 0, data.dtype)
     av_flags = sub_array('wavg_full_f-flags-' + token, 1, flags.dtype)
