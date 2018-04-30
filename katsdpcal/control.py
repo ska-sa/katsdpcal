@@ -149,10 +149,64 @@ def _slots_slices(slots):
         yield slice(start, end)
 
 
+def _concatenate_destroy(arrays, axis=0):
+    """Like np.concatenate, but free memory as it is copied.
+
+    This allows a list of many small arrays to be concatenated into a large
+    array without a temporary doubling in physical memory usage. On return,
+    `arrays` is cleared.
+
+    This is a very limited implementation, not a complete replacement. It does
+    no error checking, assumes all the arrays have the same dtype, and does not
+    support output to an existing array.
+
+    .. note::
+
+       For this to work as intended, the arrays in `arrays` must not have any
+       other references. It is also based on CPython's reference-counted
+       garbage collection, so may not be effective with other interpreters such
+       as PyPy.
+
+    Parameters
+    ----------
+    arrays : list of array-like
+        Arrays to merge. On return it will be empty.
+    axis : int, optional
+        Axis along which to concatenate.
+
+    Returns
+    -------
+    res : ndarray
+        The concatenated array
+    """
+    if not arrays:
+        raise ValueError('need at least one array to concatenate')
+    for i in range(len(arrays)):
+        arrays[i] = np.asarray(arrays[i])
+    shape = list(arrays[0].shape)
+    shape[axis] = sum(a.shape[axis] for a in arrays)
+    # Note: must be np.empty rather than, say, np.zero, to avoid allocating
+    # physical memory prior to the copy.
+    out = np.empty(shape, arrays[0].dtype)
+    offset = 0
+    index = [np.s_[:] for i in shape]
+    for i in range(len(arrays)):
+        size = arrays[i].shape[axis]
+        index[axis] = np.s_[offset : offset + size]
+        out[tuple(index)] = arrays[i]
+        offset += size
+        arrays[i] = None
+    del arrays[:]
+    return out
+
+
 def _corr_total(corr_data):
     """
     Compresses a list of dictionaries each containing a single scan of averaged, corrected data
     into a single dictionary containing corrected data for all scans.
+
+    To save memory, the input dictionary is (partially) destroyed as the elements are copied
+    to the output.
 
     Parameters
     ----------
@@ -172,9 +226,13 @@ def _corr_total(corr_data):
     """
     total = {}
     for key in ['vis', 'flags', 'weights', 'times', 'n_flags', 'auto_cross']:
-        stack = [d[key] for d in corr_data if len(d[key]) > 0]
-        if len(stack) > 0:
-            total[key] = np.concatenate(stack, axis=0)
+        stack = []
+        for d in corr_data:
+            if len(d[key]) > 0:
+                stack.append(d[key])
+                del d[key]
+        if stack:
+            total[key] = _concatenate_destroy(stack, axis=0)
         else:
             total[key] = np.asarray(stack)
     for key in ['targets', 'timestamps', 'auto_timestamps']:
