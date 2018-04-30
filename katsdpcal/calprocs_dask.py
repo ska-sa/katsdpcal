@@ -115,6 +115,9 @@ def wavg(data, flags, weights, times=False, axis=0):
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
+    # Zero nans caused by flagged_weights all being zero along axis
+    isnan = da.isnan(vis)
+    vis = where(isnan, vis.dtype.type(0), vis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
@@ -137,10 +140,12 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     av_flags   : weighted average of flags
     av_weights : weighted average of weights
     """
-
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis)
     av_data = da.sum(weighted_data, axis) / av_weights
+    # Zero nans caused by flagged_weights all being zero along axis
+    isnan = da.isnan(av_data)
+    av_data = where(isnan, av_data.dtype.type(0), av_data)
     n_flags = da.sum(calprocs.asbool(flags), axis)
     av_flags = n_flags > flags.shape[axis] * threshold
     return av_data, av_flags, av_weights
@@ -280,7 +285,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
         }
         dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
                                    data.dask, flags.dask, weights.dask)
-        return da.Array(dsk, name, out_chunks, data.dtype)
+        return da.Array(dsk, name, out_chunks, dtype)
 
     av_data = sub_array('wavg_full_f-data-' + token, 0, data.dtype)
     av_flags = sub_array('wavg_full_f-flags-' + token, 1, flags.dtype)
