@@ -69,7 +69,7 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
                    concatenate=True, new_axes={'l': num_ants}, dtype=dtype)
 
 
-def _where(condition, x, y):
+def where(condition, x, y):
     """Reimplementation of :func:`da.where` that doesn't suffer from
     https://github.com/dask/dask/issues/2526, and is also faster. It
     may not be as fully featured, however.
@@ -87,12 +87,12 @@ def weight_data(data, flags, weights):
     flags   : array of uint8 or boolean
     weights : array of floats
     """
-    flagged_weights = _where(flags, weights.dtype.type(0), weights)
+    flagged_weights = where(flags, weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
     # Clear the elements that have a nan anywhere
     isnan = da.isnan(weighted_data)
-    weighted_data = _where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = _where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    weighted_data = where(isnan, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = where(isnan, flagged_weights.dtype.type(0), flagged_weights)
     return weighted_data, flagged_weights
 
 

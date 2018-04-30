@@ -369,7 +369,7 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
     ----------
     data : array of complex, shape (num_chans, num_pols, num_baselines)
         Visibility data (may contain NaNs indicating completely flagged data)
-    weights : array of real, shape(num_sol, num_chans, baseline)
+    weights : array of real, shape (num_sol, num_chans, baseline)
         Weight data, must be zero for flagged data and NaNed data
     corrprod_lookup : array of int, shape (num_baselines/num_ant, 2)
         Pairs of antenna indices associated with each baseline

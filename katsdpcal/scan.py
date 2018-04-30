@@ -312,7 +312,8 @@ class Scan(object):
         ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(ave_vis, ave_flags, ave_weights,
                                                                   axis=1)
         # solve for gain
-        g_soln = calprocs.g_fit(ave_vis.compute(), ave_weights.compute(),
+        ave_vis, ave_weights = da.compute(ave_vis, ave_weights)
+        g_soln = calprocs.g_fit(ave_vis, ave_weights,
                                 self.cross_ant.bls_lookup, g0,
                                 self.refant, **kwargs)
 
@@ -379,7 +380,7 @@ class Scan(object):
                   av_weights)
         # replace NaN'ed data caused by dividing by zero weights with a zero.
         isnan = da.isnan(av_vis)
-        calprocs_dask._where(isnan, av_vis.dtype.type(0), av_vis)
+        av_vis = calprocs_dask.where(isnan, av_vis.dtype.type(0), av_vis)
 
         if not auto_ant:
             av_flags = da.any(av_flags, axis=-2)
@@ -392,7 +393,8 @@ class Scan(object):
         ave_chans = np.add.reduceat(
                 chans, range(0, len(chans), chan_ave)) / chan_ave
 
-        kcross_soln = calprocs.k_fit(av_vis.compute(), av_weights.compute(),
+        av_vis, av_weights = da.compute(av_vis, av_weights)
+        kcross_soln = calprocs.k_fit(av_vis, av_weights,
                                      corr.bls_lookup, ave_chans, self.refant,
                                      chan_sample=1)
         # set delay in the second polarisation axis to zero
@@ -444,7 +446,8 @@ class Scan(object):
 
         ave_time = np.average(self.timestamps, axis=0)
         # fit for delay
-        k_soln = calprocs.k_fit(ave_vis.compute(), ave_weights.compute(),
+        ave_vis, ave_weights = da.compute(ave_vis, ave_weights)
+        k_soln = calprocs.k_fit(ave_vis, ave_weights,
                                 self.cross_ant.bls_lookup,
                                 k_freqs, self.refant, chan_sample)
 
