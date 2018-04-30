@@ -358,7 +358,7 @@ def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
+def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
     """
     Fit delay (phase slope across frequency) to visibility data.
     If corrprod_lookup is xc, i.e. all baselines have two different antenna indices,
@@ -369,6 +369,8 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     ----------
     data : array of complex, shape (num_chans, num_pols, num_baselines)
         Visibility data (may contain NaNs indicating completely flagged data)
+    weights : array of real, shape(num_sol, num_chans, baseline)
+        Weight data, must be zero for flagged data and NaNed data
     corrprod_lookup : array of int, shape (num_baselines/num_ant, 2)
         Pairs of antenna indices associated with each baseline
     chans : sequence of float, length num_chans
@@ -414,6 +416,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     # if channel sampling is specified, thin down the data and channel list
     if chan_sample != 1:
         data = data[::chan_sample, ...]
+        weights = weights[::chan_sample, ...]
         chans = chans[::chan_sample]
 
     # set up parameters
@@ -428,6 +431,7 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
     kdelay = []
     for p in range(num_pol):
         pol_data = data[:, p, :] if len(data.shape) > 2 else data
+        pol_weights = weights[:, p, :] if len(weights.shape) > 2 else weights
         # Suppress NaNs by setting them to zero. This masking step broadens
         # the delay peak in Fourier space and potentially introduces spurious
         # sidelobes if severe, like a dirty image suffering from poor uv coverage.
@@ -465,31 +469,32 @@ def k_fit(data, corrprod_lookup, chans, refant=0, chan_sample=1):
             # The baseline delay is calculated as delay(ant2) - delay(ant1)
             bl_delays = np.diff(coarse_k[corrprod_lookup])
             good_pol_data *= np.exp(2j * np.pi * np.outer(chans, bl_delays))
-
-            # Set weights of flagged data to zero,
-            # this allows stefcal to ignore flagged antennas
-            invalid = np.isnan(pol_data)
-            flag_weights = np.asarray(~invalid).astype(np.float32)
-
-            bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, weights=flag_weights,
+            bpass = stefcal(good_pol_data, num_ants, corrprod_lookup, pol_weights,
                             num_iters=100, ref_ant=refant, init_gain=None)
+
+            # set weight for NaNed stefcal outputs to zero
+            bpass_weights = (~np.isnan(bpass)).astype(np.float32)
 
         # else assume solution is ac
         else:
             coarse_k = vis_k
             bpass = pol_data * np.exp(-2j * np.pi * np.outer(chans, coarse_k))
+            bpass_weights = pol_weights
 
         # Find slope of the residual bandpass, per antenna (defaults to NaN)
         delta_k = np.full_like(coarse_k, np.nan)
-        for i, bp in enumerate(bpass.T):
+        for i, (bp, bp_weights) in enumerate(zip(bpass.T, bpass_weights.T)):
             # np.unwrap falls over in the case of bad RFI - robustify this later
-            # np.unwrap and np.linalg.lstsq will not work with NaNs, thus mask
-            # NaN values in these routines (but skip if everything is masked)
-            valid = ~np.isnan(bp)
+            # np.unwrap might not unwrap correctly with zeroed data, thus mask
+            # zero values in these routines (but skip if everything is masked)
+            valid = bp_weights > 0
             if any(valid):
                 bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
-                A = np.array([chans[valid], np.ones(len(chans[valid]))])
-                delta_k[i] = np.linalg.lstsq(A.T, bp_phase)[0][0] / (2. * np.pi)
+                freqs = chans[valid]
+                w = np.sqrt(bp_weights[valid])
+                A = np.array([freqs, np.ones(len(freqs))])
+                # weighted least squares
+                delta_k[i] = np.linalg.lstsq((w * A).T, w * bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
 
