@@ -491,9 +491,11 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
             if any(valid):
                 bp_phase = np.unwrap(np.angle(bp[valid]), discont=1.9 * np.pi)
                 freqs = chans[valid]
-                w = np.sqrt(bp_weights[valid])
                 A = np.array([freqs, np.ones(len(freqs))])
-                # weighted least squares
+                # trick np.linalg.lstsq into performing a weighted least squares (WLS) fit
+                # multiply each term in the fit by w to minimize w**2(bp_phase-A.T)**2
+                # for a WLS fit set w**2 = bp_weights
+                w = np.sqrt(bp_weights[valid])
                 delta_k[i] = np.linalg.lstsq((w * A).T, w * bp_phase)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
