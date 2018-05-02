@@ -784,8 +784,8 @@ def get_cal(ts, cal, ts_name, st, et):
     """
     Fetch a calibration product from telstate
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ts : :class:`katsdptelstate.TelescopeState`
         telescope state
     cal : str
@@ -796,22 +796,22 @@ def get_cal(ts, cal, ts_name, st, et):
         start time for reporting parameters, seconds
     et : float
         end time for reporting parameters, seconds
-    Returns:
-    --------
+
+    Returns
+    -------
     vals : :class:`np.ndarray`
         values of calibration product
-    times : :class:`np.ndarray`
+    times : list
         times of calibration product
     """
-    vals, times = [], []
+    vals, times = np.array([]), []
     if ts_name in ts:
-        product = ts.get_range(ts_name, st=0, return_format='recarray')
-        if len(product['time']) > 0:
-            logger.info('Calibration product: {0}'.format(cal,))
-            vals = product['value']
-            # K shape is n_time, n_pol, n_ant
-            times = product['time']
-            logger.info('  shape: {0}'.format(vals.shape,))
+        product = ts.get_range(ts_name, st=0)
+        if len(product) > 0:
+            logger.info('Calibration product: {0}'.format(cal))
+            vals, times = zip(*product)
+            vals = np.array(vals)
+            logger.info('  shape: {0}'.format(vals.shape))
     return vals, times
 
 
