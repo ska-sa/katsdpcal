@@ -196,6 +196,30 @@ def wavg_full_t(data, flags, weights, solint, times=None):
         return av_data, av_flags, av_weights
 
 
+def av_blocks(data, blocksize):
+    """
+    Calculate the mean in blocks of a fixed size over axis 0
+
+    Parameters
+    ----------
+    data : :class:`da.array`
+        data to average
+    blocksize : int
+        size of blocks to average
+
+    Returns
+    -------
+    av_data : :class:`da.array`
+    """
+    inc = np.arange(0, data.shape[0], blocksize)
+    sum_data = []
+    for i in inc:
+        inc_data = da.sum(data[i:i+blocksize, ...], axis=0)
+        sum_data.append(inc_data)
+    av_data = da.stack(sum_data, axis=0) / blocksize
+    return av_data
+
+
 def _align_chunks(chunks, alignment):
     """Compute a new chunking scheme where chunk boundaries are aligned.
 

@@ -200,46 +200,78 @@ def _concatenate_destroy(arrays, axis=0):
     return out
 
 
-def _corr_total(corr_data):
+def _sum_corr(sum_corr, new_corr):
     """
-    Compresses a list of dictionaries each containing a single scan of averaged, corrected data
-    into a single dictionary containing corrected data for all scans.
-
-    To save memory, the input dictionary is (partially) destroyed as the elements are copied
-    to the output.
+    Combines a dictionary of corrected data produced by the pipeline into a dictionary
+    which aggregates the corrected data produced throughout the observation.
 
     Parameters
     ----------
-    corr_data : list of dict
-        dict's contain all of the following keys: 'vis','flags',
-        'weights', 'times', 'n_flags', 'targets, 'timestamps'
+    sum_corr : dict of lists
+        lists of combined data from pipeline
+    corr_data : dict of lists
+        lists contain most recent data produced by pipeline
 
     Returns
     --------
-    dict
-        Dictionary, keys 'vis', 'flags','weights', 'times', 'n_flags' contain numpy arrays
-        of averaged, corrected parallel-hand, cross correlation data for all scans.
-        Key 'targets' contains a list of target strings corresponding to each scan,
-        while 'timestamps' contains a list of numpy arrays of timestamps for each scan.
-        Key 'auto_cross' contains HV delay corrected cross-hand, auto-correlation data and
-        `auto_timestamps` are the timestamps for the auto correlated data.
+    dict of lists
+        for all keys except 't_flags', output dictionary list contains all the elements
+        of the two input dictionary lists on a per key basis.
+        For key 't_flags', the output dictionary contains a single element which is the sum
+        of the sum_corr['t_flags'] and new_corr['t_flags']
     """
-    total = {}
-    for key in ['vis', 'flags', 'weights', 'times', 'n_flags', 'auto_cross']:
-        stack = []
-        for d in corr_data:
-            if len(d[key]) > 0:
-                stack.append(d[key])
-                del d[key]
-        if stack:
-            total[key] = _concatenate_destroy(stack, axis=0)
-        else:
-            total[key] = np.asarray(stack)
-    for key in ['targets', 'timestamps', 'auto_timestamps']:
-        stack = [d[key] for d in corr_data]
-        stack_flat = [y for z in stack for y in z]
-        total[key] = stack_flat
-    return total
+    if sum_corr:
+        # sum the per scan sum of flags
+        for key in ['t_flags']:
+            if new_corr[key]:
+                stack = sum_corr[key] + new_corr[key]
+                if len(stack) > 1:
+                    stack = [np.add(stack[0], stack[1])]
+                sum_corr[key] = stack
+                del new_corr[key]
+
+        # combine the individual lists of scan data into a single list
+        for key in new_corr.keys():
+            sum_corr[key] = sum_corr[key] + new_corr[key]
+            del new_corr[key]
+
+    # if input dictionary is empty set it to pipeline output dictionary
+    else:
+        sum_corr = new_corr
+    return sum_corr
+
+
+def _concat_corr(sum_corr):
+    """
+    Convert some elements of a dictionary containing lists of per scan data from the pipeline
+    into arrays
+
+    Parameters
+    ----------
+    sum_corr : dict of lists
+        lists of either per scan data or cumulativeld summed data from pipeline
+
+    Returns
+    --------
+    dict:
+        keys 'vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags' contain an array
+        created by concatenating all arrays in the lists of the input dictionary.
+        key 't_flags' contains an array of summed data from the pipeline
+        remaining keys hold lists.
+    """
+    if sum_corr:
+        for key in ['vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags']:
+            if sum_corr[key]:
+                sum_corr[key] = _concatenate_destroy([sum_corr[key]], axis=0)
+            else:
+                sum_corr[key] = np.asarray(sum_corr[key])
+
+        for key in ['t_flags']:
+            if sum_corr[key]:
+                sum_corr[key] = sum_corr[key][0]
+            else:
+                sum_corr[key] = np.asarray(sum_corr[key])
+    return sum_corr
 
 
 def make_telstate_cb(telstate, capture_block_id):
@@ -1339,7 +1371,7 @@ class ReportWriter(Task):
         report_active_sensor = self.sensors['report-active']
         report_path_sensor = self.sensors['report-last-path']
         # Set initial value of averaged corrected data
-        av_corr = []
+        av_corr = {}
 
         while True:
             event = self.pipeline_report_queue.get()
@@ -1347,18 +1379,18 @@ class ReportWriter(Task):
                 break
             if isinstance(event, dict):
                 logger.info('Corrected Data is in the queue')
-                av_corr.append(event)
+                av_corr = _sum_corr(av_corr, event)
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
-                    av_corr = _corr_total(av_corr)
+                    av_corr = _concat_corr(av_corr)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)
                     end_time = time.time()
-                    av_corr = []
+                    av_corr = {}
                     _inc_sensor(reports_sensor, 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)

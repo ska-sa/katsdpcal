@@ -329,24 +329,23 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
     report.writeln('Percentage of time data is flagged')
     # Flags per scan weighted by length of scan
     n_times = np.array([len(_) for _ in av_corr['timestamps']], dtype=np.float32)
-    tw_flags = av_corr['n_flags'] / n_times[:, np.newaxis, np.newaxis, np.newaxis]
-    tw_flags_ave = 100 * np.mean(tw_flags, axis=0)
+    n_times = np.sum(n_times)
+    tw_flags_ave = 100 * av_corr['t_flags'] / n_times
 
     # Sort baseline by antenna separation
     idx_sort = np.argsort(dist)
     tw_flags_sort = tw_flags_ave[:, :, idx_sort]
 
     # Get channel index in correlator channels
-    n_av_chan = tw_flags.shape[-3]
+    n_av_chan = tw_flags_ave.shape[-3]
     idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
     freq_range = [freq_chan[0], freq_chan[-1]]
-
     plot = plotting.flags_bl_v_chan(tw_flags_sort, idx_chan, dist[idx_sort], freq_range, pol=pol)
     insert_fig(report_path, report, plot, name='Flags_bl_v_chan')
 
     report.writeln('Percentage of baselines flagged per scan')
     # Average % of baselines flagged per scan
-    bl_flags = 100 * np.mean(tw_flags, axis=3)
+    bl_flags = 100 * av_corr['bl_flags']
     target_names = [katpoint.Target(_).name for _ in av_corr['targets']]
     plot = plotting.flags_t_v_chan(bl_flags, idx_chan, target_names, freq_range, pol=pol)
     insert_fig(report_path, report, plot, name='Flags_s_v_chan')

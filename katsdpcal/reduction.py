@@ -373,7 +373,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     target_slices = []
     # initialise corrected data
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 'n_flags': [], 'timestamps': [],
+               'times': [], 't_flags': [], 'bl_flags': [], 'timestamps': [],
                'auto_cross': [], 'auto_timestamps': []}
 
     for scan_slice in reversed(track_slices):
@@ -645,13 +645,23 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
         # collect corrected data and calibrator target list to send to report writer
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
-        sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags), axis=0).compute()
+        # sum flags over time and average in blocks of frequency
+        t_sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags), axis=0)
+        if t_sum_flags.shape[0] > 1024:
+            chanav = t_sum_flags.shape[0] // 1024
+            t_sum_flags = calprocs_dask.av_blocks(t_sum_flags, chanav)
+        # average flags over baseline and time
+        n_times = len(s.timestamps)
+        bl_sum_flags = da.mean(t_sum_flags, axis=-1) / n_times
+        t_sum_flags, bl_sum_flags = da.compute(t_sum_flags, bl_sum_flags)
+
         av_corr['targets'].insert(0, target)
         av_corr['vis'].insert(0, av_vis)
         av_corr['flags'].insert(0, av_flags)
         av_corr['weights'].insert(0, av_weights)
         av_corr['times'].insert(0, np.average(s.timestamps))
-        av_corr['n_flags'].insert(0, sum_flags)
+        av_corr['t_flags'].insert(0, t_sum_flags)
+        av_corr['bl_flags'].insert(0, bl_sum_flags)
         av_corr['timestamps'].insert(0, s.timestamps)
 
     return target_slices, av_corr
