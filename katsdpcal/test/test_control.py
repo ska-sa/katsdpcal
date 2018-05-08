@@ -52,7 +52,7 @@ def test_shared_empty():
 def test_stack_destroy():
     arrays = [np.arange(6).reshape(2, 3),
               np.arange(10, 16).reshape(2, 3)]
-    for axis in [-1, 0, 1]:
+    for axis in [-3, -1, 0, 1, 2]:
         arg = list(arrays)
         expected = np.stack(arrays, axis)
         actual = control._stack_destroy(arg, axis)

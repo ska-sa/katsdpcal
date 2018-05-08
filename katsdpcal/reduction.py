@@ -646,7 +646,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
         # sum flags over time and average in blocks of frequency
         t_sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags),
-                             axis=0, dtype=np.uint32)
+                             axis=0, dtype=np.float32)
 
         if t_sum_flags.shape[0] > 1024:
             chanav = t_sum_flags.shape[0] // 1024

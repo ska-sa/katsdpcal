@@ -184,11 +184,8 @@ def _stack_destroy(arrays, axis=0):
     for i in range(len(arrays)):
         arrays[i] = np.asarray(arrays[i])
     shape = list(arrays[0].shape)
-    if axis >= 0:
-        shape.insert(axis, len(arrays))
-    else:
-        index = range(1, len(shape)+1)[axis]
-        shape.insert(index, len(arrays))
+    index = range(len(shape)+1)[axis]
+    shape.insert(index, len(arrays))
     # Note: must be np.empty rather than, say, np.zero, to avoid allocating
     # physical memory prior to the copy.
     out = np.empty(shape, arrays[0].dtype)
@@ -226,7 +223,7 @@ def _sum_corr(sum_corr, new_corr):
     if sum_corr:
         # sum the per scan sum of flags
         for key in ['t_flags']:
-            sum_corr[key] = [sum_corr[key][0]+new_corr[key][0]]
+            sum_corr[key][0] += new_corr[key][0]
             del new_corr[key]
 
         # combine the individual lists of scan data into a single list
