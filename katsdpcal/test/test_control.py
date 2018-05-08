@@ -49,13 +49,13 @@ def test_shared_empty():
     np.testing.assert_equal(expected, a)
 
 
-def test_concatenate_destroy():
+def test_stack_destroy():
     arrays = [np.arange(6).reshape(2, 3),
               np.arange(10, 16).reshape(2, 3)]
     for axis in [-1, 0, 1]:
         arg = list(arrays)
-        expected = np.concatenate(arrays, axis)
-        actual = control._concatenate_destroy(arg, axis)
+        expected = np.stack(arrays, axis)
+        actual = control._stack_destroy(arg, axis)
         np.testing.assert_array_equal(expected, actual)
         assert_equal([], arg)
 

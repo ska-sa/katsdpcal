@@ -149,10 +149,10 @@ def _slots_slices(slots):
         yield slice(start, end)
 
 
-def _concatenate_destroy(arrays, axis=0):
-    """Like np.concatenate, but free memory as it is copied.
+def _stack_destroy(arrays, axis=0):
+    """Like np.stack, but free memory as it is copied.
 
-    This allows a list of many small arrays to be concatenated into a large
+    This allows a list of many small arrays to be stacked into a large
     array without a temporary doubling in physical memory usage. On return,
     `arrays` is cleared.
 
@@ -172,29 +172,32 @@ def _concatenate_destroy(arrays, axis=0):
     arrays : list of array-like
         Arrays to merge. On return it will be empty.
     axis : int, optional
-        Axis along which to concatenate.
+        Axis along which to stack.
 
     Returns
     -------
     res : ndarray
-        The concatenated array
+        The stacked array
     """
     if not arrays:
-        raise ValueError('need at least one array to concatenate')
+        raise ValueError('need at least one array to stack')
     for i in range(len(arrays)):
         arrays[i] = np.asarray(arrays[i])
     shape = list(arrays[0].shape)
-    shape[axis] = sum(a.shape[axis] for a in arrays)
+    if axis >= 0:
+        shape.insert(axis, len(arrays))
+    else:
+        index = range(1, len(shape)+1)[axis]
+        shape.insert(index, len(arrays))
     # Note: must be np.empty rather than, say, np.zero, to avoid allocating
     # physical memory prior to the copy.
     out = np.empty(shape, arrays[0].dtype)
     offset = 0
     index = [np.s_[:] for i in shape]
     for i in range(len(arrays)):
-        size = arrays[i].shape[axis]
-        index[axis] = np.s_[offset : offset + size]
-        out[tuple(index)] = arrays[i]
-        offset += size
+        index[axis] = np.s_[offset : offset + 1]
+        out[tuple(index)] = np.expand_dims(arrays[i], axis)
+        offset += 1
         arrays[i] = None
     del arrays[:]
     return out
@@ -251,14 +254,14 @@ def _concat_corr(sum_corr):
     --------
     dict:
         keys 'vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags' contain an array
-        created by concatenating all arrays in the lists of the input dictionary.
+        created by stacking all arrays in the lists of the input dictionary.
         key 't_flags' contains an array of summed data from the pipeline
         remaining keys hold lists.
     """
     if sum_corr:
         for key in ['vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags']:
             if sum_corr[key]:
-                sum_corr[key] = _concatenate_destroy([sum_corr[key]], axis=0)
+                sum_corr[key] = _stack_destroy(sum_corr[key], axis=0)
             else:
                 sum_corr[key] = np.asarray(sum_corr[key])
 
