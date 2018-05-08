@@ -375,7 +375,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
                'times': [], 't_flags': [], 'bl_flags': [], 'timestamps': [],
                'auto_cross': [], 'auto_timestamps': []}
-
     for scan_slice in reversed(track_slices):
         # start time, end time
         t0 = data['times'][scan_slice.start]
@@ -646,12 +645,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         # collect corrected data and calibrator target list to send to report writer
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
         # sum flags over time and average in blocks of frequency
-        t_sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags), axis=0)
+        t_sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags),
+                             axis=0, dtype=np.uint32)
+
         if t_sum_flags.shape[0] > 1024:
             chanav = t_sum_flags.shape[0] // 1024
             t_sum_flags = calprocs_dask.av_blocks(t_sum_flags, chanav)
         # average flags over baseline and time
-        n_times = len(s.timestamps)
+        n_times = np.float32(len(s.timestamps))
         bl_sum_flags = da.mean(t_sum_flags, axis=-1) / n_times
         t_sum_flags, bl_sum_flags = da.compute(t_sum_flags, bl_sum_flags)
 

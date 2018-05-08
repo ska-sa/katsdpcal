@@ -213,7 +213,7 @@ def _sum_corr(sum_corr, new_corr):
         lists contain most recent data produced by pipeline
 
     Returns
-    --------
+    -------
     dict of lists
         for all keys except 't_flags', output dictionary list contains all the elements
         of the two input dictionary lists on a per key basis.
@@ -223,16 +223,12 @@ def _sum_corr(sum_corr, new_corr):
     if sum_corr:
         # sum the per scan sum of flags
         for key in ['t_flags']:
-            if new_corr[key]:
-                stack = sum_corr[key] + new_corr[key]
-                if len(stack) > 1:
-                    stack = [np.add(stack[0], stack[1])]
-                sum_corr[key] = stack
-                del new_corr[key]
+            sum_corr[key] = [sum_corr[key][0]+new_corr[key][0]]
+            del new_corr[key]
 
         # combine the individual lists of scan data into a single list
         for key in new_corr.keys():
-            sum_corr[key] = sum_corr[key] + new_corr[key]
+            sum_corr[key] += new_corr[key]
             del new_corr[key]
 
     # if input dictionary is empty set it to pipeline output dictionary
@@ -249,7 +245,7 @@ def _concat_corr(sum_corr):
     Parameters
     ----------
     sum_corr : dict of lists
-        lists of either per scan data or cumulativeld summed data from pipeline
+        lists of either per scan data or cumulatively summed data from pipeline
 
     Returns
     --------
@@ -1379,7 +1375,9 @@ class ReportWriter(Task):
                 break
             if isinstance(event, dict):
                 logger.info('Corrected Data is in the queue')
-                av_corr = _sum_corr(av_corr, event)
+                # if corrected data is not empty, aggregate with previous corrected data output
+                if event['vis']:
+                    av_corr = _sum_corr(av_corr, event)
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)

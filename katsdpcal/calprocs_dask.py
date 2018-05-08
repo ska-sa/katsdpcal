@@ -202,21 +202,21 @@ def av_blocks(data, blocksize):
 
     Parameters
     ----------
-    data : :class:`da.array`
+    data : :class:`da.Array`
         data to average
     blocksize : int
         size of blocks to average
 
     Returns
     -------
-    av_data : :class:`da.array`
+    av_data : :class:`da.Array`
     """
     inc = np.arange(0, data.shape[0], blocksize)
     sum_data = []
     for i in inc:
-        inc_data = da.sum(data[i:i+blocksize, ...], axis=0)
+        inc_data = da.sum(data[i:i+blocksize, ...], axis=0, dtype=data.dtype)
         sum_data.append(inc_data)
-    av_data = da.stack(sum_data, axis=0) / blocksize
+    av_data = da.stack(sum_data, axis=0) / np.float32(blocksize)
     return av_data
 
 
