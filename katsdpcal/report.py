@@ -754,8 +754,8 @@ def write_products(report, report_path, ts, parameters,
         vals = 1e9 * vals
         write_table_timecol(report, antenna_names, times, vals[:, 0, :], True)
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
-            plot = plotting.plot_delays(times, vals[:, 0:1, :],
-                                        antenna_names, pol=[pol[0]+pol[1]])
+            plot = plotting.plot_delays(times, vals[:, 0:1, idx : idx + ANT_CHUNKS],
+                                        antenna_names[idx : idx + ANT_CHUNKS], pol=[pol[0]+pol[1]])
             insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
     # ---------------------------------
@@ -843,7 +843,8 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
         write_table_timecol(report, antenna_names, times, kpol)
 
     for idx in range(0, vals.shape[-1], ANT_CHUNKS):
-        plot = plotting.plot_delays(times, vals, antenna_names=antenna_names, pol=pol)
+        plot = plotting.plot_delays(times, vals[..., idx : idx + ANT_CHUNKS],
+                                    antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
         insert_fig(report_path, report, plot, name='K_{0}'.format(idx))
 
 
