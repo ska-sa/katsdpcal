@@ -377,6 +377,8 @@ def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[
         report.write_heading_3(
             'Cross Hand Auto-correlations, all antennas')
         av_data = av_corr['auto_cross']
+        # turn flagged data into NaN's so it doesn't appear in the plots
+        av_data[av_data == 0] = np.nan
 
         # Get channel index in correlator channels
         n_av_chan = av_data.shape[-3]
@@ -453,6 +455,8 @@ def write_ng_freq(report, report_path, targets, av_corr, ant_idx,
             t = utc_tstr(av_times[ti])
             report.writeln('Time : {0}'.format(t))
             plot_title = 'Calibrator: {0} , tags are: {1}'.format(target_name, ', '.join(tags))
+            # turn flagged data into NaN's so it doesn't appear in the plots
+            ant_data[ant_data == 0] = np.nan
             # Only plot 16 antennas per plot
             for idx in range(0, ant_data.shape[-1], ANT_CHUNKS):
                 plot = plotting.plot_spec(
@@ -531,6 +535,9 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         else:
             plot_title = 'Target: {0}'.format(target_name)
             amp = True
+
+        # turn flagged data into NaN's so it doesn't appear in the plots
+        av_data[av_data == 0] = np.nan
         # Only plot a maximum of 16 antennas per plot
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
             data = av_data[..., idx : idx + ANT_CHUNKS].compute(get=dask.get)
@@ -589,6 +596,8 @@ def write_g_time(report, report_path, targets, av_corr, antenna_names, cal_bls_l
             av_data, av_flags, av_weights = calprocs.wavg_full_f(
                 av_data, av_flags, av_weights, chanav)
 
+        # turn flagged data into NaN's so it doesn't appear in the plots
+        av_data[av_data == 0] = np.nan
         # insert plots of phase v time
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
             plot = plotting.plot_corr_v_time(
@@ -689,6 +698,8 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         else:
             plot_title = 'Target {0}'.format(target_name)
             amp = True
+        # Turn flagged data into NaN's so it doesn't appear in the plots
+        av_data[av_data == 0] = np.nan
         plot = plotting.plot_corr_uvdist(uvdist, av_data, freq_chan,
                                          plot_title, amp=amp, pol=pol)
         insert_fig(report_path, report, plot,
