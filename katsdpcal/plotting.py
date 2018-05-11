@@ -86,8 +86,10 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
     nbls = data.shape[-1]
     ncols = npols
     nrows = 1
+    # scale the size of the plot by the number of bls, but have a minimum size
+    rowsize = max(1, nbls / 1000.0)
     fig, axes = plt.subplots(nrows, ncols,
-                             figsize=(ncols * FIG_X, nrows * FIG_Y),
+                             figsize=(ncols * FIG_X, rowsize * FIG_Y),
                              squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
@@ -149,8 +151,11 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     nscans = data.shape[0]
     ncols = npols
     nrows = 1
+    # scale the size of the plot by the number of scans but have a min and max plot size
+    rowsize = min(max(1.0, data.shape[0] / 50.0), 10.0)
+
     fig, axes = plt.subplots(nrows, ncols, figsize=(
-        ncols * FIG_X, nrows * FIG_Y), squeeze=False, sharey='row')
+        ncols * FIG_X, rowsize * FIG_Y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(
             chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower')
@@ -158,8 +163,11 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
 
-    axes[0, 0].set_yticks(np.arange(0, len(targets)))
-    axes[0, 0].set_yticklabels(targets)
+    # major tick step
+    step = nscans / 25 + 1
+    axes[0, 0].set_yticks(np.arange(0, len(targets))[::step])
+    axes[0, 0].set_yticks(np.arange(0, len(targets)), minor=True)
+    axes[0, 0].set_yticklabels(targets[::step])
     for label in axes[0, 0].get_yticklabels():
         label.set_verticalalignment('baseline')
     # Add colorbar
@@ -308,6 +316,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
             axes[p, 1].set_ylim(low_ylim, upper_ylim)
         else:
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylim(-180, 180)
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -391,6 +400,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
     for p in range(npols):
         # plot full range amplitude plots
         p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.')
+        axes[0, p].set_ylim(-180, 180)
         axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
 
@@ -447,6 +457,7 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
             axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.')
+            axes[p, 1].set_ylim(-180, 180)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
     # set range limit
@@ -568,6 +579,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, 
             else:
                 p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.')
                 axes[p, 0].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+                axes[p, 0].set_ylim(-180, 180)
 
             # Reset the colour cycle, so that all channels have the same plot color
             axes[p, 0].set_prop_cycle(None)
