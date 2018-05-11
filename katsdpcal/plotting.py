@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 import matplotlib.dates as md
 
+from cycler import cycler
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
 use('Agg', warn=False)
@@ -15,6 +16,10 @@ from matplotlib.backends.backend_pdf import PdfPages     # noqa: E402
 # Figure sizes
 FIG_X = 10
 FIG_Y = 4
+
+# figure colors to cycle through in plots
+colors = plt.cm.tab20.colors
+plt.rc('axes', prop_cycle=(cycler('color', colors)))
 
 
 def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
@@ -93,7 +98,7 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
                              squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
-            chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower')
+            chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower', cmap=plt.cm.jet)
         axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
         bl_labels(axes[0, p], uvlist)
@@ -158,7 +163,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
         ncols * FIG_X, rowsize * FIG_Y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(
-            chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower')
+            chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower', cmap=plt.cm.jet)
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
