@@ -6,6 +6,7 @@ import threading
 from . import plotting
 from . import calprocs
 from . import calprocs_dask
+from . import docutils_dir
 import numpy as np
 import dask
 import dask.array as da
@@ -53,6 +54,10 @@ class rstReport(file):
 
     def write_heading_3(self, heading):
         self.write_heading(heading, '+')
+
+    def write_color(self, text, color, width):
+        string = ":{0}:`{1}`".format(color, text).ljust(width+4+len(color))
+        self.write(string)
 
     def writeln(self, line=None):
         if line is not None:
@@ -258,9 +263,20 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
 
     # add each antenna row to the table
     for a, d in zip(antenna_names, data.T):
-        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width) for di in d])
-        report.write(a.ljust(col_width + 1))
-        report.writeln(data_string)
+        # highlight reference antenna in green
+        if 'refant' in a:
+            report.write_color(a, 'green', col_width + 1)
+            for di in d:
+                report.write_color("{:.3f}".format(di.real,), 'green', col_width + 1)
+        else:
+            report.write(a.ljust(col_width + 1))
+            for di in d:
+                # highlight NaN solutions in red
+                if np.isnan(di):
+                    report.write_color("{:.3f}".format(di.real,), 'red', col_width)
+                else:
+                    report.write(" {:<{}.3f}".format(di, col_width))
+        report.writeln()
 
     if ave:
         report.write("MEAN".ljust(col_width + 1))
@@ -1151,6 +1167,9 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
             # --------------------------------------------------------------------
             # write observation summary info
+            cal_rst.writeln('.. role:: red')
+            cal_rst.writeln('.. role:: green')
+            cal_rst.writeln()
             cal_rst.write_heading_1('Observation summary')
             cal_rst.writeln('Capture block: {}'.format(capture_block_id))
             cal_rst.writeln()
@@ -1169,7 +1188,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             # -------------------------------------------------------------------
             # write RFI summary
             cal_rst.write_heading_1('RFI and Flagging summary')
-
             correlator_freq = parameters['channel_freqs'] / 1e6
             cal_bls_lookup = parameters['bls_lookup']
             pol = [_[0].upper() for _ in parameters['pol_ordering']]
@@ -1180,11 +1198,15 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                 logger.info(' - no calibrated data')
 
             # --------------------------------------------------------------------
-            # add cal products to report
+            # label the reference antenna in the list of antennas
             antenna_names = parameters['antenna_names']
+            antenna_names[refant_index] += ', refant'
+            name_width = len(antenna_names[refant_index])
+            antenna_names = [name.ljust(name_width) for name in antenna_names]
+            logger.info('Calibration solution summary')
+            # add cal products to report
             write_products(cal_rst, report_path, ts, parameters,
                            st, et, antenna_names, correlator_freq, pol)
-            logger.info('Calibration solution summary')
 
             # Corrected data : HV delay Noise Diode
             write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
@@ -1226,6 +1248,8 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln()
 
         # convert to html
+        stylesheet_path = os.path.join(docutils_dir, 'html4css1.css')
+        overrides = {'stylesheet_path': stylesheet_path}
         report_file_html = os.path.join(report_path, 'calreport.html')
         publish_file(source_path=report_file, destination_path=report_file_html,
-                     writer_name='html')
+                     writer_name='html', settings_overrides=overrides)
