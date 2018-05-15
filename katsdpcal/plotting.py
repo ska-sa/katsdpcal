@@ -237,7 +237,7 @@ def time_xtick_fmt(ax, timerange):
     xfmt = md.DateFormatter('%H:%M:%S')
     ax_flat = ax.flatten()
     for a in ax_flat:
-        # set axis range for plots of 1 plot, nb or it will fail
+        # set axis range for plots of 1 point, nb or it will fail
         if timerange[0] == timerange[-1]:
             low = md.date2num(timerange[0] - datetime.timedelta(seconds=10))
             high = md.date2num(timerange[-1] + datetime.timedelta(seconds=10))
@@ -245,7 +245,7 @@ def time_xtick_fmt(ax, timerange):
             plotrange = md.date2num(timerange[-1]) - md.date2num(timerange[0])
             low = md.date2num(timerange[0]) - 0.05*plotrange
             high = md.date2num(timerange[-1]) + 0.05*plotrange
-            a.set_xlim(low, high)
+        a.set_xlim(low, high)
         a.xaxis.set_major_formatter(xfmt)
 
 
