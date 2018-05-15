@@ -810,6 +810,14 @@ def write_products(report, report_path, ts, parameters,
                 antenna_labels[idx : idx + ANT_CHUNKS], pol)
             insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
+        # plot number of solutions
+        report.writeln()
+        title = 'Number of slns : G'
+        no_g_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
+        plot = plotting.plot_v_antenna(no_g_slns, 'No of slns: G', title,
+                                       antenna_names, pol)
+        insert_fig(report_path, report, plot, name='No_G')
+
 
 def get_cal(ts, cal, ts_name, st, et):
     """

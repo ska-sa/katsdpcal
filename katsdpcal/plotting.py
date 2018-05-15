@@ -22,6 +22,42 @@ colors = plt.cm.tab20.colors
 plt.rc('axes', prop_cycle=(cycler('color', colors)))
 
 
+def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1]):
+    """
+    Plots a value vs antenna
+
+    Parameters
+    ----------
+    data : :class:`np.ndarray`
+        real, shape(num_pols,num_ants)
+    ylabel : str, optional
+        label for y-axis
+    title : str, optional
+        title for plot
+    antenna_names: list of str
+        antenna names for legend, optional
+    pol : list
+        list of polarisation descriptions, optional
+    """
+    npols = data.shape[-2]
+    nants = data.shape[-1]
+    fig, axes = plt.subplots(1, figsize=(2 * FIG_X, FIG_Y / 2.0))
+
+    for p in range(npols):
+        axes.plot(data[p], '.', label=pol[p])
+
+    axes.set_xticks(np.arange(0, nants))
+    if antenna_names is not None:
+        axes.set_xticklabels(antenna_names, rotation='vertical')
+
+    axes.set_xlabel('Antennas')
+    axes.set_ylabel(ylabel)
+    axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+    if title is not None:
+        fig.suptitle(title, y=1.0)
+    return fig
+
+
 def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
     """
     Plots gain solutions
