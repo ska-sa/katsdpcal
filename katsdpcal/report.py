@@ -799,10 +799,15 @@ def write_products(report, report_path, ts, parameters,
     vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
         cal_heading(report, cal, 'Gain')
+        # summarize bad antennas
+        report.writeln('Antennas flagged for all times:')
+        report.writeln()
+        antenna_labels = write_bad_antennas(report, vals, antenna_names, pol)
+        # plot solns
         for idx in range(0, vals.shape[-1], ANT_CHUNKS):
             plot = plotting.plot_g_solns_legend(
                 times, vals[..., idx : idx + ANT_CHUNKS],
-                antenna_names=antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
+                antenna_labels[idx : idx + ANT_CHUNKS], pol)
             insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
 
@@ -875,6 +880,49 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
         insert_fig(report_path, report, plot, name='K_{0}'.format(idx))
 
 
+def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
+    """Write a bulleted list of completely NaN'ed antennas per polarization.
+     Return a list with bad-p appended to the antenna-names for NaN'ed antennas
+
+     Parameters
+     ----------
+     report : file-like
+        report file to write to
+     vals : array
+        solutions
+     antenna_names : list
+        list of antenna names
+     list :
+        description of polarisation axes, optional
+    Returns
+    -------
+    list :
+        list of antenna_names with bad(pol) appended to flagged antennas
+    """
+    bad_labels = antenna_names[:]
+    # write a list of bad antennas per polarisation, if all/none are flagged label as such
+    for p in range(vals.shape[-2]):
+        bad_ant = np.all(np.isnan(vals[:, p, :]), axis=0)
+        if bad_ant.any():
+            if bad_ant.all():
+                report.writeln('* {0}: :red:`all`'.format(pol[p]))
+            else:
+                names = np.asarray(antenna_names)[bad_ant]
+                report.writeln('* {0}: {1}'.format(pol[p], ', '.join(names)))
+        else:
+            report.writeln('* {0}: None'.format(pol[p]))
+            report.writeln()
+
+        # modify the antenna labels to indicate the flagged antennas
+        for i, bad in enumerate(bad_ant):
+            if bad:
+                if 'bad' in bad_labels[i]:
+                    bad_labels[i] += pol[p]
+                else:
+                    bad_labels[i] = bad_labels[i].strip() + ', bad {}'.format(pol[p])
+    return bad_labels
+
+
 def write_B(report, report_path, times, vals, antenna_names, correlator_freq, pol=[0, 1]):
     """
     Include plots of bandpass solutions at all given times in report
@@ -903,12 +951,18 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
     for ti in range(len(times)):
         t = utc_tstr(times[ti])
         report.writeln('Time: {}'.format(t,))
+        report.writeln()
+        # summarize bad antennas
+        report.writeln('Antennas flagged for all channels:')
+        report.writeln()
+        antenna_labels = write_bad_antennas(report, vals[ti], antenna_names, pol)
 
+        # plot slns
         for idx in range(0, vals[ti].shape[-1], ANT_CHUNKS):
             plot = plotting.plot_spec(
                 vals[ti, ..., idx : idx + ANT_CHUNKS], chan_no,
-                antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
-                freq_range=freq_range, pol=pol)
+                antenna_labels[idx : idx + ANT_CHUNKS],
+                freq_range, pol=pol)
             insert_fig(report_path, report, plot,
                        name='B_ti_{0}_{1}'.format(ti, idx))
 
