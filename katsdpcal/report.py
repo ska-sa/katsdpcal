@@ -785,6 +785,15 @@ def write_products(report, report_path, ts, parameters,
                                         antenna_names[idx : idx + ANT_CHUNKS], pol=[pol[0]+pol[1]])
             insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
 
+    # plot number of solutions
+        report.writeln()
+        report.writeln()
+        title = 'Number of slns : {0}'.format(cal)
+        no_k_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
+        plot = plotting.plot_v_antenna(no_k_slns, 'No of slns: {0}'.format(cal), title,
+                                       antenna_names, pol)
+        insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+
     # ---------------------------------
     # bandpass
     cal = 'B'
@@ -812,11 +821,12 @@ def write_products(report, report_path, ts, parameters,
 
         # plot number of solutions
         report.writeln()
-        title = 'Number of slns : G'
-        no_g_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
-        plot = plotting.plot_v_antenna(no_g_slns, 'No of slns: G', title,
+        report.writeln()
+        title = 'Number of slns : {0}'.format(cal)
+        no_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
+        plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
                                        antenna_names, pol)
-        insert_fig(report_path, report, plot, name='No_G')
+        insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
 
 
 def get_cal(ts, cal, ts_name, st, et):
@@ -886,6 +896,16 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
         plot = plotting.plot_delays(times, vals[..., idx : idx + ANT_CHUNKS],
                                     antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
         insert_fig(report_path, report, plot, name='K_{0}'.format(idx))
+
+    # plot number of solutions
+    report.writeln()
+    report.writeln()
+    cal = 'K'
+    title = 'Number of slns : {0}'.format(cal)
+    no_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
+    plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+                                   antenna_names, pol)
+    insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
 
 
 def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
@@ -973,6 +993,17 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
                 freq_range, pol=pol)
             insert_fig(report_path, report, plot,
                        name='B_ti_{0}_{1}'.format(ti, idx))
+
+    # plot number of solutions
+    report.writeln()
+    report.writeln()
+    cal = 'B'
+    title = 'Number of slns : {0}'.format(cal)
+    b_slns = ~np.all(np.isnan(vals), axis=1)
+    no_slns = np.sum(b_slns, axis=0, dtype=np.uint32)
+    plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+                                   antenna_names, pol)
+    insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
 
 
 def cal_heading(report, cal, prefix, suffix=''):
