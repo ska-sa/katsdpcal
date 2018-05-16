@@ -483,7 +483,7 @@ class Scan(object):
         ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
         b_soln = calprocs_dask.bp_fit(ave_vis, ave_weights,
-                                      self.cross_ant.bls_lookup, bp0).compute()
+                                      self.cross_ant.bls_lookup, bp0, self.refant).compute()
 
         return CalSolution('B', b_soln, ave_time)
 
