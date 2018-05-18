@@ -30,3 +30,7 @@ EXPOSE 7202/udp
 
 # expose volume for saving report etc.
 VOLUME ["/var/kat/data"]
+
+# Cal vomits out log files into the current directory, so it needs to be
+# somewhere writable.
+WORKDIR /tmp
