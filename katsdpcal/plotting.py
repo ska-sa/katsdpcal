@@ -48,7 +48,9 @@ def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1]):
 
     axes.set_xticks(np.arange(0, nants))
     if antenna_names is not None:
-        axes.set_xticklabels(antenna_names, rotation='vertical')
+        # right justify the antenna_names for better alignment of labels
+        labels = [a.strip().rjust(12) for a in antenna_names]
+        axes.set_xticklabels(labels, rotation='vertical')
 
     axes.set_xlabel('Antennas')
     axes.set_ylabel(ylabel)
@@ -206,11 +208,10 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
 
     # major tick step
     step = nscans / 25 + 1
-    axes[0, 0].set_yticks(np.arange(0, len(targets))[::step])
-    axes[0, 0].set_yticks(np.arange(0, len(targets)), minor=True)
+    axes[0, 0].set_yticks(np.arange(0, len(targets))[::step]+0.5)
+    axes[0, 0].set_yticks(np.arange(0, len(targets))+0.5, minor=True)
     axes[0, 0].set_yticklabels(targets[::step])
-    for label in axes[0, 0].get_yticklabels():
-        label.set_verticalalignment('baseline')
+
     # Add colorbar
     cax = fig.add_axes([0.92, 0.12, 0.02, 0.75])
     cb = fig.colorbar(im, cax=cax)
@@ -337,14 +338,14 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
         for i in range(times):
             # Transpose the axes to ensure that the color cycles on frequencies not on baseline
             p1 = axes[p, 0].plot(uvdist[i, :, :].transpose(),
-                                 np.absolute(data[i, :, p, :]).transpose(), '.')
+                                 np.absolute(data[i, :, p, :]).transpose(), '.', ms='3')
 
             if amp:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                                np.absolute(data[i, :, p, :]).transpose(), '.')
+                                np.absolute(data[i, :, p, :]).transpose(), '.', ms='3')
             else:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                                np.angle(data[i, :, p, :], deg=True).transpose(), '.')
+                                np.angle(data[i, :, p, :], deg=True).transpose(), '.', ms='3')
 
             # Reset color cycle so that channels have the same color
             axes[p, 0].set_prop_cycle(None)
@@ -371,7 +372,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
     if freqlist is not None:
         freqlabel = ['{0} MHz'.format(int(i / 1e6)) for i in freqlist]
         axes[0, 1].legend(p1, freqlabel, bbox_to_anchor=(1.0, 1.0),
-                          loc="upper left", frameon=False)
+                          loc="upper left", frameon=False, markerscale=2)
     fig.subplots_adjust(hspace=0.1)
     return fig
 
@@ -440,14 +441,14 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
     for p in range(npols):
         # plot full range amplitude plots
-        p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.')
+        p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
         axes[0, p].set_ylim(-180, 180)
         axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
 
     if antenna_names is not None:
         axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
-                          loc="upper left", frameon=False)
+                          loc="upper left", frameon=False, markerscale=5)
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
@@ -487,17 +488,17 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
 
     for p in range(npols):
         # plot full range amplitude plots
-        p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.')
+        p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1)
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
             axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.')
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]), ms=1)
         else:
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
-            axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.')
+            axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
             axes[p, 1].set_ylim(-180, 180)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -515,7 +516,7 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
 
     if antenna_names is not None:
         axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
-                          loc="upper left", frameon=False)
+                          loc="upper left", frameon=False, markerscale=5)
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:
