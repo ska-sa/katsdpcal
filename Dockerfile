@@ -1,5 +1,4 @@
 FROM sdp-docker-registry.kat.ac.za:5000/docker-base-build as build
-
 MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 # Enable Python 2 venv
@@ -12,13 +11,16 @@ RUN install-requirements.py -d ~/docker-base/base-requirements.txt -r /tmp/insta
 # Install the current package
 COPY . /tmp/install/katsdpcal
 WORKDIR /tmp/install/katsdpcal
-RUN python ./setup.py clean && pip install --no-deps . && pip check
+RUN python ./setup.py clean
+RUN pip install --no-deps .
+RUN pip check
 
 WORKDIR /tmp
 
 #######################################################################
 
 FROM sdp-docker-registry.kat.ac.za:5000/docker-base-runtime
+MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve /home/kat/ve
 ENV PATH="$PATH_PYTHON2" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON2"
