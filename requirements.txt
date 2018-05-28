@@ -9,8 +9,7 @@ click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
 colorama==0.3.7         # for libtmux
 cycler                  # for matplotlib
-Cython                  # for h5py
-dask==0.17.0
+dask
 decorator
 distributed==1.21.0
 docutils
@@ -38,7 +37,6 @@ netifaces
 numba
 numpy
 pandas
-pkginfo
 ply                     # for katcp
 psutil==5.4.3           # for distributed
 pyephem
@@ -46,8 +44,10 @@ pygelf
 pyparsing
 python-casacore
 python-dateutil
+python-lzf              # for katdal
 pytz
 PyYAML==3.11
+rdbtools                # for katdal
 redis
 scipy
 singledispatch          # for tornado, distributed
@@ -56,10 +56,11 @@ sortedcontainers==1.5.9
 spead2
 subprocess32            # for matplotlib
 tblib==1.3.2            # for distributed
-toolz==0.8.2            # for dask
+toolz                   # for dask
 tornado                 # for katcp
 trollius
 zict==0.1.3             # for distributed
+
 git+ssh://git@github.com/ska-sa/katdal
 git+ssh://git@github.com/ska-sa/katpoint
 git+ssh://git@github.com/ska-sa/katsdpservices
