@@ -189,12 +189,10 @@ def _stack_destroy(arrays, axis=0):
     # Note: must be np.empty rather than, say, np.zero, to avoid allocating
     # physical memory prior to the copy.
     out = np.empty(shape, arrays[0].dtype)
-    offset = 0
     index = [np.s_[:] for i in shape]
     for i in range(len(arrays)):
-        index[axis] = np.s_[offset : offset + 1]
-        out[tuple(index)] = np.expand_dims(arrays[i], axis)
-        offset += 1
+        index[axis] = i
+        out[tuple(index)] = arrays[i]
         arrays[i] = None
     del arrays[:]
     return out
