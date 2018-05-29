@@ -87,6 +87,9 @@ def parse_opts():
         '--buffer-maxsize', type=float, default=20e9,
         help='The amount of memory (in bytes) to allocate for buffer.')
     parser.add_argument(
+        '--max-scans', type=int,
+        help='Maximum number of scans per capture block to show in the report.')
+    parser.add_argument(
         '--l0-spead', type=endpoint.endpoint_list_parser(7200, single_port=True),
         default=':7200',
         help='endpoints to listen for L0 spead stream (including multicast IPs). '
@@ -286,7 +289,8 @@ def run(opts, log_path, full_log):
                            opts.flags_name, opts.flags_spead, flags_interface_address,
                            opts.flags_rate_ratio,
                            telstate_cal, parameters, opts.report_path, log_path, full_log,
-                           opts.dask_diagnostics, opts.pipeline_profile, opts.workers)
+                           opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
+                           opts.max_scans)
     with server:
         ioloop.add_callback(server.start)
 

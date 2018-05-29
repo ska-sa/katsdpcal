@@ -198,7 +198,7 @@ def _stack_destroy(arrays, axis=0):
     return out
 
 
-def _sum_corr(sum_corr, new_corr):
+def _sum_corr(sum_corr, new_corr, limit=None):
     """
     Combines a dictionary of corrected data produced by the pipeline into a dictionary
     which aggregates the corrected data produced throughout the observation.
@@ -209,6 +209,8 @@ def _sum_corr(sum_corr, new_corr):
         lists of combined data from pipeline
     corr_data : dict of lists
         lists contain most recent data produced by pipeline
+    limit : int, optional
+        If given, truncate the arrays at this many elements
 
     Returns
     -------
@@ -232,6 +234,11 @@ def _sum_corr(sum_corr, new_corr):
     # if input dictionary is empty set it to pipeline output dictionary
     else:
         sum_corr = new_corr
+
+    if limit is not None:
+        for value in sum_corr.itervalues():
+            if len(value) > limit:
+                del value[limit:]
     return sum_corr
 
 
@@ -1291,7 +1298,7 @@ class Sender(Task):
 class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
                  l0_name, telstate_cal, parameters,
-                 report_path, log_path, full_log):
+                 report_path, log_path, full_log, max_scans):
         super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
             report_path = '.'
@@ -1304,6 +1311,7 @@ class ReportWriter(Task):
         self.report_path = report_path
         self.log_path = log_path
         self.full_log = full_log
+        self.max_scans = max_scans
         # get subarray ID
         self.subarray_id = self.telstate.get('subarray_product_id', 'unknown_subarray')
 
@@ -1323,7 +1331,15 @@ class ReportWriter(Task):
                 default=False, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.string(
                 'report-last-path',
-                'Directory containing the most recent report')
+                'Directory containing the most recent report'),
+            katcp.Sensor.integer(
+                'report-scans-received',
+                'Number of scan summaries received by report writer (prometheus: counter)',
+                default=0, initial_status=katcp.Sensor.NOMINAL),
+            katcp.Sensor.integer(
+                'report-scans-buffered',
+                'Number of scan summaries help in report writer buffer (prometheus: gauge)',
+                default=0, initial_status=katcp.Sensor.NOMINAL)
         ]
 
     def write_report(self, telstate_cal, capture_block_id, obs_start, obs_end, av_corr):
@@ -1364,8 +1380,11 @@ class ReportWriter(Task):
         report_time_sensor = self.sensors['report-last-time']
         report_active_sensor = self.sensors['report-active']
         report_path_sensor = self.sensors['report-last-path']
+        report_scans_received_sensor = self.sensors['report-scans-received']
+        report_scans_buffered_sensor = self.sensors['report-scans-buffered']
         # Set initial value of averaged corrected data
         av_corr = {}
+        report_scans_buffered_sensor.set_value(0)
 
         while True:
             event = self.pipeline_report_queue.get()
@@ -1375,7 +1394,16 @@ class ReportWriter(Task):
                 logger.info('Corrected Data is in the queue')
                 # if corrected data is not empty, aggregate with previous corrected data output
                 if event['vis']:
-                    av_corr = _sum_corr(av_corr, event)
+                    now = time.time()
+                    _inc_sensor(report_scans_received_sensor, len(event['vis']), timestamp=now)
+                    av_corr = _sum_corr(av_corr, event, self.max_scans)
+                    scans_buffered = len(av_corr['vis'])
+                    report_scans_buffered_sensor.set_value(
+                        scans_buffered,
+                        status=(katcp.Sensor.NOMINAL if scans_buffered < self.max_scans
+                                else katcp.Sensor.WARN),
+                        timestamp=now)
+
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
@@ -1387,6 +1415,7 @@ class ReportWriter(Task):
                         event.start_time, event.end_time, av_corr)
                     end_time = time.time()
                     av_corr = {}
+                    report_scans_buffered_sensor.set_value(0, timestamp=end_time)
                     _inc_sensor(reports_sensor, 1, timestamp=end_time)
                     report_time_sensor.set_value(end_time - start_time, timestamp=end_time)
                     report_path_sensor.set_value(obs_dir, timestamp=end_time)
@@ -1604,7 +1633,8 @@ def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
                   telstate_cal, parameters, report_path, log_path, full_log,
-                  diagnostics=None, pipeline_profile_file=None, num_workers=None):
+                  diagnostics=None, pipeline_profile_file=None, num_workers=None,
+                  max_scans=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
         logger.info("Using multiprocessing")
@@ -1632,7 +1662,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, l0_name, telstate_cal, parameters,
-        report_path, log_path, full_log)
+        report_path, log_path, full_log, max_scans)
 
     # Start the child tasks.
     running_tasks = []
