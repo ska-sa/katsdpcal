@@ -1338,7 +1338,7 @@ class ReportWriter(Task):
                 default=0, initial_status=katcp.Sensor.NOMINAL),
             katcp.Sensor.integer(
                 'report-scans-buffered',
-                'Number of scan summaries help in report writer buffer (prometheus: gauge)',
+                'Number of scan summaries held in report writer buffer (prometheus: gauge)',
                 default=0, initial_status=katcp.Sensor.NOMINAL)
         ]
 
