@@ -56,7 +56,7 @@ class rstReport(file):
         self.write_heading(heading, '+')
 
     def write_color(self, text, color, width):
-        string = ":{0}:`{1}`".format(color, text).ljust(width+4+len(color))
+        string = ":{0}:`{1}`".format(color, text).ljust(width)
         self.write(string)
 
     def writeln(self, line=None):
@@ -273,15 +273,15 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
             for di in d:
                 # highlight NaN solutions in red
                 if np.isnan(di):
-                    report.write_color("{:.3f}".format(di.real,), 'red', col_width)
+                    report.write_color("{:.3f}".format(di.real,), 'red', col_width + 1)
                 else:
-                    report.write(" {:<{}.3f}".format(di, col_width))
+                    report.write(" {:<{}.3f}".format(di, col_width + 1))
         report.writeln()
 
     if ave:
         report.write("MEAN".ljust(col_width + 1))
         for di in data:
-            report.write(" {:<{}.3f}".format(np.nanmean(di), col_width))
+            report.write(" {:<{}.3f}".format(np.nanmean(di), col_width + 1))
         report.writeln()
 
     # table footer

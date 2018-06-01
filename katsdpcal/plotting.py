@@ -354,8 +354,9 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
         if amp:
             axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
-            low_ylim, upper_ylim = amp_range(data)
-            axes[p, 1].set_ylim(low_ylim, upper_ylim)
+            lim = amp_range(data)
+            if not np.isnan(lim).any():
+                axes[p, 1].set_ylim(*lim)
         else:
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
             axes[p, 1].set_ylim(-180, 180)
@@ -493,8 +494,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
-            axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.')
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]), ms=1)
+            axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1)
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
         else:
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
@@ -504,8 +505,9 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
 
     # set range limit
     if amp:
-        low_ylim, upper_ylim = amp_range(data)
-        axes[p, 1].set_ylim(low_ylim, upper_ylim)
+        lim = amp_range(data)
+        if not np.isnan(lim).any():
+                axes[p, 1].set_ylim(*lim)
 
     # For the last row, add in xticklabels and xlabels
     l_p = npols - 1
