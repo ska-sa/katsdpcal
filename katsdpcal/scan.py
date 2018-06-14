@@ -549,7 +549,7 @@ class Scan(object):
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
             # average HV delay over all antennas
             channel_freqs = da.asarray(self.channel_freqs)
-            soln = da.nanmean(soln.values, axis=-1, keepdims=True)
+            soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             g_from_k = da.exp(2j * np.pi * soln[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             g_from_k = da.tile(g_from_k, self.nant)
