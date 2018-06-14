@@ -1295,7 +1295,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
             # --------------------------------------------------------------------
             # label the reference antenna in the list of antennas
-            antenna_names = parameters['antenna_names']
+            antenna_names = list(parameters['antenna_names'])
             antenna_names[refant_index] += ', refant'
             name_width = len(antenna_names[refant_index])
             antenna_names = [name.ljust(name_width) for name in antenna_names]
