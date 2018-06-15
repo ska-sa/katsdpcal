@@ -244,7 +244,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
     data : :class:`np.ndarray`
         table data, shape (time, antenna)
     ave : bool
-        if True write the mean values in each column, else don't
+        if True write the median values in each column, else don't
     """
     n_entries = len(times) + 1
     col_width = 30
@@ -279,9 +279,9 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
         report.writeln()
 
     if ave:
-        report.write("MEAN".ljust(col_width + 1))
+        report.write("MEDIAN".ljust(col_width + 1))
         for di in data:
-            report.write(" {:<{}.3f}".format(np.nanmean(di), col_width + 1))
+            report.write(" {:<{}.3f}".format(np.nanmedian(di), col_width + 1))
         report.writeln()
 
     # table footer
