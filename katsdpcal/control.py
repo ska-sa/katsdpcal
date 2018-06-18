@@ -32,9 +32,8 @@ import concurrent.futures
 import katsdpcal
 from .reduction import pipeline
 from .report import make_cal_report
-from . import calprocs
+from . import calprocs, calprocs_dask
 from . import solutions
-
 
 logger = logging.getLogger(__name__)
 
@@ -149,55 +148,6 @@ def _slots_slices(slots):
         yield slice(start, end)
 
 
-def _stack_destroy(arrays, axis=0):
-    """Like np.stack, but free memory as it is copied.
-
-    This allows a list of many small arrays to be stacked into a large
-    array without a temporary doubling in physical memory usage. On return,
-    `arrays` is cleared.
-
-    This is a very limited implementation, not a complete replacement. It does
-    no error checking, assumes all the arrays have the same dtype, and does not
-    support output to an existing array.
-
-    .. note::
-
-       For this to work as intended, the arrays in `arrays` must not have any
-       other references. It is also based on CPython's reference-counted
-       garbage collection, so may not be effective with other interpreters such
-       as PyPy.
-
-    Parameters
-    ----------
-    arrays : list of array-like
-        Arrays to merge. On return it will be empty.
-    axis : int, optional
-        Axis along which to stack.
-
-    Returns
-    -------
-    res : ndarray
-        The stacked array
-    """
-    if not arrays:
-        raise ValueError('need at least one array to stack')
-    for i in range(len(arrays)):
-        arrays[i] = np.asarray(arrays[i])
-    shape = list(arrays[0].shape)
-    index = range(len(shape)+1)[axis]
-    shape.insert(index, len(arrays))
-    # Note: must be np.empty rather than, say, np.zero, to avoid allocating
-    # physical memory prior to the copy.
-    out = np.empty(shape, arrays[0].dtype)
-    index = [np.s_[:] for i in shape]
-    for i in range(len(arrays)):
-        index[axis] = i
-        out[tuple(index)] = arrays[i]
-        arrays[i] = None
-    del arrays[:]
-    return out
-
-
 def _sum_corr(sum_corr, new_corr, limit=None):
     """
     Combines a dictionary of corrected data produced by the pipeline into a dictionary
@@ -221,57 +171,41 @@ def _sum_corr(sum_corr, new_corr, limit=None):
         of the sum_corr['t_flags'] and new_corr['t_flags']
     """
     if sum_corr:
-        # sum the per scan sum of flags
-        for key in ['t_flags']:
-            sum_corr[key][0] += new_corr[key][0]
-            del new_corr[key]
-
-        # combine the individual lists of scan data into a single list
         for key in new_corr.keys():
-            sum_corr[key] += new_corr[key]
-            del new_corr[key]
+            # sum the per scan sum of flags
+            if 't_flags' in key:
+                sum_corr[key][0] += new_corr[key][0]
+                del new_corr[key]
+
+            # take the weighted average over all the gain calibrated scans
+            elif '_g_spec' in key:
+                sum_corr[key] += new_corr[key]
+                wavg = zip(*sum_corr[key])
+                vis, flags, weights = [da.stack(a) for a in wavg]
+                vis, flags, weights = calprocs_dask.wavg_full(vis, flags, weights)
+                sum_corr[key] = [(vis, flags, weights)]
+                del new_corr[key]
+
+            else:
+                sum_corr[key] += new_corr[key]
+                del new_corr[key]
 
     # if input dictionary is empty set it to pipeline output dictionary
     else:
         sum_corr = new_corr
 
     if limit is not None:
-        for value in sum_corr.itervalues():
-            if len(value) > limit:
-                del value[limit:]
-    return sum_corr
+        if len(sum_corr['targets']) > limit:
+            # find the time of the scan at the limit
+            last_time = sum_corr['targets'][limit][1]
+            # truncate arrays with times beyond the limit
+            for key in sum_corr.keys():
+                if not any(k in key for k in ['t_flags', '_g_spec']):
+                    vals, times = zip(*sum_corr[key])
+                    time_limit = next((i for i, t in enumerate(times) if t >= last_time), None)
+                    if time_limit:
+                        del sum_corr[key][time_limit:]
 
-
-def _concat_corr(sum_corr):
-    """
-    Convert some elements of a dictionary containing lists of per scan data from the pipeline
-    into arrays
-
-    Parameters
-    ----------
-    sum_corr : dict of lists
-        lists of either per scan data or cumulatively summed data from pipeline
-
-    Returns
-    --------
-    dict:
-        keys 'vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags' contain an array
-        created by stacking all arrays in the lists of the input dictionary.
-        key 't_flags' contains an array of summed data from the pipeline
-        remaining keys hold lists.
-    """
-    if sum_corr:
-        for key in ['vis', 'flags', 'weights', 'times', 'auto_cross', 'bl_flags']:
-            if sum_corr[key]:
-                sum_corr[key] = _stack_destroy(sum_corr[key], axis=0)
-            else:
-                sum_corr[key] = np.asarray(sum_corr[key])
-
-        for key in ['t_flags']:
-            if sum_corr[key]:
-                sum_corr[key] = sum_corr[key][0]
-            else:
-                sum_corr[key] = np.asarray(sum_corr[key])
     return sum_corr
 
 
@@ -1393,11 +1327,11 @@ class ReportWriter(Task):
             if isinstance(event, dict):
                 logger.info('Corrected Data is in the queue')
                 # if corrected data is not empty, aggregate with previous corrected data output
-                if event['vis']:
+                if event['targets']:
                     now = time.time()
-                    _inc_sensor(report_scans_received_sensor, len(event['vis']), timestamp=now)
+                    _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)
                     av_corr = _sum_corr(av_corr, event, self.max_scans)
-                    scans_buffered = len(av_corr['vis'])
+                    scans_buffered = len(av_corr['targets'])
                     report_scans_buffered_sensor.set_value(
                         scans_buffered,
                         status=(katcp.Sensor.NOMINAL if scans_buffered < self.max_scans
@@ -1409,7 +1343,6 @@ class ReportWriter(Task):
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
-                    av_corr = _concat_corr(av_corr)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)

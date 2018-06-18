@@ -3,14 +3,14 @@ import logging
 import threading
 
 import numpy as np
-import dask.array as da
 
+from collections import defaultdict
 from katdal.sensordata import TelstateSensorData, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
 
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
 
-from . import calprocs, calprocs_dask, solutions
+from . import solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
@@ -372,9 +372,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     track_slices = get_tracks(data, ts, dump_period)
     target_slices = []
     # initialise corrected data
-    av_corr = {'targets': [], 'vis': [], 'flags': [], 'weights': [],
-               'times': [], 't_flags': [], 'bl_flags': [], 'timestamps': [],
-               'auto_cross': [], 'auto_timestamps': []}
+    av_corr = defaultdict(list)
     for scan_slice in reversed(track_slices):
         # start time, end time
         t0 = data['times'][scan_slice.start]
@@ -489,21 +487,16 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                                s.kcross_sol, pre_apply=solns_to_apply,
                                                nd=nd_on, auto_ant=True)
 
-                # apply solutions and put corrected data into the av_corr dictionary
-                solns_to_apply.append(s.interpolate(kcross_soln))
-                vis = s.auto_ant.tf.cross_pol.vis
-                for soln in solns_to_apply:
-                    vis = s.apply(soln, vis, cross_pol=True)
-                logger.info('Averaging corrected auto-corr data for %s:', target_name)
-                av_vis = vis
-                av_flags = s.auto_ant.tf.cross_pol.flags
-                av_weights = s.auto_ant.tf.cross_pol.weights
-                if av_vis.shape[1] > 1024:
-                    av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(
-                        av_vis, av_flags, av_weights, chanav=av_vis.shape[1] // 1024)
-                av_vis = calprocs_dask.wavg(av_vis, av_flags, av_weights)
-                av_corr['auto_cross'].insert(0, av_vis.compute())
-                av_corr['auto_timestamps'].insert(0, np.average(s.timestamps))
+                    # apply solutions and put corrected data into the av_corr dictionary
+                    solns_to_apply.append(s.interpolate(kcross_soln))
+                    vis = s.auto_ant.tf.cross_pol.vis
+                    for soln in solns_to_apply:
+                        vis = s.apply(soln, vis, cross_pol=True)
+                    logger.info('Averaging corrected auto-corr data for %s:', target_name)
+
+                    data = (vis, s.auto_ant.tf.cross_pol.flags, s.auto_ant.tf.cross_pol.weights)
+                    s.summarize(av_corr, target_name, 'auto_cross', data, nchans=1024,
+                                prefix=False)
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
 
@@ -594,10 +587,11 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                          parameters['g_bchan'], parameters['g_echan'],
                          s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
-        # TARGET
-        if any('target' in k for k in taglist):
+        # Apply calibration
+        cal_tags = ['gaincal', 'target', 'bfcal', 'bpcal', 'delaycal']
+        if any(k in cal_tags for k in taglist):
             # ---------------------------------------
-            logger.info('Applying calibration solutions to target {0}:'.format(target_name,))
+            logger.info('Applying calibration solutions to %s:', target_name)
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
@@ -605,64 +599,34 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                                 time_range=[t0, t1])
             s.apply_inplace(solns_to_apply)
 
-            # accumulate list of target scans to be streamed to L1
-            target_slices.append(scan_slice)
+            # TARGET
+            if any('target' in k for k in taglist):
+                # accumulate list of target scans to be streamed to L1
+                target_slices.append(scan_slice)
 
-            # flag calibrated target
-            logger.info('Flagging calibrated target {0}'.format(target_name,))
-            rfi_mask = parameters['rfi_mask']
-            s.rfi(targ_flagger, rfi_mask, sensors=sensors)
-            # TODO: setup separate flagger for cross-pols
-            s.rfi(targ_flagger, rfi_mask, cross_pol=True, sensors=sensors)
+                # flag calibrated target
+                logger.info('Flagging calibrated target {0}'.format(target_name,))
+                rfi_mask = parameters['rfi_mask']
+                s.rfi(targ_flagger, rfi_mask, sensors=sensors)
+                # TODO: setup separate flagger for cross-pols
+                s.rfi(targ_flagger, rfi_mask, cross_pol=True, sensors=sensors)
 
-        vis = s.cross_ant.tf.auto_pol.vis
-        target_type = 'target'
-        # apply solutions to calibrators
-        if not any('target' in k for k in taglist):
-            target_type = 'calibrator'
-            solns_to_apply = get_solns_to_apply(s, solution_stores,
-                                                ['K', 'B', 'G'], time_range=[t0, t1])
-            logger.info('Applying solutions to calibrator %s:', target_name)
-            for soln in solns_to_apply:
-                vis = s.apply(soln, vis)
+            # summarize corrected data for data with cal tags
+            logger.info('Averaging corrected data for %s:', target_name)
 
-        # average the corrected data
-        av_vis = vis
-        av_flags = s.cross_ant.tf.auto_pol.flags
-        av_weights = s.cross_ant.tf.auto_pol.weights
+            av_corr['targets'].insert(0, (target, np.average(s.timestamps)))
+            av_corr['timestamps'].insert(0, (s.timestamps, np.average(s.timestamps)))
+            s.summarize_flags(av_corr)
 
-        logger.info('Averaging corrected data for {0} {1}:'.format(target_type, target_name,))
-        if av_vis.shape[1] > 1024:
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
-                                                                     av_flags,
-                                                                     av_weights,
-                                                                     chanav=vis.shape[1] // 1024)
-
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis,
-                                                               av_flags,
-                                                               av_weights)
-
-        # collect corrected data and calibrator target list to send to report writer
-        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
-        # sum flags over time and average in blocks of frequency
-        t_sum_flags = da.sum(calprocs.asbool(s.cross_ant.tf.auto_pol.flags),
-                             axis=0, dtype=np.float32)
-
-        if t_sum_flags.shape[0] > 1024:
-            chanav = t_sum_flags.shape[0] // 1024
-            t_sum_flags = calprocs_dask.av_blocks(t_sum_flags, chanav)
-        # average flags over baseline and time
-        n_times = np.float32(len(s.timestamps))
-        bl_sum_flags = da.mean(t_sum_flags, axis=-1) / n_times
-        t_sum_flags, bl_sum_flags = da.compute(t_sum_flags, bl_sum_flags)
-
-        av_corr['targets'].insert(0, target)
-        av_corr['vis'].insert(0, av_vis)
-        av_corr['flags'].insert(0, av_flags)
-        av_corr['weights'].insert(0, av_weights)
-        av_corr['times'].insert(0, np.average(s.timestamps))
-        av_corr['t_flags'].insert(0, t_sum_flags)
-        av_corr['bl_flags'].insert(0, bl_sum_flags)
-        av_corr['timestamps'].insert(0, s.timestamps)
+            # summarize gain-calibrated targets
+            gaintag = ['gaincal', 'target', 'bfcal']
+            if any(k in gaintag for k in taglist):
+                s.summarize_full(av_corr, target_name, '_g_spec', nchans=1024)
+                s.summarize(av_corr, target_name, '_g_bls')
+                if not any('target' in k for k in taglist):
+                    s.summarize(av_corr, target_name, 'g_phase', avg_ant=True, prefix=False)
+            # summarize non-gain calibrated targets
+            else:
+                s.summarize(av_corr, target_name, '_nog_spec', nchans=1024, refant_only=True)
 
     return target_slices, av_corr
