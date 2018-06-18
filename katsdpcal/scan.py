@@ -838,6 +838,137 @@ class Scan(object):
                 return modvis[chan_select] / self.model[chan_select]
 
     # ----------------------------------------------------------------------
+    # Summarize Functions
+    def summarize_flags(self, av_corr, nchans=1024):
+        """
+        Average flags to nchans channels. Sum these averaged flags across time
+        and average them across baselines. Add the summed and averaged quantities
+        to a dictionary
+
+        Parameters
+        ----------
+        av_corr : collections.defaultdict
+            dict to add summarized flags to
+        nchans : int, optional
+            number of channels in the summarized flags
+        """
+        # sum flags over time and average in blocks of frequency
+        t_sum_flags = da.sum(calprocs.asbool(self.cross_ant.tf.auto_pol.flags),
+                             axis=0, dtype=np.float32)
+
+        orig_chans = self.cross_ant.tf.auto_pol.flags.shape[1]
+        chanav = min(orig_chans, orig_chans // nchans)
+        t_sum_flags = calprocs_dask.av_blocks(t_sum_flags, chanav)
+
+        # average flags over baseline and time
+        n_times = np.float32(len(self.timestamps))
+        bl_sum_flags = da.mean(t_sum_flags, axis=-1) / n_times
+        t_sum_flags, bl_sum_flags = da.compute(t_sum_flags, bl_sum_flags)
+
+        # add summed and average flags to av_corr
+        av_corr['t_flags'].insert(0, t_sum_flags)
+        av_corr['bl_flags'].insert(0, (bl_sum_flags, np.average(self.timestamps)))
+
+    def summarize_full(self, av_corr, target_name, key, data=None, nchans=8):
+        """
+        Average visibilities per scan, per antenna and into nchans frequency blocks. Add these
+        averaged visibilities, flags and weights to a dictionary with given key.
+        Prefix the target_name to the dictionary key.
+
+        Parameters
+        ----------
+        av_corr : collections.defaultdict
+            dict to add averaged visibilities to
+        target_name : str
+            name of target, dictionary key prefix
+        key : str
+            dictionary key
+        data : tuple, optional
+            vis, flags, weights of data to average
+        nchans : int, optional
+            number of channels in the averaged visibilities
+        """
+        if not data:
+            vis = self.cross_ant.tf.auto_pol.vis
+            flags = self.cross_ant.tf.auto_pol.flags
+            weights = self.cross_ant.tf.auto_pol.weights
+
+        else:
+            vis, flags, weights = data
+
+        orig_chans = self.cross_ant.tf.auto_pol.vis.shape[1]
+        chanav = min(orig_chans, orig_chans // nchans)
+        # average in frequency blocks, per scan and per antenna
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(vis, flags, weights, chanav)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis, av_flags, av_weights)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
+                                                              self.antennas,
+                                                              self.cross_ant.bls_lookup)
+        # add avg spectrum per antenna to corrected data
+        key = target_name + key
+        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
+        av_corr[key].insert(0, (av_vis, av_flags, av_weights))
+
+    def summarize(self, av_corr, target_name, key, data=None, nchans=8, avg_ant=False,
+                  refant_only=False, prefix=True):
+        """
+        Average visibilites per scan and into nchans frequency blocks.
+        Optionally average per antenna. Optionally select only baselines to the reference antenna.
+        Add these averaged visibilities to a defaultdict with the given key.
+        Optionally prefix the dictionary key with the target name.
+
+        Parameters:
+        -----------
+        av_corr : collections.defaultdict
+            dict to add averaged visibilities to
+        target_name : str
+            name of target, dictionary key prefix
+        key : str
+            dictionary key
+        data : tuple, optional
+            vis, flags, weights of data to average
+        nchans : int, optional
+            number of channels in the averaged visibilities
+        avg_ant : bool, optional
+            average per antenna
+        refant_only : bool, optional
+            select baselines to the reference antenna
+        prefix : bool, optional
+            prefix key with target name
+        """
+        if not data:
+            vis = self.cross_ant.tf.auto_pol.vis
+            flags = self.cross_ant.tf.auto_pol.flags
+            weights = self.cross_ant.tf.auto_pol.weights
+
+        else:
+            vis, flags, weights = data
+
+        # Average per scan in frequency blocks
+        orig_chans = self.cross_ant.tf.auto_pol.vis.shape[1]
+        chanav = min(orig_chans, orig_chans // nchans)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(vis, flags, weights, chanav)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis, av_flags, av_weights)
+
+        # select only baselines to refant
+        if refant_only:
+            ant_idx = np.where(((self.cross_ant.bls_lookup[:, 0] == self.refant)
+                               | (self.cross_ant.bls_lookup[:, 1] == self.refant)))[0]
+            av_vis = av_vis[..., ant_idx]
+            av_flags = av_flags[..., ant_idx]
+        # Average per antenna
+        if avg_ant:
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
+                                                                  self.antennas,
+                                                                  self.cross_ant.bls_lookup)
+        if prefix:
+            key = target_name + key
+
+        av_vis[av_flags] = np.nan
+        val = (av_vis.compute(), np.average(self.timestamps))
+        av_corr[key].insert(0, val)
+
+    # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
     def rfi(self, flagger, mask=None, cross_pol=False, auto_ant=False, sensors=None):
