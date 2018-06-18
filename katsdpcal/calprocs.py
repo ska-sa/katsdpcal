@@ -863,7 +863,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     """
     # ensure chanav is an integer
     chanav = np.int(chanav)
-    inc_array = range(0, data.shape[1], chanav)
+    inc_array = range(0, data.shape[-3], chanav)
 
     flagged_weights = np.where(flags, weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
@@ -872,77 +872,12 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     isnan = np.isnan(weighted_data)
     weighted_data = np.where(isnan, weighted_data.dtype.type(0), weighted_data)
     flagged_weights = np.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
-    av_weights = np.add.reduceat(flagged_weights, inc_array, axis=1)
+    av_weights = np.add.reduceat(flagged_weights, inc_array, axis=-3)
     with np.errstate(divide='ignore', invalid='ignore'):
-        av_data = np.add.reduceat(weighted_data, inc_array, axis=1) / av_weights
-    n_flags = np.add.reduceat(asbool(flags), inc_array, axis=1)
-    n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=1)
+        av_data = np.add.reduceat(weighted_data, inc_array, axis=-3) / av_weights
+    n_flags = np.add.reduceat(asbool(flags), inc_array, axis=-3)
+    n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=-3)
     av_flags = n_flags > n_samples * threshold
-
-    return av_data, av_flags, av_weights
-
-
-def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 3 per antenna.
-
-    Parameters
-    ----------
-    data : :class:`np.ndarray`
-        complex (..., bls)
-    flags : :class:`np.ndarray`
-        int (..., bls)
-    weights : :class:`np.ndarray`
-        real (..., bls)
-    ant_array : :class:`np.ndarray`
-        array of strings representing antennas
-    bls_lookup : :class:`np.ndarray`
-        (bls x 2) array of antennas in each baseline
-    threshold : float
-        if fraction of flags in the input data array
-        exceeds threshold then set output flag to True, else False
-
-    Returns
-    -------
-    av_data : :class:`np.ndarray`
-        complex (..., n_ant), weighted average of data
-    av_flags : :class:`np.ndarray`
-        bool (n_ant), weighted average of flags
-    av_weights : :class:`np.ndarray`
-        real (..., n_ant), weighted average of weights
-    """
-    av_data = []
-    av_flags = []
-    av_weights = []
-
-    for ant in range(len(ant_array)):
-        # select all correlations with same antenna but ignore autocorrelations
-        ant_idx = np.where(((bls_lookup[:, 0] == ant)
-                           | (bls_lookup[:, 1] == ant))
-                           & ((bls_lookup[:, 0] != bls_lookup[:, 1])))[0]
-
-        flagged_weights = np.where(flags[..., ant_idx],
-                                   weights.dtype.type(0),
-                                   weights[..., ant_idx])
-        weighted_data = data[..., ant_idx] * flagged_weights
-        # clear the elements that have a nan anywhere
-        isnan = np.isnan(weighted_data)
-        weighted_data = np.where(isnan, weighted_data.dtype.type(0), weighted_data)
-        ant_weights = np.sum(flagged_weights, axis=3)
-
-        with np.errstate(divide='ignore', invalid='ignore'):
-            ant_data = np.sum(weighted_data, axis=3) / ant_weights
-        n_flags = np.sum(asbool(flags[..., ant_idx]), axis=3)
-        ant_flags = n_flags > ant_idx.shape[0] * threshold
-
-        av_data.append(ant_data)
-        av_flags.append(ant_flags)
-        av_weights.append(ant_weights)
-
-    av_data = np.stack(av_data, axis=3)
-    av_flags = np.stack(av_flags, axis=3)
-    av_weights = np.stack(av_weights, axis=3)
 
     return av_data, av_flags, av_weights
 

@@ -317,6 +317,63 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     return av_data, av_flags, av_weights
 
 
+def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
+    """
+    Perform weighted average of data, flags and weights,
+    applying flags, over axis -1 per antenna.
+
+    Parameters
+    ----------
+    data : :class:`da.Array`
+        complex (..., bls)
+    flags : :class:`da.Array`
+        int (..., bls)
+    weights : :class:`da.Array`
+        real (..., bls)
+    ant_array : :class:`np.ndarray`
+        array of strings representing antennas
+    bls_lookup : :class:`np.ndarray`
+        (bls x 2) array of antennas in each baseline
+    threshold : float
+        if fraction of flags in the input data array
+        exceeds threshold then set output flag to True, else False
+
+    Returns
+    -------
+    av_data : :class:`da.Array`
+        complex (..., n_ant), weighted average of data
+    av_flags : :class:`da.Array`
+        bool (n_ant), weighted average of flags
+    av_weights : :class:`da.Array`
+        real (..., n_ant), weighted average of weights
+    """
+    av_data = []
+    av_flags = []
+    av_weights = []
+
+    weighted_data, flagged_weights = weight_data(data, flags, weights)
+    for ant in range(len(ant_array)):
+        # select all correlations with same antenna but ignore autocorrelations
+        ant_idx = np.where(((bls_lookup[:, 0] == ant)
+                           | (bls_lookup[:, 1] == ant))
+                           & ((bls_lookup[:, 0] != bls_lookup[:, 1])))[0]
+
+        ant_weights = da.sum(flagged_weights[..., ant_idx], axis=-1)
+        ant_data = da.sum(weighted_data[..., ant_idx], axis=-1) / ant_weights
+        n_flags = da.sum(calprocs.asbool(flags[..., ant_idx]), axis=-1)
+        ant_flags = n_flags > ant_idx.shape[0] * threshold
+
+        av_data.append(ant_data)
+        av_flags.append(ant_flags)
+        av_weights.append(ant_weights)
+
+    av_data = da.stack(av_data, axis=-1)
+    av_flags = da.stack(av_flags, axis=-1)
+    av_weights = da.stack(av_weights, axis=-1)
+
+    return av_data, av_flags, av_weights
+
+
 def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, normalise=True, **kwargs):
     """
     Fit bandpass to visibility data.
