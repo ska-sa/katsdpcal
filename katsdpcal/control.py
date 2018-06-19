@@ -169,12 +169,15 @@ def _sum_corr(sum_corr, new_corr, limit=None):
         of the two input dictionary lists on a per key basis.
         For key 't_flags', the output dictionary contains a single element which is the sum
         of the sum_corr['t_flags'] and new_corr['t_flags']
+        For keys containing '_g_spec', the output dictionary is a list containing the weighted
+        average of the current pipeline outputs and the previous outputs.
     """
     if sum_corr:
         for key in new_corr.keys():
             # sum the per scan sum of flags
             if 't_flags' in key:
-                sum_corr[key][0] += new_corr[key][0]
+                sum_corr[key] += new_corr[key]
+                sum_corr[key] = [sum(sum_corr[key])]
                 del new_corr[key]
 
             # take the weighted average over all the gain calibrated scans
