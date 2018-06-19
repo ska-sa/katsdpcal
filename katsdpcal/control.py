@@ -1325,8 +1325,8 @@ class ReportWriter(Task):
             if isinstance(event, StopEvent):
                 break
             if isinstance(event, dict):
-                logger.info('Corrected Data is in the queue')
                 # if corrected data is not empty, aggregate with previous corrected data output
+                logger.info('Corrected Data is in the queue')
                 if event['targets']:
                     now = time.time()
                     _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)

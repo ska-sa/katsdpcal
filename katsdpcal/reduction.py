@@ -1,6 +1,7 @@
 import time
 import logging
 import threading
+import katpoint
 
 import numpy as np
 
@@ -380,10 +381,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         n_times = scan_slice.stop - scan_slice.start
 
         #  target string contains: 'target name, tags, RA, DEC'
-        # XXX Use katpoint at some stage
-        target = ts.get_range('cbf_target', et=t0)[0][0]
-        target_list = target.split(',')
-        target_name = target_list[0]
+        target_str = ts.get_range('cbf_target', et=t0)[0][0]
+        target = katpoint.Target(target_str)
+        target_name = target.name
         logger.info('-----------------------------------')
         logger.info('Target: {0}'.format(target_name))
         logger.info('  Timestamps: {0}'.format(n_times))
@@ -391,10 +391,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             time.strftime("%H:%M:%S", time.gmtime(t0)),
             time.strftime("%H:%M:%S", time.gmtime(t1))))
 
+        # get tags, ignore the first tag which is the body type tag
+        taglist = target.tags[1:]
         # if there are no tags, don't process this scan
-        if len(target_list) > 1:
-            taglist = target_list[1].split()
-        else:
+        if not taglist:
             logger.info('  Tags:   None')
             continue
         logger.info('  Tags:       {0}'.format(taglist,))
