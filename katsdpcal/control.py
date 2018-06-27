@@ -35,6 +35,7 @@ from .report import make_cal_report
 from . import calprocs, calprocs_dask
 from . import solutions
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,10 +173,12 @@ def _sum_corr(sum_corr, new_corr, limit=None):
         For keys containing '_g_spec', the output dictionary is a list containing the weighted
         average of the current pipeline outputs and the previous outputs.
     """
+    # list of keys which don't append data on a per scan basis
+    keylist = ['t_flags']
     if sum_corr:
         for key in new_corr.keys():
             # sum the per scan sum of flags
-            if 't_flags' in key:
+            if key is 't_flags':
                 sum_corr[key] += new_corr[key]
                 sum_corr[key] = [sum(sum_corr[key])]
                 del new_corr[key]
@@ -185,9 +188,11 @@ def _sum_corr(sum_corr, new_corr, limit=None):
                 sum_corr[key] += new_corr[key]
                 wavg = zip(*sum_corr[key])
                 vis, flags, weights = [da.stack(a) for a in wavg]
-                vis, flags, weights = calprocs_dask.wavg_full(vis, flags, weights)
+                vis, flags, weights = calprocs_dask.wavg_full(vis, flags, weights, threshold=1)
                 sum_corr[key] = [(vis, flags, weights)]
                 del new_corr[key]
+                # add this key to the list
+                keylist.append(key)
 
             else:
                 sum_corr[key] += new_corr[key]
@@ -203,10 +208,10 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             last_time = sum_corr['targets'][limit][1]
             # truncate arrays with times beyond the limit
             for key in sum_corr.keys():
-                if not any(k in key for k in ['t_flags', '_g_spec']):
+                if key not in keylist:
                     vals, times = zip(*sum_corr[key])
                     time_limit = next((i for i, t in enumerate(times) if t >= last_time), None)
-                    if time_limit:
+                    if time_limit is not None:
                         del sum_corr[key][time_limit:]
 
     return sum_corr

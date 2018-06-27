@@ -495,8 +495,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                     logger.info('Averaging corrected auto-corr data for %s:', target_name)
 
                     data = (vis, s.auto_ant.tf.cross_pol.flags, s.auto_ant.tf.cross_pol.weights)
-                    s.summarize(av_corr, target_name, 'auto_cross', data, nchans=1024,
-                                prefix=False)
+                    s.summarize(av_corr, 'auto_cross', data, nchans=1024)
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
 
@@ -600,7 +599,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             s.apply_inplace(solns_to_apply)
 
             # TARGET
-            if any('target' in k for k in taglist):
+            if 'target' in taglist:
                 # accumulate list of target scans to be streamed to L1
                 target_slices.append(scan_slice)
 
@@ -621,12 +620,12 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
             if any(k in gaintag for k in taglist):
-                s.summarize_full(av_corr, target_name, '_g_spec', nchans=1024)
-                s.summarize(av_corr, target_name, '_g_bls')
+                s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
+                s.summarize(av_corr, target_name + '_g_bls')
                 if not any('target' in k for k in taglist):
-                    s.summarize(av_corr, target_name, 'g_phase', avg_ant=True, prefix=False)
+                    s.summarize(av_corr, 'g_phase', avg_ant=True)
             # summarize non-gain calibrated targets
             else:
-                s.summarize(av_corr, target_name, '_nog_spec', nchans=1024, refant_only=True)
+                s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
     return target_slices, av_corr

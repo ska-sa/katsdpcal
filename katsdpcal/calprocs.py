@@ -836,7 +836,7 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     """
     Perform weighted average of data, flags and weights,
-    applying flags, over axis 1, for specified number of channels
+    applying flags, over axis -3, for specified number of channels
 
     Parameters
     ----------
@@ -855,11 +855,11 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     Returns
     -------
     av_data : :class:`np.ndarray`
-        complex (ntimes, av_chans, npols, nbls), weighted average of data
+        complex (..., av_chans, npols, nbls), weighted average of data
     av_flags : :class:`np.ndarray`
-        bool (ntimes, av_chans, npols, nbls), weighted average of flags
-    av_weights : ntimes, av_chans, npols, nbls)
-        real (ntimes, av_chans, npols, nbls), weighted average of weights
+        bool (..., av_chans, npols, nbls), weighted average of flags
+    av_weights : :class:`np.ndarray`
+        real (..., av_chans, npols, nbls), weighted average of weights
     """
     # ensure chanav is an integer
     chanav = np.int(chanav)

@@ -354,9 +354,8 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     for ant in range(len(ant_array)):
         # select all correlations with same antenna but ignore autocorrelations
-        ant_idx = np.where(((bls_lookup[:, 0] == ant)
-                           | (bls_lookup[:, 1] == ant))
-                           & ((bls_lookup[:, 0] != bls_lookup[:, 1])))[0]
+        ant_idx = np.where((bls_lookup[:, 0] == ant)
+                           ^ (bls_lookup[:, 1] == ant))[0]
 
         ant_weights = da.sum(flagged_weights[..., ant_idx], axis=-1)
         ant_data = da.sum(weighted_data[..., ant_idx], axis=-1) / ant_weights
@@ -371,6 +370,43 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
     av_flags = da.stack(av_flags, axis=-1)
     av_weights = da.stack(av_weights, axis=-1)
 
+    return av_data, av_flags, av_weights
+
+
+def wavg_t_f(data, flags, weights, nchans):
+    """
+    Perform weighted average of data, flags and weights,
+    over all times and in frequency blocks to form a product with nchans channels.
+    If nchans is less than the number of channels in the data, don't average in frequency
+
+    Parameters:
+    -----------
+    data : :class:`da.Array`
+        complex (ntimes, nchans, npols, bls)
+    flags : :class:`da.Array`
+        int (ntimes, nchans, npols, bls)
+    weights : :class:`da.Array`
+        real (ntimes, nchans, npols, bls)
+    nchans : int
+        number of channels in averaged product, if data has less channels than nchans,
+        don't average
+
+    Returns:
+    --------
+    av_data : :class:`da.Array`
+        complex (..., n_ant), weighted average of data
+    av_flags : :class:`da.Array`
+        bool (n_ant), weighted average of flags
+    av_weights : :class:`da.Array`
+        real (..., n_ant), weighted average of weights
+    """
+    # Average over all times, in frequency blocks
+    orig_chans = data.shape[1]
+    av_data, av_flags, av_weights = wavg_full(data, flags, weights, threshold=1)
+    chanav = max(1, orig_chans // nchans)
+    if chanav > 1:
+        av_data, av_flags, av_weights = wavg_full_f(av_data, av_flags, av_weights,
+                                                    chanav, threshold=1)
     return av_data, av_flags, av_weights
 
 

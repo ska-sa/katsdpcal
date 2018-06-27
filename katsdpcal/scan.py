@@ -869,7 +869,7 @@ class Scan(object):
         av_corr['t_flags'].insert(0, t_sum_flags)
         av_corr['bl_flags'].insert(0, (bl_sum_flags, np.average(self.timestamps)))
 
-    def summarize_full(self, av_corr, target_name, key, data=None, nchans=8):
+    def summarize_full(self, av_corr, key, data=None, nchans=8):
         """
         Average visibilities per scan, per antenna and into nchans frequency blocks. Add these
         averaged visibilities, flags and weights to a dictionary with given key.
@@ -879,12 +879,11 @@ class Scan(object):
         ----------
         av_corr : collections.defaultdict
             dict to add averaged visibilities to
-        target_name : str
-            name of target, dictionary key prefix
         key : str
             dictionary key
-        data : tuple, optional
-            vis, flags, weights of data to average
+        data : tuple of :class: `da.Array`, optional
+            vis, flags, weights of data to average. Defaults to
+            vis, flags and weights of self.cross_ant.tf.auto_pol
         nchans : int, optional
             number of channels in the averaged visibilities
         """
@@ -892,68 +891,55 @@ class Scan(object):
             vis = self.cross_ant.tf.auto_pol.vis
             flags = self.cross_ant.tf.auto_pol.flags
             weights = self.cross_ant.tf.auto_pol.weights
-
         else:
             vis, flags, weights = data
 
-        orig_chans = self.cross_ant.tf.auto_pol.vis.shape[1]
-        chanav = min(orig_chans, orig_chans // nchans)
         # average in frequency blocks, per scan and per antenna
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(vis, flags, weights, chanav)
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis, av_flags, av_weights)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis, flags, weights, nchans)
         av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
                                                               self.antennas,
                                                               self.cross_ant.bls_lookup)
         # add avg spectrum per antenna to corrected data
-        key = target_name + key
         av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
         av_corr[key].insert(0, (av_vis, av_flags, av_weights))
 
-    def summarize(self, av_corr, target_name, key, data=None, nchans=8, avg_ant=False,
-                  refant_only=False, prefix=True):
+    def summarize(self, av_corr, key, data=None, nchans=8, avg_ant=False,
+                  refant_only=False):
         """
         Average visibilites per scan and into nchans frequency blocks.
         Optionally average per antenna. Optionally select only baselines to the reference antenna.
         Add these averaged visibilities to a defaultdict with the given key.
-        Optionally prefix the dictionary key with the target name.
 
         Parameters:
         -----------
         av_corr : collections.defaultdict
             dict to add averaged visibilities to
-        target_name : str
-            name of target, dictionary key prefix
         key : str
             dictionary key
-        data : tuple, optional
-            vis, flags, weights of data to average
+        data : tuple of :class: `da.Array`, optional
+            vis, flags, weights of data to average. Defaults to
+            vis, flags and weights of self.cross_ant.tf.auto_pol
         nchans : int, optional
             number of channels in the averaged visibilities
         avg_ant : bool, optional
             average per antenna
         refant_only : bool, optional
             select baselines to the reference antenna
-        prefix : bool, optional
-            prefix key with target name
         """
         if not data:
             vis = self.cross_ant.tf.auto_pol.vis
             flags = self.cross_ant.tf.auto_pol.flags
             weights = self.cross_ant.tf.auto_pol.weights
-
         else:
             vis, flags, weights = data
 
-        # Average per scan in frequency blocks
-        orig_chans = self.cross_ant.tf.auto_pol.vis.shape[1]
-        chanav = min(orig_chans, orig_chans // nchans)
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(vis, flags, weights, chanav)
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(av_vis, av_flags, av_weights)
+        # average per scan, in frequency blocks
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis, flags, weights, nchans)
 
         # select only baselines to refant
         if refant_only:
             ant_idx = np.where(((self.cross_ant.bls_lookup[:, 0] == self.refant)
-                               | (self.cross_ant.bls_lookup[:, 1] == self.refant)))[0]
+                               ^ (self.cross_ant.bls_lookup[:, 1] == self.refant)))[0]
             av_vis = av_vis[..., ant_idx]
             av_flags = av_flags[..., ant_idx]
         # Average per antenna
@@ -961,8 +947,6 @@ class Scan(object):
             av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
                                                                   self.antennas,
                                                                   self.cross_ant.bls_lookup)
-        if prefix:
-            key = target_name + key
 
         av_vis[av_flags] = np.nan
         val = (av_vis.compute(), np.average(self.timestamps))
