@@ -11,6 +11,7 @@ colorama==0.3.7         # for libtmux
 cycler                  # for matplotlib
 dask
 decorator
+defusedxml              # for katdal
 distributed==1.21.0
 docutils
 enum34                  # for numba
@@ -49,6 +50,7 @@ pytz
 PyYAML==3.11
 rdbtools                # for katdal
 redis
+requests                # for katdal
 scipy
 singledispatch          # for tornado, distributed
 six
