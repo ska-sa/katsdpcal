@@ -271,8 +271,8 @@ class TestWavgFullF(unittest.TestCase):
         """Test thresholding on flags"""
         # This assumes the threshold default is 0.8 - it's not currently
         # settable via wavg_full_f.
-        self.flags[0, :8, 0, 0] = 4
-        self.flags[0, :9, 0, 1] = 4
+        self.flags[0, :7, 0, 0] = 4
+        self.flags[0, :8, 0, 1] = 4
         out_data, out_flags, out_weights = calprocs.wavg_full_f(
             self.data, self.flags, self.weights, 10)
         self.assertEqual(False, out_flags[0, 0, 0, 0])
