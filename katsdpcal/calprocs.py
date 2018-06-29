@@ -877,7 +877,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
         av_data = np.add.reduceat(weighted_data, inc_array, axis=-3) / av_weights
     n_flags = np.add.reduceat(asbool(flags), inc_array, axis=-3)
     n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=-3)
-    av_flags = n_flags > n_samples * threshold
+    av_flags = n_flags >= n_samples * threshold
 
     return av_data, av_flags, av_weights
 

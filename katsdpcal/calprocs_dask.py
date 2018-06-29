@@ -147,7 +147,7 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     isnan = da.isnan(av_data)
     av_data = where(isnan, av_data.dtype.type(0), av_data)
     n_flags = da.sum(calprocs.asbool(flags), axis)
-    av_flags = n_flags > flags.shape[axis] * threshold
+    av_flags = n_flags >= flags.shape[axis] * threshold
     return av_data, av_flags, av_weights
 
 
@@ -396,7 +396,7 @@ def wavg_t_f(data, flags, weights, nchans):
     av_data : :class:`da.Array`
         complex (..., n_ant), weighted average of data
     av_flags : :class:`da.Array`
-        bool (n_ant), weighted average of flags
+        bool (..., n_ant), weighted average of flags
     av_weights : :class:`da.Array`
         real (..., n_ant), weighted average of weights
     """

@@ -184,7 +184,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
                 del new_corr[key]
 
             # take the weighted average over all the gain calibrated scans
-            elif '_g_spec' in key:
+            elif key.endswith('_g_spec'):
                 sum_corr[key] += new_corr[key]
                 wavg = zip(*sum_corr[key])
                 vis, flags, weights = [da.stack(a) for a in wavg]
