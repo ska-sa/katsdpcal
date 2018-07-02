@@ -665,6 +665,15 @@ class TestCalDeviceServer(unittest.TestCase):
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
                                        ret_KCROSS_DIODE, rtol=1e-3)
 
+        if 'polcal' in target.tags:
+            cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)
+            assert_equal(1, len(cal_product_KCROSS))
+            ret_KCROSS, ret_KCROSS_ts = cal_product_KCROSS[0]
+            assert_equal(np.float32, ret_KCROSS.dtype)
+            KCROSS = K - K[1] - (ret_K - ret_K[1])
+            np.testing.assert_allclose(np.mean(KCROSS, axis=1)[..., np.newaxis],
+                                       ret_KCROSS, rtol=1e-3)
+
         # Check that flags were transmitted
         assert_equal(set(self.output_streams.keys()), set(self.flags_endpoints))
         for i, endpoint in enumerate(self.flags_endpoints):
@@ -689,7 +698,7 @@ class TestCalDeviceServer(unittest.TestCase):
 
     def test_capture_separate_tags(self):
         # Change the target to one with different tags
-        target = ('3C286, radec delaycal gaincal bpcal kcrosscal single_accumulation, '
+        target = ('3C286, radec delaycal gaincal bpcal polcal single_accumulation, '
                   '13:31:08.29, +30:30:33.0, (800.0 43200.0 0.956 0.584 -0.1644)')
         self.telstate.add('cbf_target', target, ts=0.001)
         self.test_capture(expected_g=2)
