@@ -857,7 +857,7 @@ class Scan(object):
                              axis=0, dtype=np.float32)
 
         orig_chans = self.cross_ant.tf.auto_pol.flags.shape[1]
-        chanav = min(orig_chans, orig_chans // nchans)
+        chanav = max(1, orig_chans // nchans)
         t_sum_flags = calprocs_dask.av_blocks(t_sum_flags, chanav)
 
         # average flags over baseline and time
