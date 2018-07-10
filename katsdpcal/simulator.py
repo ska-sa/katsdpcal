@@ -276,7 +276,7 @@ class SimData(object):
         weights_channel = np.require(np.max(weights, axis=1), dtype=np.float32) / np.float32(255)
         # Avoid divide-by-zero issues if all the weights are zero
         weights_channel = np.maximum(weights_channel, np.float32(2.0**-96))
-        scaled_weights = np.round(weights / weights_channel[:, np.newaxis] * np.float32(255))
+        scaled_weights = np.round(weights / weights_channel[:, np.newaxis])
         scaled_weights = scaled_weights.astype(np.uint8)
         ig['weights_channel'].value = weights_channel
         ig['weights'].value = scaled_weights
