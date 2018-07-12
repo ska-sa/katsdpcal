@@ -731,7 +731,7 @@ def write_products(report, report_path, ts, parameters,
         cal_heading(report, cal, 'Cross polarisation delay', '(ns)')
         # convert delays to nano seconds
         vals = 1e9 * vals
-        write_table_timerow(report, [cal], times, vals)
+        write_table_timecol(report, [cal], times, vals[:, 0, :])
 
     # ---------------------------------
     # cross pol delay from noise diode

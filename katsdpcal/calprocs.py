@@ -358,7 +358,7 @@ def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
                    ref_ant=refant, init_gain=g0, **kwargs)
 
 
-def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
+def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_sample=1):
     """
     Fit delay (phase slope across frequency) to visibility data.
     If corrprod_lookup is xc, i.e. all baselines have two different antenna indices,
@@ -377,6 +377,9 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
         Channel frequencies in Hz
     refant : int, optional
         Reference antenna index
+    cross: bool, optional
+        default assume data are cross-correlations per baseline, else assume data are
+        auto-correlations per antenna
     chan_sample : int, optional
         Subsample channels by this amount, i.e. use every n'th channel in fit
 
@@ -452,8 +455,7 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, chan_sample=1):
         vis_k = np.float32(np.fft.fftfreq(ft_vis.shape[0], chan_spacing)[k_arg])
 
         # test whether data is xc
-        xc_mask = np.array([b0 != b1 for b0, b1 in corrprod_lookup])
-        if np.all(xc_mask):
+        if cross:
             # now determine per-antenna K values
             num_ants = ants_from_bllist(corrprod_lookup)
             coarse_k = np.zeros(num_ants, np.float32)

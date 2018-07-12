@@ -388,6 +388,7 @@ class Scan(object):
                                                                    axis=-1)
             # add antenna axis
             av_vis = av_vis[..., np.newaxis]
+            av_weights = av_weights[..., np.newaxis]
 
         chans = self.channel_freqs[bchan:echan]
         ave_chans = np.add.reduceat(
@@ -395,7 +396,7 @@ class Scan(object):
 
         av_vis, av_weights = da.compute(av_vis, av_weights)
         kcross_soln = calprocs.k_fit(av_vis, av_weights,
-                                     corr.bls_lookup, ave_chans, self.refant,
+                                     corr.bls_lookup, ave_chans, self.refant, False,
                                      chan_sample=1)
         # set delay in the second polarisation axis to zero
         kcross_soln = np.vstack([kcross_soln, np.zeros_like(kcross_soln)])
@@ -449,7 +450,7 @@ class Scan(object):
         ave_vis, ave_weights = da.compute(ave_vis, ave_weights)
         k_soln = calprocs.k_fit(ave_vis, ave_weights,
                                 self.cross_ant.bls_lookup,
-                                k_freqs, self.refant, chan_sample)
+                                k_freqs, self.refant, True, chan_sample)
 
         return CalSolution('K', k_soln, ave_time)
 

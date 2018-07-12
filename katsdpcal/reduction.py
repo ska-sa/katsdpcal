@@ -544,8 +544,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # KCROSS solution
                 logger.info('Solving for KCROSS on cross-hand delay calibrator %s', target_name)
                 shared_solve(ts, parameters, solution_stores['KCROSS'],
-                             s.kcross_sol,
-                             chan_ave=parameters['kcross_chanave'], pre_apply=solns_to_apply)
+                             parameters['k_bchan'], parameters['k_echan'],
+                             s.kcross_sol, chan_ave=parameters['kcross_chanave'],
+                             pre_apply=solns_to_apply)
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):
