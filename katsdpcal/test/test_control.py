@@ -34,6 +34,15 @@ from katdal.h5datav3 import FLAG_NAMES
 from katsdpcal import control, pipelineprocs, param_dir, rfi_dir
 
 
+def get_sent_heaps(send_stream):
+    """Extracts the heaps that a :class:`spead2.send.InprocStream` sent."""
+    decoder = spead2.recv.Stream(spead2.ThreadPool())
+    decoder.stop_on_stop_item = False
+    send_stream.queue.stop()
+    decoder.add_inproc_reader(send_stream.queue)
+    return list(decoder)
+
+
 def test_shared_empty():
     def sender(a):
         a[:] = np.outer(np.arange(5), np.arange(3))
@@ -134,84 +143,6 @@ def async_test(func):
     def wrapper(*args, **kwargs):
         return tornado.ioloop.IOLoop.current().run_sync(lambda: func(*args, **kwargs))
     return wrapper
-
-
-class MockRecvData(object):
-    """Holds heaps to feed MockRecvStream.
-
-    It has an ordered collection of heaps, each associated with a
-    UDP endpoint. When requested, it provides the first one that matches
-    a given set of endpoints.
-    """
-    def __init__(self):
-        self._heaps = []
-        self._waiters = []    # Each entry is (endpoints, future) pair
-        self._thread_pool = spead2.ThreadPool()
-
-    def send_heap(self, endpoint, heap):
-        if heap is not None:
-            # Convert from send heap to receive heap
-            encoder = spead2.send.BytesStream(self._thread_pool)
-            encoder.send_heap(heap)
-            raw = encoder.getvalue()
-            decoder = spead2.recv.Stream(self._thread_pool)
-            decoder.stop_on_stop_item = False
-            decoder.add_buffer_reader(raw)
-            heap = decoder.get()
-        for i, waiter in enumerate(self._waiters):
-            if endpoint in waiter[0] and not waiter[1].done():
-                waiter[1].set_result(heap)
-                del self._waiters[i]
-                break
-        else:
-            self._heaps.append((endpoint, heap))
-
-    @trollius.coroutine
-    def get(self, endpoints):
-        for i in range(len(self._heaps)):
-            if self._heaps[i][0] in endpoints:
-                heap = self._heaps[i][1]
-                del self._heaps[i]
-                raise Return(heap)
-        # Not found, so wait for it
-        future = trollius.Future()
-        self._waiters.append((endpoints, future))
-        raise Return((yield From(future)))
-
-
-class MockRecvStream(mock.MagicMock):
-    """Mock replacement for :class:`spead2.recv.trollius.Stream`.
-
-    It has a queue of heaps that it yields to the caller. If the queue is
-    empty, it blocks until a new item is added or :meth:`stop` is called.
-    """
-    def __init__(self, data, *args, **kwargs):
-        super(MockRecvStream, self).__init__(*args, **kwargs)
-        self._data = data
-        self._stop_received = False
-        self._endpoints = set()
-
-    # Make child mocks use the basic MagicMock, not this class
-    def _get_child_mock(self, **kwargs):
-        return mock.MagicMock(**kwargs)
-
-    @trollius.coroutine
-    def get(self):
-        if self._stop_received:
-            raise spead2.Stopped()
-        heap = yield From(self._data.get(self._endpoints))
-        if heap is None:
-            # Special value added by stop
-            self._stop_received = True
-            raise spead2.Stopped()
-        raise Return(heap)
-
-    def add_udp_reader(self, port, bind_hostname, buffer_size=None):
-        self._endpoints.add(Endpoint(bind_hostname, port))
-
-    def stop(self):
-        assert self._endpoints, "can't stop without an endpoint"
-        self._data.send_heap(next(iter(self._endpoints)), None)
 
 
 class ServerData(object):
@@ -335,20 +266,17 @@ class TestCalDeviceServer(unittest.TestCase):
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
 
-    def _get_input_stream(self, *args, **kwargs):
-        """Mock implementation of :class:`spead2.recv.Stream` that returns a MockRecvStream."""
-        return MockRecvStream(self.input_data, spec=self._dummy_stream)
-
     def _get_output_stream(self, thread_pool, hostname, port, config,
                            *args, **kwargs):
-        """Mock implementation of UdpStream that returns a ByteStream instead.
+        """Mock implementation of UdpStream that returns an InprocStream instead.
 
-        It stores it in self.output_streams, keyed by hostname and port.
+        It stores the stream in self.output_streams, keyed by hostname and port.
         """
         key = Endpoint(hostname, port)
         assert_not_in(key, self.output_streams)
-        self.output_streams[key] = spead2.send.BytesStream(thread_pool)
-        return self.output_streams[key]
+        stream = spead2.send.InprocStream(thread_pool, spead2.InprocQueue())
+        self.output_streams[key] = stream
+        return stream
 
     def setUp(self):
         self.n_channels = 4096
@@ -381,16 +309,25 @@ class TestCalDeviceServer(unittest.TestCase):
 
         self.ig = spead2.send.ItemGroup()
         self.add_items(self.ig)
-        self.input_data = MockRecvData()
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_heap(descriptors='all'))
-        # Create a real stream just so that we can use it as a spec later
-        self._dummy_stream = spead2.recv.trollius.Stream(spead2.ThreadPool())
-        self._dummy_stream.stop()
-        self.patch('spead2.recv.trollius.Stream',
-                   side_effect=self._get_input_stream)
+        self.l0_streams = {}
+        sender_thread_pool = spead2.ThreadPool()
+        for i, endpoint in enumerate(self.l0_endpoints):
+            queue = spead2.InprocQueue()
+            stream = spead2.send.InprocStream(sender_thread_pool, spead2.InprocQueue())
+            stream.set_cnt_sequence(i, self.n_endpoints)
+            stream.send_heap(self.ig.get_heap(descriptors='all'))
+            self.l0_streams[endpoint] = stream
+
+        # Need a real function to use in the mock, otherwise it doesn't become
+        # a bound method.
+        def _add_udp_reader(stream, port, max_size=None, buffer_size=None,
+                            bind_hostname='', socket=None):
+            queue = self.l0_streams[Endpoint(bind_hostname, port)].queue
+            stream.add_inproc_reader(queue)
+
+        self.patch('spead2.recv.trollius.Stream.add_udp_reader', _add_udp_reader)
         self.output_streams = {}
-        self.patch('spead2.send.UdpStream', side_effect=self._get_output_stream)
+        self.patch('spead2.send.UdpStream', self._get_output_stream)
 
         # Trying to run two dask distributed clients in the same process doesn't
         # work so well, so don't try
@@ -475,8 +412,8 @@ class TestCalDeviceServer(unittest.TestCase):
         """
         yield self.make_request('capture-init', 'cb')
         yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_end())
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.make_request('shutdown')
         for server in self.servers:
@@ -488,8 +425,8 @@ class TestCalDeviceServer(unittest.TestCase):
     @tornado.gen.coroutine
     def test_init_when_capturing(self):
         """capture-init fails when already capturing"""
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_end())
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-init', 'cb')
         yield self.assert_request_fails(r'capture already in progress', 'capture-init', 'cb')
 
@@ -499,8 +436,8 @@ class TestCalDeviceServer(unittest.TestCase):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
         yield self.make_request('capture-init', 'cb')
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_end())
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
 
@@ -579,14 +516,14 @@ class TestCalDeviceServer(unittest.TestCase):
                 dump_heaps.append((endpoint, self.ig.get_heap()))
             rs.shuffle(dump_heaps)
             for endpoint, heap in dump_heaps:
-                self.input_data.send_heap(endpoint, heap)
+                self.l0_streams[endpoint].send_heap(heap)
             ts += self.telstate.sdp_l0test_int_time
         yield self.make_request('capture-init', 'cb')
         yield tornado.gen.sleep(1)
         yield self.assert_sensor_value('accumulator-capture-active', 1)
         yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_end())
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
         yield self.shutdown_servers(180)
         yield self.assert_sensor_value('accumulator-capture-active', 0)
         yield self.assert_sensor_value('input-heaps-total',
@@ -657,10 +594,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Check that flags were transmitted
         assert_equal(set(self.output_streams.keys()), set(self.flags_endpoints))
         for i, endpoint in enumerate(self.flags_endpoints):
-            decoder = spead2.recv.Stream(spead2.ThreadPool())
-            decoder.stop_on_stop_item = False
-            decoder.add_buffer_reader(self.output_streams[endpoint].getvalue())
-            heaps = list(decoder)
+            heaps = get_sent_heaps(self.output_streams[endpoint])
             assert_equal(n_times + 2, len(heaps))   # 2 extra for start and end heaps
             for j, heap in enumerate(heaps[1:-1]):
                 items = spead2.ItemGroup()
@@ -731,7 +665,7 @@ class TestCalDeviceServer(unittest.TestCase):
         rs = np.random.RandomState(seed=1)
         n_times = 130
         for endpoint, heap in self.prepare_heaps(rs, n_times):
-            self.input_data.send_heap(endpoint, heap)
+            self.l0_streams[endpoint].send_heap(heap)
         # Add a target change at an uneven time, so that the batches won't
         # neatly align with the buffer end. We also have to fake a slew to make
         # it work, since the batcher assumes that target cannot change without
@@ -757,8 +691,8 @@ class TestCalDeviceServer(unittest.TestCase):
             print('waiting {} ({}/{} received)'.format(i, total_heaps, n_times * self.n_substreams))
         else:
             raise RuntimeError('Timed out waiting for the heaps to be received')
-        for endpoint in self.l0_endpoints:
-            self.input_data.send_heap(endpoint, self.ig.get_end())
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
         yield self.shutdown_servers(60)
 
     @async_test
@@ -788,7 +722,7 @@ class TestCalDeviceServer(unittest.TestCase):
         heaps_expected = [0] * self.n_servers
         n_substreams_per_server = self.n_substreams // self.n_servers
         for endpoint, heap in heaps:
-            self.input_data.send_heap(endpoint, heap)
+            self.l0_streams[endpoint].send_heap(heap)
             server_id = self.substream_endpoints.index(endpoint) // n_substreams_per_server
             heaps_expected[server_id] += 1
         # Run the capture
@@ -829,12 +763,12 @@ class TestCalDeviceServer(unittest.TestCase):
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             yield self.assert_sensor_value('pipeline-exceptions', 0)
             for endpoint, heap in self.prepare_heaps(np.random.RandomState(seed=1), 5):
-                self.input_data.send_heap(endpoint, heap)
+                self.l0_streams[endpoint].send_heap(heap)
             yield self.make_request('capture-init', 'cb')
             yield tornado.gen.sleep(1)
             yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-            for endpoint in self.l0_endpoints:
-                self.input_data.send_heap(endpoint, self.ig.get_end())
+            for stream in self.l0_streams.values():
+                stream.send_heap(self.ig.get_end())
             yield self.shutdown_servers(60)
             yield self.assert_sensor_value('pipeline-exceptions', 1)
             yield self.assert_sensor_value('capture-block-state', '{}')
