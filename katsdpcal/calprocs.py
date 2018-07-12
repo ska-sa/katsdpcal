@@ -377,6 +377,9 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
         Channel frequencies in Hz
     refant : int, optional
         Reference antenna index
+    cross: bool, optional
+        default assume data are cross-correlations per baseline, else assume data are
+        auto-correlations per antenna
     chan_sample : int, optional
         Subsample channels by this amount, i.e. use every n'th channel in fit
 
