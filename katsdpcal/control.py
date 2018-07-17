@@ -728,14 +728,14 @@ class Accumulator(object):
         try:
             activity, activity_time = self.telstate_cb_cal.get_range(
                 'obs_activity', et=data_ts, include_previous=True)[0]
-        except KeyError:
+        except (KeyError, IndexError):
             logger.info('No obs_activity found in telstate - ignoring dump')
             return None
         # Get target from telescope state if present (otherwise 'unknown')
         try:
             target = self.telstate.get_range('cbf_target', et=data_ts,
                                              include_previous=True)[0][0]
-        except KeyError:
+        except (KeyError, IndexError):
             logger.warning('No cbf_target found in telstate')
             target = ''
         # Extract name and tags from target description string
