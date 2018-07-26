@@ -34,7 +34,7 @@ setup(
         "dask[array,distributed]>=0.17.0", "distributed>=1.12.0", "bokeh",
         "enum34", "manhole", "trollius", "futures", "attrs", "sortedcontainers",
         "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
-        "katsdpsigproc", "spead2>=1.5.0", "docutils", "matplotlib>=2", "tornado<5"
+        "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2", "tornado<5"
     ],
     tests_require=["mock", "nose"],
     use_katversion=True
