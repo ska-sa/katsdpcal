@@ -5,6 +5,7 @@ backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
 bokeh==0.12.13
 certifi                 # for tornado
+chardet                 # for requests
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
 colorama==0.3.7         # for libtmux
@@ -22,6 +23,7 @@ future                  # for katcp
 futures                 # for trollius, distributed
 h5py
 heapdict==1.0.0         # for distributed
+idna                    # for requests
 ipaddress               # for katsdptelstate
 jinja2==2.10            # for bokeh
 katcp
@@ -61,6 +63,7 @@ tblib==1.3.2            # for distributed
 toolz                   # for dask
 tornado                 # for katcp
 trollius
+urllib3                 # for requests
 zict==0.1.3             # for distributed
 
 git+ssh://git@github.com/ska-sa/katdal
