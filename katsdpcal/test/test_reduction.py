@@ -114,3 +114,18 @@ class TestSharedSolve(unittest.TestCase):
         for i in range(self.n_servers):
             with self.assertRaises(DummyError):
                 futures[i].result(timeout=5)
+
+    def _test_int(self, name):
+        def solver(bchan, echan):
+            return bchan
+
+        results = self.call(name, self.bchan, self.echan, solver)
+        for i in range(self.n_servers):
+            expected = self.bchan % self.server_chans
+            self.assertEqual(results[i], expected)
+
+    def test_int_anonymous(self):
+        self._test_int(None)
+
+    def test_int_named(self):
+        self._test_int('K')
