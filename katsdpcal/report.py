@@ -1233,8 +1233,15 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln('Stream: {}'.format(stream_name))
             cal_rst.writeln()
 
-            # Plot elevation vs time for reference antenna
-            refant_index = parameters['refant_index']
+            # Set the reference antenna if not already set
+            if parameters['refant_index'] is None:
+                refant = ts.get('refant')
+                refant_index = parameters['antenna_names'].index(refant.name)
+                parameters['refant'] = refant
+                parameters['refant_index'] = refant_index
+            else:
+                refant_index = parameters['refant_index']
+
             antennas = parameters['antennas']
             if av_corr:
                 targets, times = zip(*av_corr['targets'])
