@@ -196,7 +196,8 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     solution_store : :class:`CalSolutionStore`-like
         Store in which to place the solution, in addition to the `telstate`. If it
         is ``None``, the solution is returned but not placed in any store (nor in
-        a public part of telstate).
+        a public part of telstate). Only :class:`~.CalSolution` or `~.CalSolutions` solutions can
+        be stored. Other solution types can only be returned.
     bchan,echan : int
         Channel range containing the data, relative to the channels held by
         this server. It must lie either entirely inside or entirely outside
@@ -204,7 +205,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     solver : callable
         Function to do the actual computation. It is passed the remaining
         arguments, and is also passed `bchan` and `echan` by keyword. It must
-        return a :class:`~.CalSolution` or `~.CalSolutions`.
+        return a :class:`~.CalSolution` or `~.CalSolutions` or int.
     _seq : int, optional
         If specified, it is used as the sequence number instead of using the
         global counter. This is intended strictly for unit testing.
@@ -241,15 +242,20 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         kwargs['echan'] = echan
         try:
             soln = solver(*args, **kwargs)
-            assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
-            values = soln.values
-            if solution_store is not None:
-                save_solution(telstate, telstate_key, solution_store, soln)
-                values = None
-            if isinstance(soln, solutions.CalSolution):
-                info = ('CalSolution', soln.soltype, values, soln.time)
-            else:
-                info = ('CalSolutions', soln.soltype, values, soln.times)
+            if isinstance(soln, (solutions.CalSolution, solutions.CalSolutions)):
+                values = soln.values
+                if solution_store is not None:
+                    save_solution(telstate, telstate_key, solution_store, soln)
+                    values = None
+                if isinstance(soln, solutions.CalSolution):
+                    info = ('CalSolution', soln.soltype, values, soln.time)
+                else:
+                    info = ('CalSolutions', soln.soltype, values, soln.times)
+            elif isinstance(soln, int):
+                info = ('Refant', soln)
+                if solution_store is not None:
+                    logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
+                                ' and won\'t be stored in solution store')
         except Exception as error:
             add_info(('Exception', error))
             raise
@@ -290,11 +296,17 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                                      .format(telstate_key))
                 values = np.stack(values)
             soln = solutions.CalSolutions(soltype, values, times)
+        elif info[0] == 'Refant':
+            soln = info[1]
         else:
             raise ValueError('Unknown info type {}'.format(info[0]))
         if solution_store is not None:
-            # We don't pass telstate, because we got the value from telstate
-            save_solution(None, None, solution_store, soln)
+            if isinstance(soln, (solutions.CalSolution, solutions.CalSolutions)):
+                # We don't pass telstate, because we got the value from telstate
+                save_solution(None, None, solution_store, soln)
+            else:
+                logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
+                            ' and won\'t be stored in solution store')
         return soln
 
 
@@ -432,6 +444,17 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             s.rfi(calib_flagger, parameters['rfi_mask'], sensors=sensors)
             # TODO: setup separate flagger for cross-pols
             s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, sensors=sensors)
+
+            # Set a reference antenna if one isn't already set
+            if s.refant is None:
+                best_refant_index = shared_solve(ts, parameters, None,
+                                                 parameters['k_bchan'], parameters['k_echan'],
+                                                 s.refant_find)
+                parameters['refant_index'] = best_refant_index
+                parameters['refant'] = parameters['antennas'][best_refant_index]
+                logger.info('Reference antenna set to %s', parameters['refant'].name)
+                ts.add('refant', parameters['refant'], immutable=True)
+                s.refant = best_refant_index
 
         # run_t0 = time.time()
 

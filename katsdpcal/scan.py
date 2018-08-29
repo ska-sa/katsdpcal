@@ -267,6 +267,51 @@ class Scan(object):
         return timed
 
     # ---------------------------------------------------------------------------------------------
+    @logsolutiontime
+    def refant_find(self, bchan=1, echan=None, chan_sample=1):
+        """
+        Find a good reference antenna candidate
+
+        Parameters
+        ----------
+        bchan : start channel for fit, int, optional
+        echan : end channel for fit, int, optional
+        chan_sample : channel sampling to use in delay fit, optional
+
+        Returns
+        -------
+        refant_index : int
+            index of preferred refant
+        """
+
+        modvis = self.cross_ant.tf.auto_pol.vis
+
+        # determine channel range for fit
+        chan_slice = np.s_[:, bchan:echan, :, :]
+        # use specified channel range for frequencies
+        k_freqs = self.channel_freqs[bchan:echan]
+
+        # initialise model, if this scan target has an associated model
+        self._init_model()
+        # for delay case, only apply case C full visibility model (other models don't impact delay)
+        if self.model is None:
+            fitvis = modvis[chan_slice]
+        elif self.model.shape[-1] == 1:
+            fitvis = modvis[chan_slice]
+        else:
+            fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+        # average over all time, for specified channel range (no averaging over channel)
+        ave_vis = calprocs_dask.wavg(
+            fitvis,
+            self.cross_ant.tf.auto_pol.flags[chan_slice],
+            self.cross_ant.tf.auto_pol.weights[chan_slice])
+
+        # fit for delay
+        ave_vis = ave_vis.compute()
+        refant_index = calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs)
+        return refant_index
+
+    # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
 
     @logsolutiontime
