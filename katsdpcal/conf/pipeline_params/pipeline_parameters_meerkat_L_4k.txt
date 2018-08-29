@@ -1,7 +1,5 @@
 # parameter file for MeerKAT L band, 4k channels
 
-preferred_refants : m005,m012,m011,m014,m024,m000,m016,m020,m028,m039,m042,m050
-
 # delay calibration
 k_solint : 5.0                      # nominal pre-k g solution interval, seconds
 k_chan_sample : 1                   # sample every 10th channel for pre-K BP soln
