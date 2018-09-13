@@ -157,6 +157,21 @@ class TestStefcal(unittest.TestCase):
         calc_gains = self._call_stefcal(vis, 7, bl_ant_list, weights=weights)
         self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
 
+    def test_stefcal_all_zeros(self):
+        """Test stefcal with visibilities set to zero"""
+        vis, weights, init_gain, bl_ant_list, gains = self.fake_data((10, 7,))
+        # Deliberately set the visibilities to zero in all baselines for one channel.
+        # Set the gain to NaN in this channel
+        # Have to unwrap it (in case it is a dask array) and rewrap it.
+        assert bl_ant_list[1, 0] != bl_ant_list[1, 1]  # Check that it isn't an autocorr
+        vis = np.array(vis)
+        vis[1] = 0j
+        gains[1] = np.nan
+        vis = self._wrap_array(vis)
+        # solve for gains
+        calc_gains = self._call_stefcal(vis, 7, bl_ant_list, weights=weights)
+        self._assert_gains_equal(gains, calc_gains, rtol=1e-3)
+
     def test_stefcal_init_gain(self):
         """Test stefcal with initial gains provided.
 

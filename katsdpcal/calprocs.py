@@ -207,7 +207,7 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
     row_sum = np.zeros(num_ants, rawvis.dtype)
     for p in range(num_ants):
         for i in range(num_ants):
-            row_sum[p] += M[p, i]
+            row_sum[p] += R[p, i]
 
     good_ant = row_sum != 0
     antlist = np.arange(num_ants)[good_ant]  # list of good antennas to iterate over.
