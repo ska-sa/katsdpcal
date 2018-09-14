@@ -203,13 +203,11 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
     g_old = init_gain.copy()
 
     # Remove completely flagged antennas,
-    # where flags are indicated by a weight of zero
-    row_sum = np.zeros(num_ants, rawvis.dtype)
+    # where flags are indicated by a weighted visibility of zero
+    good_ant = np.ones(num_ants, np.bool_)
     for p in range(num_ants):
-        for i in range(num_ants):
-            row_sum[p] += R[p, i]
+        good_ant[p] = ~np.all(R[p] == 0j)
 
-    good_ant = row_sum != 0
     antlist = np.arange(num_ants)[good_ant]  # list of good antennas to iterate over.
     for n in range(num_iters[0]):
         for p in antlist:
