@@ -1233,7 +1233,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln('Stream: {}'.format(stream_name))
             cal_rst.writeln()
 
-            # Set the reference antenna if not already set
+            # Obtain reference antenna selected by the pipeline
             if parameters['refant_index'] is None:
                 refant = ts.get('refant')
                 refant_index = parameters['antenna_names'].index(refant.name)
