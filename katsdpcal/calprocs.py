@@ -339,15 +339,15 @@ def ants_from_bllist(bllist):
 
 def best_refant(data, corrprod_lookup, chans):
     """
-    Determine antenna whose FFT has the maximum peak to noise ratio (PNR) by summing the
-    PNR of the FFT over all baselines to each antenna
+    Determine antenna whose FFT has the maximum peak to noise ratio (pnr) by taking the median
+    pnr of the FFT over all baselines to each antenna
 
     Parameters:
     -----------
-    data : :class:`np.ndarray`
-        visibility data, array of complex, shape(n_chans, n_pols, n_bls)
-    corrprod_lookup : list of int
-        list of antenna pairs for selected baselines, shape (2, n_bls)
+    data : :class:`np.ndarray`, array of complex, shape(n_chans, n_pols, n_bls)
+        visibility data
+    corrprod_lookup : list of int, shape (2, n_bls)
+        list of antenna pairs for selected baselines
     chans : :class:`np.ndarray`
         channel frequencies in Hz
     Returns:
@@ -358,10 +358,10 @@ def best_refant(data, corrprod_lookup, chans):
     ft_vis = scipy.fftpack.fft(data, axis=0)
     k_arg = np.argmax(np.abs(ft_vis), axis=0)
     # Shift data so that peak of fft is always positioned at the first index of the array
-    chan_spacing = chans[1] - chans[0]
-    vis_k = np.float32(np.fft.fftfreq(ft_vis.shape[0], chan_spacing)[k_arg])
-    data *= np.exp(-2j * np.pi * chans[:, np.newaxis, np.newaxis] * vis_k[np.newaxis, :])
-    ft_vis = scipy.fftpack.fft(data, axis=0)
+    n_chans, n_pols, n_bls = data.shape
+    index = np.array([np.roll(range(n_chans), -n) for n in k_arg.ravel()])
+    index = index.T.reshape(ft_vis.shape)
+    ft_vis = np.take_along_axis(ft_vis, index, axis=0)
 
     # Calculate the height of the peak and the standard deviation away from the peak
     peak = np.max(np.abs(ft_vis), axis=0)
@@ -370,14 +370,14 @@ def best_refant(data, corrprod_lookup, chans):
     # Add 1e-9 to avoid divide by zero errors
     std = np.std(np.abs(ft_vis[chan_slice]), axis=0) + 1e-9
 
-    # Calculate the sum of the PNR for all baselines per antenna
+    # Calculate the median of the pnr for all baselines per antenna
     num_ants = ants_from_bllist(corrprod_lookup)
-    sum_ants = np.zeros(num_ants)
+    med_pnr_ants = np.zeros(num_ants)
     for a in range(num_ants):
         mask = [np.any(b == a) for b in corrprod_lookup]
-        PNR = (peak[..., mask] - mean[..., mask]) / std[..., mask]
-        sum_ants[a] = np.sum(PNR)
-    return np.argmax(sum_ants)
+        pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
+        med_pnr_ants[a] = np.median(pnr)
+    return np.argmax(med_pnr_ants)
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
