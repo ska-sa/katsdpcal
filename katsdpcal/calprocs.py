@@ -541,7 +541,7 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
                 # multiply each term in the fit by w to minimize w**2(bp_phase-A.T)**2
                 # for a WLS fit set w**2 = bp_weights
                 w = np.sqrt(bp_weights[valid])
-                delta_k[i] = np.linalg.lstsq((w * A).T, w * bp_phase)[0][0] / (2. * np.pi)
+                delta_k[i] = np.linalg.lstsq((w * A).T, w * bp_phase, None)[0][0] / (2. * np.pi)
 
         kdelay.append(coarse_k + delta_k)
 
