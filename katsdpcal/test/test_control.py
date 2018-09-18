@@ -14,7 +14,7 @@ import itertools
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_regexp_matches, assert_almost_equal,
+    assert_regexp_matches, assert_almost_equal, assert_not_equal,
     nottest)
 import mock
 
@@ -62,6 +62,7 @@ class PingTask(control.Task):
     """Task class for the test. It receives numbers on a queue, and updates
     a sensor in response.
     """
+
     def __init__(self, task_class, master_queue, slave_queue):
         super(PingTask, self).__init__(task_class, master_queue, 'PingTask')
         self.slave_queue = slave_queue
@@ -87,6 +88,7 @@ class BaseTestTask(object):
 
     This is a base class, which is subclassed for each process class.
     """
+
     def setup(self):
         self.master_queue = self.module.Queue()
         self.slave_queue = self.module.Queue()
@@ -147,6 +149,7 @@ def async_test(func):
 
 class ServerData(object):
     """Test data associated with a single simulated cal server"""
+
     def make_parameters(self, telstate_l0):
         param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_4k.txt')
         rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
@@ -457,53 +460,76 @@ class TestCalDeviceServer(unittest.TestCase):
                           'Sender stopped',
                           'ReportWriter stopped'], progress)
 
-    @async_test
-    @tornado.gen.coroutine
-    def test_capture(self, expected_g=1):
-        """Tests the capture with some data, and checks that solutions are
-        computed and a report written.
+    def make_vis(self, K, G, target, noise=np.array([])):
         """
-        first_ts = ts = 100.0
-        n_times = 25
-        corrupt_times = (4, 17)
-        rs = np.random.RandomState(seed=1)
+        Compute visibilities for the supplied target, delays [K] and gains [G]
 
+        Parameters:
+        -----------
+        K : :class: `np.ndarray`
+            delays, real, shape (2, n_ants)
+        G : :class: `np.nadarray`
+            gains, complex, shape (2, n_ants)
+        target : katpoint Target
+            target
+        Returns:
+        --------
+        vis : :class: `np.ndarray`
+            visibilities(n_freqs, ncorr)
+        """
         bandwidth = self.telstate.sdp_l0test_bandwidth
-        target = katpoint.Target(self.telstate.cbf_target)
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
-        for antenna in self.antennas:
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              1, 1400000100 - 2 * 4)
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, 1400000100 + (n_times+2) * 4)
+
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
         pol1 = ['vh'.index(b[0][-1]) for b in bls_ordering]
         pol2 = ['vh'.index(b[1][-1]) for b in bls_ordering]
-        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
-        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
-            + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
 
         vis = flux_density * np.exp(2j * np.pi * (K[pol1, ant1] - K[pol2, ant2]) * freqs) \
             * (G[pol1, ant1] * G[pol2, ant2].conj())
-        corrupted_vis = vis + 1e9j
-        flags = np.zeros(vis.shape, np.uint8)
-        # Set flag on one channel per baseline, to test the baseline permutation.
-        for i in range(flags.shape[1]):
-            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
-        weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
-        weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
-        channel_slices = [np.s_[i * self.n_channels_per_substream
-                                : (i+1) * self.n_channels_per_substream]
+        if noise.size > 0:
+            noiseboth = noise[:, pol1, ant1] + noise[:, pol2, ant2]
+            vis += noiseboth
+        return vis
+
+    def prepare_vis_heaps(self, n_times, rs, ts, vis, flags, weights, weights_channel):
+        """
+        Produce a list of heaps with the given data
+        Parameters:
+        -----------
+        n_times : int
+            number of dumps
+        rs : :class: `np.random.RandomState`
+            Random generator to shuffle heaps
+        ts : int
+            time of first dump
+        vis : :class: `np.ndarray`
+            visibilities, complex of shape (n_freqs, n_corr)
+        flags: :class: `np.ndarray`
+            flags, uint8 of shape vis
+        weights: :class: `np.ndarray`
+            weights, uint8 of shape vis
+        weights_channel: :class: `np.ndarray`
+            weights_channel, uint8 of shape(n_freqs)
+
+        Returns:
+        --------
+        heaps : list of tuples
+        """
+        corrupted_vis = vis + 1e9j
+        corrupt_times = (4, 17)
+        channel_slices = [np.s_[i * self.n_channels_per_substream: (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
+        heaps = []
         for i in range(n_times):
-            # Corrupt some times, to check that the RFI flagging is working
             dump_heaps = []
+
+            # Corrupt some times, to check that the RFI flagging is working
             for endpoint, s in zip(self.substream_endpoints, channel_slices):
                 self.ig['correlator_data'].value = \
                     corrupted_vis[s] if i in corrupt_times else vis[s]
@@ -515,9 +541,42 @@ class TestCalDeviceServer(unittest.TestCase):
                 self.ig['frequency'].value = np.uint32(s.start)
                 dump_heaps.append((endpoint, self.ig.get_heap()))
             rs.shuffle(dump_heaps)
-            for endpoint, heap in dump_heaps:
-                self.l0_streams[endpoint].send_heap(heap)
+            heaps.extend(dump_heaps)
             ts += self.telstate.sdp_l0test_int_time
+        return heaps
+
+    @async_test
+    @tornado.gen.coroutine
+    def test_capture(self, expected_g=1):
+        """Tests the capture with some data, and checks that solutions are
+        computed and a report written.
+        """
+        first_ts = ts = 100.0
+        n_times = 25
+        rs = np.random.RandomState(seed=1)
+
+        target = katpoint.Target(self.telstate.cbf_target)
+        for antenna in self.antennas:
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              1, 1400000100 - 2 * 4)
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              0, 1400000100 + (n_times + 2) * 4)
+
+        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
+        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
+            + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
+
+        vis = self.make_vis(K, G, target)
+        flags = np.zeros(vis.shape, np.uint8)
+        # Set flag on one channel per baseline, to test the baseline permutation.
+        for i in range(flags.shape[1]):
+            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
+        weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
+        weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
+
+        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
         yield self.make_request('capture-init', 'cb')
         yield tornado.gen.sleep(1)
         yield self.assert_sensor_value('accumulator-capture-active', 1)
@@ -626,6 +685,60 @@ class TestCalDeviceServer(unittest.TestCase):
         self.telstate.add('cbf_target', target, ts=0.001)
         self.test_capture(expected_g=2)
 
+    @async_test
+    @tornado.gen.coroutine
+    def test_set_refant(self):
+        """Tests the capture with a noisy antenna, and checks that the reference antenna is
+         not set to the noisiest antenna.
+        """
+        first_ts = ts = 100.0
+        n_times = 25
+        rs = np.random.RandomState(seed=1)
+
+        target = katpoint.Target(self.telstate.cbf_target)
+        for antenna in self.antennas:
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              1, 1400000100 - 2 * 4)
+            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+                              0, 1400000100 + (n_times + 2) * 4)
+
+        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
+        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
+            + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
+
+        vis = self.make_vis(K, G, target)
+
+        # Add noise per antenna
+        var = rs.uniform(0, 2, self.n_antennas)
+        # ensure one antenna is noisier than the others
+        var[0] += 4.0
+        rs.shuffle(var)
+
+        worst_index = np.argmax(var)
+        scale = np.array([(var), (var)])
+        noise = rs.normal(np.zeros((2, self.n_antennas)), scale, (vis.shape[0], 2, self.n_antennas))
+        vis = self.make_vis(K, G, target, noise)
+        flags = np.zeros(vis.shape, np.uint8)
+
+        # Set flag on one channel per baseline, to test the baseline permutation.
+        for i in range(flags.shape[1]):
+            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
+        weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
+        weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
+
+        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        yield self.make_request('capture-init', 'cb')
+        yield tornado.gen.sleep(1)
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        yield self.shutdown_servers(180)
+        yield self.assert_sensor_value('accumulator-capture-active', 0)
+        telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
+        refant_name = telstate_cb_cal['refant'].name
+        assert_not_equal(self.antennas[worst_index], refant_name)
+
     def prepare_heaps(self, rs, n_times):
         """Produce a list of heaps with arbitrary data.
 
@@ -641,8 +754,7 @@ class TestCalDeviceServer(unittest.TestCase):
         weights = np.ones(vis.shape, np.uint8)
         flags = np.zeros(vis.shape, np.uint8)
         ts = 100.0
-        channel_slices = [np.s_[i * self.n_channels_per_substream
-                                : (i+1) * self.n_channels_per_substream]
+        channel_slices = [np.s_[i * self.n_channels_per_substream: (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
         heaps = []
         for i in range(n_times):
@@ -747,8 +859,8 @@ class TestCalDeviceServer(unittest.TestCase):
                 server_id = s // n_substreams_per_server
                 s_rel = s % n_substreams_per_server
                 buffers = self.servers[server_id].buffers
-                channel_slice = np.s_[s_rel * self.n_channels_per_substream
-                                      : (s_rel+1) * self.n_channels_per_substream]
+                channel_slice = np.s_[
+                    s_rel * self.n_channels_per_substream: (s_rel + 1) * self.n_channels_per_substream]
                 channel0 = self.servers[server_id].parameters['channel_slice'].start
                 channel0 += channel_slice.start
                 flags = buffers['flags'][t, channel_slice]

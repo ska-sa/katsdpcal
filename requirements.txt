@@ -38,7 +38,7 @@ matplotlib
 msgpack-python==0.5.4   # for distributed
 netifaces
 numba
-numpy
+numpy==1.15.1
 pandas
 ply                     # for katcp
 psutil==5.4.3           # for distributed

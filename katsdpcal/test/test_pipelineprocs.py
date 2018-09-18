@@ -17,10 +17,9 @@ class TestArgparseParameters(unittest.TestCase):
     def test_basic(self):
         parser = argparse.ArgumentParser()
         pipelineprocs.register_argparse_parameters(parser)
-        argv = ['--preferred-refants=m000,m002,m063', '--rfi-windows-freq=1,2,4,8', '--g-solint=1']
+        argv = ['--rfi-windows-freq=1,2,4,8', '--g-solint=1']
         args = parser.parse_args(argv)
         parameters = pipelineprocs.parameters_from_argparse(args)
-        self.assertEqual(['m000', 'm002', 'm063'], parameters['preferred_refants'])
         self.assertEqual([1, 2, 4, 8], parameters['rfi_windows_freq'])
         self.assertEqual(1.0, parameters['g_solint'])
         # Non-specified arguments must not appear at all
@@ -29,17 +28,16 @@ class TestArgparseParameters(unittest.TestCase):
     def test_empty_list(self):
         parser = argparse.ArgumentParser()
         pipelineprocs.register_argparse_parameters(parser)
-        argv = ['--preferred-refants=']
+        argv = ['--rfi-windows-freq=']
         args = parser.parse_args(argv)
         parameters = pipelineprocs.parameters_from_argparse(args)
-        self.assertEqual([], parameters['preferred_refants'])
+        self.assertEqual([], parameters['rfi_windows_freq'])
 
 
 class TestFinaliseParameters(unittest.TestCase):
     def setUp(self):
         # These parameters are based on pipeline_parameters_meerkat_L_4k.txt
         self.parameters = {
-            'preferred_refants': ['m000', 'm002', 'm063'],
             'k_solint': 5.0,
             'k_chan_sample': 1,
             'k_bchan': 2250,
@@ -97,8 +95,7 @@ class TestFinaliseParameters(unittest.TestCase):
     def test_normal(self):
         parameters = pipelineprocs.finalise_parameters(
             self.parameters, self.telstate_l0, 4, 2, None)
-        self.assertEqual(self.antennas[1], parameters['refant'])
-        self.assertEqual(1, parameters['refant_index'])
+        self.assertEqual(None, parameters['refant_index'])
         self.assertEqual(self.antenna_names, parameters['antenna_names'])
         self.assertEqual(self.antennas, parameters['antennas'])
         expected_freqs = np.arange(1024) / 4096 * 856000000.0 + 1284000000.0
@@ -134,12 +131,6 @@ class TestFinaliseParameters(unittest.TestCase):
                     pipelineprocs.finalise_parameters(
                         self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
 
-    def test_no_matching_preferred_refants(self):
-        self.parameters['preferred_refants'] = ['m005', 'm007']
-        parameters = pipelineprocs.finalise_parameters(
-            self.parameters, self.telstate_l0, 4, 2, None)
-        self.assertEqual('m001', parameters['refant'].name)
-
     def test_invalid_server_id(self):
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 5, None)
@@ -152,12 +143,6 @@ class TestFinaliseParameters(unittest.TestCase):
         del self.parameters['k_bchan']
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
-
-    def test_default_parameter(self):
-        del self.parameters['preferred_refants']
-        parameters = pipelineprocs.finalise_parameters(
-            self.parameters, self.telstate_l0, 4, 2, None)
-        self.assertEqual([], parameters['preferred_refants'])
 
     def test_bad_channel_range(self):
         self.parameters['k_echan'] = 2200

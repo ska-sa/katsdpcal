@@ -96,8 +96,6 @@ def comma_list(type_):
 
 
 USER_PARAMETERS = [
-    Parameter('preferred_refants', 'preferred reference antennas', comma_list(str),
-              default=attr.Factory(list), telstate=False),
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
@@ -131,8 +129,6 @@ USER_PARAMETERS = [
 # Parameters that the user cannot set directly (the type is not used)
 COMPUTED_PARAMETERS = [
     Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
-    Parameter('refant', 'selected reference antenna', katpoint.Antenna,
-              telstate=True, converter=AttrConverter('name')),
     Parameter('refant_index', 'index of refant in antennas', int),
     Parameter('antenna_names', 'antenna names', list, telstate='antlist'),
     Parameter('antennas', 'antenna objects', list),
@@ -279,19 +275,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         name = parameter.name
         parameters[name] = parameter.converter.to_local(parameters[name], global_parameters)
 
-    refant_index = None
-    for ant in parameters['preferred_refants']:
-        try:
-            refant_index = antenna_names.index(ant)
-            break
-        except ValueError:
-            pass
-    if refant_index is None:
-        logger.warning('No antennas from the antenna mask in the preferred antenna list')
-        refant_index = 0
-    logger.info('Reference antenna set to %s', antennas[refant_index].name)
-    parameters['refant_index'] = refant_index
-    parameters['refant'] = antennas[refant_index]
+    parameters['refant_index'] = None
     if rfi_filename is not None:
         with open(rfi_filename) as rfi_file:
             parameters['rfi_mask'] = pickle.load(rfi_file)
