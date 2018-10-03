@@ -18,6 +18,7 @@ import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
 from katdal.h5datav3 import FLAG_NAMES
 
+import attr
 import enum
 import numpy as np
 import dask.array as da
@@ -1095,35 +1096,61 @@ class Pipeline(Task):
         self.pipeline_report_queue.put(avg_corr)
 
 
+@attr.s
+class FlagsStream(object):
+    """Configuration information about a single L1 flag stream.
+
+    Parameters
+    ----------
+    name : str
+        Name of the stream
+    endpoints : list of :class:`.katsdptelstate.endpoint.Endpoint`
+        Destination multicast endpoints for transmission
+    src_stream : str
+        Corresponding L0 stream. This is set in telstate, and need not match
+        the stream being fed into the accumulator (and will not if
+        continuum_factor is greater than 1).
+    interface_address : str
+        IP address from which to transmit
+    rate_ratio : float
+        Speed to send flags, relative to realtime
+    continuum_factor : int
+        Factor by which to combine flags on the spectral axis. It must divide
+        the number of channels.
+    """
+    name = attr.ib()
+    endpoints = attr.ib()
+    src_stream = attr.ib()
+    interface_address = attr.ib(default=None)
+    rate_ratio = attr.ib(default=1.0)
+    continuum_factor = attr.ib(default=1)
+
+
 class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
-                 l0_name,
-                 flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-                 telstate_cal, parameters):
+                 l0_name, flags_stream, telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         telstate = telstate_cal.root()
         self.telstate_l0 = telstate.view(l0_name)
         self._n_servers = n_servers = parameters['servers']
         self._server_id = parameters['server_id']
-        if flags_endpoints is not None:
-            n_endpoints = len(flags_endpoints)
+        self.flags_stream = flags_stream
+        if flags_stream is not None:
+            n_endpoints = len(flags_stream.endpoints)
             if n_endpoints != n_servers:
                 raise ValueError(
                     'Number of flags endpoints ({}) not equal to number of servers ({})'
                     .format(n_endpoints, n_servers))
-            self.flags_endpoint = flags_endpoints[parameters['server_id']]
+            self.flags_endpoint = flags_stream.endpoints[parameters['server_id']]
         else:
             self.flags_endpoint = None
-        self.flags_interface_address = flags_interface_address
-        if self.flags_interface_address is None:
-            self.flags_interface_address = ''
         self.int_time = self.telstate_l0['int_time']
         self.n_chans = self.telstate_l0['n_chans'] // n_servers
         self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
         self.channel_slice = parameters['channel_slice']
         n_bls = len(self.l0_bls)
-        self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
+        self.rate = self.n_chans * n_bls / float(self.int_time) * flags_stream.rate_ratio
 
         self.buffers = buffers
         self.pipeline_sender_queue = pipeline_sender_queue
@@ -1136,7 +1163,7 @@ class Sender(Task):
         if np.any(self.ordering < 0):
             raise RuntimeError('accumulator discards some baselines')
 
-        self.telstate_flags = telstate.view(flags_name)
+        self.telstate_flags = telstate.view(flags_stream.name)
         # The flags stream is mostly the same shape/layout as the L0 stream,
         # with the exception of the division into substreams.
         for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
@@ -1144,7 +1171,7 @@ class Sender(Task):
             self.telstate_flags.add(key, self.telstate_l0[key], immutable=True)
         self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
         cal_name = telstate_cal.prefixes[0][:-1]
-        self.telstate_flags.add('src_streams', [l0_name], immutable=True)
+        self.telstate_flags.add('src_streams', [flags_stream.src_stream], immutable=True)
         self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
         self.telstate_flags.add('calibrations_applied', [cal_name], immutable=True)
 
@@ -1161,11 +1188,11 @@ class Sender(Task):
         ]
 
     def run(self):
-        if self.flags_endpoint is not None:
+        if self.flags_stream is not None:
             config = spead2.send.StreamConfig(max_packet_size=8872, rate=self.rate)
             tx = spead2.send.UdpStream(
                 spead2.ThreadPool(), self.flags_endpoint.host, self.flags_endpoint.port,
-                config, ttl=1, interface_address=self.flags_interface_address)
+                config, ttl=1, interface_address=self.flags_stream.interface_address or '')
             tx.set_cnt_sequence(self._server_id, self._n_servers)
         else:
             tx = None
@@ -1572,8 +1599,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-                  telstate_cal, parameters, report_path, log_path, full_log,
+                  flags_stream, telstate_cal, parameters, report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None,
                   max_scans=None):
     # threading or multiprocessing imports
@@ -1598,8 +1624,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
-        flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-        telstate_cal, parameters)
+        flags_stream, telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, l0_name, telstate_cal, parameters,

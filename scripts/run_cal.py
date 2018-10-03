@@ -13,7 +13,7 @@ from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
 from katsdptelstate import endpoint
 import katsdpservices
 
-from katsdpcal.control import create_server, create_buffer_arrays
+from katsdpcal.control import create_server, create_buffer_arrays, FlagsStream
 from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
     finalise_parameters, parameters_to_telstate)
@@ -291,10 +291,14 @@ def run(opts, log_path, full_log):
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
+    flags_stream = FlagsStream(name=opts.flags_name,
+                               endpoints=opts.flags_spead,
+                               src_stream=opts.l0_name,
+                               interface_address=flags_interface_address,
+                               rate_ratio=opts.flags_rate_ratio)
     server = create_server(not opts.threading, opts.host, opts.port, buffers,
                            opts.l0_name, opts.l0_spead, l0_interface_address,
-                           opts.flags_name, opts.flags_spead, flags_interface_address,
-                           opts.flags_rate_ratio,
+                           flags_stream,
                            telstate_cal, parameters, opts.report_path, log_path, full_log,
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
                            opts.max_scans)

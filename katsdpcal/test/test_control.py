@@ -173,10 +173,13 @@ class ServerData(object):
         buffer_shape = (60, testcase.n_channels // testcase.n_servers,
                         4, testcase.n_baselines // 4)
         self.buffers = buffers = control.create_buffer_arrays(buffer_shape, False)
+        flags_stream = control.FlagsStream(
+            name='sdp_l1_flags_test', endpoints=testcase.flags_endpoints,
+            rate_ratio=64.0, src_stream='sdp_l0test')
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
-            'sdp_l1_flags_test', testcase.flags_endpoints, None, 64.0,
+            flags_stream,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         testcase.addCleanup(testcase.ioloop.run_sync, self.stop_server)
