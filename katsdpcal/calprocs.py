@@ -925,6 +925,59 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     return av_data, av_flags, av_weights
 
 
+@numba.jit(nopython=True)
+def wavg_flags_f(flags, chanav, excise):
+    """Combine flags across frequencies.
+
+    This function is designed to mirror flag merging done by ingest. For each
+    visibility, there is a flag bitmask in `flags` and a corresponding boolean
+    in `excise`. The combined flags for a set of visibilities is
+    - The bitwise OR of the flags for which the excise bit is clear, if there
+      is at least one such; otherwise
+    - The bitwise OR of all the flags.
+
+    Parameters
+    ----------
+    flags : :class:`np.ndarray`
+        uint8 flag masks, shape (time, frequency, pol, baseline)
+    chanav : int
+        number of channels over which to average, integer. It must exactly
+        divide into the number of channels.
+    excise : class:`np.ndarray`
+        boolean corresponding to each element of `flags`
+
+    Returns
+    -------
+    av_flags : :class:`np.ndarray`
+        uint8 combined flags
+    """
+    assert excise.shape == flags.shape
+    n_time, n_channels, n_pol, n_baselines = flags.shape
+    good = np.empty((n_pol, n_baselines), np.bool_)
+    merge_good = np.empty((n_pol, n_baselines), flags.dtype)
+    merge_all = np.empty((n_pol, n_baselines), flags.dtype)
+    out_channels = n_channels // chanav
+    out = np.empty((n_time, out_channels, n_pol, n_baselines), flags.dtype)
+    for t in range(n_time):
+        for oc in range(out_channels):
+            good.fill(False)
+            merge_good.fill(0)
+            merge_all.fill(0)
+            start_channel = oc * chanav
+            end_channel = start_channel + chanav
+            for ic in range(start_channel, end_channel):
+                for p in range(n_pol):
+                    for b in range(n_baselines):
+                        flag = flags[t, ic, p, b]
+                        is_good = not excise[t, ic, p, b]
+                        merge_all[p, b] |= flag
+                        merge_good[p, b] |= is_good * flag
+                        good[p, b] |= is_good
+            for p in range(n_pol):
+                for b in range(n_baselines):
+                    out[t, oc, p, b] = merge_good[p, b] if good[p, b] else merge_all[p, b]
+    return out
+
 # --------------------------------------------------------------------------------------------------
 # --- General helper functions
 # --------------------------------------------------------------------------------------------------

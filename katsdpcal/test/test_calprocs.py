@@ -291,3 +291,29 @@ class TestWavgFullF(unittest.TestCase):
             self.data, self.flags, self.weights, 10)
         self.assertEqual(False, out_flags[0, 0, 0, 0])
         self.assertEqual(True, out_flags[0, 0, 0, 1])
+
+
+class TestWavgFlagsF(unittest.TestCase):
+    def test(self):
+        flags = np.zeros((3, 6, 4, 1), np.uint8)
+        excise = np.zeros(flags.shape, np.bool_)
+        expected = np.zeros((3, 3, 4, 1), np.uint8)
+        # No excision
+        flags[0, 2, 1, 0] = 0xa0
+        flags[0, 3, 1, 0] = 0x2a
+        expected[0, 1, 1, 0] = 0xaa
+        # Partial excision
+        flags[1, 0, 0:2, 0] = 0xa0
+        flags[1, 1, 0:2, 0] = 0x2a
+        excise[1, 0, 0, 0] = True
+        excise[1, 1, 1, 0] = True
+        expected[1, 0, 0, 0] = 0x2a
+        expected[1, 0, 1, 0] = 0xa0
+        # Full excision
+        flags[2, 4, 3, 0] = 0x70
+        flags[2, 5, 3, 0] = 0x17
+        excise[2, 4:6, 3, 0] = True
+        expected[2, 2, 3, 0] = 0x77
+        # Test
+        actual = calprocs.wavg_flags_f(flags, 2, excise)
+        np.testing.assert_array_equal(actual, expected)
