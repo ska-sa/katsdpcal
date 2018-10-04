@@ -926,32 +926,12 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
 
 
 @numba.jit(nopython=True)
-def wavg_flags_f(flags, chanav, excise):
-    """Combine flags across frequencies.
+def _wavg_flags_f(flags, chanav, excise):
+    """Implementation of wavg_flags_f.
 
-    This function is designed to mirror flag merging done by ingest. For each
-    visibility, there is a flag bitmask in `flags` and a corresponding boolean
-    in `excise`. The combined flags for a set of visibilities is
-    - The bitwise OR of the flags for which the excise bit is clear, if there
-      is at least one such; otherwise
-    - The bitwise OR of all the flags.
-
-    Parameters
-    ----------
-    flags : :class:`np.ndarray`
-        uint8 flag masks, shape (time, frequency, pol, baseline)
-    chanav : int
-        number of channels over which to average, integer. It must exactly
-        divide into the number of channels.
-    excise : class:`np.ndarray`
-        boolean corresponding to each element of `flags`
-
-    Returns
-    -------
-    av_flags : :class:`np.ndarray`
-        uint8 combined flags
+    This numba-accelerated version handles only the case where there are
+    4 dimensions and we're averaging along axis 1.
     """
-    assert excise.shape == flags.shape
     n_time, n_channels, n_pol, n_baselines = flags.shape
     good = np.empty((n_pol, n_baselines), np.bool_)
     merge_good = np.empty((n_pol, n_baselines), flags.dtype)
@@ -977,6 +957,83 @@ def wavg_flags_f(flags, chanav, excise):
                 for b in range(n_baselines):
                     out[t, oc, p, b] = merge_good[p, b] if good[p, b] else merge_all[p, b]
     return out
+
+def wavg_flags_f(flags, chanav, excise, axis):
+    """Combine flags across frequencies.
+
+    This function is designed to mirror flag merging done by ingest. For each
+    visibility, there is a flag bitmask in `flags` and a corresponding boolean
+    in `excise`. The combined flags for a set of visibilities is
+    - The bitwise OR of the flags for which the excise bit is clear, if there
+      is at least one such; otherwise
+    - The bitwise OR of all the flags.
+
+    The implementation currently supports at most one axis before `axis` and at
+    most two after it (which caters for the standard time, frequency, pol,
+    baseline axis ordering).
+
+    Parameters
+    ----------
+    flags : :class:`np.ndarray`
+        uint8 flag masks
+    chanav : int
+        number of channels over which to average, integer. It must exactly
+        divide into the number of channels.
+    excise : class:`np.ndarray`
+        boolean corresponding to each element of `flags`
+    axis : int
+        Axis along which to apply
+
+    Returns
+    -------
+    av_flags : :class:`np.ndarray`
+        uint8 combined flags
+
+    Raises
+    ------
+    ValueError
+        if `flags` and `excise` have different shapes
+    ValueError
+        if chanav doesn't divide into the length of the chosen axis
+    np.AxisError
+        if `axis` is invalid
+    NotImplementedError
+        if there are more than two axes after `axis` or more than one axis
+        before it
+    """
+    flags = np.asarray(flags)
+    excise = np.asarray(excise)
+    if excise.shape != flags.shape:
+        raise ValueError('excise must have the same shape as flags')
+    if axis < 0:
+        axis += flags.ndim
+    if axis < 0 or axis >= flags.ndim:
+        raise np.AxisError('axis {} is out of bounds for array of dimension {}'
+                           .format(axis, flags.ndim))
+    if axis > 1 or flags.ndim - axis > 3:
+        raise NotImplementedError('axis {} is not currently supported')
+    if flags.shape[axis] % chanav != 0:
+        raise ValueError('chanav {} does not divide length {}'
+                         .format(chanav, flags.shape[axis]))
+
+    pre = 1 - axis
+    post = axis + 3 - flags.ndim
+    for i in range(pre):
+        flags = flags[np.newaxis]
+        excise = excise[np.newaxis]
+    for i in range(post):
+        # Insert the new axes immediately after channels, rather than at the
+        # end, because we want the inner loops to run over longer axes.
+        flags = flags[:, :, np.newaxis]
+        excise = excise[:, :, np.newaxis]
+    out_flags = _wavg_flags_f(flags, chanav, excise)
+    # Now reverse the axis removals
+    for i in range(post):
+        out_flags = out_flags[:, :, 0]
+    for i in range(pre):
+        out_flags = out_flags[0]
+    return out_flags
+
 
 # --------------------------------------------------------------------------------------------------
 # --- General helper functions

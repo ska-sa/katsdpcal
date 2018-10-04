@@ -294,7 +294,7 @@ class TestWavgFullF(unittest.TestCase):
 
 
 class TestWavgFlagsF(unittest.TestCase):
-    def test(self):
+    def test_4dim(self):
         flags = np.zeros((3, 6, 4, 1), np.uint8)
         excise = np.zeros(flags.shape, np.bool_)
         expected = np.zeros((3, 3, 4, 1), np.uint8)
@@ -315,5 +315,43 @@ class TestWavgFlagsF(unittest.TestCase):
         excise[2, 4:6, 3, 0] = True
         expected[2, 2, 3, 0] = 0x77
         # Test
-        actual = calprocs.wavg_flags_f(flags, 2, excise)
+        actual = calprocs.wavg_flags_f(flags, 2, excise, axis=1)
         np.testing.assert_array_equal(actual, expected)
+        # Test again with axis wrapping
+        actual = calprocs.wavg_flags_f(flags, 2, excise, axis=-3)
+        np.testing.assert_array_equal(actual, expected)
+
+    def test_1dim(self):
+        flags = np.array([0xa0, 0x2a, 0x70, 0x17, 0xa2, 0x0a], np.uint8)
+        excise = np.array([False, False, True, False, True, True])
+        expected = np.array([0xaa, 0x17, 0xaa], np.uint8)
+        actual = calprocs.wavg_flags_f(flags, 2, excise, axis=0)
+        np.testing.assert_array_equal(actual, expected)
+
+    def test_bad_axis(self):
+        flags = np.zeros((6, 6), np.uint8)
+        excise = np.zeros((6, 6), np.uint8)
+        with self.assertRaises(np.AxisError):
+            calprocs.wavg_flags_f(flags, 2, excise, axis=2)
+        with self.assertRaises(np.AxisError):
+            calprocs.wavg_flags_f(flags, 2, excise, axis=-3)
+
+    def test_unsupported_axis(self):
+        flags = np.zeros((6, 6, 6, 6), np.uint8)
+        excise = np.zeros((6, 6, 6, 6), np.uint8)
+        with self.assertRaises(NotImplementedError):
+            calprocs.wavg_flags_f(flags, 2, excise, axis=0)
+        with self.assertRaises(NotImplementedError):
+            calprocs.wavg_flags_f(flags, 2, excise, axis=2)
+
+    def test_shape_mismatch(self):
+        flags = np.zeros((6, 5), np.uint8)
+        excise = np.zeros((6, 6), np.uint8)
+        with self.assertRaises(ValueError):
+            calprocs.wavg_flags_f(flags, 2, excise, axis=0)
+
+    def test_unequal_split(self):
+        flags = np.zeros((3, 6, 4, 1), np.uint8)
+        excise = np.zeros(flags.shape, np.bool_)
+        with self.assertRaises(ValueError):
+            calprocs.wavg_flags_f(flags, 4, excise, axis=1)

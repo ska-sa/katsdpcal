@@ -344,6 +344,7 @@ class Accumulator(object):
         self.parameters = parameters
         self.int_time = self.telstate_l0['int_time']
         self.sync_time = self.telstate_l0['sync_time']
+        self.l0_excise = self.telstate_l0['excise']
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
@@ -915,6 +916,14 @@ class Accumulator(object):
                 weights = ig['weights'].value[src_subset]
                 self._update_buffer(self.buffers['weights'][slot, trg_subset],
                                     weights * weights_channel, self.ordering)
+                # Excise bits are computed from the original (L0) bls ordering,
+                # not the cal ordering, because that's the order it's needed in
+                # the flag sender.
+                if self.l0_excise:
+                    self.buffers['excise'][slot, trg_subset] = \
+                        np.packbits(ig['flags'].value[src_subset], axis=-1)
+                else:
+                    self.buffers['excise'][slot, trg_subset] = 0
             heap_nbytes = 0
             for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
                 heap_nbytes += ig[field].value.nbytes
@@ -1126,9 +1135,27 @@ class FlagsStream(object):
     continuum_factor = attr.ib(default=1)
 
 
+def adjust_center_freq(old_center_freq, bandwidth, old_chans, new_chans):
+    """Recompute the centre frequency when changing channelisation.
+
+    Because of the slightly odd way KAT defines a centre frequency, simply
+    changing the number of channels (e.g. by averaging) changes the reported
+    centre frequency, which is offset from the middle of the bandwidth by
+    half a channel when the number of channels is even.
+    """
+    adjust = 0.0
+    if old_chans != new_chans:
+        # Avoid accumulating any rounding errors if we don't need to
+        if old_chans % 2 == 0:
+            adjust -= 0.5 * bandwidth / old_chans
+        if new_chans % 2 == 0:
+            adjust += 0.5 * bandwidth / new_chans
+    return old_center_freq + adjust
+
+
 class Transmitter(object):
     """State for a single flags stream held by :class:`Sender`"""
-    def __init__(self, l0_name, flags_stream, telstate_cal, parameters):
+    def __init__(self, l0_name, l0_attr, flags_stream, telstate_cal, parameters):
         self.flags_stream = flags_stream
         n_endpoints = len(flags_stream.endpoints)
         self._n_servers = n_servers = parameters['servers']
@@ -1139,29 +1166,30 @@ class Transmitter(object):
                 .format(n_endpoints, n_servers))
         self.endpoint = flags_stream.endpoints[parameters['server_id']]
 
-        # TODO: each Transmitter is redundantly looking things up in
-        # telstate_l0.
         telstate = telstate_cal.root()
-        telstate_l0 = telstate.view(l0_name)
-        int_time = telstate_l0['int_time']
-        n_chans = telstate_l0['n_chans'] // n_servers
-        n_bls = len(np.asarray(telstate_l0['bls_ordering']))
+        n_chans = l0_attr['n_chans'] // n_servers
+        n_bls = len(l0_attr['bls_ordering'])
         channel_slice = parameters['channel_slice']
-        self.rate = n_chans * n_bls / float(int_time) * flags_stream.rate_ratio
+        self.rate = n_chans * n_bls / float(l0_attr['int_time']) * flags_stream.rate_ratio
+        if n_chans % flags_stream.continuum_factor != 0:
+            raise ValueError('Continuum factor {} does not divide into server channels {}'
+                             .format(flags_stream.continuum_factor, n_chans))
+        out_chans = n_chans // flags_stream.continuum_factor
 
         # create SPEAD item group
         flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
         # set up item group with items
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=(n_chans, n_bls), dtype=None, format=[('u', 8)])
+                    shape=(out_chans, n_bls), dtype=None, format=[('u', 8)])
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
         ig.add_item(id=None, name='dump_index', description='Index in time',
                     shape=(), dtype=None, format=[('u', 64)])
         ig.add_item(id=0x4103, name='frequency',
                     description="Channel index of first channel in the heap",
-                    shape=(), dtype=np.uint32, value=channel_slice.start)
+                    shape=(), dtype=np.uint32,
+                    value=channel_slice.start // flags_stream.continuum_factor)
         ig.add_item(id=None, name='capture_block_id', description='SDP capture block ID',
                     shape=(None,), dtype=None, format=[('c', 8)])
         self._ig = ig
@@ -1169,12 +1197,16 @@ class Transmitter(object):
         cal_name = telstate_cal.prefixes[0][:-1]
         self.telstate_flags = telstate.view(flags_stream.name)
         # The flags stream is mostly the same shape/layout as the L0 stream,
-        # with the exception of the division into substreams.
+        # with the exception of channelisation.
         # TODO: this needs to be updated for continuum_factor.
-        for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
-                    'n_bls', 'n_chans', 'sync_time']:
-            self.telstate_flags.add(key, telstate_l0[key], immutable=True)
-        self.telstate_flags.add('n_chans_per_substream', n_chans, immutable=True)
+        for key in ['bandwidth', 'int_time', 'sync_time', 'excise', 'n_bls', 'bls_ordering']:
+            self.telstate_flags.add(key, l0_attr[key], immutable=True)
+        center_freq = adjust_center_freq(l0_attr['center_freq'], l0_attr['bandwidth'],
+                                         l0_attr['n_chans'],
+                                         l0_attr['n_chans'] // flags_stream.continuum_factor)
+        self.telstate_flags.add('center_freq', center_freq, immutable=True)
+        self.telstate_flags.add('n_chans', out_chans * n_servers, immutable=True)
+        self.telstate_flags.add('n_chans_per_substream', out_chans, immutable=True)
         self.telstate_flags.add('src_streams', [flags_stream.src_stream], immutable=True)
         self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
         self.telstate_flags.add('calibrations_applied', [cal_name], immutable=True)
@@ -1202,8 +1234,11 @@ class Transmitter(object):
         heap.add_item(cbid_item)
         self._tx.send_heap(heap)
 
-    def send(self, idx, timestamp, flags):
+    def send(self, idx, timestamp, flags, excise):
         """Transmit flag data"""
+        if self.flags_stream.continuum_factor != 1:
+            flags = calprocs.wavg_flags_f(
+                flags, self.flags_stream.continuum_factor, excise, axis=0)
         self._ig['flags'].value = flags
         self._ig['timestamp'].value = timestamp
         self._ig['dump_index'].value = idx
@@ -1216,8 +1251,11 @@ class Sender(Task):
                  l0_name, flags_streams, telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         self.telstate_l0 = telstate_cal.root().view(l0_name)
+        l0_attr = {key: self.telstate_l0[key]
+                   for key in ['n_bls', 'bls_ordering', 'int_time', 'sync_time', 'excise',
+                               'bandwidth', 'center_freq', 'n_chans']}
         n_servers = parameters['servers']
-        self._transmitters = [Transmitter(l0_name, flags_stream, telstate_cal, parameters)
+        self._transmitters = [Transmitter(l0_name, l0_attr, flags_stream, telstate_cal, parameters)
                               for flags_stream in flags_streams]
         self.int_time = self.telstate_l0['int_time']
         self.n_chans = self.telstate_l0['n_chans'] // n_servers
@@ -1229,7 +1267,7 @@ class Sender(Task):
         # Compute the permutation to get back to L0 ordering. get_reordering gives
         # the inverse of what is needed.
         rev_ordering = calprocs.get_reordering(parameters['antenna_names'], l0_bls)[0]
-        self.ordering = np.full(n_bls, -1)
+        self.ordering = np.full(self.n_bls, -1)
         for i, idx in enumerate(rev_ordering):
             self.ordering[idx] = i
         if np.any(self.ordering < 0):
@@ -1250,7 +1288,7 @@ class Sender(Task):
     def run(self):
         nt = len(self._transmitters)
         started = False
-        out_flags = np.zeros((self.n_chans, self.n_bls)), np.uint8)
+        out_flags = np.zeros((self.n_chans, self.n_bls), np.uint8)
         for transmitter in self._transmitters:
             transmitter.prepare()
         while True:
@@ -1272,14 +1310,18 @@ class Sender(Task):
                     for slot in event.slots:
                         flags = self.buffers['flags'][slot]
                         # Flatten the pol and baseline dimensions
-                        flags.shape = (self.n_chans, self.n_bls))
+                        flags.shape = (self.n_chans, self.n_bls)
                         # Permute into the same order as the L0 stream
                         np.take(flags, self.ordering, axis=1, out=out_flags)
+                        excise = np.unpackbits(self.buffers['excise'][slot], axis=1)
+                        # unpack_bits will always produce a multiple of 8 bits,
+                        # even if the original had fewer. So we need to trim.
+                        excise = excise[:, :self.n_bls]
                         idx = self.buffers['dump_indices'][slot]
                         timestamp = first_timestamp + idx * self.int_time
                         for transmitter in self._transmitters:
                             # TODO: send these in parallel
-                            transmitter.send(idx, timestamp, out_flags)
+                            transmitter.send(idx, timestamp, out_flags, excise)
                         now = time.time()
                         _inc_sensor(self.sensors['output-heaps-total'], nt, timestamp=now)
                         _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes * nt,
@@ -1621,9 +1663,14 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
         factory = shared_empty
     else:
         factory = np.empty
+    # The excise buffer is in the shape of the L0 stream, and packs
+    # each flag into one bit.
+    excise_shape = (buffer_shape[0], buffer_shape[1],
+                    (buffer_shape[2] * buffer_shape[3] + 7) // 8)
     data = {}
     data['vis'] = factory(buffer_shape, dtype=np.complex64)
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
+    data['excise'] = factory(excise_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
     data['times'] = factory(buffer_shape[0], dtype=np.float)
     data['dump_indices'] = factory(buffer_shape[0], dtype=np.uint64)

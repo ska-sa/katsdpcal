@@ -31,7 +31,7 @@ from katsdpservices.asyncio import to_tornado_future
 import katpoint
 from katdal.h5datav3 import FLAG_NAMES
 
-from katsdpcal import control, pipelineprocs, param_dir, rfi_dir
+from katsdpcal import calprocs, control, pipelineprocs, param_dir, rfi_dir
 
 
 def get_sent_heaps(send_stream):
@@ -173,13 +173,19 @@ class ServerData(object):
         buffer_shape = (60, testcase.n_channels // testcase.n_servers,
                         4, testcase.n_baselines // 4)
         self.buffers = buffers = control.create_buffer_arrays(buffer_shape, False)
-        flags_stream = control.FlagsStream(
-            name='sdp_l1_flags_test', endpoints=testcase.flags_endpoints,
-            rate_ratio=64.0, src_stream='sdp_l0test')
+        flags_streams = [
+            control.FlagsStream(
+                name='sdp_l1_flags_test', endpoints=testcase.flags_endpoints[0],
+                rate_ratio=64.0, src_stream='sdp_l0test'),
+            control.FlagsStream(
+                name='sdp_l1_continuum_flags_test', endpoints=testcase.flags_endpoints[1],
+                rate_ratio=64.0, src_stream='sdp_l0test_continuum',
+                continuum_factor=4)
+        ]
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
-            [flags_stream],
+            flags_streams,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         testcase.addCleanup(testcase.ioloop.run_sync, self.stop_server)
@@ -235,10 +241,11 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
         telstate_l0.add('n_bls', len(bls_ordering), immutable=True)
         telstate_l0.add('bandwidth', 856000000.0, immutable=True)
-        telstate_l0.add('center_freq', 1712000000.0, immutable=True)
+        telstate_l0.add('center_freq', 1284000000.0, immutable=True)
         telstate_l0.add('n_chans', self.n_channels, immutable=True)
         telstate_l0.add('n_chans_per_substream', self.n_channels_per_substream, immutable=True)
         telstate_l0.add('sync_time', 1400000000.0, immutable=True)
+        telstate_l0.add('excise', True, immutable=True)
         telstate_cb_l0 = telstate.view(telstate.SEPARATOR.join(('cb', 'sdp_l0test')))
         telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
         telstate_cb = telstate.view('cb')
@@ -310,8 +317,10 @@ class TestCalDeviceServer(unittest.TestCase):
         substreams_per_endpoint = self.n_substreams // self.n_endpoints
         self.substream_endpoints = [self.l0_endpoints[i // substreams_per_endpoint]
                                     for i in range(self.n_substreams)]
-        self.flags_endpoints = [Endpoint('239.102.254.{}'.format(i), 7148)
-                                for i in range(self.n_servers)]
+        self.flags_endpoints = [
+            [Endpoint('239.102.253.{}'.format(i), 7148) for i in range(self.n_servers)],
+            [Endpoint('239.102.254.{}'.format(i), 7148) for i in range(self.n_servers)]
+        ]
 
         self.ig = spead2.send.ItemGroup()
         self.add_items(self.ig)
@@ -663,23 +672,36 @@ class TestCalDeviceServer(unittest.TestCase):
                                        ret_KCROSS, rtol=1e-3)
 
         # Check that flags were transmitted
-        assert_equal(set(self.output_streams.keys()), set(self.flags_endpoints))
-        for i, endpoint in enumerate(self.flags_endpoints):
-            heaps = get_sent_heaps(self.output_streams[endpoint])
-            assert_equal(n_times + 2, len(heaps))   # 2 extra for start and end heaps
-            for j, heap in enumerate(heaps[1:-1]):
-                items = spead2.ItemGroup()
-                items.update(heap)
-                ts = items['timestamp'].value
-                assert_almost_equal(first_ts + j * self.telstate.sdp_l0test_int_time, ts)
-                idx = items['dump_index'].value
-                assert_equal(j, idx)
-                assert_equal(i * self.n_channels // self.n_servers, items['frequency'].value)
-                out_flags = items['flags'].value
-                # Mask out the ones that get changed by cal
-                mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
-                expected = flags[self.servers[i].parameters['channel_slice']]
-                np.testing.assert_array_equal(out_flags & ~mask, expected)
+        assert_equal(set(self.output_streams.keys()),
+                     set(self.flags_endpoints[0] + self.flags_endpoints[1]))
+        continuum_factors = [1, 4]
+        for stream_idx, continuum_factor in enumerate(continuum_factors):
+            for i, endpoint in enumerate(self.flags_endpoints[stream_idx]):
+                heaps = get_sent_heaps(self.output_streams[endpoint])
+                assert_equal(n_times + 2, len(heaps))   # 2 extra for start and end heaps
+                for j, heap in enumerate(heaps[1:-1]):
+                    items = spead2.ItemGroup()
+                    items.update(heap)
+                    ts = items['timestamp'].value
+                    assert_almost_equal(first_ts + j * self.telstate.sdp_l0test_int_time, ts)
+                    idx = items['dump_index'].value
+                    assert_equal(j, idx)
+                    assert_equal(i * self.n_channels // self.n_servers // continuum_factor,
+                                 items['frequency'].value)
+                    out_flags = items['flags'].value
+                    # Mask out the ones that get changed by cal
+                    mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
+                    expected = flags[self.servers[i].parameters['channel_slice']]
+                    expected = calprocs.wavg_flags_f(expected, continuum_factor, expected, axis=0)
+                    np.testing.assert_array_equal(out_flags & ~mask, expected)
+        # Validate the flag information in telstate. We'll just validate the
+        # continuum version, since that's the trickier case.
+        ts_flags = self.telstate.root().view('sdp_l1_continuum_flags_test')
+        assert_equal(ts_flags['center_freq'], 1284313476.5625)  # Computed by hand
+        assert_equal(ts_flags['n_chans'], 1024)
+        assert_equal(ts_flags['n_chans_per_substream'], 512)
+        for key in ['bandwidth', 'n_bls', 'bls_ordering', 'sync_time', 'int_time', 'excise']:
+            assert_equal(ts_flags[key], self.telstate_l0[key])
 
     def test_capture_separate_tags(self):
         # Change the target to one with different tags
