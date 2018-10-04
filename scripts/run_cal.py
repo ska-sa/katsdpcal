@@ -154,7 +154,7 @@ def parse_opts():
         help='[DEPRECATED] interface to send flags stream to. [default=auto]', metavar='INTERFACE')
     parser.add_argument(
         '--flags-rate-ratio', type=float, default=8.0,
-        help='[DEPRECATED] speed to send flags, relative to realtime. [default=%(default)s]', metavar='RATIO')
+        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default=%(default)s]', metavar='RATIO')
     parser.add_argument(
         '--flags-streams', type=json.loads, default=[],
         help='JSON document describing flags streams to send. [default=none]', metavar='JSON')

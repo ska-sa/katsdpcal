@@ -1122,7 +1122,7 @@ class FlagsStream(object):
     interface_address : str
         IP address from which to transmit
     rate_ratio : float
-        Speed to send flags, relative to realtime
+        Speed to send flags, relative to incoming rate
     continuum_factor : int
         Factor by which to combine flags on the spectral axis. It must divide
         the number of channels.
