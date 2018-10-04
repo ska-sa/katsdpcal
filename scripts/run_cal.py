@@ -310,12 +310,14 @@ def run(opts, log_path, full_log):
         return
 
     # buffer needs to include:
-    #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
-    #   flags, shape(time,channel,baseline,pol), type uint8 (1 byte)
-    #   weights, shape(time,channel,baseline,pol), type float32 (4 bytes)
+    #   with shape (time, channel, pol, baseline):
+    #   - visibilities, type complex64 (8 bytes)
+    #   - flags, type uint8 (1 byte)
+    #   - excision bitmask (1/8 byte)
+    #   - weights, type float32 (4 bytes)
     #   time, shape(time), type float64 (8 bytes)
     # plus minimal extra for scan transition indices
-    scale_factor = 8. + 1. + 4.  # vis + flags + weights
+    scale_factor = 8. + 1. + 4. + 0.125  # vis + flags + weights + excision
     time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
     array_length = opts.buffer_maxsize/((scale_factor*n_chans*npols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
