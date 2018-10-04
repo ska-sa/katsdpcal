@@ -179,7 +179,7 @@ class ServerData(object):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
-            flags_stream,
+            [flags_stream],
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         testcase.addCleanup(testcase.ioloop.run_sync, self.stop_server)
