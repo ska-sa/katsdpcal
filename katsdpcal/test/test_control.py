@@ -753,10 +753,13 @@ class TestCalDeviceServer(unittest.TestCase):
             Number of dumps
         vis,weights,weights_channel,flags: :class:`numpy.ndarray`
             Data to transmit, in the form placed in the heaps but with a
-            leading time axis. If not specified, `vis` and `weights default
+            leading time axis. If not specified, `vis` and `weights` default
             to 1.0, `flags` to zeros and `weights_channel` to a ramp.
         """
         shape = (n_times, self.n_channels, self.n_baselines)
+        # To support large arrays without excessive memory, we use
+        # broadcast_to to generate the full-size array with only a
+        # select element of backing storage.
         if vis is None:
             vis = np.broadcast_to(np.ones(1, np.complex64), shape)
         if weights is None:
@@ -930,7 +933,7 @@ class TestCalDeviceServer(unittest.TestCase):
         for server in self.servers:
             channel_slice = server.parameters['channel_slice']
             actual[:, channel_slice, :] = server.buffers['weights'][:n_times]
-        # First just compare the interesting part, to that test failures
+        # First just compare the interesting part, so that test failures
         # are easier to diagnose.
         np.testing.assert_allclose(expected[1, 100], actual[1, 100], rtol=1e-4)
         np.testing.assert_allclose(expected, actual, rtol=1e-4)

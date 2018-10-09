@@ -914,7 +914,7 @@ class Accumulator(object):
                 weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
                 weights = ig['weights'].value[src_subset] * weights_channel
                 if self.need_weights_power_scale:
-                    # weights_power_scale expects a time axis, hence newaxis
+                    # weight_power_scale expects a time axis, hence newaxis
                     scale = katdal.datasources.weight_power_scale(
                         vis[np.newaxis, ...], *self.weights_power_scale_params)[0]
                     weights *= scale
