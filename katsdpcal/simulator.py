@@ -233,8 +233,11 @@ class SimData(object):
                     shape=correlator_data.shape, dtype=correlator_data.dtype)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
                     shape=flags.shape, dtype=flags.dtype)
+        # Note: real ingest sends weights as uint8, but we want to be able to
+        # send the same weights we retrieved from the file, so we use float32,
+        # and set weights_channel to 1.0.
         ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=weights.shape, dtype=np.uint8)
+                    shape=weights.shape, dtype=np.float32)
         ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
                     shape=(weights.shape[0],), dtype=np.float32)
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
@@ -273,13 +276,8 @@ class SimData(object):
         # transmit vis, flags and weights, timestamp
         ig['correlator_data'].value = correlator_data
         ig['flags'].value = flags
-        weights_channel = np.require(np.max(weights, axis=1), dtype=np.float32) / np.float32(255)
-        # Avoid divide-by-zero issues if all the weights are zero
-        weights_channel = np.maximum(weights_channel, np.float32(2.0**-96))
-        scaled_weights = np.round(weights / weights_channel[:, np.newaxis])
-        scaled_weights = scaled_weights.astype(np.uint8)
-        ig['weights_channel'].value = weights_channel
-        ig['weights'].value = scaled_weights
+        ig['weights_channel'].value = np.ones(weights.shape[:-1], np.float32)
+        ig['weights'].value = weights
         ig['timestamp'].value = timestamp
         ig['dump_index'].value = dump_index
         ig['frequency'].value = 0
