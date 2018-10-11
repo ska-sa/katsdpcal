@@ -285,7 +285,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
     report.writeln()
 
 
-def write_elevation(report, report_path, targets, refant, av_corr):
+def write_elevation(report, report_path, targets, antennas, refant_index, av_corr):
     """
     Put the elevation vs time plot in the report
 
@@ -297,22 +297,29 @@ def write_elevation(report, report_path, targets, refant, av_corr):
         path where report is written
     targets : list
         list of unique targets
-    refant : :class:`katpoint.Antenna`
-        reference antenna
+    antennas : list of :class:`katpoint.Antenna`
+        list of antennas
+    refant_index : int
+        reference antenna index
     av_corr : dict
         dictionary containing averaged, corrected data
     """
+    if refant_index is not None:
+        antenna = antennas[refant_index]
+    else:
+        antenna = antennas[0]
+
     ts, el, names = [], [], []
     for cal in targets:
         ts_cal = [ti[0] for ti, t in zip(av_corr['timestamps'], av_corr['targets']) if t[0] == cal]
         ts_flat = np.array([x for y in ts_cal for x in y])
-        el_cal = calc_elevation(refant, ts_flat, cal)
+        el_cal = calc_elevation(antenna, ts_flat, cal)
 
         ts.append(ts_flat)
         names.append(katpoint.Target(cal).name)
         el.append(el_cal)
 
-    plot_title = 'Elevation vs Time for Reference Antenna: {0}'.format(refant.name)
+    plot_title = 'Elevation vs Time for Antenna: {0}'.format(antenna.name)
     plot = plotting.plot_el_v_time(names, ts, el, title=plot_title)
     insert_fig(report_path, report, plot, name='El_v_time')
 
@@ -1234,13 +1241,13 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln()
 
             # Obtain reference antenna selected by the pipeline
-            if parameters['refant_index'] is None:
+            refant_index = parameters['refant_index']
+            if refant_index is None:
                 refant = ts.get('refant')
-                refant_index = parameters['antenna_names'].index(refant.name)
-                parameters['refant'] = refant
-                parameters['refant_index'] = refant_index
-            else:
-                refant_index = parameters['refant_index']
+                if refant is not None:
+                    refant_index = parameters['antenna_names'].index(refant.name)
+                    parameters['refant'] = refant
+                    parameters['refant_index'] = refant_index
 
             antennas = parameters['antennas']
             if av_corr:
@@ -1254,18 +1261,21 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             correlator_freq = parameters['channel_freqs'] / 1e6
             cal_bls_lookup = parameters['bls_lookup']
             pol = [_[0].upper() for _ in parameters['pol_ordering']]
-
-            # label the reference antenna in the list of antennas
             antenna_names = list(parameters['antenna_names'])
-            refant_name = antenna_names[refant_index]
-            antenna_names[refant_index] += ', refant'
-            name_width = len(antenna_names[refant_index])
-            antenna_names = [name.ljust(name_width) for name in antenna_names]
 
             if av_corr:
-                write_elevation(cal_rst, report_path, unique_targets,
-                                antennas[refant_index], av_corr)
+                # label the reference antenna in the list of antennas, if it has been selected
+                if refant_index is not None:
+                    refant_name = antenna_names[refant_index]
+                    antenna_names[refant_index] += ', refant'
+                    name_width = len(antenna_names[refant_index])
+                    antenna_names = [name.ljust(name_width) for name in antenna_names]
 
+                else:
+                    logger.info(' - no reference antenna selected')
+
+                write_elevation(cal_rst, report_path, unique_targets,
+                                antennas, refant_index, av_corr)
                 # -------------------------------------------------------------------
                 # write RFI summary
                 cal_rst.write_heading_1('RFI and Flagging summary')
@@ -1280,35 +1290,37 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             write_products(cal_rst, report_path, ts, parameters,
                            st, et, antenna_names, correlator_freq, pol)
 
-            # Corrected data : HV delay Noise Diode
+            # Corrected data
             if av_corr:
-                write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
-                         pol=[pol[0] + pol[1], pol[1] + pol[0]])
-                # --------------------------------------------------------------------
-                # Corrected data : Calibrators
-                cal_rst.write_heading_1('Calibrator Summary Plots')
-
                 # Split observed targets into different types of sources,
                 # according to their pipeline tags
                 nogain, gain, target = split_targets(unique_targets)
-
-                # For calibrators which do not have gains applied by the pipeline
-                # plot the baselines to the reference antenna for each timestamp
-                # get idx of baselines to refant
-
-                bls_names = refant_antlabels(cal_bls_lookup, refant_index, antenna_names)
-
-                write_ng_freq(cal_rst, report_path, nogain, av_corr,
-                              refant_name, bls_names, correlator_freq, pol)
-
-                write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
-                             cal_bls_lookup, correlator_freq, True, pol)
-                write_g_time(cal_rst, report_path, av_corr, antenna_names,
-                             cal_bls_lookup, pol)
-
                 cal_array_position = parameters['array_position']
-                write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
-                           antennas, cal_array_position, correlator_freq, True, pol=pol)
+
+                # Calibrator data requires a reference antenna
+                if refant_index is not None:
+                    # Corrected data : HV delay Noise Diode
+                    write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
+                             pol=[pol[0] + pol[1], pol[1] + pol[0]])
+                    # --------------------------------------------------------------------
+                    # Corrected data : Calibrators
+                    cal_rst.write_heading_1('Calibrator Summary Plots')
+
+                    # For calibrators which do not have gains applied by the pipeline
+                    # plot the baselines to the reference antenna for each timestamp
+                    # get idx of baselines to refant
+                    bls_names = refant_antlabels(cal_bls_lookup, refant_index, antenna_names)
+
+                    write_ng_freq(cal_rst, report_path, nogain, av_corr,
+                                  refant_name, bls_names, correlator_freq, pol)
+
+                    write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
+                                 cal_bls_lookup, correlator_freq, True, pol)
+                    write_g_time(cal_rst, report_path, av_corr, antenna_names,
+                                 cal_bls_lookup, pol)
+
+                    write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
+                               antennas, cal_array_position, correlator_freq, True, pol=pol)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets
