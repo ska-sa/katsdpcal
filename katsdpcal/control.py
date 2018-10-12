@@ -17,6 +17,7 @@ import spead2.send
 import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
 from katdal.h5datav3 import FLAG_NAMES
+import katdal.datasources
 
 import attr
 import enum
@@ -345,6 +346,7 @@ class Accumulator(object):
         self.int_time = self.telstate_l0['int_time']
         self.sync_time = self.telstate_l0['sync_time']
         self.l0_excise = self.telstate_l0['excise']
+        self.need_weights_power_scale = self.telstate_l0.get('need_weights_power_scale', False)
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
@@ -609,6 +611,7 @@ class Accumulator(object):
         antenna_names = self.parameters['antenna_names']
         bls_ordering = self.telstate_l0['bls_ordering']
         self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
+        self.weights_power_scale_params = katdal.datasources.corrprod_to_autocorr(bls_ordering)
 
     def _reset_capture_state(self, capture_block_id=None):
         self._capture_block_id = capture_block_id
@@ -908,14 +911,21 @@ class Accumulator(object):
                 trg_subset = slice(common_range.start - trg_range.start,
                                    common_range.stop - trg_range.start)
                 # reshape data and put into relevant arrays
-                self._update_buffer(self.buffers['vis'][slot, trg_subset],
-                                    ig['correlator_data'].value[src_subset], self.ordering)
-                self._update_buffer(self.buffers['flags'][slot, trg_subset],
-                                    ig['flags'].value[src_subset], self.ordering)
+                vis = ig['correlator_data'].value[src_subset]
+                flags = ig['flags'].value[src_subset]
                 weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
-                weights = ig['weights'].value[src_subset]
+                weights = ig['weights'].value[src_subset] * weights_channel
+                if self.need_weights_power_scale:
+                    # weight_power_scale expects a time axis, hence newaxis
+                    scale = katdal.datasources.weight_power_scale(
+                        vis[np.newaxis, ...], *self.weights_power_scale_params)[0]
+                    weights *= scale
+                self._update_buffer(self.buffers['vis'][slot, trg_subset],
+                                    vis, self.ordering)
+                self._update_buffer(self.buffers['flags'][slot, trg_subset],
+                                    flags, self.ordering)
                 self._update_buffer(self.buffers['weights'][slot, trg_subset],
-                                    weights * weights_channel, self.ordering)
+                                    weights, self.ordering)
                 # Excise bits are computed from the original (L0) bls ordering,
                 # not the cal ordering, because that's the order it's needed in
                 # the flag sender.
