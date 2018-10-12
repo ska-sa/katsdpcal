@@ -1011,7 +1011,7 @@ def wavg_flags_f(flags, chanav, excise, axis):
         raise np.AxisError('axis {} is out of bounds for array of dimension {}'
                            .format(axis, flags.ndim))
     if axis > 1 or flags.ndim - axis > 3:
-        raise NotImplementedError('axis {} is not currently supported')
+        raise NotImplementedError('axis {} is not currently supported'.format(axis))
     if flags.shape[axis] % chanav != 0:
         raise ValueError('chanav {} does not divide length {}'
                          .format(chanav, flags.shape[axis]))

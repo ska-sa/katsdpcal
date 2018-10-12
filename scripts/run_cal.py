@@ -206,7 +206,7 @@ def parse_opts():
             'interface': args.flags_interface,
             'rate_ratio': args.flags_rate_ratio
         }]
-        args.flags_streams += parse_flags_streams(data)
+        args.flags_streams += parse_flags_streams(data, parser)
 
     return args
 
