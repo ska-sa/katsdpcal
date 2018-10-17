@@ -5,21 +5,49 @@ import signal
 import logging
 import manhole
 import numpy as np
+import json
 
 import trollius
 from trollius import From
 from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
+import jsonschema
 
 from katsdptelstate import endpoint
 import katsdpservices
 
-from katsdpcal.control import create_server, create_buffer_arrays
+from katsdpcal.control import create_server, create_buffer_arrays, FlagsStream
 from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
     finalise_parameters, parameters_to_telstate)
 
 from katsdpcal import param_dir, rfi_dir
 
+
+FLAGS_STREAMS_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "endpoints": {"type": "string"},
+            "src_stream": {"type": "string"},
+            "interface": {"type": "string"},
+            "rate_ratio": {
+                "type": "number",
+                "minimum": 1.0,
+                "exclusiveMinimum": True
+            },
+            "continuum_factor": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 1
+            }
+        },
+        "additionalProperties": False,
+        "required": ["name", "endpoints", "src_stream", "rate_ratio"]
+    }
+}
 
 logger = logging.getLogger(__name__)
 
@@ -61,23 +89,35 @@ def log_dict(dictionary, ident='', braces=1):
             logger.info('%s%s = %s', ident, key, value)
 
 
-def comma_list(type_):
-    """Return a function which splits a string on commas and converts each element to
-    `type_`."""
-
-    def convert(arg):
-        return [type_(x) for x in arg.split(',')]
-    return convert
-
-
 def diagnostics_endpoint(value):
     try:
         return int(value)
     except ValueError:
         addr = endpoint.endpoint_parser(None)(value)
         if addr.port is None:
-            raise ValueError('port missing')
+            raise argparse.ArgumentTypeError('port missing')
         return (addr.host, addr.port)
+
+
+def parse_flags_streams(data, parser):
+    try:
+        schema = FLAGS_STREAMS_SCHEMA
+        validator_cls = jsonschema.validators.validator_for(schema)
+        validator_cls.check_schema(schema)
+        validator = validator_cls(schema, format_checker=jsonschema.FormatChecker())
+        validator.validate(data)
+        return [
+            FlagsStream(
+                name=item['name'],
+                endpoints=endpoint.endpoint_list_parser(7202)(item['endpoints']),
+                src_stream=item['src_stream'],
+                interface_address=katsdpservices.get_interface_address(item.get('interface')),
+                rate_ratio=item['rate_ratio'],
+                continuum_factor=int(item.get('continuum_factor', 1)))
+            for item in data
+        ]
+    except (ValueError, jsonschema.ValidationError) as exc:
+        parser.error(str(exc))
 
 
 def parse_opts():
@@ -104,17 +144,20 @@ def parse_opts():
         '--cal-name', default='cal',
         help='Name of the cal output in telstate. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
-        '--flags-spead', type=endpoint.endpoint_list_parser(7202),
-        help='endpoints for L1 flags. [default=%(default)s]', metavar='ENDPOINTS')
+        '--flags-spead',
+        help='[DEPRECATED] endpoints for L1 flags. [default=none]', metavar='ENDPOINTS')
     parser.add_argument(
         '--flags-name', type=str, default='sdp_l1_flags',
-        help='name for the flags stream. [default=%(default)s]', metavar='NAME')
+        help='[DEPRECATED] name for the flags stream. [default=%(default)s]', metavar='NAME')
     parser.add_argument(
         '--flags-interface',
-        help='interface to send flags stream to. [default=auto]', metavar='INTERFACE')
+        help='[DEPRECATED] interface to send flags stream to. [default=auto]', metavar='INTERFACE')
     parser.add_argument(
         '--flags-rate-ratio', type=float, default=8.0,
-        help='speed to send flags, relative to realtime. [default=%(default)s]', metavar='RATIO')
+        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default=%(default)s]', metavar='RATIO')
+    parser.add_argument(
+        '--flags-streams', type=json.loads, default=[],
+        help='JSON document describing flags streams to send. [default=none]', metavar='JSON')
     parser.add_argument(
         '--threading', action='store_true',
         help='Use threading to control pipeline and accumulator '
@@ -152,8 +195,19 @@ def parse_opts():
     args = parser.parse_args()
     if args.telstate is None:
         parser.error('--telstate is required')
-    if args.flags_rate_ratio <= 1.0:
-        parser.error('--flags-rate-ratio must be > 1')
+    # This is done here rather than as a type converter because it needs to
+    # happen even when args are parsed as a structure in telstate.
+    args.flags_streams = parse_flags_streams(args.flags_streams, parser)
+    if args.flags_spead is not None:
+        data = [{
+            'name': args.flags_name,
+            'endpoints': args.flags_spead,
+            'src_stream': args.l0_name,
+            'interface': args.flags_interface,
+            'rate_ratio': args.flags_rate_ratio
+        }]
+        args.flags_streams += parse_flags_streams(data, parser)
+
     return args
 
 
@@ -256,12 +310,14 @@ def run(opts, log_path, full_log):
         return
 
     # buffer needs to include:
-    #   visibilities, shape(time,channel,baseline,pol), type complex64 (8 bytes)
-    #   flags, shape(time,channel,baseline,pol), type uint8 (1 byte)
-    #   weights, shape(time,channel,baseline,pol), type float32 (4 bytes)
+    #   with shape (time, channel, pol, baseline):
+    #   - visibilities, type complex64 (8 bytes)
+    #   - flags, type uint8 (1 byte)
+    #   - excision bitmask (1/8 byte)
+    #   - weights, type float32 (4 bytes)
     #   time, shape(time), type float64 (8 bytes)
     # plus minimal extra for scan transition indices
-    scale_factor = 8. + 1. + 4.  # vis + flags + weights
+    scale_factor = 8. + 1. + 4. + 0.125  # vis + flags + weights + excision
     time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
     array_length = opts.buffer_maxsize/((scale_factor*n_chans*npols*nbl) + time_factor)
     array_length = np.int(np.ceil(array_length))
@@ -293,8 +349,7 @@ def run(opts, log_path, full_log):
 
     server = create_server(not opts.threading, opts.host, opts.port, buffers,
                            opts.l0_name, opts.l0_spead, l0_interface_address,
-                           opts.flags_name, opts.flags_spead, flags_interface_address,
-                           opts.flags_rate_ratio,
+                           opts.flags_streams,
                            telstate_cal, parameters, opts.report_path, log_path, full_log,
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
                            opts.max_scans)

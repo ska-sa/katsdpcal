@@ -18,7 +18,7 @@ docutils
 enum34                  # for numba
 fakeredis               # for katsdptelstate
 funcsigs                # for numba
-functools32             # for matplotlib
+functools32             # for matplotlib, jsonschema
 future                  # for katcp
 futures                 # for trollius, distributed
 h5py
@@ -26,6 +26,7 @@ heapdict==1.0.0         # for distributed
 idna                    # for requests
 ipaddress               # for katsdptelstate
 jinja2==2.10            # for bokeh
+jsonschema==2.6.0
 katcp
 kaptan==0.5.8           # for tmuxp
 katversion

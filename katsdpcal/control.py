@@ -17,7 +17,9 @@ import spead2.send
 import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
 from katdal.h5datav3 import FLAG_NAMES
+import katdal.datasources
 
+import attr
 import enum
 import numpy as np
 import dask.array as da
@@ -343,6 +345,8 @@ class Accumulator(object):
         self.parameters = parameters
         self.int_time = self.telstate_l0['int_time']
         self.sync_time = self.telstate_l0['sync_time']
+        self.l0_excise = self.telstate_l0['excise']
+        self.need_weights_power_scale = self.telstate_l0.get('need_weights_power_scale', False)
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
@@ -607,6 +611,7 @@ class Accumulator(object):
         antenna_names = self.parameters['antenna_names']
         bls_ordering = self.telstate_l0['bls_ordering']
         self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
+        self.weights_power_scale_params = katdal.datasources.corrprod_to_autocorr(bls_ordering)
 
     def _reset_capture_state(self, capture_block_id=None):
         self._capture_block_id = capture_block_id
@@ -906,14 +911,29 @@ class Accumulator(object):
                 trg_subset = slice(common_range.start - trg_range.start,
                                    common_range.stop - trg_range.start)
                 # reshape data and put into relevant arrays
-                self._update_buffer(self.buffers['vis'][slot, trg_subset],
-                                    ig['correlator_data'].value[src_subset], self.ordering)
-                self._update_buffer(self.buffers['flags'][slot, trg_subset],
-                                    ig['flags'].value[src_subset], self.ordering)
+                vis = ig['correlator_data'].value[src_subset]
+                flags = ig['flags'].value[src_subset]
                 weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
-                weights = ig['weights'].value[src_subset]
+                weights = ig['weights'].value[src_subset] * weights_channel
+                if self.need_weights_power_scale:
+                    # weight_power_scale expects a time axis, hence newaxis
+                    scale = katdal.datasources.weight_power_scale(
+                        vis[np.newaxis, ...], *self.weights_power_scale_params)[0]
+                    weights *= scale
+                self._update_buffer(self.buffers['vis'][slot, trg_subset],
+                                    vis, self.ordering)
+                self._update_buffer(self.buffers['flags'][slot, trg_subset],
+                                    flags, self.ordering)
                 self._update_buffer(self.buffers['weights'][slot, trg_subset],
-                                    weights * weights_channel, self.ordering)
+                                    weights, self.ordering)
+                # Excise bits are computed from the original (L0) bls ordering,
+                # not the cal ordering, because that's the order it's needed in
+                # the flag sender.
+                if self.l0_excise:
+                    self.buffers['excise'][slot, trg_subset] = \
+                        np.packbits(ig['flags'].value[src_subset], axis=-1)
+                else:
+                    self.buffers['excise'][slot, trg_subset] = 0
             heap_nbytes = 0
             for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
                 heap_nbytes += ig[field].value.nbytes
@@ -1095,58 +1115,173 @@ class Pipeline(Task):
         self.pipeline_report_queue.put(avg_corr)
 
 
+@attr.s
+class FlagsStream(object):
+    """Configuration information about a single L1 flag stream.
+
+    Parameters
+    ----------
+    name : str
+        Name of the stream
+    endpoints : list of :class:`.katsdptelstate.endpoint.Endpoint`
+        Destination multicast endpoints for transmission
+    src_stream : str
+        Corresponding L0 stream. This is set in telstate, and need not match
+        the stream being fed into the accumulator (and will not if
+        continuum_factor is greater than 1).
+    interface_address : str
+        IP address from which to transmit
+    rate_ratio : float
+        Speed to send flags, relative to incoming rate
+    continuum_factor : int
+        Factor by which to combine flags on the spectral axis. It must divide
+        the number of channels.
+    """
+    name = attr.ib()
+    endpoints = attr.ib()
+    src_stream = attr.ib()
+    rate_ratio = attr.ib()
+    interface_address = attr.ib(default=None)
+    continuum_factor = attr.ib(default=1)
+
+
+def adjust_center_freq(old_center_freq, bandwidth, old_chans, new_chans):
+    """Recompute the centre frequency when changing channelisation.
+
+    Because of the slightly odd way KAT defines a centre frequency, simply
+    changing the number of channels (e.g. by averaging) changes the reported
+    centre frequency, which is offset from the middle of the bandwidth by
+    half a channel when the number of channels is even.
+    """
+    adjust = 0.0
+    if old_chans != new_chans:
+        # Avoid accumulating any rounding errors if we don't need to
+        if old_chans % 2 == 0:
+            adjust -= 0.5 * bandwidth / old_chans
+        if new_chans % 2 == 0:
+            adjust += 0.5 * bandwidth / new_chans
+    return old_center_freq + adjust
+
+
+class Transmitter(object):
+    """State for a single flags stream held by :class:`Sender`"""
+    def __init__(self, l0_name, l0_attr, flags_stream, telstate_cal, parameters):
+        self.flags_stream = flags_stream
+        n_endpoints = len(flags_stream.endpoints)
+        self._n_servers = n_servers = parameters['servers']
+        self._server_id = parameters['server_id']
+        if n_endpoints != n_servers:
+            raise ValueError(
+                'Number of flags endpoints ({}) not equal to number of servers ({})'
+                .format(n_endpoints, n_servers))
+        self.endpoint = flags_stream.endpoints[parameters['server_id']]
+
+        telstate = telstate_cal.root()
+        n_chans = l0_attr['n_chans'] // n_servers
+        n_bls = len(l0_attr['bls_ordering'])
+        channel_slice = parameters['channel_slice']
+        self.rate = n_chans * n_bls / float(l0_attr['int_time']) * flags_stream.rate_ratio
+        if n_chans % flags_stream.continuum_factor != 0:
+            raise ValueError('Continuum factor {} does not divide into server channels {}'
+                             .format(flags_stream.continuum_factor, n_chans))
+        out_chans = n_chans // flags_stream.continuum_factor
+
+        # create SPEAD item group
+        flavour = spead2.Flavour(4, 64, 48)
+        ig = spead2.send.ItemGroup(flavour=flavour)
+        # set up item group with items
+        ig.add_item(id=None, name='flags', description="Flags for visibilities",
+                    shape=(out_chans, n_bls), dtype=None, format=[('u', 8)])
+        ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
+                    shape=(), dtype=None, format=[('f', 64)])
+        ig.add_item(id=None, name='dump_index', description='Index in time',
+                    shape=(), dtype=None, format=[('u', 64)])
+        ig.add_item(id=0x4103, name='frequency',
+                    description="Channel index of first channel in the heap",
+                    shape=(), dtype=np.uint32,
+                    value=channel_slice.start // flags_stream.continuum_factor)
+        ig.add_item(id=None, name='capture_block_id', description='SDP capture block ID',
+                    shape=(None,), dtype=None, format=[('c', 8)])
+        self._ig = ig
+
+        cal_name = telstate_cal.prefixes[0][:-1]
+        self.telstate_flags = telstate.view(flags_stream.name)
+        # The flags stream is mostly the same shape/layout as the L0 stream,
+        # with the exception of channelisation.
+        # TODO: this needs to be updated for continuum_factor.
+        for key in ['bandwidth', 'int_time', 'sync_time', 'excise', 'n_bls', 'bls_ordering']:
+            self.telstate_flags.add(key, l0_attr[key], immutable=True)
+        center_freq = adjust_center_freq(l0_attr['center_freq'], l0_attr['bandwidth'],
+                                         l0_attr['n_chans'],
+                                         l0_attr['n_chans'] // flags_stream.continuum_factor)
+        self.telstate_flags.add('center_freq', center_freq, immutable=True)
+        self.telstate_flags.add('n_chans', out_chans * n_servers, immutable=True)
+        self.telstate_flags.add('n_chans_per_substream', out_chans, immutable=True)
+        self.telstate_flags.add('src_streams', [flags_stream.src_stream], immutable=True)
+        self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
+        self.telstate_flags.add('calibrations_applied', [cal_name], immutable=True)
+
+    def prepare(self):
+        """Do further setup in the child process."""
+        config = spead2.send.StreamConfig(max_packet_size=8872, rate=self.rate)
+        self._tx = spead2.send.UdpStream(
+            spead2.ThreadPool(), self.endpoint.host, self.endpoint.port,
+            config, ttl=1, interface_address=self.flags_stream.interface_address or '')
+        self._tx.set_cnt_sequence(self._server_id, self._n_servers)
+
+    def start_capture_block(self, cbid, first_timestamp):
+        """Send a start-of-stream heap, and initialise the capture block ID"""
+        self._tx.send_heap(self._ig.get_start())
+        self._ig['capture_block_id'].value = cbid
+        telstate_cb_flags = make_telstate_cb(self.telstate_flags, cbid)
+        telstate_cb_flags.add('first_timestamp', first_timestamp, immutable=True)
+
+    def end_capture_block(self):
+        """Send an end-of-stream heap that includes capture block ID"""
+        cbid_item = self._ig['capture_block_id']
+        heap = self._ig.get_end()
+        heap.add_descriptor(cbid_item)
+        heap.add_item(cbid_item)
+        self._tx.send_heap(heap)
+
+    def send(self, idx, timestamp, flags, excise):
+        """Transmit flag data"""
+        if self.flags_stream.continuum_factor != 1:
+            flags = calprocs.wavg_flags_f(
+                flags, self.flags_stream.continuum_factor, excise, axis=0)
+        self._ig['flags'].value = flags
+        self._ig['timestamp'].value = timestamp
+        self._ig['dump_index'].value = idx
+        self._tx.send_heap(self._ig.get_heap(data='all', descriptors='all'))
+
+
 class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
-                 l0_name,
-                 flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-                 telstate_cal, parameters):
+                 l0_name, flags_streams, telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
-        telstate = telstate_cal.root()
-        self.telstate_l0 = telstate.view(l0_name)
-        self._n_servers = n_servers = parameters['servers']
-        self._server_id = parameters['server_id']
-        if flags_endpoints is not None:
-            n_endpoints = len(flags_endpoints)
-            if n_endpoints != n_servers:
-                raise ValueError(
-                    'Number of flags endpoints ({}) not equal to number of servers ({})'
-                    .format(n_endpoints, n_servers))
-            self.flags_endpoint = flags_endpoints[parameters['server_id']]
-        else:
-            self.flags_endpoint = None
-        self.flags_interface_address = flags_interface_address
-        if self.flags_interface_address is None:
-            self.flags_interface_address = ''
+        self.telstate_l0 = telstate_cal.root().view(l0_name)
+        l0_attr = {key: self.telstate_l0[key]
+                   for key in ['n_bls', 'bls_ordering', 'int_time', 'sync_time', 'excise',
+                               'bandwidth', 'center_freq', 'n_chans']}
+        n_servers = parameters['servers']
+        self._transmitters = [Transmitter(l0_name, l0_attr, flags_stream, telstate_cal, parameters)
+                              for flags_stream in flags_streams]
         self.int_time = self.telstate_l0['int_time']
         self.n_chans = self.telstate_l0['n_chans'] // n_servers
-        self.l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
-        self.channel_slice = parameters['channel_slice']
-        n_bls = len(self.l0_bls)
-        self.rate = self.n_chans * n_bls / float(self.int_time) * flags_rate_ratio
+        l0_bls = np.asarray(self.telstate_l0['bls_ordering'])
+        self.n_bls = len(l0_bls)
 
         self.buffers = buffers
         self.pipeline_sender_queue = pipeline_sender_queue
         # Compute the permutation to get back to L0 ordering. get_reordering gives
         # the inverse of what is needed.
-        rev_ordering = calprocs.get_reordering(parameters['antenna_names'], self.l0_bls)[0]
-        self.ordering = np.full(n_bls, -1)
+        rev_ordering = calprocs.get_reordering(parameters['antenna_names'], l0_bls)[0]
+        self.ordering = np.full(self.n_bls, -1)
         for i, idx in enumerate(rev_ordering):
             self.ordering[idx] = i
         if np.any(self.ordering < 0):
             raise RuntimeError('accumulator discards some baselines')
-
-        self.telstate_flags = telstate.view(flags_name)
-        # The flags stream is mostly the same shape/layout as the L0 stream,
-        # with the exception of the division into substreams.
-        for key in ['bandwidth', 'bls_ordering', 'center_freq', 'int_time',
-                    'n_bls', 'n_chans', 'sync_time']:
-            self.telstate_flags.add(key, self.telstate_l0[key], immutable=True)
-        self.telstate_flags.add('n_chans_per_substream', self.n_chans, immutable=True)
-        cal_name = telstate_cal.prefixes[0][:-1]
-        self.telstate_flags.add('src_streams', [l0_name], immutable=True)
-        self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
-        self.telstate_flags.add('calibrations_applied', [cal_name], immutable=True)
 
     def get_sensors(self):
         return [
@@ -1161,80 +1296,57 @@ class Sender(Task):
         ]
 
     def run(self):
-        if self.flags_endpoint is not None:
-            config = spead2.send.StreamConfig(max_packet_size=8872, rate=self.rate)
-            tx = spead2.send.UdpStream(
-                spead2.ThreadPool(), self.flags_endpoint.host, self.flags_endpoint.port,
-                config, ttl=1, interface_address=self.flags_interface_address)
-            tx.set_cnt_sequence(self._server_id, self._n_servers)
-        else:
-            tx = None
-        # create SPEAD item group
-        flavour = spead2.Flavour(4, 64, 48)
-        ig = spead2.send.ItemGroup(flavour=flavour)
-        # set up item group with items
-        ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=(self.n_chans, len(self.l0_bls)), dtype=None, format=[('u', 8)])
-        ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
-                    shape=(), dtype=None, format=[('f', 64)])
-        ig.add_item(id=None, name='dump_index', description='Index in time',
-                    shape=(), dtype=None, format=[('u', 64)])
-        ig.add_item(id=0x4103, name='frequency',
-                    description="Channel index of first channel in the heap",
-                    shape=(), dtype=np.uint32, value=self.channel_slice.start)
-        ig.add_item(id=None, name='capture_block_id', description='SDP capture block ID',
-                    shape=(None,), dtype=None, format=[('c', 8)])
-
+        nt = len(self._transmitters)
         started = False
-        out_flags = np.zeros(ig['flags'].shape, np.uint8)
+        out_flags = np.zeros((self.n_chans, self.n_bls), np.uint8)
+        for transmitter in self._transmitters:
+            transmitter.prepare()
         while True:
             event = self.pipeline_sender_queue.get()
             if isinstance(event, StopEvent):
                 break
             elif isinstance(event, BufferReadyEvent):
-                if tx is None:
+                if not self._transmitters:
                     self.master_queue.put(event)
                 else:
                     logger.info('starting transmission of %d slots', len(event.slots))
                     if not started:
                         cbid = event.capture_block_id
                         telstate_cb_l0 = make_telstate_cb(self.telstate_l0, cbid)
-                        telstate_cb_flags = make_telstate_cb(self.telstate_flags, cbid)
                         first_timestamp = telstate_cb_l0['first_timestamp']
-                        telstate_cb_flags.add('first_timestamp', first_timestamp, immutable=True)
-                        tx.send_heap(ig.get_start())
-                        ig['capture_block_id'].value = cbid
+                        for transmitter in self._transmitters:
+                            transmitter.start_capture_block(cbid, first_timestamp)
                         started = True
                     for slot in event.slots:
                         flags = self.buffers['flags'][slot]
                         # Flatten the pol and baseline dimensions
-                        flags.shape = ig['flags'].shape
+                        flags.shape = (self.n_chans, self.n_bls)
                         # Permute into the same order as the L0 stream
                         np.take(flags, self.ordering, axis=1, out=out_flags)
-                        ig['flags'].value = out_flags
+                        excise = np.unpackbits(self.buffers['excise'][slot], axis=1)
+                        # unpack_bits will always produce a multiple of 8 bits,
+                        # even if the original had fewer. So we need to trim.
+                        excise = excise[:, :self.n_bls]
                         idx = self.buffers['dump_indices'][slot]
-                        ig['timestamp'].value = first_timestamp + idx * self.int_time
-                        ig['dump_index'].value = idx
-                        tx.send_heap(ig.get_heap(data='all', descriptors='all'))
+                        timestamp = first_timestamp + idx * self.int_time
+                        for transmitter in self._transmitters:
+                            # TODO: send these in parallel
+                            transmitter.send(idx, timestamp, out_flags, excise)
                         now = time.time()
-                        _inc_sensor(self.sensors['output-heaps-total'], 1, timestamp=now)
-                        _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes,
+                        _inc_sensor(self.sensors['output-heaps-total'], nt, timestamp=now)
+                        _inc_sensor(self.sensors['output-bytes-total'], out_flags.nbytes * nt,
                                     timestamp=now)
                         self.master_queue.put(BufferReadyEvent(event.capture_block_id, [slot]))
                     logger.info('finished transmission of %d slots', len(event.slots))
             elif isinstance(event, ObservationEndEvent):
                 if started:
-                    # Create an end-of-stream heap that includes capture block ID
-                    cbid_item = ig['capture_block_id']
-                    cbid_item.value = event.capture_block_id
-                    heap = ig.get_end()
-                    heap.add_descriptor(cbid_item)
-                    heap.add_item(cbid_item)
-                    tx.send_heap(heap)
+                    for transmitter in self._transmitters:
+                        transmitter.end_capture_block()
                     started = False
                 self.master_queue.put(event)
         if started:
-            tx.send_heap(ig.get_end())
+            for transmitter in self._transmitters:
+                transmitter.end_capture_block()
 
 
 class ReportWriter(Task):
@@ -1561,9 +1673,14 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
         factory = shared_empty
     else:
         factory = np.empty
+    # The excise buffer is in the shape of the L0 stream, and packs
+    # each flag into one bit.
+    excise_shape = (buffer_shape[0], buffer_shape[1],
+                    (buffer_shape[2] * buffer_shape[3] + 7) // 8)
     data = {}
     data['vis'] = factory(buffer_shape, dtype=np.complex64)
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
+    data['excise'] = factory(excise_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
     data['times'] = factory(buffer_shape[0], dtype=np.float)
     data['dump_indices'] = factory(buffer_shape[0], dtype=np.uint64)
@@ -1572,8 +1689,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-                  telstate_cal, parameters, report_path, log_path, full_log,
+                  flags_stream, telstate_cal, parameters, report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None,
                   max_scans=None):
     # threading or multiprocessing imports
@@ -1598,8 +1714,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
-        flags_name, flags_endpoints, flags_interface_address, flags_rate_ratio,
-        telstate_cal, parameters)
+        flags_stream, telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, l0_name, telstate_cal, parameters,

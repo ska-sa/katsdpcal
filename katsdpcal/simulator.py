@@ -149,6 +149,8 @@ class SimData(object):
             if key not in parameter_dict:
                 raise KeyError('Required parameter {0} not set by simulator.'.format(key))
 
+        parameter_dict['sdp_l0_need_weights_power_scale'] = False
+        parameter_dict['sdp_l0_excise'] = True
         # add fake subarray_id to parameter_dict
         parameter_dict['subarray_product_id'] = 'unknown_subarray'
 
