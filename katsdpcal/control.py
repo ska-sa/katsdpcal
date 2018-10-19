@@ -18,6 +18,7 @@ import katcp
 from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
 from katdal.h5datav3 import FLAG_NAMES
 import katdal.datasources
+from katdal import SpectralWindow
 
 import attr
 import enum
@@ -1145,24 +1146,6 @@ class FlagsStream(object):
     continuum_factor = attr.ib(default=1)
 
 
-def adjust_center_freq(old_center_freq, bandwidth, old_chans, new_chans):
-    """Recompute the centre frequency when changing channelisation.
-
-    Because of the slightly odd way KAT defines a centre frequency, simply
-    changing the number of channels (e.g. by averaging) changes the reported
-    centre frequency, which is offset from the middle of the bandwidth by
-    half a channel when the number of channels is even.
-    """
-    adjust = 0.0
-    if old_chans != new_chans:
-        # Avoid accumulating any rounding errors if we don't need to
-        if old_chans % 2 == 0:
-            adjust -= 0.5 * bandwidth / old_chans
-        if new_chans % 2 == 0:
-            adjust += 0.5 * bandwidth / new_chans
-    return old_center_freq + adjust
-
-
 class Transmitter(object):
     """State for a single flags stream held by :class:`Sender`"""
     def __init__(self, l0_name, l0_attr, flags_stream, telstate_cal, parameters):
@@ -1211,11 +1194,14 @@ class Transmitter(object):
         # TODO: this needs to be updated for continuum_factor.
         for key in ['bandwidth', 'int_time', 'sync_time', 'excise', 'n_bls', 'bls_ordering']:
             self.telstate_flags.add(key, l0_attr[key], immutable=True)
-        center_freq = adjust_center_freq(l0_attr['center_freq'], l0_attr['bandwidth'],
-                                         l0_attr['n_chans'],
-                                         l0_attr['n_chans'] // flags_stream.continuum_factor)
-        self.telstate_flags.add('center_freq', center_freq, immutable=True)
-        self.telstate_flags.add('n_chans', out_chans * n_servers, immutable=True)
+        old_spw = SpectralWindow(centre_freq=l0_attr['center_freq'],
+                                 bandwidth=l0_attr['bandwidth'],
+                                 num_chans=l0_attr['n_chans'],
+                                 channel_width=None,    # Computed from bandwidth
+                                 sideband=1)
+        new_spw = old_spw.rechannelise(l0_attr['n_chans'] // flags_stream.continuum_factor)
+        self.telstate_flags.add('center_freq', new_spw.centre_freq, immutable=True)
+        self.telstate_flags.add('n_chans', new_spw.num_chans, immutable=True)
         self.telstate_flags.add('n_chans_per_substream', out_chans, immutable=True)
         self.telstate_flags.add('src_streams', [flags_stream.src_stream], immutable=True)
         self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
