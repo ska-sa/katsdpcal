@@ -13,7 +13,7 @@ cycler                  # for matplotlib
 dask
 decorator
 defusedxml              # for katdal
-distributed==1.21.0
+distributed==1.23.3
 docutils
 enum34                  # for numba
 fakeredis               # for katsdptelstate
@@ -36,7 +36,7 @@ mako
 manhole
 markupsafe
 matplotlib
-msgpack-python==0.5.4   # for distributed
+msgpack                 # for distributed, katsdptelstate
 netifaces
 numba
 numpy==1.15.1
