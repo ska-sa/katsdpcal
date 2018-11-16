@@ -3,7 +3,7 @@ argcomplete==1.0.0      # for tmuxp
 attrs==17.4.0
 backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
-bokeh==0.12.13
+bokeh==1.0.1
 certifi                 # for tornado
 chardet                 # for requests
 click==6.7              # for distributed
@@ -40,7 +40,9 @@ msgpack                 # for distributed, katsdptelstate
 netifaces
 numba
 numpy==1.15.1
+packaging==18.0         # for bokeh
 pandas
+pillow==5.3.0           # for bokeh
 ply                     # for katcp
 psutil==5.4.3           # for distributed
 pyephem
