@@ -1191,7 +1191,6 @@ class Transmitter(object):
         self.telstate_flags = telstate.view(flags_stream.name)
         # The flags stream is mostly the same shape/layout as the L0 stream,
         # with the exception of channelisation.
-        # TODO: this needs to be updated for continuum_factor.
         for key in ['bandwidth', 'int_time', 'sync_time', 'excise', 'n_bls', 'bls_ordering']:
             self.telstate_flags.add(key, l0_attr[key], immutable=True)
         old_spw = SpectralWindow(centre_freq=l0_attr['center_freq'],
