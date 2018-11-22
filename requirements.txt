@@ -1,14 +1,14 @@
 appdirs
 argcomplete==1.0.0      # for tmuxp
-attrs==17.4.0
+attrs
 backports-abc           # for tornado
 backports.ssl-match-hostname  # for tornado
-bokeh==1.0.1
+bokeh
 certifi                 # for tornado
 chardet                 # for requests
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
-colorama==0.3.7         # for libtmux
+colorama==0.4.0         # for libtmux
 cycler                  # for matplotlib
 dask
 decorator
@@ -25,8 +25,8 @@ h5py
 heapdict==1.0.0         # for distributed
 idna                    # for requests
 ipaddress               # for katsdptelstate
-jinja2==2.10            # for bokeh
-jsonschema==2.6.0
+jinja2                  # for bokeh
+jsonschema
 katcp
 kaptan==0.5.8           # for tmuxp
 katversion
@@ -39,10 +39,10 @@ matplotlib
 msgpack                 # for distributed, katsdptelstate
 netifaces
 numba
-numpy==1.15.1
-packaging==18.0         # for bokeh
+numpy
+packaging               # for bokeh
 pandas
-pillow==5.3.0           # for bokeh
+pillow                  # for bokeh
 ply                     # for katcp
 psutil==5.4.3           # for distributed
 pyephem
@@ -52,7 +52,7 @@ python-casacore
 python-dateutil
 python-lzf              # for katdal
 pytz
-PyYAML==3.11
+PyYAML
 rdbtools                # for katdal
 redis
 requests                # for katdal
