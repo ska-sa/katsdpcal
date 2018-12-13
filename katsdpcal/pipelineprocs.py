@@ -289,6 +289,10 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     rfi_mask = np.zeros(rfi_mask_shape, np.bool_)
     channel_mask = parameters['rfi_mask'][np.newaxis, :, np.newaxis, np.newaxis]
     rfi_mask[..., bl_mask] |= channel_mask
+    # Mask edges of the band
+    edge_chan = np.int(0.05 * n_chans)
+    rfi_mask[:, : edge_chan] = True
+    rfi_mask[:, -edge_chan :] = True
     parameters['rfi_mask'] = rfi_mask[:, channel_slice, :, :]
 
     for prefix in ['k', 'g']:
