@@ -1027,9 +1027,14 @@ class Scan(object):
         if auto_ant:
             scandata = self.auto_ant
             label = ', auto-corrs'
+            if mask is not None:
+                mask = mask[..., self.ac_mask]
         else:
             scandata = self.cross_ant
             label = ''
+            if mask is not None:
+                mask = mask[..., self.xc_mask]
+
         if cross_pol:
             self.logger.info('  - Flag cross-pols%s', label)
             data = scandata.pb.cross_pol
@@ -1055,7 +1060,7 @@ class Scan(object):
         # Add to 'static' flag bit.
         # TODO: Should mask_flags already be in static bit?
         if mask is not None:
-            flags |= (mask[np.newaxis, :, np.newaxis, np.newaxis] * np.uint8(2**static_bit))
+            flags |= (mask * np.uint8(2**static_bit))
 
         flags = da.atop(_rfi, 'TFpb', vis, 'tfpb', flags, 'tfpb',
                         dtype=np.uint8,

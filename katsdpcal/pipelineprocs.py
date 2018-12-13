@@ -17,7 +17,6 @@ import katpoint
 
 from . import calprocs
 
-
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
@@ -284,7 +283,13 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                              .format(parameters['rfi_mask'].shape, (n_chans,)))
     else:
         parameters['rfi_mask'] = np.zeros((n_chans,), np.bool_)
-    parameters['rfi_mask'] = parameters['rfi_mask'][channel_slice]
+    # Only use static channel mask on baselines shorter than 1000 meters
+    bl_mask = get_baseline_mask(parameters['bls_lookup'], antennas, 1000)
+    rfi_mask_shape = (1, n_chans, 1, len(parameters['bls_lookup']))
+    rfi_mask = np.zeros(rfi_mask_shape, np.bool_)
+    channel_mask = parameters['rfi_mask'][np.newaxis, :, np.newaxis, np.newaxis]
+    rfi_mask[..., bl_mask] |= channel_mask
+    parameters['rfi_mask'] = rfi_mask[:, channel_slice, :, :]
 
     for prefix in ['k', 'g']:
         bchan = parameters[prefix + '_bchan']
@@ -348,6 +353,31 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
         telstate_cal.add(key, telstate_l0[key], immutable=True)
     # Add the L0 stream name too, so that any other information can be found there.
     telstate_cal.add('src_streams', [l0_name], immutable=True)
+
+
+def get_baseline_mask(bls_lookup, ants, limit):
+    """
+    Compute a mask of the same length as bls_lookup that indicates
+    whether the baseline length of the given correlation product is
+    shorter than limit in meters
+
+    Parameters
+    ----------
+    bls_lookup : :class:`np.ndarray`, int(n_corrs, 2)
+        indices of antenna pairs in each correlation product
+    ants: list of :class:`katpoint.Antenna`
+        antennas in bls_lookup
+    limit : float
+        limit in meters
+    """
+    baseline_mask = np.zeros(bls_lookup.shape[0], dtype=np.bool)
+
+    for prod, baseline in enumerate(bls_lookup):
+        bl_vector = ants[baseline[0]].baseline_toward(ants[baseline[1]])
+        bl_length = np.linalg.norm(bl_vector)
+        if bl_length < limit:
+            baseline_mask[prod] = True
+    return baseline_mask
 
 
 def get_model(name, lsm_dir_list=[]):

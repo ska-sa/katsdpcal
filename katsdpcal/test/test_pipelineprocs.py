@@ -60,13 +60,17 @@ class TestFinaliseParameters(unittest.TestCase):
 
         self.antenna_names = ['m001', 'm002', 'm004', 'm006']
         self.antennas = [
-            # The position is irrelevant for now, so just give all the
-            # antennas the same position.
+            # One antenna has a baseline largers than 1000m to the other antennas
             katpoint.Antenna(
                 '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
                 '-0:05:44.7 0 0:00:22.6 -0:09:04.2 0:00:11.9 -0:00:12.8 -0:04:03.5 0 0 '
                 '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(name))
             for name in self.antenna_names]
+
+        self.antennas[1] = katpoint.Antenna(
+            'm002,-30:42:39.8, 21:26:38.0, 1035.0, 13.5, 9.3645 -1304.462 7.632 '
+            '5872.543 5873.042 1.0, 0:06:11.7 0 -0:00:43.1 0:04:09.0 0:00:40.6 '
+            '0:00:04.9 0:09:00.9 0:01:31.7, 1.22')
 
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
         for a in self.antenna_names:
@@ -103,7 +107,7 @@ class TestFinaliseParameters(unittest.TestCase):
         np.testing.assert_allclose(expected_freqs, parameters['channel_freqs'])
         np.testing.assert_allclose(expected_freqs_all, parameters['channel_freqs_all'])
         self.assertEqual(slice(2048, 3072), parameters['channel_slice'])
-        np.testing.assert_array_equal(np.zeros(1024, np.bool_), parameters['rfi_mask'])
+        np.testing.assert_array_equal(np.zeros((1, 1024, 1, 10), np.bool_), parameters['rfi_mask'])
         # Check the channel indices are offset
         self.assertEqual(202, parameters['k_bchan'])
         self.assertEqual(402, parameters['k_echan'])
@@ -116,12 +120,20 @@ class TestFinaliseParameters(unittest.TestCase):
         # Create a random RFI mask. Randomness makes it highly likely that a
         # shift will be detected.
         rs = np.random.RandomState(seed=1)
-        mask = rs.rand(4096) < 0.5
+        channel_mask = rs.rand(4096) < 0.5
         with mock.patch('__builtin__.open'):   # To suppress trying to open a real file
-            with mock.patch('pickle.load', return_value=mask.copy()):
+            with mock.patch('pickle.load', return_value=channel_mask.copy()):
                 parameters = pipelineprocs.finalise_parameters(
                     self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
-        np.testing.assert_array_equal(mask[2048:3072], parameters['rfi_mask'])
+
+        # Check mask is False on long baselines
+        mask = channel_mask[np.newaxis, :, np.newaxis, np.newaxis]
+        mask = np.broadcast_to(mask, (1, 4096, 1, 10))
+        bl_mask = mask.copy()
+        bls_lookup = parameters['bls_lookup']
+        long_bls = np.where((bls_lookup[:, 0] == 1) ^ (bls_lookup[:, 1] == 1))[0]
+        bl_mask[..., long_bls] = False
+        np.testing.assert_array_equal(bl_mask[:, 2048:3072, ...], parameters['rfi_mask'])
 
     def test_bad_rfi_mask(self):
         mask = np.zeros(4097, np.bool_) < 0.5  # Wrong number of channels
