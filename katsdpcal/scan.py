@@ -533,7 +533,8 @@ class Scan(object):
         ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
         b_soln = calprocs_dask.bp_fit(ave_vis, ave_weights,
-                                      self.cross_ant.bls_lookup, bp0, self.refant)
+                                      self.cross_ant.bls_lookup, bp0, self.refant,
+                                      normalise=False)
 
         # flag bandpass
         if bp_flagger is not None:
@@ -548,9 +549,13 @@ class Scan(object):
             # OR flags across polarisation
             out_flag |= da.flip(out_flag, axis=2)
             b_soln = da.where(out_flag, np.nan, b_soln)
-            b_soln = b_soln[0].compute()
+            b_soln = b_soln[0]
         else:
-            b_soln = b_soln.compute()
+            b_soln = b_soln
+
+        # normalise after flagging solution
+        b_soln = calprocs_dask.normalise_data(b_soln)
+        b_soln = b_soln.compute()
 
         return CalSolution('B', b_soln, ave_time)
 
