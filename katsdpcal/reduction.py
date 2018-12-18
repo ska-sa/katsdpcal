@@ -475,7 +475,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             logger.info('Solving for B on beamformer calibrator %s', target_name)
             # get K solutions to apply and interpolate it to scan timestamps
             solns_to_apply = [s.interpolate(k_soln)]
-            b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
+            b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply, bp_flagger=calib_flagger)
             save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
             # ---------------------------------------
@@ -590,7 +590,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # B solution
             logger.info('Solving for B on bandpass calibrator %s', target_name)
             solns_to_apply.append(g_to_apply)
-            b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply)
+            b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply, bp_flagger=calib_flagger)
             save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
         # GAIN

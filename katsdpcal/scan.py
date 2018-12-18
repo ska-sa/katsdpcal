@@ -500,14 +500,18 @@ class Scan(object):
         return CalSolution('K', k_soln, ave_time)
 
     @logsolutiontime
-    def b_sol(self, bp0, pre_apply=[]):
+    def b_sol(self, bp0, pre_apply=[], bp_flagger=None):
         """
         Solve for bandpass
 
         Parameters
         ----------
-        bp0 : initial estimate of bandpass for solver, shape (chan, pol, nant)
-        pre_apply : calibration solutions to apply, list of :class:`CalSolutions`, optional
+        bp0 : :class: `np.ndarray`, complex, shape (chan, pol, nant) or None
+            initial estimate of bandpass for solver
+        pre_apply : list of :class:`CalSolutions`, optional
+            calibration solutions to apply
+        bp_flagger : :class:`SumThresholdFlagger`, optional
+            Flagger, with :meth:`get_flags` to detect rfi in bandpass
 
         Returns
         -------
@@ -529,7 +533,24 @@ class Scan(object):
         ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
         b_soln = calprocs_dask.bp_fit(ave_vis, ave_weights,
-                                      self.cross_ant.bls_lookup, bp0, self.refant).compute()
+                                      self.cross_ant.bls_lookup, bp0, self.refant)
+
+        # flag bandpass
+        if bp_flagger is not None:
+            b_soln = b_soln[np.newaxis].rechunk((None, None, 1, None))
+            in_flag = da.isnan(b_soln).astype(np.uint8)
+            out_flag = da.atop(_rfi, 'TFpa', b_soln, 'tfpa', in_flag, 'tfpa',
+                               dtype=np.uint8,
+                               new_axes={'T': b_soln.shape[0], 'F': b_soln.shape[1]},
+                               concatenate=True,
+                               flagger=bp_flagger, out_bit=1)
+
+            # OR flags across polarisation
+            out_flag |= da.flip(out_flag, axis=2)
+            b_soln = da.where(out_flag, np.nan, b_soln)
+            b_soln = b_soln[0].compute()
+        else:
+            b_soln = b_soln.compute()
 
         return CalSolution('B', b_soln, ave_time)
 
