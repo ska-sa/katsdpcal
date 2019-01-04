@@ -34,7 +34,7 @@ def _rfi(vis, flags, flagger, out_bit):
     # safety check in the inplace module isn't smart enough to detect this).
     flagger_mask = calprocs.asbool(flags[:, :, 0, :] & ~out_value)
     out_flags = flagger.get_flags(vis[:, :, 0, :], flagger_mask)
-    return flags | (out_flags[:, :, np.newaxis, :] * out_value)
+    return out_flags[:, :, np.newaxis, :] * out_value
 
 
 class ScanData(object):
@@ -539,16 +539,16 @@ class Scan(object):
         # flag bandpass
         if bp_flagger is not None:
             b_soln = b_soln[np.newaxis].rechunk((None, None, 1, None))
-            in_flag = da.isnan(b_soln).astype(np.uint8)
-            out_flag = da.atop(_rfi, 'TFpa', b_soln, 'tfpa', in_flag, 'tfpa',
-                               dtype=np.uint8,
-                               new_axes={'T': b_soln.shape[0], 'F': b_soln.shape[1]},
-                               concatenate=True,
-                               flagger=bp_flagger, out_bit=1)
+            flags = da.isnan(b_soln).astype(np.uint8)
+            rfi_flags = da.atop(_rfi, 'TFpa', b_soln, 'tfpa', flags, 'tfpa',
+                                dtype=np.uint8,
+                                new_axes={'T': b_soln.shape[0], 'F': b_soln.shape[1]},
+                                concatenate=True,
+                                flagger=bp_flagger, out_bit=1)
 
             # OR flags across polarisation
-            out_flag |= da.flip(out_flag, axis=2)
-            b_soln = da.where(out_flag, np.nan, b_soln)
+            rfi_flags |= da.flip(rfi_flags, axis=2)
+            b_soln = da.where(rfi_flags, np.nan, b_soln)
             b_soln = b_soln[0]
         else:
             b_soln = b_soln
@@ -1088,10 +1088,14 @@ class Scan(object):
         if mask is not None:
             flags |= (mask * np.uint8(2**static_bit))
 
-        flags = da.atop(_rfi, 'TFpb', vis, 'tfpb', flags, 'tfpb',
-                        dtype=np.uint8,
-                        new_axes={'T': vis.shape[0], 'F': vis.shape[1]}, concatenate=True,
-                        flagger=flagger, out_bit=cal_rfi_bit)
+        rfi_flags = da.atop(_rfi, 'TFpb', vis, 'tfpb', flags, 'tfpb',
+                            dtype=np.uint8,
+                            new_axes={'T': vis.shape[0], 'F': vis.shape[1]}, concatenate=True,
+                            flagger=flagger, out_bit=cal_rfi_bit)
+
+        # OR the rfi flags across polarisations
+        rfi_flags |= da.flip(rfi_flags, axis=2)
+        flags |= rfi_flags
         # _rfi takes care to be idempotent, so we can use safe=False. The
         # safety check doesn't handle the case of some chunks being
         # concatenated, processed, then split back to the original chunks.
