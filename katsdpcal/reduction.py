@@ -442,8 +442,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, parameters['rfi_mask'], sensors=sensors)
-            # TODO: setup separate flagger for cross-pols
-            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, sensors=sensors)
 
             # Set a reference antenna if one isn't already set
             if s.refant is None:
@@ -463,7 +461,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         # BEAMFORMER
         if any('bfcal' in k for k in taglist):
             logger.info('Calibrator flagging, auto-correlations')
-            s.rfi(calib_flagger, parameters['rfi_mask'], cross_pol=True, auto_ant=True, sensors=sensors)
+            s.rfi(calib_flagger, parameters['rfi_mask'], auto_ant=True, sensors=sensors)
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
@@ -631,8 +629,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 logger.info('Flagging calibrated target {0}'.format(target_name,))
                 rfi_mask = parameters['rfi_mask']
                 s.rfi(targ_flagger, rfi_mask, sensors=sensors)
-                # TODO: setup separate flagger for cross-pols
-                s.rfi(targ_flagger, rfi_mask, cross_pol=True, sensors=sensors)
 
             # summarize corrected data for data with cal tags
             logger.info('Averaging corrected data for %s:', target_name)

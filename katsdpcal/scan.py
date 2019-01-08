@@ -1027,9 +1027,11 @@ class Scan(object):
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, cross_pol=False, auto_ant=False, sensors=None):
+    def rfi(self, flagger, mask=None, auto_ant=False, sensors=None):
         """Detect flags in the visibilities. Detected flags
-        are added to the cal_rfi bit of the flag array.
+        are added to the cal_rfi bit of the flag array. Flags
+        are detected using cross-pol data but added to both
+        the cross_pol and auto_pol flags.
         Optionally provide a channel mask, which is added to
         the static bit of the flag array.
 
@@ -1039,9 +1041,6 @@ class Scan(object):
             Flagger, with :meth:`get_flags` to detect rfi
         mask : 1d array, boolean, optional
             Channel mask to apply
-        cross : boolean, optional
-            If True, flag the cross-pol data, otherwise
-            flag single-pol data (default).
         auto_ant : boolean, optional
             If True, flag the auto_ant data, otherwise
             flag cross_ant data (default).
@@ -1061,56 +1060,60 @@ class Scan(object):
             if mask is not None:
                 mask = mask[..., self.xc_mask]
 
-        if cross_pol:
-            self.logger.info('  - Flag cross-pols%s', label)
-            data = scandata.pb.cross_pol
-            orig = scandata.orig.cross_pol
-            flag_type = 'cross-pol'
-        else:
-            self.logger.info('  - Flag auto-pols%s', label)
-            data = scandata.pb.auto_pol
-            orig = scandata.orig.auto_pol
-            flag_type = 'auto-pol'
-        vis = data.vis
-        flags = data.flags
-
-        total_size = np.multiply.reduce(data.flags.shape) / 100.
-        start_flag_fraction = (da.sum(calprocs.asbool(data.flags)) / total_size).compute()
-        self.logger.info('  - Start flags: %.3f%%', start_flag_fraction)
-
         # Get the relevant flag bits from katdal
         static_bit = FLAG_NAMES.index('static')
         cal_rfi_bit = FLAG_NAMES.index('cal_rfi')
 
-        # do we have an rfi mask? In which case, use it
-        # Add to 'static' flag bit.
-        # TODO: Should mask_flags already be in static bit?
-        if mask is not None:
-            flags |= (mask * np.uint8(2**static_bit))
+        data = {}
+        total_size = np.multiply.reduce(scandata.pb.cross_pol.shape) / 100.
+        for key in ['auto_pol', 'cross_pol']:
+            data[key] = getattr(scandata.pb, key)
+            data[key+'_orig'] = getattr(scandata.orig, key)
+            data[key+'_flags'] = data[key].flags
+            data[key+'_start-flag-fraction'] = (
+                da.sum(calprocs.asbool(data[key+'_flags'])) / total_size).compute()
+            # do we have an rfi mask? In which case, use it
+            # Add to 'static' flag bit.
+            # TODO: Should mask_flags already be in static bit?
+            if mask is not None:
+                data[key+'_flags'] |= (mask * np.uint8(2**static_bit))
 
-        rfi_flags = da.atop(_rfi, 'TFpb', vis, 'tfpb', flags, 'tfpb',
-                            dtype=np.uint8,
-                            new_axes={'T': vis.shape[0], 'F': vis.shape[1]}, concatenate=True,
-                            flagger=flagger, out_bit=cal_rfi_bit)
+        rfi_flags = da.atop(
+            _rfi, 'TFpb', data['cross_pol'].vis, 'tfpb', data['cross_pol_flags'], 'tfpb',
+            dtype=np.uint8,
+            new_axes={'T': data['cross_pol'].vis.shape[0], 'F': data['cross_pol'].vis.shape[1]},
+            concatenate=True, flagger=flagger, out_bit=cal_rfi_bit
+            )
 
         # OR the rfi flags across polarisations
         rfi_flags |= da.flip(rfi_flags, axis=2)
-        flags |= rfi_flags
+        # OR the rfi flags with the original flags
+        data['cross_pol_flags'] |= rfi_flags
+        data['auto_pol_flags'] |= rfi_flags
+
         # _rfi takes care to be idempotent, so we can use safe=False. The
         # safety check doesn't handle the case of some chunks being
         # concatenated, processed, then split back to the original chunks.
-        inplace.store_inplace(flags, data.flags, safe=False)
+        inplace.store_inplace([data['cross_pol_flags'], data['auto_pol_flags']],
+                              [data['cross_pol'].flags, data['auto_pol'].flags],
+                              safe=False)
         # Bust any caches of the old values
-        inplace.rename(orig.flags)
+        inplace.rename(data['cross_pol_orig'].flags)
+        inplace.rename(data['auto_pol_orig'].flags)
         self.cross_ant.reset_chunked()
-        if cross_pol:
-            flags = scandata.tf.cross_pol.flags
-        else:
-            flags = scandata.tf.auto_pol.flags
-        # Count the new flags
-        final_flag_fraction = (da.sum(calprocs.asbool(flags)) / total_size).compute()
-        self.logger.info('  - New flags: %.3f%%', final_flag_fraction)
-        if sensors:
-            now = time.time()
-            sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(start_flag_fraction, timestamp=now)
-            sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(final_flag_fraction, timestamp=now)
+
+        for key in ['auto_pol', 'cross_pol']:
+            tf_flags = getattr(scandata.tf, key).flags
+            data[key+'_final-flag-fraction'] = (
+                da.sum(calprocs.asbool(tf_flags)) / total_size).compute()
+
+            flag_type = key.replace('_', '-')
+            self.logger.info('  - Flag %ss%s', flag_type, label)
+            self.logger.info('  - Start flags : %.3f%%', data[key+'_start-flag-fraction'])
+            self.logger.info('  - New flags: %.3f%%', data[key+'_final-flag-fraction'])
+            if sensors:
+                now = time.time()
+                sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(
+                    data[key+'_start-flag-fraction'], timestamp=now)
+                sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(
+                    data[key+'_final-flag-fraction'], timestamp=now)
