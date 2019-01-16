@@ -23,5 +23,5 @@ rfi_average_freq : 4                # Amount to average in frequency before flag
 rfi_targ_spike_width_freq : 160.0   # 1sigma frequency width of smoothing Gaussian on final target (in channels)
 rfi_calib_spike_width_freq : 80.0   # 1sigma frequency width of smoothing Gaussian on calibrators (in channels)
 rfi_spike_width_time : 100.0        # 1sigma time width of smoothing Gaussian (in seconds)
-rfi_extend_freq : 15                # Convolution width in frequency to extend flags
+rfi_extend_freq : 15                # Convolution width in frequency to extend flags (in channels)
 rfi_freq_chunks : 8                 # Fraction of band on which to do noise estimation

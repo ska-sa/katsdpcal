@@ -538,23 +538,22 @@ class Scan(object):
 
         # flag bandpass
         if bp_flagger is not None:
+            # add time axis to be compatible with shape expected by flagger
             b_soln = b_soln[np.newaxis].rechunk((None, None, 1, None))
             flags = da.isnan(b_soln).astype(np.uint8)
             rfi_flags = da.atop(_rfi, 'TFpa', b_soln, 'tfpa', flags, 'tfpa',
                                 dtype=np.uint8,
                                 new_axes={'T': b_soln.shape[0], 'F': b_soln.shape[1]},
                                 concatenate=True,
-                                flagger=bp_flagger, out_bit=1)
+                                flagger=bp_flagger, out_bit=FLAG_NAMES.index('cal_rfi'))
 
             # OR flags across polarisation
             rfi_flags |= da.flip(rfi_flags, axis=2)
             b_soln = da.where(rfi_flags, np.nan, b_soln)
             b_soln = b_soln[0]
-        else:
-            b_soln = b_soln
 
         # normalise after flagging solution
-        b_soln = calprocs_dask.normalise_data(b_soln)
+        b_soln = calprocs_dask.normalise_complex(b_soln)
         b_soln = b_soln.compute()
 
         return CalSolution('B', b_soln, ave_time)
@@ -1068,15 +1067,15 @@ class Scan(object):
         total_size = np.multiply.reduce(scandata.pb.cross_pol.shape) / 100.
         for key in ['auto_pol', 'cross_pol']:
             data[key] = getattr(scandata.pb, key)
-            data[key+'_orig'] = getattr(scandata.orig, key)
-            data[key+'_flags'] = data[key].flags
-            data[key+'_start-flag-fraction'] = (
+            data[key + '_orig'] = getattr(scandata.orig, key)
+            data[key + '_flags'] = data[key].flags
+            data[key + '_start_flag_fraction'] = (
                 da.sum(calprocs.asbool(data[key+'_flags'])) / total_size).compute()
             # do we have an rfi mask? In which case, use it
             # Add to 'static' flag bit.
             # TODO: Should mask_flags already be in static bit?
             if mask is not None:
-                data[key+'_flags'] |= (mask * np.uint8(2**static_bit))
+                data[key + '_flags'] |= (mask * np.uint8(2**static_bit))
 
         rfi_flags = da.atop(
             _rfi, 'TFpb', data['cross_pol'].vis, 'tfpb', data['cross_pol_flags'], 'tfpb',
@@ -1104,16 +1103,16 @@ class Scan(object):
 
         for key in ['auto_pol', 'cross_pol']:
             tf_flags = getattr(scandata.tf, key).flags
-            data[key+'_final-flag-fraction'] = (
+            data[key + '_final_flag_fraction'] = (
                 da.sum(calprocs.asbool(tf_flags)) / total_size).compute()
 
             flag_type = key.replace('_', '-')
             self.logger.info('  - Flag %ss%s', flag_type, label)
-            self.logger.info('  - Start flags : %.3f%%', data[key+'_start-flag-fraction'])
-            self.logger.info('  - New flags: %.3f%%', data[key+'_final-flag-fraction'])
+            self.logger.info('  - Start flags : %.3f%%', data[key+'_start_flag_fraction'])
+            self.logger.info('  - New flags: %.3f%%', data[key+'_final_flag_fraction'])
             if sensors:
                 now = time.time()
                 sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(
-                    data[key+'_start-flag-fraction'], timestamp=now)
+                    data[key + '_start_flag_fraction'], timestamp=now)
                 sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(
-                    data[key+'_final-flag-fraction'], timestamp=now)
+                    data[key + '_final_flag_fraction'], timestamp=now)

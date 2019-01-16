@@ -60,7 +60,7 @@ class TestFinaliseParameters(unittest.TestCase):
 
         self.antenna_names = ['m001', 'm002', 'm004', 'm006']
         self.antennas = [
-            # One antenna has a baseline largers than 1000m to the other antennas
+            # One antenna has a baseline larger than 1000m to the other antennas
             katpoint.Antenna(
                 '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
                 '-0:05:44.7 0 0:00:22.6 -0:09:04.2 0:00:11.9 -0:00:12.8 -0:04:03.5 0 0 '
@@ -133,7 +133,7 @@ class TestFinaliseParameters(unittest.TestCase):
         bls_lookup = parameters['bls_lookup']
         long_bls = np.where((bls_lookup[:, 0] == 1) ^ (bls_lookup[:, 1] == 1))[0]
         bl_mask[..., long_bls] = False
-        np.testing.assert_array_equal(bl_mask[:, 2048:3072, ...], parameters['rfi_mask'])
+        np.testing.assert_array_equal(bl_mask[:, 2048:3072], parameters['rfi_mask'])
 
     def test_bad_rfi_mask(self):
         mask = np.zeros(4097, np.bool_) < 0.5  # Wrong number of channels

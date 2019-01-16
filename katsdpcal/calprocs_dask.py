@@ -435,18 +435,18 @@ def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, normalise=True, *
     bp = stefcal(data, n_ants, corrprod_lookup, weights, refant, num_iters=100,
                  init_gain=bp0, **kwargs)
     if normalise:
-        bp = normalise_data(bp)
+        bp = normalise_complex(bp)
     return bp
 
 
-def normalise_data(data):
+def normalise_complex(x):
     """
-    Normalise data across the 0-axis by centering phase of data on zero
+    Normalise complex array across the 0-axis by centering phase of data on zero
     and scaling the average amplitude
 
     Inputs:
     -------
-    data : :class: `da.Array`
+    x : :class: `da.Array`
         data to be normalised
 
     Returns:
@@ -454,14 +454,14 @@ def normalise_data(data):
     :class: `da.Array`: normalised data
     """
     # centre the phase on zero and scale the average amplitude to one
-    angle = da.angle(data)
+    angle = da.angle(x)
     base_angle = da.nanmin(angle, axis=0) - np.pi
     # angle relative to base_angle, wrapped to range [0, 2pi], with
     # some data point sitting at pi.
     rel_angle = da.fmod(angle - base_angle, 2 * np.pi)
     mid_angle = da.nanmean(rel_angle, axis=0) + base_angle
     centre_rotation = da.exp(-1.0j * mid_angle)
-    n_chans = da.sum(~da.isnan(data), axis=0, dtype=np.float32)
-    average_amplitude = da.nansum(da.absolute(data), axis=0) / n_chans
-    data *= centre_rotation / average_amplitude
-    return data
+    n_valid = da.sum(~da.isnan(x), axis=0, dtype=np.float32)
+    average_amplitude = da.nansum(da.absolute(x), axis=0) / n_valid
+    x *= centre_rotation / average_amplitude
+    return x
