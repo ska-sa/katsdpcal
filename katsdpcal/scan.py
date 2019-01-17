@@ -540,12 +540,14 @@ class Scan(object):
         if bp_flagger is not None:
             # add time axis to be compatible with shape expected by flagger
             b_soln = b_soln[np.newaxis].rechunk((None, None, 1, None))
+            # turn bandpass NaN's into input flags for the flagger,
+            # the input flags are stored in bit 0
             flags = da.isnan(b_soln).astype(np.uint8)
             rfi_flags = da.atop(_rfi, 'TFpa', b_soln, 'tfpa', flags, 'tfpa',
                                 dtype=np.uint8,
                                 new_axes={'T': b_soln.shape[0], 'F': b_soln.shape[1]},
                                 concatenate=True,
-                                flagger=bp_flagger, out_bit=FLAG_NAMES.index('cal_rfi'))
+                                flagger=bp_flagger, out_bit=1)
 
             # OR flags across polarisation
             rfi_flags |= da.flip(rfi_flags, axis=2)
