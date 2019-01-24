@@ -280,8 +280,8 @@ class Scan(object):
 
         Returns
         -------
-        refant_index : int
-            index of preferred refant
+        tuple
+            ('Refant', index of preferred refant (int))
         """
 
         modvis = self.cross_ant.tf.auto_pol.vis
@@ -533,8 +533,7 @@ class Scan(object):
         ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
         b_soln = calprocs_dask.bp_fit(ave_vis, ave_weights,
-                                      self.cross_ant.bls_lookup, bp0, self.refant,
-                                      normalise=False)
+                                      self.cross_ant.bls_lookup, bp0, self.refant)
 
         # flag bandpass
         if bp_flagger is not None:
@@ -555,10 +554,36 @@ class Scan(object):
             b_soln = b_soln[0]
 
         # normalise after flagging solution
-        b_soln = calprocs_dask.normalise_complex(b_soln)
         b_soln = b_soln.compute()
 
         return CalSolution('B', b_soln, ave_time)
+
+    @logsolutiontime
+    def b_norm(self, b_soln, bchan=1, echan=None):
+	"""
+        Calculates an array of complex numbers which normalises
+        b_soln in the specified channel range
+
+        Parameters:
+        -----------
+        bchan : int, optional
+            start channel to use in normalisation
+        echan : int, optional
+            end channel to use in normalisation
+        b_soln : :class: `~.CalSolution`
+            Solution with soltype 'B' to be normalised, shape(nchans, npols, nants)
+
+        Returns:
+        -------
+        :class: `np.ndarray`
+            normalisation factor, complex, shape(npols, nants)
+        """
+        if b_soln.soltype == 'B':
+            b_soln = b_soln.values[bchan:echan]
+            norm_fact = calprocs.normalise_complex(b_soln)
+        else:
+            raise ValueError('b_soln has soltype {}, expected soltype B'.format(b_soln.soltype))
+        return norm_fact
 
     # ---------------------------------------------------------------------------------------------
     # solution application

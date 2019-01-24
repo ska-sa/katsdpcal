@@ -205,7 +205,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     solver : callable
         Function to do the actual computation. It is passed the remaining
         arguments, and is also passed `bchan` and `echan` by keyword. It must
-        return a :class:`~.CalSolution` or `~.CalSolutions` or int.
+        return a :class:`~.CalSolution`, `~.CalSolutions`, int or np.ndarray.
     _seq : int, optional
         If specified, it is used as the sequence number instead of using the
         global counter. This is intended strictly for unit testing.
@@ -251,8 +251,8 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     info = ('CalSolution', soln.soltype, values, soln.time)
                 else:
                     info = ('CalSolutions', soln.soltype, values, soln.times)
-            elif isinstance(soln, int):
-                info = ('Refant', soln)
+            elif isinstance(soln, (int, np.ndarray)):
+                info = ('soln', soln)
                 if solution_store is not None:
                     logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                                 ' and won\'t be stored in solution store')
@@ -296,7 +296,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                                      .format(telstate_key))
                 values = np.stack(values)
             soln = solutions.CalSolutions(soltype, values, times)
-        elif info[0] == 'Refant':
+        elif info[0] == 'soln':
             soln = info[1]
         else:
             raise ValueError('Unknown info type {}'.format(info[0]))
@@ -474,6 +474,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # get K solutions to apply and interpolate it to scan timestamps
             solns_to_apply = [s.interpolate(k_soln)]
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply, bp_flagger=calib_flagger)
+            b_norm_factor = shared_solve(ts, parameters, None,
+                                         parameters['g_bchan'], parameters['g_echan'],
+                                         s.b_norm, b_soln)
+            b_soln.values *= b_norm_factor
             save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
             # ---------------------------------------
@@ -589,6 +593,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             logger.info('Solving for B on bandpass calibrator %s', target_name)
             solns_to_apply.append(g_to_apply)
             b_soln = s.b_sol(bp0_h, pre_apply=solns_to_apply, bp_flagger=calib_flagger)
+            b_norm_factor = shared_solve(ts, parameters, None,
+                                         parameters['g_bchan'], parameters['g_echan'],
+                                         s.b_norm, b_soln)
+            b_soln.values *= b_norm_factor
             save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
 
         # GAIN

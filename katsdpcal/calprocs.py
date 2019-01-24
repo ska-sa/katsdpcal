@@ -7,6 +7,7 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 
 from __future__ import print_function
 import logging
+import warnings
 
 import numpy as np
 import scipy.fftpack
@@ -546,6 +547,39 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
     return np.atleast_2d(kdelay)
 
 
+def normalise_complex(x):
+    """
+    Calculate normalisation factor for a complex array across the 0-axis to center
+    phase of data on zero and scale the average amplitude to one
+
+    Inputs:
+    -------
+    x : :class: `np.ndarray`
+        data to be normalised
+
+    Returns:
+    --------
+    :class: `np.ndarray`
+        normalisation factor, complex
+    """
+    # centre the phase on zero and scale the average amplitude to one
+    angle = np.angle(x)
+    # supress warnings about all NaN slices
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        base_angle = np.nanmin(angle, axis=0) - np.pi
+        # angle relative to base_angle, wrapped to range [0, 2pi], with
+        # some data point sitting at pi.
+        rel_angle = np.fmod(angle - base_angle, 2 * np.pi)
+        mid_angle = np.nanmean(rel_angle, axis=0) + base_angle
+        centre_rotation = np.exp(-1.0j * mid_angle)
+        n_valid = np.sum(~np.isnan(x), axis=0, dtype=np.float32)
+        # replace zero with small values to suppress divide by zero warnings
+        n_valid = np.where(n_valid < 1e-9, 1e-9, n_valid)
+        average_amplitude = np.nansum(np.absolute(x), axis=0) / n_valid
+    return centre_rotation / average_amplitude
+
+
 def asbool(arr):
     """View an array as boolean.
 
@@ -957,6 +991,7 @@ def _wavg_flags_f(flags, chanav, excise):
                 for b in range(n_baselines):
                     out[t, oc, p, b] = merge_good[p, b] if good[p, b] else merge_all[p, b]
     return out
+
 
 def wavg_flags_f(flags, chanav, excise, axis):
     """Combine flags across frequencies.
