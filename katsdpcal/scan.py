@@ -280,8 +280,8 @@ class Scan(object):
 
         Returns
         -------
-        tuple
-            ('Refant', index of preferred refant (int))
+        refant_index : int
+            index of preferred refant
         """
 
         modvis = self.cross_ant.tf.auto_pol.vis
