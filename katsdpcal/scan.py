@@ -575,7 +575,7 @@ class Scan(object):
 
         Returns:
         -------
-        :class: `np.ndarray`
+        :class:`np.ndarray`
             normalisation factor, complex, shape(npols, nants)
         """
         if b_soln.soltype == 'B':

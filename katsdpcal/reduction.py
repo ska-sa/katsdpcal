@@ -205,7 +205,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     solver : callable
         Function to do the actual computation. It is passed the remaining
         arguments, and is also passed `bchan` and `echan` by keyword. It must
-        return a :class:`~.CalSolution`, `~.CalSolutions`, int or np.ndarray.
+        return a :class:`~.CalSolution`, :class:`~.CalSolutions`, int or np.ndarray.
     _seq : int, optional
         If specified, it is used as the sequence number instead of using the
         global counter. This is intended strictly for unit testing.

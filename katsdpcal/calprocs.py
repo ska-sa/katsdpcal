@@ -7,7 +7,6 @@ Solvers and averagers for use in the MeerKAT calibration pipeline.
 
 from __future__ import print_function
 import logging
-import warnings
 
 import numpy as np
 import scipy.fftpack
@@ -550,34 +549,39 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
 def normalise_complex(x):
     """
     Calculate normalisation factor for a complex array across the 0-axis to center
-    phase of data on zero and scale the average amplitude to one
+    phase of data on zero and scale the average amplitude to one. If the 0-axis
+    is all NaN, the normalisation factor is given as 1+0j.
 
-    Inputs:
-    -------
-    x : :class: `np.ndarray`
+    Parameters
+    ----------
+    x : :class:`np.ndarray`
         data to be normalised
 
-    Returns:
-    --------
-    :class: `np.ndarray`
+    Returns
+    -------
+    :class:`np.ndarray`
         normalisation factor, complex
     """
-    # centre the phase on zero and scale the average amplitude to one
+    # suppress warning about all-NaN slices by replacing
+    # NaN values with ones if x is all NaN on 0-axis
+    all_nan = np.all(np.isnan(x), axis=0)
+    all_nan = np.broadcast_to(all_nan, x.shape)
+    x[all_nan] = 1.0
+
     angle = np.angle(x)
-    # supress warnings about all NaN slices
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        base_angle = np.nanmin(angle, axis=0) - np.pi
-        # angle relative to base_angle, wrapped to range [0, 2pi], with
-        # some data point sitting at pi.
-        rel_angle = np.fmod(angle - base_angle, 2 * np.pi)
-        mid_angle = np.nanmean(rel_angle, axis=0) + base_angle
-        centre_rotation = np.exp(-1.0j * mid_angle)
-        n_valid = np.sum(~np.isnan(x), axis=0, dtype=np.float32)
-        # replace zero with small values to suppress divide by zero warnings
-        n_valid = np.where(n_valid < 1e-9, 1e-9, n_valid)
-        average_amplitude = np.nansum(np.absolute(x), axis=0) / n_valid
-    return centre_rotation / average_amplitude
+    base_angle = np.nanmin(angle, axis=0) - np.pi
+    # angle relative to base_angle, wrapped to range [0, 2pi], with
+    # some data point sitting at pi.
+    rel_angle = np.fmod(angle - base_angle, 2 * np.pi)
+    mid_angle = np.nanmean(rel_angle, axis=0) + base_angle
+    centre_rotation = np.exp(-1.0j * mid_angle)
+    n_valid = np.sum(~np.isnan(x), axis=0, dtype=np.float32)
+    average_amplitude = np.nansum(np.absolute(x), axis=0) / n_valid
+    norm_factor = centre_rotation / average_amplitude
+
+    # put the original NaN values back into the input array
+    x[all_nan] = np.nan
+    return norm_factor
 
 
 def asbool(arr):
