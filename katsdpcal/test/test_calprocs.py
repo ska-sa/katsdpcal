@@ -360,26 +360,27 @@ class TestWavgFlagsF(unittest.TestCase):
 class TestNormaliseComplex(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs.normalise_complex`"""
     def setUp(self):
-        shape = (6, 4)
+        shape = (6, 7)
         self.data = np.ones(shape, np.complex64) + 1.j
         self.data[:, 2] += 1+1j
-        # Put in some NaNs to check they're handled correctly
+        # Put in some zeros and NaNs to check they're handled correctly
+        self.data[2, 2] = 0
         self.data[3, 1] = np.nan
-        self.data[:, 0] = [1+1j, 1+1j, 2+2j, 1+1j, 1+1j, np.nan]
+        self.data[:, 0] = [np.sqrt(2)+0j, 1+1j, 2+2j, 1+1j, 0, np.nan]
         self.data[5, :] = np.nan
-        # a completely NaN column => 1 + 0j in the normalisation factor
-        self.data[:, 3] = np.nan
+        # columns which consist of only NaNs and/or zeros => 1 + 0j in the normalisation factor
+        self.data[:, 4] = np.nan
+        self.data[:, 5] = 0
+        self.data[:, 6] = [0, 0, 0, np.nan, np.nan, np.nan]
 
-        self.expected_angle = np.exp(-1j * np.pi / 4)
-        self.expected_amp = np.array([5. / 6., 1, 5. / 10, 1]) / np.sqrt(2)
-        self.expected = self.expected_angle * self.expected_amplitude
-        self.expected[3] = 1
+        self.expected_angle = -1j * np.pi / 4 * np.array([3. / 5., 1, 4. / 5., 1, 0, 0, 0])
+        self.expected_amp = np.array([1, 1, 5. / 8, 1, 0, 0, 0]) / np.sqrt(2)
+        self.expected = self.expected_amp * np.exp(self.expected_angle)
+        self.expected[4:] = 1
 
-        def test_normalise(self):
-            """Test normalisation factor is correct"""
-            data = self.data.copy()
-            norm_factor = calprocs.normalise_complex(data)
-            # check that normalise_complex hasn't altered the original array
-            self.assertEqual(data, self.data)
-            # check normalisation factor is correct
-            self.assert_allclose(self.expected_data, norm_factor, rtol=1e-6)
+    def test_normalise(self):
+        """Test normalisation factor is correct"""
+        data = self.data.copy()
+        norm_factor = calprocs.normalise_complex(data)
+        # check normalisation factor is correct
+        np.testing.assert_allclose(self.expected, norm_factor, rtol=1e-6)

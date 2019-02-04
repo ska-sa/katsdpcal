@@ -550,7 +550,7 @@ def normalise_complex(x):
     """
     Calculate normalisation factor for a complex array across the 0-axis to center
     phase of data on zero and scale the average amplitude to one. If the 0-axis
-    is all NaN, the normalisation factor is given as 1+0j.
+    is all NaN or all zero, the normalisation factor is given as 1+0j.
 
     Parameters
     ----------
@@ -562,25 +562,23 @@ def normalise_complex(x):
     :class:`np.ndarray`
         normalisation factor, complex
     """
-    # suppress warning about all-NaN slices by replacing
-    # NaN values with ones if x is all NaN on 0-axis
-    all_nan = np.all(np.isnan(x), axis=0)
+    # suppress warnings related to all-NaN and all-zero values on the 0-axis
+    # by replacing columns which consist of all NaNs and/or zeros with all ones.
+    all_nan = np.all((np.isnan(x)) ^ (x == 0), axis=0)
     all_nan = np.broadcast_to(all_nan, x.shape)
-    x[all_nan] = 1.0
+    valid_x = np.where(all_nan, 1.0, x)
 
-    angle = np.angle(x)
+    angle = np.angle(valid_x)
     base_angle = np.nanmin(angle, axis=0) - np.pi
     # angle relative to base_angle, wrapped to range [0, 2pi], with
     # some data point sitting at pi.
     rel_angle = np.fmod(angle - base_angle, 2 * np.pi)
     mid_angle = np.nanmean(rel_angle, axis=0) + base_angle
     centre_rotation = np.exp(-1.0j * mid_angle)
-    n_valid = np.sum(~np.isnan(x), axis=0, dtype=np.float32)
-    average_amplitude = np.nansum(np.absolute(x), axis=0) / n_valid
+    n_valid = np.sum(~np.isnan(valid_x), axis=0, dtype=np.float32)
+    average_amplitude = np.nansum(np.absolute(valid_x), axis=0) / n_valid
     norm_factor = centre_rotation / average_amplitude
 
-    # put the original NaN values back into the input array
-    x[all_nan] = np.nan
     return norm_factor
 
 
