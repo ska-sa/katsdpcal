@@ -1,4 +1,4 @@
-FROM sdp-docker-registry.kat.ac.za:5000/docker-base-build as build
+FROM sdp-docker-registry.kat.ac.za:5000/docker-base-build:18.04 as build
 MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 # Enable Python 2 venv
@@ -19,7 +19,7 @@ WORKDIR /tmp
 
 #######################################################################
 
-FROM sdp-docker-registry.kat.ac.za:5000/docker-base-runtime
+FROM sdp-docker-registry.kat.ac.za:5000/docker-base-runtime:18.04
 MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve /home/kat/ve
