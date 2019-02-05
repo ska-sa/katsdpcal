@@ -729,7 +729,7 @@ class SimDataKatdal(SimData):
             scan_data = self.file.vis[:]
             # Hack to get around flags returning a bool of selected flags
             flags_indexer = self.file.flags
-            flags_indexer.transforms = []
+            flags_indexer._transforms = []
             scan_flags = flags_indexer[:]
             scan_weights = self.file.weights
 
