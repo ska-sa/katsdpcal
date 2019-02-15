@@ -1245,6 +1245,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             if refant_index is None:
                 refant = ts.get('refant')
                 if refant is not None:
+                    refant = katpoint.Antenna(refant)
                     refant_index = parameters['antenna_names'].index(refant.name)
                     parameters['refant'] = refant
                     parameters['refant_index'] = refant_index

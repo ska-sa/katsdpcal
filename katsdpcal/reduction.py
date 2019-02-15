@@ -1,6 +1,7 @@
 import time
 import logging
 import threading
+import cPickle as pickle
 import katpoint
 
 import numpy as np
@@ -257,7 +258,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                                 ' and won\'t be stored in solution store')
         except Exception as error:
-            add_info(('Exception', error))
+            add_info(('Exception', pickle.dumps(error)))
             raise
         else:
             add_info(info)
@@ -269,7 +270,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         info = telstate[shared_key]
         logger.debug('Found shared key %s', shared_key)
         if info[0] == 'Exception':
-            raise info[1]
+            raise pickle.loads(info[1])
         elif info[0] == 'CalSolution':
             soltype, values, time = info[1:]
             if values is None:
@@ -451,7 +452,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 parameters['refant_index'] = best_refant_index
                 parameters['refant'] = parameters['antennas'][best_refant_index]
                 logger.info('Reference antenna set to %s', parameters['refant'].name)
-                ts.add('refant', parameters['refant'], immutable=True)
+                ts.add('refant', parameters['refant'].description, immutable=True)
                 s.refant = best_refant_index
 
         # run_t0 = time.time()
