@@ -251,6 +251,11 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
         telstate_cb = telstate.view('cb')
         telstate_cb.add('obs_activity', 'track', ts=0)
+        obs_params = {'description' : 'test observation',
+                      'proposal_id' : '123_03',
+                      'sb_id_code' : '123_0005',
+                      'observer' : 'Kim'}
+        telstate_cb.add('obs_params', obs_params, immutable=True)
         for antenna in self.antennas:
             # The position is irrelevant for now, so just give all the
             # antennas the same position.

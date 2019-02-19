@@ -13,6 +13,7 @@ from docutils.core import publish_file
 
 import matplotlib.pylab as plt
 import katpoint
+import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -135,6 +136,41 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     if transform is not None:
         value = transform(value)
     report.writeln('* {0}:  {1}'.format(var_text, value))
+
+
+def metadata(ts, capture_block_id, report_path, st=None):
+    """
+    Create a dictionary with required metadata
+
+    Parameters
+    ----------
+    ts : : class:`katsdptelstate.TelescopeState`
+        telescope state
+    capture_block_id : int
+        capture_block_id
+    report_path : string
+        path where report is written
+    st : float, optional
+        start time, seconds
+
+    Returns
+    -------
+    dict
+    """
+    telstate_cb = ts.root().view(capture_block_id)
+    obs_params = telstate_cb['obs_params']
+    metadata = {}
+    metadata['ProductTypeName'] = 'MeerKATAR1ReductionProduct'
+    metadata['StartTime'] = st
+    metadata['ReductionName'] = 'Calibration Report'
+    metadata['CaptureBlockid'] = capture_block_id
+    metadata['CAS.ProductName'] = report_path.split('/')[-1][:-8]
+    metadata['Description'] = obs_params['description']
+    metadata['ProposalID'] = obs_params['proposal_id']
+    metadata['Observer'] = obs_params['observer']
+    metadata['ScheduleBlockidCode'] = obs_params['sb_id_code']
+
+    return metadata
 
 
 def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None):
@@ -1222,7 +1258,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
     # --------------------------------------------------------------------
     # open report file
     report_file = os.path.join(report_path, 'calreport.rst')
-
     # --------------------------------------------------------------------
     # write heading
     with _lock:
@@ -1257,6 +1292,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             else:
                 unique_targets = []
             write_summary(cal_rst, ts, stream_name, parameters, unique_targets, st=st, et=et)
+            metadata_dict = metadata(ts, capture_block_id, report_path, st)
 
             # get parameters
             correlator_freq = parameters['channel_freqs'] / 1e6
@@ -1339,3 +1375,8 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
         report_file_html = os.path.join(report_path, 'calreport.html')
         publish_file(source_path=report_file, destination_path=report_file_html,
                      writer_name='html', settings_overrides=overrides)
+
+        # write metadata file
+        metadata_file = os.path.join(report_path, 'metadata.json')
+        with open(metadata_file, 'w') as cal_meta:
+            json.dump(metadata_dict, cal_meta)
