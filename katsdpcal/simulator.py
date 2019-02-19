@@ -655,7 +655,7 @@ class SimDataMS(SimData):
 
 
 class SimDataKatdal(SimData):
-    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
+    def __init__(self, filename, server=None, bchan=0, echan=None):
         super(SimDataKatdal, self).__init__(filename, server, bchan, echan)
         try:
             self.file = katdal.open(filename, upgrade_flags=False)
