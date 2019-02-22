@@ -918,9 +918,11 @@ class Accumulator(object):
                 weights = ig['weights'].value[src_subset] * weights_channel
                 if self.need_weights_power_scale:
                     # weight_power_scale expects a time axis, hence newaxis
-                    scale = katdal.datasources.weight_power_scale(
-                        vis[np.newaxis, ...], *self.weights_power_scale_params)[0]
-                    weights *= scale
+                    weights = weights[np.newaxis, ...]
+                    katdal.datasources.weight_power_scale(
+                        vis[np.newaxis, ...], weights, *self.weights_power_scale_params,
+                        out=weights)
+                    weights = weights[0]
                 self._update_buffer(self.buffers['vis'][slot, trg_subset],
                                     vis, self.ordering)
                 self._update_buffer(self.buffers['flags'][slot, trg_subset],
