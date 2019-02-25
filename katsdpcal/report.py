@@ -161,13 +161,13 @@ def metadata(ts, capture_block_id, report_path, st=None):
     obs_params = telstate_cb['obs_params']
     metadata = {}
     product_type = {}
-    product_type['ProductTypeName'] = 'MeerKATAR1ReductionProduct'
+    product_type['ProductTypeName'] = 'MeerKATReductionProduct'
     product_type['ReductionName'] = 'Calibration Report'
     metadata['ProductType'] = product_type
     # format time as required
     time = datetime.datetime.utcfromtimestamp(st)
     metadata['StartTime'] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
-    metadata['CaptureBlockid'] = capture_block_id
+    metadata['CaptureBlockid'] = int(capture_block_id)
     metadata['Description'] = obs_params['description'] + ' cal report'
     metadata['ProposalID'] = obs_params['proposal_id']
     metadata['Observer'] = obs_params['observer']
