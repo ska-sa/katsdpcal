@@ -13,6 +13,7 @@ import operator
 import numpy as np
 import dask
 import dask.array as da
+import dask.sharedict
 
 from . import calprocs
 
