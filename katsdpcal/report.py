@@ -160,14 +160,15 @@ def metadata(ts, capture_block_id, report_path, st=None):
     telstate_cb = ts.root().view(capture_block_id)
     obs_params = telstate_cb['obs_params']
     metadata = {}
-    metadata['ProductTypeName'] = 'MeerKATAR1ReductionProduct'
-    metadata['StartTime'] = st
-    metadata['ReductionName'] = 'Calibration Report'
+    product_type = {}
+    product_type['ProductTypeName'] = 'MeerKATAR1ReductionProduct'
+    product_type['ReductionName'] = 'Calibration Report'
+    metadata['ProductType'] = product_type
+    # format time as required
+    time = datetime.datetime.utcfromtimestamp(st)
+    metadata['StartTime'] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
     metadata['CaptureBlockid'] = capture_block_id
-    # report path is currently appended with '-current'
-    # remove this before writing to metadata file
-    metadata['CAS.ProductName'] = os.path.basename(report_path)[:-8]
-    metadata['Description'] = obs_params['description']
+    metadata['Description'] = obs_params['description'] + ' cal report'
     metadata['ProposalID'] = obs_params['proposal_id']
     metadata['Observer'] = obs_params['observer']
     metadata['ScheduleBlockidCode'] = obs_params['sb_id_code']
