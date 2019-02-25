@@ -164,7 +164,9 @@ def metadata(ts, capture_block_id, report_path, st=None):
     metadata['StartTime'] = st
     metadata['ReductionName'] = 'Calibration Report'
     metadata['CaptureBlockid'] = capture_block_id
-    metadata['CAS.ProductName'] = report_path.split('/')[-1][:-8]
+    # report path is currently appended with '-current'
+    # remove this before writing to metadata file
+    metadata['CAS.ProductName'] = os.path.basename(report_path)[:-8]
     metadata['Description'] = obs_params['description']
     metadata['ProposalID'] = obs_params['proposal_id']
     metadata['Observer'] = obs_params['observer']

@@ -523,7 +523,7 @@ class SimDataMS(SimData):
         telstate_cb = telstate.view(self.cbid)
 
         # include dummy obs_params in telstate
-        obs_params = {'description' : 'None',
+        obs_params = {'description' : 'MS observation',
                       'sb_id_code' : 'None',
                       'proposal_id' : 'None',
                       'observer' : 'unknown'}
