@@ -188,7 +188,11 @@ class ServerData(object):
             flags_streams,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
-        testcase.addCleanup(testcase.ioloop.run_sync, self.stop_server)
+        # We can't simply do an addCleanup to stop the server, because the servers
+        # need to be shut down together (otherwise the dump alignment code in
+        # Accumulator._accumulate will deadlock). Instead, tell the testcase that
+        # we require cleanup.
+        testcase.cleanup_servers.append(self)
 
         bind_address = self.server.bind_address
         self.client = katcp.AsyncClient(bind_address[0], bind_address[1], timeout=15)
@@ -355,6 +359,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.patch('dask.distributed.LocalCluster')
         self.patch('dask.distributed.Client')
 
+        self.cleanup_servers = []
+        self.addCleanup(self.ioloop.run_sync, self._stop_servers)
         self.servers = [ServerData(self, i) for i in range(self.n_servers)]
 
     @tornado.gen.coroutine
@@ -467,6 +473,12 @@ class TestCalDeviceServer(unittest.TestCase):
         """Multiply `value` by an amount that sets `ref` to zero phase."""
         ref_phase = ref / np.abs(ref)
         return value * ref_phase.conj()
+
+    @tornado.gen.coroutine
+    def _stop_servers(self):
+        """Similar to shutdown_servers, but run as part of cleanup"""
+        futures = [server.stop_server() for server in self.cleanup_servers]
+        yield futures
 
     @tornado.gen.coroutine
     def shutdown_servers(self, timeout):
