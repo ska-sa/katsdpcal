@@ -342,8 +342,10 @@ class TestCalDeviceServer(unittest.TestCase):
         # heaps are received in a predictable order and not affected by timing.
         endpoints_per_server = self.n_endpoints // self.n_servers
         for i, endpoint in enumerate(self.l0_endpoints):
-            # Compute first endpoint index of the server
-            base = i // endpoints_per_server * endpoints_per_server
+            # Compute last endpoint index of the server. We use the last
+            # rather than the first as a quick workaround for
+            # https://github.com/ska-sa/spead2/issues/40
+            base = (i // endpoints_per_server + 1) * endpoints_per_server - 1
             queue = self.l0_queues[self.l0_endpoints[base]]
             stream = spead2.send.InprocStream(sender_thread_pool, queue)
             stream.set_cnt_sequence(i, self.n_endpoints)
