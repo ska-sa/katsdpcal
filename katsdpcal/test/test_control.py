@@ -334,11 +334,18 @@ class TestCalDeviceServer(unittest.TestCase):
 
         self.ig = spead2.send.ItemGroup()
         self.add_items(self.ig)
+        self.l0_queues = {endpoint: spead2.InprocQueue() for endpoint in self.l0_endpoints}
         self.l0_streams = {}
         sender_thread_pool = spead2.ThreadPool()
+        # For each server we only actually use a single queue (the readers on
+        # the other endpoints will just get no data). This ensures that
+        # heaps are received in a predictable order and not affected by timing.
+        endpoints_per_server = self.n_endpoints // self.n_servers
         for i, endpoint in enumerate(self.l0_endpoints):
-            queue = spead2.InprocQueue()
-            stream = spead2.send.InprocStream(sender_thread_pool, spead2.InprocQueue())
+            # Compute first endpoint index of the server
+            base = i // endpoints_per_server * endpoints_per_server
+            queue = self.l0_queues[self.l0_endpoints[base]]
+            stream = spead2.send.InprocStream(sender_thread_pool, queue)
             stream.set_cnt_sequence(i, self.n_endpoints)
             stream.send_heap(self.ig.get_heap(descriptors='all'))
             self.l0_streams[endpoint] = stream
@@ -347,7 +354,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # a bound method.
         def _add_udp_reader(stream, port, max_size=None, buffer_size=None,
                             bind_hostname='', socket=None):
-            queue = self.l0_streams[Endpoint(bind_hostname, port)].queue
+            queue = self.l0_queues[Endpoint(bind_hostname, port)]
             stream.add_inproc_reader(queue)
 
         self.patch('spead2.recv.trollius.Stream.add_udp_reader', _add_udp_reader)
