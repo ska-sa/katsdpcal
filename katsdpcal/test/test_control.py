@@ -185,7 +185,7 @@ class ServerData(object):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
-            flags_streams,
+            flags_streams, 1.0,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
         # We can't simply do an addCleanup to stop the server, because the servers
