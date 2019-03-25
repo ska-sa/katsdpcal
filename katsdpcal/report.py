@@ -171,7 +171,7 @@ def metadata(ts, capture_block_id, report_path, st=None):
     metadata['Description'] = obs_params['description'] + ' cal report'
     metadata['ProposalID'] = obs_params['proposal_id']
     metadata['Observer'] = obs_params['observer']
-    metadata['ScheduleBlockidCode'] = obs_params['sb_id_code']
+    metadata['ScheduleBlockIdCode'] = obs_params['sb_id_code']
 
     return metadata
 
