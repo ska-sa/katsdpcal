@@ -284,7 +284,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     else:
         parameters['rfi_mask'] = np.zeros((n_chans,), np.bool_)
     # Only use static channel mask on baselines shorter than 1000 meters
-    bl_mask = get_baseline_mask(parameters['bls_lookup'], antennas, 1000)
+    bl_mask = get_baseline_mask(parameters['bls_lookup'], antennas, 1000, 1)
     rfi_mask_shape = (1, n_chans, 1, len(parameters['bls_lookup']))
     rfi_mask = np.zeros(rfi_mask_shape, np.bool_)
     channel_mask = parameters['rfi_mask'][np.newaxis, :, np.newaxis, np.newaxis]
@@ -359,11 +359,11 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
     telstate_cal.add('src_streams', [l0_name], immutable=True)
 
 
-def get_baseline_mask(bls_lookup, ants, limit):
+def get_baseline_mask(bls_lookup, ants, uplimit, lowlimit=0):
     """
     Compute a mask of the same length as bls_lookup that indicates
-    whether the baseline length of the given correlation product is
-    shorter than limit in meters
+    whether the baseline length of the given correlation product is within
+    the given limits (in meters)
 
     Parameters
     ----------
@@ -371,15 +371,17 @@ def get_baseline_mask(bls_lookup, ants, limit):
         indices of antenna pairs in each correlation product
     ants: list of :class:`katpoint.Antenna`
         antennas in bls_lookup
-    limit : float
-        limit in meters
+    uplimit : float
+        upper limit in meters
+    lowlimit : float, optional
+        lower limit in meters
     """
     baseline_mask = np.zeros(bls_lookup.shape[0], dtype=np.bool)
 
     for prod, baseline in enumerate(bls_lookup):
         bl_vector = ants[baseline[0]].baseline_toward(ants[baseline[1]])
         bl_length = np.linalg.norm(bl_vector)
-        if bl_length < limit:
+        if (bl_length < uplimit) & (bl_length > lowlimit):
             baseline_mask[prod] = True
     return baseline_mask
 
