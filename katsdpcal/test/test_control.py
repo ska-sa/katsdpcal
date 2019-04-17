@@ -737,6 +737,8 @@ class TestCalDeviceServer(unittest.TestCase):
 
             ret_BCROSS_DIODE = self.assemble_bandpass(telstate_cb_cal, 'product_BCROSS_DIODE')
             ret_BCROSS_DIODE_interp = self.interp_B(ret_BCROSS_DIODE)
+            np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
+                                       np.abs(ret_BCROSS_DIODE_interp))
             BG_angle = np.angle(BG)
             ret_BG_interp_angle = np.angle(ret_BG_interp)
             np.testing.assert_allclose(BG_angle - BG_angle[:, [1], :]
