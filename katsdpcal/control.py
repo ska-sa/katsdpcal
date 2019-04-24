@@ -8,29 +8,26 @@ import multiprocessing
 import multiprocessing.dummy
 import cProfile
 import json
+import enum
+import concurrent.futures
+import asyncio
 
 import spead2
 import spead2.recv
-import spead2.recv.trollius
+import spead2.recv.asyncio
 import spead2.send
 
-import katcp
-from katcp.kattypes import request, return_reply, concurrent_reply, Bool, Str
+import aiokatcp
+from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
 import katdal.datasources
 from katdal import SpectralWindow
 
 import attr
-import enum
 import numpy as np
 import dask.array as da
 import dask.diagnostics
 import dask.distributed
-import trollius
-from trollius import From, Return
-import tornado.gen
-from katsdpservices.asyncio import to_tornado_future
-import concurrent.futures
 
 import katsdpcal
 from .reduction import pipeline
@@ -96,12 +93,12 @@ class SensorReadingEvent(object):
 
 
 class QueueObserver(object):
-    """katcp Sensor observer that forwards updates to a queue"""
+    """aiokatcp Sensor observer that forwards updates to a queue"""
 
     def __init__(self, queue):
         self._queue = queue
 
-    def update(self, sensor, reading):
+    def __call__(self, sensor, reading):
         self._queue.put(SensorReadingEvent(sensor.name, reading))
 
 
@@ -124,9 +121,9 @@ def shared_empty(shape, dtype):
     return array
 
 
-def _inc_sensor(sensor, delta, status=katcp.Sensor.NOMINAL, timestamp=None):
+def _inc_sensor(sensor, delta, status=aiokatcp.Sensor.Status.NOMINAL, timestamp=None):
     """Increment sensor value by `delta`."""
-    sensor.set_value(sensor.value() + delta, status, timestamp)
+    sensor.set_value(sensor.value + delta, status, timestamp)
 
 
 def _slots_slices(slots):
@@ -272,7 +269,7 @@ class Task(object):
     master_queue : :class:`multiprocessing.Queue`
         Queue passed to the constructor
     sensors : dict
-        Dictionary of :class:`katcp.Sensor`s. This is only guaranteed to be
+        Dictionary of :class:`aiokatcp.Sensor`s. This is only guaranteed to be
         present inside the child process.
     """
 
@@ -304,7 +301,7 @@ class Task(object):
                 logger.info('Wrote profile to %s', self.profile_file)
 
     def get_sensors(self):
-        """Get list of katcp sensors.
+        """Get list of aiokatcp sensors.
 
         The sensors should be instantiated when this function is called, not
         cached.
@@ -365,11 +362,11 @@ class Accumulator(object):
 
         # Free space tracking
         self._free_slots = deque(range(buffer_shape[0]))
-        self._slots_cond = trollius.Condition()  # Signalled when new slots are available
+        self._slots_cond = asyncio.Condition()  # Signalled when new slots are available
         # Set if stop(force=True) is called, to abort waiting for an available slot
         self._force_stopping = False
         # Enforce only one capture_done at a time
-        self._done_lock = trollius.Lock()
+        self._done_lock = asyncio.Lock()
 
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
@@ -397,58 +394,58 @@ class Accumulator(object):
 
         # Sensors for the katcp server to report
         sensors = [
-            katcp.Sensor.boolean(
-                'accumulator-capture-active',
+            aiokatcp.Sensor(
+                bool, 'accumulator-capture-active',
                 'whether an observation is in progress (prometheus: gauge)',
-                default=False, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'accumulator-observations',
+                default=False, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'accumulator-observations',
                 'number of observations completed by the accumulator (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'accumulator-batches',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'accumulator-batches',
                 'number of batches completed by the accumulator (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'input-bytes-total',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'input-bytes-total',
                 'number of bytes of L0 data received (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'input-heaps-total',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'input-heaps-total',
                 'number of L0 heaps received (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'input-incomplete-heaps-total',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'input-incomplete-heaps-total',
                 'number of incomplete L0 heaps received (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'input-too-old-heaps-total',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'input-too-old-heaps-total',
                 'number of L0 heaps rejected because they are too late (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'slots',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'slots',
                 'total number of buffer slots (prometheus: gauge)',
-                default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'accumulator-slots',
+                default=self.nslots, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'accumulator-slots',
                 'number of buffer slots the current accumulation has written to '
                 '(prometheus: gauge)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'free-slots',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'free-slots',
                 'number of unused buffer slots (prometheus: gauge)',
-                default=self.nslots, initial_status=katcp.Sensor.NOMINAL),
+                default=self.nslots, initial_status=aiokatcp.Sensor.Status.NOMINAL),
             # pipeline-slots gives information about the pipeline, but is
             # produced in the accumulator because the pipeline doesn't get
             # interrupted when more work is added to it.
-            katcp.Sensor.integer(
-                'pipeline-slots',
+            aiokatcp.Sensor(
+                int, 'pipeline-slots',
                 'number of buffer slots in use by the pipeline (prometheus: gauge)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.float(
-                'accumulator-last-wait',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                float, 'accumulator-last-wait',
                 'time the accumulator had to wait for a free buffer (prometheus: gauge)',
-                unit='s')
+                units='s')
         ]
         self.sensors = {sensor.name: sensor for sensor in sensors}
 
@@ -456,37 +453,36 @@ class Accumulator(object):
     def capturing(self):
         return self._rx is not None
 
-    @trollius.coroutine
-    def _next_slot(self):
+    async def _next_slot(self):
         wait_sensor = self.sensors['accumulator-last-wait']
-        with (yield From(self._slots_cond)):
+        async with self._slots_cond:
             if self._force_stopping:
-                raise Return(None)
+                return None
             elif self._free_slots:
                 wait_sensor.set_value(0.0)
             else:
                 logger.warn('no slots available - waiting for pipeline to return buffers')
-                loop = trollius.get_event_loop()
+                loop = asyncio.get_event_loop()
                 now = loop.time()
                 while not self._force_stopping and not self._free_slots:
-                    yield From(self._slots_cond.wait())
+                    await self._slots_cond.wait()
                 if self._force_stopping:
-                    raise Return(None)
+                    return None
                 elapsed = loop.time() - now
                 logger.info('slot acquired')
-                wait_sensor.set_value(elapsed, status=katcp.Sensor.WARN)
+                wait_sensor.set_value(elapsed, status=aiokatcp.Sensor.Status.WARN)
             slot = self._free_slots.popleft()
             now = time.time()
-            status = katcp.Sensor.WARN if not self._free_slots else katcp.Sensor.NOMINAL
+            status = (aiokatcp.Sensor.Status.WARN if not self._free_slots
+                      else aiokatcp.Sensor.Status.NOMINAL)
             _inc_sensor(self.sensors['free-slots'], -1, status, timestamp=now)
             _inc_sensor(self.sensors['accumulator-slots'], 1, timestamp=now)
             # Mark all flags as data_lost, so that any that aren't overwritten
             # by data will have this value.
             self.buffers['flags'][slot].fill(np.uint8(2 ** FLAG_NAMES.index('data_lost')))
-            raise Return(slot)
+            return slot
 
-    @trollius.coroutine
-    def buffer_free(self, event):
+    async def buffer_free(self, event):
         """Return slots to the free list.
 
         Parameters
@@ -495,19 +491,18 @@ class Accumulator(object):
             Event listing the slots that are now available
         """
         if event.slots:
-            with (yield From(self._slots_cond)):
+            async with self._slots_cond:
                 self._free_slots.extend(event.slots)
                 now = time.time()
                 _inc_sensor(self.sensors['free-slots'], len(event.slots), timestamp=now)
                 _inc_sensor(self.sensors['pipeline-slots'], -len(event.slots), timestamp=now)
                 self._slots_cond.notify()
 
-    @trollius.coroutine
-    def _run_observation(self, capture_block_id):
+    async def _run_observation(self, capture_block_id):
         """Runs for a single observation i.e., until a stop heap is received."""
         try:
             self._reset_capture_state(capture_block_id)
-            yield From(self._accumulate(capture_block_id))
+            await self._accumulate(capture_block_id)
             # Tell the pipeline that the observation ended, but only if there
             # was something to work on.
             if self._obs_end is not None:
@@ -522,7 +517,7 @@ class Accumulator(object):
                 for i in range(2):
                     self.master_queue.put(ObservationEndEvent(capture_block_id, None, None))
             logger.info('Observation %s ended', capture_block_id)
-        except trollius.CancelledError:
+        except asyncio.CancelledError:
             logger.info('Observation %s cancelled', capture_block_id)
         except Exception as error:
             logger.error('Exception in capture: %s', error, exc_info=True)
@@ -538,7 +533,7 @@ class Accumulator(object):
         self.telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
         # Initialise SPEAD receiver
         logger.info('Initializing SPEAD receiver')
-        rx = spead2.recv.trollius.Stream(
+        rx = spead2.recv.asyncio.Stream(
             self._thread_pool,
             max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams,
             contiguous_only=False)
@@ -555,35 +550,33 @@ class Accumulator(object):
                                   buffer_size=64 * 1024**2)
         logger.info('reader added')
         self._rx = rx
-        self._run_future = trollius.ensure_future(self._run_observation(capture_block_id))
+        self._run_future = asyncio.ensure_future(self._run_observation(capture_block_id))
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['input-bytes-total'].set_value(0)
         self.sensors['input-heaps-total'].set_value(0)
         self.sensors['input-incomplete-heaps-total'].set_value(0)
         self.sensors['input-too-old-heaps-total'].set_value(0)
 
-    @trollius.coroutine
-    def capture_done(self):
+    async def capture_done(self):
         assert self._rx is not None, "observation not running"
         assert self._run_future is not None, "inconsistent state"
-        with (yield From(self._done_lock)):
+        async with self._done_lock:
             future = self._run_future
             # Give it a chance to stop on its own (from stop heaps)
             logger.info('Waiting for capture to finish (5s timeout)...')
-            done, _ = yield From(trollius.wait([self._run_future], timeout=5))
+            done, _ = await asyncio.wait([self._run_future], timeout=5)
             if future not in done:
                 logger.info('Stopping receiver')
                 self._rx.stop()
                 logger.info('Waiting for capture to finish...')
-                yield From(self._run_future)
+                await self._run_future
             logger.info('Joined with _run_observation')
             self._run_future = None
             self._rx = None
             self.telstate_cb_cal = None
             self.sensors['accumulator-capture-active'].set_value(False)
 
-    @trollius.coroutine
-    def stop(self, force=False):
+    async def stop(self, force=False):
         """Shuts down the accumulator.
 
         If `force` is true, this assumes that the pipeline has already been
@@ -592,12 +585,12 @@ class Accumulator(object):
         """
         if force:
             self._force_stopping = True
-            with (yield From(self._slots_cond)):
+            async with self._slots_cond:
                 # Interrupts wait for free slot, if any
                 self._slots_cond.notify()
 
         if self._run_future is not None:
-            yield From(self.capture_done())
+            await self.capture_done()
 
         if not force and self.accum_pipeline_queue is not None:
             self.accum_pipeline_queue.put(StopEvent())
@@ -679,8 +672,7 @@ class Accumulator(object):
         self._slot_for_index.clear()
         self._state = None
 
-    @trollius.coroutine
-    def _next_heap(self, rx, ig):
+    async def _next_heap(self, rx, ig):
         """Retrieve the next usable heap from `rx` and apply it to `ig`.
 
         Returns
@@ -693,15 +685,14 @@ class Accumulator(object):
         spead2.Stopped
             if the stream stopped
         """
-        while True:
-            heap = yield From(rx.get())
+        async for heap in rx:
             if heap.is_end_of_stream():
-                raise Return({})
+                return {}
             if isinstance(heap, spead2.recv.IncompleteHeap):
                 logger.debug('dropped incomplete heap %d (%d/%d bytes of payload)',
                              heap.cnt, heap.received_length, heap.heap_length)
                 _inc_sensor(self.sensors['input-incomplete-heaps-total'], 1,
-                            status=katcp.Sensor.WARN)
+                            status=aiokatcp.Sensor.Status.WARN)
                 continue
             updated = ig.update(heap)
             if not updated:
@@ -716,7 +707,7 @@ class Accumulator(object):
                     break
             if not have_items:
                 continue
-            raise Return(updated)
+            return updated
 
     def _get_activity_state(self, data_ts):
         """Extract telescope state information about current activity.
@@ -796,8 +787,7 @@ class Accumulator(object):
 
         return False
 
-    @trollius.coroutine
-    def _ensure_slots(self, cur_idx):
+    async def _ensure_slots(self, cur_idx):
         """Add new slots until there is one for `cur_idx`.
 
         This assumes that ``self._last_idx`` is less than `cur_idx`.
@@ -829,20 +819,19 @@ class Accumulator(object):
                 logger.info(' - %s (%s)', new_state.target_name, new_state.activity)
 
             # Obtain a slot to copy to
-            slot = yield From(self._next_slot())
+            slot = await self._next_slot()
             if slot is None:
                 logger.info('Accumulation interrupted while waiting for a slot')
-                raise Return(False)
+                return False
             self._slots.append(slot)
             self._slot_for_index[idx] = slot
             self.buffers['times'][slot] = data_ts
             self.buffers['dump_indices'][slot] = idx
             self._state = new_state
             self._last_idx = idx
-        raise Return(True)
+        return True
 
-    @trollius.coroutine
-    def _accumulate(self, capture_block_id):
+    async def _accumulate(self, capture_block_id):
         """
         Accumulate SPEAD heaps into arrays and send batches to the pipeline.
 
@@ -866,7 +855,7 @@ class Accumulator(object):
         logger.info('waiting to start accumulating data')
         while True:
             try:
-                updated = yield From(self._next_heap(rx, ig))
+                updated = await self._next_heap(rx, ig)
             except spead2.Stopped:
                 break
             if not updated:   # stop heap was received
@@ -889,11 +878,11 @@ class Accumulator(object):
                     logger.warning('Dump index went backwards (%d < %d), skipping heap',
                                    data_idx, self._last_idx)
                     _inc_sensor(self.sensors['input-too-old-heaps-total'], 1,
-                                status=katcp.Sensor.WARN)
+                                status=aiokatcp.Sensor.Status.WARN)
                     continue
             else:
                 # Create slots for all entries we haven't seen yet
-                if not (yield From(self._ensure_slots(data_idx))):
+                if not await self._ensure_slots(data_idx):
                     break
                 slot = self._slots[-1]
 
@@ -948,7 +937,7 @@ class Accumulator(object):
         # dumps, and hence the same batches. Record the last index of each,
         # exchange, and take the largest.
         max_idx = self._last_idx
-        loop = trollius.get_event_loop()
+        loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             server_id = self.parameters['server_id']
             n_servers = self.parameters['servers']
@@ -958,15 +947,15 @@ class Accumulator(object):
                 if i != server_id:
                     key = 'last_dump_index{}'.format(i)
                     logger.debug('Waiting for %s', key)
-                    yield From(loop.run_in_executor(
-                        executor, self.telstate_cb_cal.wait_key, key))
+                    await loop.run_in_executor(
+                        executor, self.telstate_cb_cal.wait_key, key)
                     other_last_idx = self.telstate_cb_cal[key]
                     logger.debug('Got %s = %d', key, other_last_idx)
                     max_idx = max(max_idx, other_last_idx)
         if max_idx > self._last_idx:
             logger.info('Adding %d extra slots to align end of observation',
                         max_idx - self._last_idx)
-            yield From(self._ensure_slots(max_idx))
+            await self._ensure_slots(max_idx)
 
         # Flush out the final batch
         self._flush_slots()
@@ -1008,32 +997,32 @@ class Pipeline(Task):
 
     def get_sensors(self):
         return [
-            katcp.Sensor.float(
-                'pipeline-last-time',
+            aiokatcp.Sensor(
+                float, 'pipeline-last-time',
                 'time taken to process the most recent buffer (prometheus: gauge)',
-                unit='s'),
-            katcp.Sensor.integer(
-                'pipeline-last-slots',
+                units='s'),
+            aiokatcp.Sensor(
+                int, 'pipeline-last-slots',
                 'number of slots filled in the most recent buffer (prometheus: gauge)'),
-            katcp.Sensor.boolean(
-                'pipeline-active',
+            aiokatcp.Sensor(
+                bool, 'pipeline-active',
                 'whether pipeline is currently computing (prometheus: gauge)',
-                default=False, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'pipeline-exceptions',
+                default=False, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'pipeline-exceptions',
                 'number of times the pipeline threw an exception (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.float(
-                'pipeline-start-flag-fraction-auto-pol',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                float, 'pipeline-start-flag-fraction-auto-pol',
                 'Starting flag fraction prior to RFI detection: auto-pol (prometheus: Gauge)'),
-            katcp.Sensor.float(
-                'pipeline-start-flag-fraction-cross-pol',
+            aiokatcp.Sensor(
+                float, 'pipeline-start-flag-fraction-cross-pol',
                 'Starting flag fraction prior to RFI detection: cross-pol (prometheus: Gauge)'),
-            katcp.Sensor.float(
-                'pipeline-final-flag-fraction-auto-pol',
+            aiokatcp.Sensor(
+                float, 'pipeline-final-flag-fraction-auto-pol',
                 'Final flag fraction post RFI detection: auto-pol (prometheus: Gauge)'),
-            katcp.Sensor.float(
-                'pipeline-final-flag-fraction-cross-pol',
+            aiokatcp.Sensor(
+                float, 'pipeline-final-flag-fraction-cross-pol',
                 'Final flag fraction post RFI detection: cross-pol (prometheus: Gauge)')
         ]
 
@@ -1089,7 +1078,7 @@ class Pipeline(Task):
                     self.sensors['pipeline-active'].set_value(False, timestamp=end_time)
                     if error:
                         _inc_sensor(self.sensors['pipeline-exceptions'], 1,
-                                    status=katcp.Sensor.ERROR,
+                                    status=aiokatcp.Sensor.Status.ERROR,
                                     timestamp=end_time)
                     # transmit flags after pipeline is finished
                     self.pipeline_sender_queue.put(event)
@@ -1274,14 +1263,14 @@ class Sender(Task):
 
     def get_sensors(self):
         return [
-            katcp.Sensor.integer(
-                'output-bytes-total',
+            aiokatcp.Sensor(
+                int, 'output-bytes-total',
                 'bytes written to the flags L1 stream (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'output-heaps-total',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'output-heaps-total',
                 'heaps written to the flags L1 stream (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL)
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL)
         ]
 
     def run(self):
@@ -1360,29 +1349,29 @@ class ReportWriter(Task):
 
     def get_sensors(self):
         return [
-            katcp.Sensor.integer(
-                'reports-written',
+            aiokatcp.Sensor(
+                int, 'reports-written',
                 'Number of calibration reports written (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.float(
-                'report-last-time',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                float, 'report-last-time',
                 'Elapsed time to generate most recent report (prometheus: gauge)',
-                unit='s'),
-            katcp.Sensor.boolean(
-                'report-active',
+                units='s'),
+            aiokatcp.Sensor(
+                bool, 'report-active',
                 'Whether the report writer is active (prometheus: gauge)',
-                default=False, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.string(
-                'report-last-path',
+                default=False, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                str, 'report-last-path',
                 'Directory containing the most recent report'),
-            katcp.Sensor.integer(
-                'report-scans-received',
+            aiokatcp.Sensor(
+                int, 'report-scans-received',
                 'Number of scan summaries received by report writer (prometheus: counter)',
-                default=0, initial_status=katcp.Sensor.NOMINAL),
-            katcp.Sensor.integer(
-                'report-scans-buffered',
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
+            aiokatcp.Sensor(
+                int, 'report-scans-buffered',
                 'Number of scan summaries held in report writer buffer (prometheus: gauge)',
-                default=0, initial_status=katcp.Sensor.NOMINAL)
+                default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL)
         ]
 
     def write_report(self, telstate_cal, capture_block_id, obs_start, obs_end, av_corr):
@@ -1443,8 +1432,8 @@ class ReportWriter(Task):
                     scans_buffered = len(av_corr['targets'])
                     report_scans_buffered_sensor.set_value(
                         scans_buffered,
-                        status=(katcp.Sensor.NOMINAL if scans_buffered < self.max_scans
-                                else katcp.Sensor.WARN),
+                        status=(aiokatcp.Sensor.Status.NOMINAL if scans_buffered < self.max_scans
+                                else aiokatcp.Sensor.Status.WARN),
                         timestamp=now)
 
             elif isinstance(event, ObservationEndEvent):
@@ -1469,9 +1458,9 @@ class ReportWriter(Task):
         logger.info('Report writer has finished, exiting')
 
 
-class CalDeviceServer(katcp.server.AsyncDeviceServer):
-    VERSION_INFO = ('katsdpcal-api', 1, 0)
-    BUILD_INFO = ('katsdpcal',) + tuple(katsdpcal.__version__.split('.', 1)) + ('',)
+class CalDeviceServer(aiokatcp.DeviceServer):
+    VERSION = 'katsdpcal-api-1.0'
+    BUILD_STATE = 'katsdpcal-' + katsdpcal.__version__
 
     def __init__(self, accumulator, pipeline, sender, report_writer, master_queue,
                  *args, **kwargs):
@@ -1486,19 +1475,18 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         # Each capture block needs to be marked done twice: once from
         # Sender, once from ReportWriter.
         self._capture_block_ends = Counter()
-        self._capture_block_state_sensor = katcp.Sensor.string(
-            'capture-block-state',
+        self._capture_block_state_sensor = aiokatcp.Sensor(
+            str, 'capture-block-state',
             'JSON dict with the state of each capture block')
         self._capture_block_state_sensor.set_value('{}')
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
-    def setup_sensors(self):
         for sensor in self.accumulator.sensors.values():
-            self.add_sensor(sensor)
+            self.sensors.add(sensor)
         for child in self.children:
             for sensor in child.get_sensors():
-                self.add_sensor(sensor)
-        self.add_sensor(self._capture_block_state_sensor)
+                self.sensors.add(sensor)
+        self.sensors.add(self._capture_block_state_sensor)
 
     def _set_capture_block_state(self, capture_block_id, state):
         if state == State.DEAD:
@@ -1509,41 +1497,31 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         dumped = json.dumps(self._capture_block_state, sort_keys=True, cls=EnumEncoder)
         self._capture_block_state_sensor.set_value(dumped)
 
-    def start(self):
-        self._run_queue_task = trollius.ensure_future(self._run_queue())
-        super(CalDeviceServer, self).start()
+    async def start(self):
+        self._run_queue_task = asyncio.ensure_future(self._run_queue())
+        await super(CalDeviceServer, self).start()
 
-    @trollius.coroutine
-    def join(self):
-        yield From(self._run_queue_task)
+    async def join(self):
+        await self._run_queue_task
 
-    @request(Str())
-    @return_reply()
-    def request_capture_init(self, msg, capture_block_id):
+    async def request_capture_init(self, ctx, capture_block_id: str) -> None:
         """Start an observation"""
         if self.accumulator.capturing:
-            return ('fail', 'capture already in progress')
+            raise FailReply('capture already in progress')
         if self._stopping:
-            return ('fail', 'server is shutting down')
+            raise FailReply('server is shutting down')
         if capture_block_id in self._capture_block_state:
-            return ('fail', 'capture block ID {} is already active'.format(capture_block_id))
+            raise FailReply('capture block ID {} is already active'.format(capture_block_id))
         self._set_capture_block_state(capture_block_id, State.CAPTURING)
         self.accumulator.capture_init(capture_block_id)
-        return ('ok',)
 
-    @request()
-    @return_reply()
-    @concurrent_reply
-    @tornado.gen.coroutine
-    def request_capture_done(self, msg):
+    async def request_capture_done(self, ctx) -> None:
         """Stop the current observation"""
         if not self.accumulator.capturing:
-            raise tornado.gen.Return(('fail', 'no capture in progress'))
-        yield to_tornado_future(self.accumulator.capture_done())
-        raise tornado.gen.Return(('ok',))
+            raise FailReply('no capture in progress')
+        await self.accumulator.capture_done()
 
-    @trollius.coroutine
-    def shutdown(self, force=False, conn=None):
+    async def shutdown(self, force=False, ctx=None):
         """Shut down the server.
 
         This is a potentially long-running operation, particularly if `force`
@@ -1553,9 +1531,9 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         """
         def progress(msg):
             logger.info(msg)
-            if conn is not None:
-                conn.inform(msg)
-        loop = trollius.get_event_loop()
+            if ctx is not None:
+                ctx.inform(msg)
+        loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             self._stopping = True
             if force:
@@ -1566,10 +1544,10 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             else:
                 logger.info('Shutting down gracefully')
             if not force:
-                yield From(self.accumulator.stop())
+                await self.accumulator.stop()
                 progress('Accumulator stopped')
                 for task in self.children:
-                    yield From(loop.run_in_executor(executor, task.join))
+                    await loop.run_in_executor(executor, task.join)
                     progress('{} stopped'.format(task.name))
             elif hasattr(self.report_writer, 'terminate'):
                 # Kill off all the tasks. This is done in reverse order, to avoid
@@ -1578,19 +1556,15 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                 # corrupting an in-progress report.
                 for task in reversed(self.children):
                     task.terminate()
-                    yield From(loop.run_in_executor(executor, task.join))
-                yield From(self.accumulator.stop(force=True))
+                    await loop.run_in_executor(executor, task.join)
+                await self.accumulator.stop(force=True)
             else:
                 logger.warn('Cannot force kill tasks, because they are threads')
         self.master_queue.put(StopEvent())
         # Wait until all pending sensor updates have been applied
-        yield From(self.join())
+        await self.join()
 
-    @request(Bool(optional=True, default=False))
-    @return_reply()
-    @concurrent_reply
-    @tornado.gen.coroutine
-    def request_shutdown(self, req, force=False):
+    async def request_shutdown(self, ctx, force: bool = False) -> None:
         """Shut down the server.
 
         This is a potentially long-running operation, particularly if `force`
@@ -1608,30 +1582,28 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
             them to finish pending work. This can cause data loss!
         """
         if self._stopping and not force:
-            raise tornado.gen.Return(('fail', 'server is already shutting down'))
-        yield to_tornado_future(trollius.ensure_future(self.shutdown(force, req)))
-        raise tornado.gen.Return(('ok',))
+            raise FailReply('server is already shutting down')
+        await self.shutdown(force, ctx)
 
-    @trollius.coroutine
-    def _run_queue(self):
+    async def _run_queue(self):
         """Process all events sent to the master queue, until stopped by :meth:`shutdown`."""
-        loop = trollius.get_event_loop()
+        loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
             while True:
-                event = yield From(loop.run_in_executor(executor, self.master_queue.get))
+                event = await loop.run_in_executor(executor, self.master_queue.get)
                 if isinstance(event, StopEvent):
                     break
                 elif isinstance(event, BufferReadyEvent):
-                    yield From(self.accumulator.buffer_free(event))
+                    await self.accumulator.buffer_free(event)
                 elif isinstance(event, SensorReadingEvent):
                     try:
-                        sensor = self.get_sensor(event.name)
+                        sensor = self.sensors[event.name]
                     except ValueError:
-                        logger.warn('Received update for unknown sensor %s', event.name)
+                        logger.warning('Received update for unknown sensor %s', event.name)
                     else:
-                        sensor.set(event.reading.timestamp,
-                                   event.reading.status,
-                                   event.reading.value)
+                        sensor.set_value(event.reading.value,
+                                         timestamp=event.reading.timestamp,
+                                         status=event.reading.status)
                 elif isinstance(event, ObservationStateEvent):
                     self._set_capture_block_state(event.capture_block_id, event.state)
                 elif isinstance(event, ObservationEndEvent):
@@ -1641,7 +1613,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
                         del self._capture_block_ends[event.capture_block_id]
                         self._set_capture_block_state(event.capture_block_id, State.DEAD)
                 else:
-                    logger.warn('Unknown event %r', event)
+                    logger.warning('Unknown event %r', event)
 
     def __enter__(self):
         return self

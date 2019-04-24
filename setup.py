@@ -32,9 +32,9 @@ setup(
     install_requires=[
         "numpy>=1.15", "scipy>=0.17", "numba>=0.19.0",
         "dask[array,distributed]>=0.17.0", "distributed>=1.12.0", "bokeh",
-        "enum34", "manhole", "trollius", "futures", "attrs", "sortedcontainers",
-        "katcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[asyncio,argparse]",
-        "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2", "tornado<5",
+        "manhole", "attrs", "sortedcontainers",
+        "aiokatcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse]",
+        "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2",
         "jsonschema"
     ],
     tests_require=["nose"],

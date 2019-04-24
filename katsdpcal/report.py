@@ -28,7 +28,7 @@ TAG_WHITELIST = ['gaincal', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 # --------------------------------------------------------------------------------------------------
 
 
-class rstReport(file):
+class rstReport(object):   # TODO: file
     """
     RST style report
     """

@@ -275,7 +275,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
     parameters['refant_index'] = None
     if rfi_filename is not None:
-        with open(rfi_filename) as rfi_file:
+        with open(rfi_filename, 'rb') as rfi_file:
             parameters['rfi_mask'] = pickle.load(rfi_file)
         if parameters['rfi_mask'].shape != (n_chans,):
             raise ValueError('Incorrect shape in RFI mask ({}, expected {})'
