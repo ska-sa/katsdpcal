@@ -1,6 +1,5 @@
 """Tests for :mod:`katsdpcal.reduction`"""
 
-
 import unittest
 import katsdptelstate
 import concurrent.futures

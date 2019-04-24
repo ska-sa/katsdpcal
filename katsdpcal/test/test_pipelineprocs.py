@@ -1,6 +1,5 @@
 """Tests for :mod:`katsdpcal.pipelineprocs`"""
 
-
 import argparse
 import unittest
 

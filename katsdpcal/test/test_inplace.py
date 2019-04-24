@@ -54,7 +54,7 @@ class TestStoreInplace(object):
         nx_orig = self.nx.copy()
         for key, value in y.dask.items():
             print(key)
-            print(('   ', value))
+            print('   ', value)
         inplace.store_inplace(y * 2, y)
         np.testing.assert_array_equal(na_orig * 2, self.na)
         np.testing.assert_array_equal(nx_orig * 2, self.nx)

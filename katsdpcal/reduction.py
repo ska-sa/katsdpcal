@@ -1,7 +1,7 @@
 import time
 import logging
 import threading
-import pickle as pickle
+import pickle
 import katpoint
 
 import numpy as np
@@ -276,7 +276,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
             if values is None:
                 saved = telstate.get_range(telstate_key, st=time, et=time, include_end=True)
                 if len(saved) != 1:
-                    print((len(telstate.get_range(telstate_key, st=0))))
+                    print(len(telstate.get_range(telstate_key, st=0)))
                     raise ValueError('Expected exactly one solution with timestamp {}, found {}'
                                      .format(time, len(saved)))
                 values = saved[0][0]
@@ -291,7 +291,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     raise ValueError('Key {} not found in time interval [{}, {}]'
                                      .format(telstate_key, times[0], times[-1]))
                 # Split (value, ts) pairs into separate lists
-                values, saved_times = list(zip(*saved))
+                values, saved_times = zip(*saved)
                 if list(saved_times) != list(times):
                     raise ValueError('Timestamps for {} did not match expected values'
                                      .format(telstate_key))

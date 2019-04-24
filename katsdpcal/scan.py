@@ -437,7 +437,7 @@ class Scan(object):
 
         chans = self.channel_freqs[bchan:echan]
         ave_chans = np.add.reduceat(
-                chans, list(range(0, len(chans), chan_ave))) / chan_ave
+                chans, range(0, len(chans), chan_ave)) / chan_ave
 
         av_vis, av_weights = da.compute(av_vis, av_weights)
         kcross_soln = calprocs.k_fit(av_vis, av_weights,

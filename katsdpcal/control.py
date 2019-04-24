@@ -210,7 +210,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             # find the time of the scan at the limit
             last_time = sum_corr['targets'][limit][1]
             # truncate arrays with times beyond the limit
-            for key in list(sum_corr.keys()):
+            for key in sum_corr.keys():
                 if key not in keylist:
                     vals, times = list(zip(*sum_corr[key]))
                     time_limit = next((i for i, t in enumerate(times) if t >= last_time), None)
@@ -364,7 +364,7 @@ class Accumulator(object):
         self.nbl = buffer_shape[3]
 
         # Free space tracking
-        self._free_slots = deque(list(range(buffer_shape[0])))
+        self._free_slots = deque(range(buffer_shape[0]))
         self._slots_cond = trollius.Condition()  # Signalled when new slots are available
         # Set if stop(force=True) is called, to abort waiting for an available slot
         self._force_stopping = False
@@ -1493,7 +1493,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
-        for sensor in list(self.accumulator.sensors.values()):
+        for sensor in self.accumulator.sensors.values():
             self.add_sensor(sensor)
         for child in self.children:
             for sensor in child.get_sensors():

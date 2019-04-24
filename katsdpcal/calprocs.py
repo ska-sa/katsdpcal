@@ -5,7 +5,6 @@ Calibration procedures for MeerKAT calibration pipeline
 Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
-
 import logging
 
 import numpy as np
@@ -357,7 +356,7 @@ def best_refant(data, corrprod_lookup, chans):
     k_arg = np.argmax(np.abs(ft_vis), axis=0)
     # Shift data so that peak of fft is always positioned at the first index of the array
     n_chans, n_pols, n_bls = data.shape
-    index = np.array([np.roll(list(range(n_chans)), -n) for n in k_arg.ravel()])
+    index = np.array([np.roll(range(n_chans), -n) for n in k_arg.ravel()])
     index = index.T.reshape(ft_vis.shape)
     ft_vis = np.take_along_axis(ft_vis, index, axis=0)
 

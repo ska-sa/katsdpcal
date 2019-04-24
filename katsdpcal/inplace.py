@@ -3,8 +3,6 @@
 Refer to :func:`store_inplace` for details.
 """
 
-
-
 import numpy as np
 import dask.array as da
 import dask.base
@@ -249,5 +247,5 @@ def rename(array, salt=''):
         salt will cause them to again share keys.
     """
     keymap = {key: _rename_key(key, salt) for key in array.dask}
-    array.dask = {keymap[key]: _rename(value, keymap) for (key, value) in list(array.dask.items())}
+    array.dask = {keymap[key]: _rename(value, keymap) for (key, value) in array.dask.items()}
     array.name = _rename_key(array.name, salt)

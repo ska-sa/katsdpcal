@@ -14,7 +14,7 @@ def average_timer(n,func,*args,**kwargs):
     for ni in range(n):
         func(*args,**kwargs)
     end_ts = time.time()
-    print(("{0: .4f}".format((end_ts - beg_ts)/n,)))
+    print("{0: .4f}".format((end_ts - beg_ts)/n,))
 
 def parse_opts():
     parser = ArgumentParser(description='Benchmark StEFcal implementation')
@@ -61,6 +61,6 @@ else:
 
 # numter of iterations for the timer
 niter = opts.niter
-print(("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*43)))
+print("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*43))
 
 average_timer(niter, calprocs.g_fit, vis_av, bls_lookup, conv_thresh=0.01)

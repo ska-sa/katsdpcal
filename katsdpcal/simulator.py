@@ -5,8 +5,6 @@ Simulator class for HDF5 files produced by KAT-7 correlator,
 for testing of the MeerKAT pipeline.
 """
 
-
-
 import logging
 import time
 
@@ -173,9 +171,9 @@ class SimData(object):
         parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
         parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
         # separate keys without times from those with times
-        notime_dict = {key: parameter_dict[key] for key in list(parameter_dict.keys())
+        notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                        if not key.endswith('noise_diode')}
-        time_dict = {key: parameter_dict[key] for key in list(parameter_dict.keys())
+        time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                      if key.endswith('noise_diode')}
 
         # add parameters to telescope state
