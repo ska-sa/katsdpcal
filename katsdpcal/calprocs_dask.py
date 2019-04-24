@@ -46,13 +46,13 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
     # case is given a unique label because they do not necessarily match along
     # that dimension.
     rawvis_dims = list(reversed(range(rawvis.ndim)))
-    rawvis_dims[-1] = 'i'
+    rawvis_dims[-1] = -1
     weights_dims = list(reversed(range(weights.ndim)))
-    weights_dims[-1] = 'j'
+    weights_dims[-1] = -2
     init_gain_dims = list(reversed(range(init_gain.ndim)))
-    init_gain_dims[-1] = 'k'
+    init_gain_dims[-1] = -3
     out_dims = list(reversed(range(max(rawvis.ndim, weights.ndim, init_gain.ndim))))
-    out_dims[-1] = 'l'
+    out_dims[-1] = -4
 
     # Determine the output dtype, since the gufunc has two signatures
     if (np.can_cast(rawvis.dtype, np.complex64)
@@ -67,7 +67,7 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
                                 *args, **kwargs)
     return da.atop(stefcal_wrapper, out_dims,
                    rawvis, rawvis_dims, weights, weights_dims, init_gain, init_gain_dims,
-                   concatenate=True, new_axes={'l': num_ants}, dtype=dtype)
+                   concatenate=True, new_axes={-4: num_ants}, dtype=dtype)
 
 
 def where(condition, x, y):
