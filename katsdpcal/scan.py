@@ -560,7 +560,7 @@ class Scan(object):
 
     @logsolutiontime
     def b_norm(self, b_soln, bchan=1, echan=None):
-	"""
+        """
         Calculates an array of complex numbers which normalises
         b_soln in the specified channel range
 
