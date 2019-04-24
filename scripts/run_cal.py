@@ -81,7 +81,7 @@ def log_dict(dictionary, ident='', braces=1):
     braces : int
         number of braces to surround item with
     """
-    for key, value in dictionary.iteritems():
+    for key, value in dictionary.items():
         if isinstance(value, dict):
             logger.info('%s%s%s%s', ident, braces * '[', key, braces * ']')
             log_dict(value, ident+'  ', braces+1)

@@ -179,7 +179,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
     # list of keys which don't append data on a per scan basis
     keylist = ['t_flags']
     if sum_corr:
-        for key in new_corr.keys():
+        for key in list(new_corr.keys()):
             # sum the per scan sum of flags
             if key is 't_flags':
                 sum_corr[key] += new_corr[key]
@@ -189,7 +189,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             # take the weighted average over all the gain calibrated scans
             elif key.endswith('_g_spec'):
                 sum_corr[key] += new_corr[key]
-                wavg = zip(*sum_corr[key])
+                wavg = list(zip(*sum_corr[key]))
                 vis, flags, weights = [da.stack(a) for a in wavg]
                 vis, flags, weights = calprocs_dask.wavg_full(vis, flags, weights, threshold=1)
                 sum_corr[key] = [(vis, flags, weights)]
@@ -210,9 +210,9 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             # find the time of the scan at the limit
             last_time = sum_corr['targets'][limit][1]
             # truncate arrays with times beyond the limit
-            for key in sum_corr.keys():
+            for key in list(sum_corr.keys()):
                 if key not in keylist:
-                    vals, times = zip(*sum_corr[key])
+                    vals, times = list(zip(*sum_corr[key]))
                     time_limit = next((i for i, t in enumerate(times) if t >= last_time), None)
                     if time_limit is not None:
                         del sum_corr[key][time_limit:]
@@ -364,7 +364,7 @@ class Accumulator(object):
         self.nbl = buffer_shape[3]
 
         # Free space tracking
-        self._free_slots = deque(range(buffer_shape[0]))
+        self._free_slots = deque(list(range(buffer_shape[0])))
         self._slots_cond = trollius.Condition()  # Signalled when new slots are available
         # Set if stop(force=True) is called, to abort waiting for an available slot
         self._force_stopping = False
@@ -1493,7 +1493,7 @@ class CalDeviceServer(katcp.server.AsyncDeviceServer):
         super(CalDeviceServer, self).__init__(*args, **kwargs)
 
     def setup_sensors(self):
-        for sensor in self.accumulator.sensors.values():
+        for sensor in list(self.accumulator.sensors.values()):
             self.add_sensor(sensor)
         for child in self.children:
             for sensor in child.get_sensors():

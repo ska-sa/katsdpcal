@@ -222,16 +222,16 @@ class TestStefcal(unittest.TestCase):
                 self.assertEqual(kwargs['dtype'], gains.dtype)
             elapsed += t1-t0
 
-        print 'average time:', elapsed/ntimes
+        print('average time:', elapsed/ntimes)
 
     def test_stefcal_timing(self):
         """Time comparisons of the stefcal algorithms. Simulates data and solves for gains."""
-        print '\nStefcal comparison:'
+        print('\nStefcal comparison:')
         self._test_stefcal_timing()
 
     def test_stefcal_timing_single_precision(self):
         """Time comparisons of the stefcal algorithms. Simulates data and solves for gains."""
-        print '\nStefcal comparison (single precision):'
+        print('\nStefcal comparison (single precision):')
         self._test_stefcal_timing(dtype=np.complex64)
 
     def test_stefcal_timing_noise(self):
@@ -239,7 +239,7 @@ class TestStefcal(unittest.TestCase):
 
         Simulates data with noise and solves for gains.
         """
-        print '\nStefcal comparison with noise:'
+        print('\nStefcal comparison with noise:')
         self._test_stefcal_timing(noise=1e-3)
 
 

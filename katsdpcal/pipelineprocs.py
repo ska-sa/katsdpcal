@@ -3,7 +3,7 @@ Pipeline procedures for MeerKAT calibration pipeline
 ====================================================
 """
 
-from __future__ import print_function, division, absolute_import
+
 import glob    # for model files
 import pickle
 import logging
@@ -160,7 +160,7 @@ def parameters_from_file(filename):
             param_dict[parameter.name] = parameter.type(raw_params[parameter.name])
             del raw_params[parameter.name]
     if raw_params:
-        raise ValueError('Unknown parameters ' + ', '.join(raw_params.keys()))
+        raise ValueError('Unknown parameters ' + ', '.join(list(raw_params.keys())))
     return param_dict
 
 

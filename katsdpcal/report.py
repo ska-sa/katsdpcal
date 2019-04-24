@@ -403,7 +403,7 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
 
     report.writeln('Percentage of baselines flagged per scan')
     # Average % of baselines flagged per scan
-    bl_flags, bl_times = zip(*av_corr['bl_flags'])
+    bl_flags, bl_times = list(zip(*av_corr['bl_flags']))
     bl_flags = 100 * np.stack(bl_flags)
     target_names = [katpoint.Target(_[0]).name for _ in av_corr['targets']]
     plot = plotting.flags_t_v_chan(bl_flags, idx_chan, target_names, freq_range, pol=pol)
@@ -436,7 +436,7 @@ def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[
         report.write_heading_3(
             'Cross Hand Auto-correlations, all antennas')
         # Get cross hand auto-correlation data
-        av_data, av_times = zip(*av_corr['auto_cross'])
+        av_data, av_times = list(zip(*av_corr['auto_cross']))
         av_data = np.stack(av_data)
 
         # Get channel index in correlator channels
@@ -499,7 +499,7 @@ def write_ng_freq(report, report_path, targets, av_corr,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Retrieve visibilities on baselines to the reference antenna
-        ant_data, av_times = zip(*av_corr['{}_nog_spec'.format(target_name)])
+        ant_data, av_times = list(zip(*av_corr['{}_nog_spec'.format(target_name)]))
         ant_data = np.stack(ant_data)
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, ant_data.shape))
 
@@ -622,7 +622,7 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
     """
     # Get all scans of calibrators which have gains applied by the pipeline.
     if 'g_phase' in av_corr:
-        av_data, av_times = zip(*av_corr['g_phase'])
+        av_data, av_times = list(zip(*av_corr['g_phase']))
         av_data = np.stack(av_data, axis=0)
 
         report.write_heading_2(
@@ -706,7 +706,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Get averaged data on all baselines
-        av_data, av_times = zip(*av_corr['{}_g_bls'.format(target_name)])
+        av_data, av_times = list(zip(*av_corr['{}_g_bls'.format(target_name)]))
         av_data = np.stack(av_data)
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
@@ -867,7 +867,7 @@ def get_cal(ts, cal, ts_name, st, et):
         product = ts.get_range(ts_name, st=0)
         if len(product) > 0:
             logger.info('Calibration product: {0}'.format(cal))
-            vals, times = zip(*product)
+            vals, times = list(zip(*product))
             vals = np.array(vals)
             logger.info('  shape: {0}'.format(vals.shape))
     return vals, times
@@ -1290,7 +1290,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
             antennas = parameters['antennas']
             if av_corr:
-                targets, times = zip(*av_corr['targets'])
+                targets, times = list(zip(*av_corr['targets']))
                 unique_targets = list(set(targets))
             else:
                 unique_targets = []

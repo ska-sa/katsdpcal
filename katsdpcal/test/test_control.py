@@ -1,6 +1,6 @@
 """Tests for control module"""
 
-from __future__ import print_function, division, absolute_import
+
 import unittest
 from multiprocessing import Process
 import multiprocessing
@@ -448,7 +448,7 @@ class TestCalDeviceServer(unittest.TestCase):
         """
         yield self.make_request('capture-init', 'cb')
         yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.make_request('shutdown')
@@ -461,7 +461,7 @@ class TestCalDeviceServer(unittest.TestCase):
     @tornado.gen.coroutine
     def test_init_when_capturing(self):
         """capture-init fails when already capturing"""
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-init', 'cb')
         yield self.assert_request_fails(r'capture already in progress', 'capture-init', 'cb')
@@ -472,7 +472,7 @@ class TestCalDeviceServer(unittest.TestCase):
         """capture-done fails when not capturing"""
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
         yield self.make_request('capture-init', 'cb')
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.make_request('capture-done')
         yield self.assert_request_fails(r'no capture in progress', 'capture-done')
@@ -620,7 +620,7 @@ class TestCalDeviceServer(unittest.TestCase):
         yield tornado.gen.sleep(1)
         yield self.assert_sensor_value('accumulator-capture-active', 1)
         yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.shutdown_servers(180)
         yield self.assert_sensor_value('accumulator-capture-active', 0)
@@ -783,7 +783,7 @@ class TestCalDeviceServer(unittest.TestCase):
             self.l0_streams[endpoint].send_heap(heap)
         yield self.make_request('capture-init', 'cb')
         yield tornado.gen.sleep(1)
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.shutdown_servers(180)
         yield self.assert_sensor_value('accumulator-capture-active', 0)
@@ -876,7 +876,7 @@ class TestCalDeviceServer(unittest.TestCase):
             print('waiting {} ({}/{} received)'.format(i, total_heaps, n_times * self.n_substreams))
         else:
             raise RuntimeError('Timed out waiting for the heaps to be received')
-        for stream in self.l0_streams.values():
+        for stream in list(self.l0_streams.values()):
             stream.send_heap(self.ig.get_end())
         yield self.shutdown_servers(60)
 
@@ -896,7 +896,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # Drop some heaps and delay others
         early_heaps = []
         late_heaps = []
-        for heap, (t, s) in zip(heaps, itertools.product(range(n_times), range(self.n_substreams))):
+        for heap, (t, s) in zip(heaps, itertools.product(list(range(n_times)), list(range(self.n_substreams)))):
             if t == 2 or (t == 4 and s == 2) or (t == 6 and s < self.n_substreams // 2):
                 continue    # drop these completely
             elif s == 3:
@@ -999,7 +999,7 @@ class TestCalDeviceServer(unittest.TestCase):
             yield self.make_request('capture-init', 'cb')
             yield tornado.gen.sleep(1)
             yield self.assert_sensor_value('capture-block-state', '{"cb": "CAPTURING"}')
-            for stream in self.l0_streams.values():
+            for stream in list(self.l0_streams.values()):
                 stream.send_heap(self.ig.get_end())
             yield self.shutdown_servers(60)
             yield self.assert_sensor_value('pipeline-exceptions', 1)

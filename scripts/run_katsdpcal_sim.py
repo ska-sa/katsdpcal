@@ -61,15 +61,15 @@ def create_pane(sname,tmserver,keep_session=False):
     if not keep_session:
         try:
             tmserver.kill_session(sname)
-            print 'killed session {},'.format(sname,),
+            print('killed session {},'.format(sname,), end=' ')
         except libtmux.exc.LibTmuxException:
-            print 'session {} did not exist,'.format(sname,),
+            print('session {} did not exist,'.format(sname,), end=' ')
     # start new session
     try:
         tmserver.new_session(sname)
-        print 'created session {}'.format(sname,)
+        print('created session {}'.format(sname,))
     except libtmux.exc.TmuxSessionExists:
-        print 'session {} already exists'.format(sname,)		
+        print('session {} already exists'.format(sname,))		
     # get pane
     session = tmserver.find_where({"session_name":sname})
     return session.windows[0].panes[0]

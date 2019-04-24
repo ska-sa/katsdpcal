@@ -5,7 +5,7 @@ Calibration procedures for MeerKAT calibration pipeline
 Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
-from __future__ import print_function
+
 import logging
 
 import numpy as np
@@ -357,7 +357,7 @@ def best_refant(data, corrprod_lookup, chans):
     k_arg = np.argmax(np.abs(ft_vis), axis=0)
     # Shift data so that peak of fft is always positioned at the first index of the array
     n_chans, n_pols, n_bls = data.shape
-    index = np.array([np.roll(range(n_chans), -n) for n in k_arg.ravel()])
+    index = np.array([np.roll(list(range(n_chans)), -n) for n in k_arg.ravel()])
     index = index.T.reshape(ft_vis.shape)
     ft_vis = np.take_along_axis(ft_vis, index, axis=0)
 
@@ -865,12 +865,12 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
     final dimension of `shape` corresponds to the number of antennas.
     """
     # create antenna lists
-    if isinstance(shape, (int, long)):
+    if isinstance(shape, int):
         shape = (shape,)
     shape = tuple(shape)
     nants = shape[-1]
 
-    antlist = range(nants)
+    antlist = list(range(nants))
     list1 = np.array([])
     for a, i in enumerate(range(nants - 1, 0, -1)):
         list1 = np.hstack([list1, np.ones(i) * a])
@@ -942,7 +942,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     """
     # ensure chanav is an integer
     chanav = np.int(chanav)
-    inc_array = range(0, data.shape[-3], chanav)
+    inc_array = list(range(0, data.shape[-3], chanav))
 
     flagged_weights = np.where(flags, weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights

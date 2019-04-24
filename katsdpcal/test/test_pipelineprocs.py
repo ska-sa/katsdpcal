@@ -1,6 +1,6 @@
 """Tests for :mod:`katsdpcal.pipelineprocs`"""
 
-from __future__ import print_function, division, absolute_import
+
 import argparse
 import unittest
 

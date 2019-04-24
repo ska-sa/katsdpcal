@@ -1,6 +1,6 @@
 """Tests for :mod:`katsdpcal.reduction`"""
 
-from __future__ import print_function, division, absolute_import
+
 import unittest
 import katsdptelstate
 import concurrent.futures

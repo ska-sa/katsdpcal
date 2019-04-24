@@ -45,13 +45,13 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
     # where the number of dimensions don't match. The final dimension in each
     # case is given a unique label because they do not necessarily match along
     # that dimension.
-    rawvis_dims = list(reversed(range(rawvis.ndim)))
+    rawvis_dims = list(reversed(list(range(rawvis.ndim))))
     rawvis_dims[-1] = 'i'
-    weights_dims = list(reversed(range(weights.ndim)))
+    weights_dims = list(reversed(list(range(weights.ndim))))
     weights_dims[-1] = 'j'
-    init_gain_dims = list(reversed(range(init_gain.ndim)))
+    init_gain_dims = list(reversed(list(range(init_gain.ndim))))
     init_gain_dims[-1] = 'k'
-    out_dims = list(reversed(range(max(rawvis.ndim, weights.ndim, init_gain.ndim))))
+    out_dims = list(reversed(list(range(max(rawvis.ndim, weights.ndim, init_gain.ndim)))))
     out_dims[-1] = 'l'
 
     # Determine the output dtype, since the gufunc has two signatures
@@ -175,7 +175,7 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     """
     # ensure solint is an intager
     solint = np.int(solint)
-    inc_array = range(0, data.shape[0], solint)
+    inc_array = list(range(0, data.shape[0], solint))
 
     av_data = []
     av_flags = []
@@ -236,7 +236,7 @@ def _align_chunks(chunks, alignment):
     """
 
     out = list(chunks)
-    for axis, align in alignment.items():
+    for axis, align in list(alignment.items()):
         sizes = []
         in_pos = 0       # Sum of all processed incoming sizes
         out_pos = 0      # Sum of generated sizes
