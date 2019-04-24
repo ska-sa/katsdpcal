@@ -120,7 +120,7 @@ class TestFinaliseParameters(unittest.TestCase):
         # shift will be detected.
         rs = np.random.RandomState(seed=1)
         channel_mask = rs.rand(4096) < 0.5
-        with mock.patch('__builtin__.open'):   # To suppress trying to open a real file
+        with mock.patch('builtins.open'):   # To suppress trying to open a real file
             with mock.patch('pickle.load', return_value=channel_mask.copy()):
                 parameters = pipelineprocs.finalise_parameters(
                     self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
@@ -136,7 +136,7 @@ class TestFinaliseParameters(unittest.TestCase):
 
     def test_bad_rfi_mask(self):
         mask = np.zeros(4097, np.bool_) < 0.5  # Wrong number of channels
-        with mock.patch('__builtin__.open'):   # To suppress trying to open a real file
+        with mock.patch('builtins.open'):   # To suppress trying to open a real file
             with mock.patch('pickle.load', return_value=mask.copy()):
                 with self.assertRaises(ValueError):
                     pipelineprocs.finalise_parameters(
