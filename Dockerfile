@@ -1,5 +1,4 @@
 FROM sdp-docker-registry.kat.ac.za:5000/docker-base-build as build
-MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 # Enable Python 2 venv
 ENV PATH="$PATH_PYTHON2" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON2"
@@ -20,7 +19,6 @@ WORKDIR /tmp
 #######################################################################
 
 FROM sdp-docker-registry.kat.ac.za:5000/docker-base-runtime
-MAINTAINER Tom Mauch "tmauch@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve /home/kat/ve
 ENV PATH="$PATH_PYTHON2" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON2"
