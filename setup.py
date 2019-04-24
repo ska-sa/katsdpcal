@@ -37,6 +37,6 @@ setup(
         "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2", "tornado<5",
         "jsonschema"
     ],
-    tests_require=["mock", "nose"],
+    tests_require=["nose"],
     use_katversion=True
 )

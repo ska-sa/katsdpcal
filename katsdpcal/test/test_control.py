@@ -9,13 +9,13 @@ import shutil
 import functools
 import os
 import itertools
+from unittest import mock
 
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
     assert_regexp_matches, assert_almost_equal, assert_not_equal,
     nottest)
-import mock
 
 import tornado.gen
 from tornado.platform.asyncio import AsyncIOMainLoop

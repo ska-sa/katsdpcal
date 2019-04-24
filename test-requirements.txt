@@ -1,5 +1,4 @@
 coverage
 funcsigs
-mock
 nose
 pbr

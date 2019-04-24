@@ -2,12 +2,12 @@
 
 import argparse
 import unittest
+from unittest import mock
 
 import numpy as np
 
 import katsdptelstate
 import katpoint
-import mock
 
 from .. import pipelineprocs
 
