@@ -170,7 +170,7 @@ class ServerData(object):
                 continuum_factor=4)
         ]
         self.server = control.create_server(
-            False, 'localhost', 0, buffers,
+            False, '127.0.0.1', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
             flags_streams, 1.0,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
