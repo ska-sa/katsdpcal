@@ -11,7 +11,7 @@ import dask.optimization
 import dask.array.optimization
 
 
-class _ArrayDependency(object):
+class _ArrayDependency:
     """An array that a task depends on. To make this object hashable, two
     arrays to be equal if they refer to the same data with the same type,
     shape etc, even if they are different views.

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------------------------------
 
 
-class Converter(object):
+class Converter:
     """Converts parameters between representations.
 
     A parameter starts with a requested value, which is directly given by the
@@ -73,7 +73,7 @@ class AttrConverter(Converter):
 
 
 @attr.s
-class Parameter(object):
+class Parameter:
     name = attr.ib()
     help = attr.ib()
     type = attr.ib()

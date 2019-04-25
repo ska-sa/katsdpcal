@@ -4,7 +4,7 @@ from sortedcontainers import SortedListWithKey
 import numpy as np
 
 
-class CalSolution(object):
+class CalSolution:
     """Calibration solution.
 
     This represents a solution for a single point in time.
@@ -21,7 +21,7 @@ class CalSolution(object):
         return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 
-class CalSolutions(object):
+class CalSolutions:
     """Calibration solutions.
 
     This stores multiple solutions (in time) in a single array.
@@ -38,7 +38,7 @@ class CalSolutions(object):
         return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 
-class CalSolutionStore(object):
+class CalSolutionStore:
     """Calibration solutions indexable by time.
 
     This stores multiple solutions (in time), but unlike
@@ -78,7 +78,7 @@ class CalSolutionStore(object):
         return CalSolutions(self.soltype, values, times)
 
 
-class CalSolutionStoreLatest(object):
+class CalSolutionStoreLatest:
     """Tracks the latest value of a calibration solution.
 
     It provides the same interface as :class:`CalSolutionStore`, but does not

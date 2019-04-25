@@ -78,7 +78,7 @@ class PingTask(control.Task):
         self.master_queue.put(control.StopEvent())
 
 
-class BaseTestTask(object):
+class BaseTestTask:
     """Tests for :class:`katsdpcal.control.Task`.
 
     This is a base class, which is subclassed for each process class.
@@ -134,7 +134,7 @@ class TestTaskDummy(BaseTestTask):
     module = multiprocessing.dummy
 
 
-class ServerData(object):
+class ServerData:
     """Test data associated with a single simulated cal server"""
 
     def make_parameters(self, telstate_l0):

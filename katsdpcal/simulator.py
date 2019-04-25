@@ -65,7 +65,7 @@ def get_antdesc_relative(names, diameters, positions):
     return antdesc
 
 
-class SimData(object):
+class SimData:
     """Base class for simulated data.
 
     Subclasses wrap an existing data set to provide a common interface.

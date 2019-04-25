@@ -54,7 +54,7 @@ class EnumEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-class ObservationEndEvent(object):
+class ObservationEndEvent:
     """An observation has finished upstream"""
     def __init__(self, capture_block_id, start_time, end_time):
         self.capture_block_id = capture_block_id
@@ -62,7 +62,7 @@ class ObservationEndEvent(object):
         self.end_time = end_time
 
 
-class ObservationStateEvent(object):
+class ObservationStateEvent:
     """An observation has changed state.
 
     This is sent from each component to the master queue to update the
@@ -73,18 +73,18 @@ class ObservationStateEvent(object):
         self.state = state
 
 
-class StopEvent(object):
+class StopEvent:
     """Graceful shutdown requested"""
 
 
-class BufferReadyEvent(object):
+class BufferReadyEvent:
     """Transfers ownership of buffer slots."""
     def __init__(self, capture_block_id, slots):
         self.capture_block_id = capture_block_id
         self.slots = slots
 
 
-class SensorReadingEvent(object):
+class SensorReadingEvent:
     """An update to a sensor sent to the master"""
 
     def __init__(self, name, reading):
@@ -92,7 +92,7 @@ class SensorReadingEvent(object):
         self.reading = reading
 
 
-class QueueObserver(object):
+class QueueObserver:
     """aiokatcp Sensor observer that forwards updates to a queue"""
 
     def __init__(self, queue):
@@ -245,7 +245,7 @@ def make_telstate_cb(telstate, capture_block_id):
     return telstate.view(capture_block_id).view(prefix)
 
 
-class Task(object):
+class Task:
     """Base class for tasks (threads or processes).
 
     It manages katcp sensors that are sent back to the master process over a
@@ -324,7 +324,7 @@ def _run_task(task):
     task._run()
 
 
-class Accumulator(object):
+class Accumulator:
     """Manages accumulation of L0 data into buffers"""
 
     def __init__(self, buffers, accum_pipeline_queue, master_queue,
@@ -1108,7 +1108,7 @@ class Pipeline(Task):
 
 
 @attr.s
-class FlagsStream(object):
+class FlagsStream:
     """Configuration information about a single L1 flag stream.
 
     Parameters
@@ -1137,7 +1137,7 @@ class FlagsStream(object):
     continuum_factor = attr.ib(default=1)
 
 
-class Transmitter(object):
+class Transmitter:
     """State for a single flags stream held by :class:`Sender`"""
     def __init__(self, l0_name, l0_attr, flags_stream, clock_ratio, telstate_cal, parameters):
         self.flags_stream = flags_stream

@@ -7,7 +7,7 @@ import dask.array as da
 from katsdpcal import inplace
 
 
-class TestStoreInplace(object):
+class TestStoreInplace:
     def setup(self):
         # Variables with n prefix are numpy arrays
         self.na = np.arange(36).reshape(6, 6)
@@ -79,7 +79,7 @@ class TestStoreInplace(object):
             inplace.store_inplace(self.na, self.a)
 
 
-class TestRename(object):
+class TestRename:
     def test(self):
         a = np.array([1, 2, 3, 4, 5, 6], np.int32)
         b = np.array([10, 9, 8, 7, 6, 5], np.int32)
