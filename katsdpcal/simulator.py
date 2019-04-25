@@ -342,7 +342,7 @@ class SimDataMS(SimData):
     """
 
     def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
-        super(SimDataMS, self).__init__(filename, server, bchan, echan)
+        super().__init__(filename, server, bchan, echan)
         readonly = mode != 'r+'
         try:
             self.file = table(filename, readonly=readonly)
@@ -659,7 +659,7 @@ class SimDataMS(SimData):
 
     async def close(self):
         self.file.close()
-        await super(SimDataMS, self).close()
+        await super().close()
 
 
 # -------------------------------------------------------------------------------------------------
@@ -670,7 +670,7 @@ class SimDataMS(SimData):
 
 class SimDataKatdal(SimData):
     def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
-        super(SimDataKatdal, self).__init__(filename, server, bchan, echan)
+        super().__init__(filename, server, bchan, echan)
         try:
             self.file = katdal.open(filename, mode=mode)
         except IOError as error:

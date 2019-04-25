@@ -971,7 +971,7 @@ class Pipeline(Task):
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
                  l0_name, telstate_cal, parameters,
                  diagnostics=None, profile_file=None, num_workers=None):
-        super(Pipeline, self).__init__(task_class, master_queue, 'Pipeline', profile_file)
+        super().__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
         self.pipeline_sender_queue = pipeline_sender_queue
@@ -1236,7 +1236,7 @@ class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
                  l0_name, flags_streams, clock_ratio, telstate_cal, parameters):
-        super(Sender, self).__init__(task_class, master_queue, 'Sender')
+        super().__init__(task_class, master_queue, 'Sender')
         self.telstate_l0 = telstate_cal.root().view(l0_name)
         l0_attr = {key: self.telstate_l0[key]
                    for key in ['n_bls', 'bls_ordering', 'int_time', 'sync_time', 'excise',
@@ -1331,7 +1331,7 @@ class ReportWriter(Task):
     def __init__(self, task_class, pipeline_report_queue, master_queue,
                  l0_name, telstate_cal, parameters,
                  report_path, log_path, full_log, max_scans):
-        super(ReportWriter, self).__init__(task_class, master_queue, 'ReportWriter')
+        super().__init__(task_class, master_queue, 'ReportWriter')
         if not report_path:
             report_path = '.'
         report_path = os.path.abspath(report_path)
@@ -1480,7 +1480,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
             str, 'capture-block-state',
             'JSON dict with the state of each capture block')
         self._capture_block_state_sensor.set_value('{}')
-        super(CalDeviceServer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         for sensor in self.accumulator.sensors.values():
             self.sensors.add(sensor)
@@ -1500,7 +1500,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
 
     async def start(self):
         self._run_queue_task = asyncio.ensure_future(self._run_queue())
-        await super(CalDeviceServer, self).start()
+        await super().start()
 
     async def join(self):
         await self._run_queue_task

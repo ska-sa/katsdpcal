@@ -58,7 +58,7 @@ class PingTask(control.Task):
     """
 
     def __init__(self, task_class, master_queue, slave_queue):
-        super(PingTask, self).__init__(task_class, master_queue, 'PingTask')
+        super().__init__(task_class, master_queue, 'PingTask')
         self.slave_queue = slave_queue
 
     def get_sensors(self):

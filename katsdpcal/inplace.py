@@ -48,7 +48,7 @@ class UnsafeInplaceError(Exception):
     def __init__(self, source_key, target_key):
         self.source_key = source_key
         self.target_key = target_key
-        super(UnsafeInplaceError, self).__init__(
+        super().__init__(
             'Data hazard between source key {} and target key {}'.format(source_key, target_key))
 
 
