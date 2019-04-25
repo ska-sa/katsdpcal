@@ -1,71 +1,53 @@
-appdirs
-argcomplete==1.0.0      # for tmuxp
+appdirs                 # for katsdpsigproc
+aiokatcp
+async_timeout
 attrs
-backports-abc           # for tornado
-backports.ssl-match-hostname  # for tornado
 bokeh
-certifi                 # for tornado
+certifi                 # for requests
 chardet                 # for requests
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
-colorama==0.4.0         # for libtmux
 cycler                  # for matplotlib
 dask
-decorator
+decorator               # for katsdpsigproc, aiokatcp
 defusedxml              # for katdal
 distributed==1.23.3
 docutils
-enum34                  # for numba
-fakeredis               # for katsdptelstate
 funcsigs                # for numba
-functools32             # for matplotlib, jsonschema
-future                  # for katcp
-futures                 # for trollius, distributed
-h5py
+future                  # for katdal, katpoint
+h5py                    # for katdal
 heapdict==1.0.0         # for distributed
 idna                    # for requests
-ipaddress               # for katsdptelstate
 jinja2                  # for bokeh
 jsonschema
-katcp
-kaptan==0.5.8           # for tmuxp
 katversion
-libtmux==0.6.0
 llvmlite                # for numba
-mako
-manhole
-markupsafe
+mako                    # for katsdpsigproc
+markupsafe              # for mako
 matplotlib
 msgpack                 # for distributed, katsdptelstate
-netifaces
+netifaces               # for katsdptelstate
 numba
 numpy
 packaging               # for bokeh
-pandas
+pandas                  # for katsdpsigproc
 pillow                  # for bokeh
-ply                     # for katcp
 psutil==5.4.3           # for distributed
-pyephem
-pygelf
-pyparsing
-python-casacore
-python-dateutil
+pyephem                 # for katpoint
+pygelf                  # for katsdpservices
+python-dateutil         # for pandas, matplotlib, bokeh
 python-lzf              # for katdal
-pytz
-PyYAML
+pytz                    # for pandas, matplotlib
+pyyaml                  # for distributed, bokeh
 rdbtools                # for katdal
-redis
+redis                   # for katsdptelstate
 requests                # for katdal
 scipy
-singledispatch          # for tornado, distributed
-six
 sortedcontainers==1.5.9
 spead2
-subprocess32            # for matplotlib
 tblib==1.3.2            # for distributed
 toolz                   # for dask
-tornado                 # for katcp
-trollius
+tornado                 # for distributed, bokeh
 urllib3                 # for requests
 zict==0.1.3             # for distributed
 

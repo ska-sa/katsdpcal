@@ -29,14 +29,15 @@ setup(
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
     setup_requires=["katversion"],
+    python_requires=">=3.5",
     install_requires=[
         "numpy>=1.15", "scipy>=0.17", "numba>=0.19.0",
         "dask[array,distributed]>=0.17.0", "distributed>=1.12.0", "bokeh",
-        "manhole", "attrs", "sortedcontainers",
+        "attrs", "sortedcontainers",
         "aiokatcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse]",
         "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2",
         "jsonschema"
     ],
-    tests_require=["nose"],
+    tests_require=["nose", "async_timeout", "asynctest"],
     use_katversion=True
 )
