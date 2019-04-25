@@ -34,10 +34,11 @@ setup(
         "numpy>=1.15", "scipy>=0.17", "numba>=0.19.0",
         "dask[array,distributed]>=0.17.0", "distributed>=1.12.0", "bokeh",
         "attrs", "sortedcontainers",
-        "aiokatcp", "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse]",
+        "aiokatcp", "async_timeout",
+        "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse]",
         "katsdpsigproc", "spead2>=1.8.0", "docutils", "matplotlib>=2",
         "jsonschema"
     ],
-    tests_require=["nose", "async_timeout", "asynctest"],
+    tests_require=["nose", "asynctest"],
     use_katversion=True
 )

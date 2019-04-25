@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ----------------------------------------------------------
 # Create sumulated data files from existing KAT-7 h5 files
 

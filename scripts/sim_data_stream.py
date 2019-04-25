@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ----------------------------------------------------------
 # Simulate the data stream from a file
 
 import logging
-import contextlib
+import asyncio
 
 from katsdpcal.simulator import SimData
 from katsdptelstate import endpoint
@@ -27,7 +27,7 @@ def parse_opts():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+async def main():
     setup_logging()
     opts = parse_opts()
 
@@ -35,11 +35,17 @@ if __name__ == '__main__':
     telstate = opts.telstate
 
     simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan)
-    with contextlib.closing(simdata):
+    async with simdata:
         logger.info("Issuing capture-init")
-        simdata.capture_init()
+        await simdata.capture_init()
         logger.info("TX: start.")
         simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans)
         logger.info("TX: ended.")
         logger.info("Issuing capture-done")
-        simdata.capture_done()
+        await simdata.capture_done()
+
+
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()

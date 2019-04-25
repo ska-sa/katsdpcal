@@ -7,6 +7,7 @@ for testing of the MeerKAT pipeline.
 
 import logging
 import time
+import asyncio
 
 from casacore.tables import table
 import spead2
@@ -16,7 +17,8 @@ from .calprocs import get_reordering_nopol
 import katdal
 from katdal.h5datav3 import FLAG_NAMES
 import katpoint
-import katcp
+import aiokatcp
+import async_timeout
 
 import numpy as np
 from random import random
@@ -83,8 +85,7 @@ class SimData(object):
     """
     def __init__(self, filename, server=None, bchan=0, echan=None):
         if server is not None:
-            self.client = katcp.BlockingClient(server.host, server.port)
-            self.client.start()
+            self.client = aiokatcp.Client(server.host, server.port)
         else:
             self.client = None
         self.filename = filename
@@ -103,28 +104,33 @@ class SimData(object):
         raise WrongFileType('File does not exist, or is not of compatible format! '
                             '(Must be katdal or MS.)')
 
-    def capture_init(self):
+    async def capture_init(self):
         if self.client is not None:
-            self.client.wait_protocol()
+            await self.client.wait_connected()
             cbid = '{}'.format(int(time.time()))
-            reply, informs = self.client.blocking_request(
-                katcp.Message.request('capture-init', cbid))
-            if not reply.reply_ok():
-                raise RuntimeError('capture-init failed: {}'.format(reply.arguments[1]))
+            await self.client.request('capture-init', cbid)
             self.cbid = cbid
 
-    def capture_done(self):
+    async def capture_done(self):
         if self.client is not None:
-            self.client.wait_protocol(10)
-            reply, informs = self.client.blocking_request(katcp.Message.request('capture-done'))
-            if not reply.reply_ok():
-                raise RuntimeError('capture-done failed: {}'.format(reply.arguments[1]))
+            try:
+                with async_timeout.timeout(10):
+                    await self.client.wait_connected()
+                    await self.client.request('capture-done')
+            except asyncio.TimeoutError:
+                pass
 
-    def close(self):
+    async def close(self):
         if self.client is not None:
-            self.client.stop()
-            self.client.join()
+            self.client.close()
+            await self.client.wait_closed()
             self.client = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.close()
 
     def setup_telstate(self, telstate):
         """
@@ -651,9 +657,9 @@ class SimDataMS(SimData):
             if ti == ti_max-1:
                 break
 
-    def close(self):
+    async def close(self):
         self.file.close()
-        super(SimDataMS, self).close()
+        await super(SimDataMS, self).close()
 
 
 # -------------------------------------------------------------------------------------------------

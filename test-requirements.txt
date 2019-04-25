@@ -1,4 +1,3 @@
 asynctest
-async_timeout
 coverage
 nose

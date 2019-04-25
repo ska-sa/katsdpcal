@@ -1,15 +1,13 @@
-#! /usr/bin/env python
+#!/usr/bin/env python3
 import time
 import os
 import signal
 import logging
-import manhole
 import numpy as np
 import json
+import asyncio
+import argparse
 
-import trollius
-from trollius import From
-from tornado.platform.asyncio import AsyncIOMainLoop, to_asyncio_future
 import jsonschema
 
 from katsdptelstate import endpoint
@@ -155,7 +153,8 @@ def parse_opts():
         metavar='INTERFACE')
     parser.add_argument(
         '--flags-rate-ratio', type=float, default=8.0,
-        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default: %(default)s]', metavar='RATIO')
+        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default: %(default)s]',
+        metavar='RATIO')
     parser.add_argument(
         '--flags-streams', type=json.loads, default=[],
         help='JSON document describing flags streams to send. [default: none]', metavar='JSON')
@@ -241,8 +240,7 @@ def setup_logger(log_name, log_path='.'):
     logging.getLogger('').addHandler(handler)
 
 
-@trollius.coroutine
-def run(opts, log_path, full_log):
+async def run(opts, log_path, full_log):
     """
     Run the device server.
 
@@ -253,9 +251,6 @@ def run(opts, log_path, full_log):
     log_path : str
         Path for pipeline logs
     """
-    ioloop = AsyncIOMainLoop()
-    ioloop.install()
-
     # deal with required input parameters
     telstate_l0 = opts.telstate.view(opts.l0_name)
     telstate_cal = opts.telstate.view(opts.cal_name)
@@ -340,9 +335,7 @@ def run(opts, log_path, full_log):
         logger.info('Sending L1 flags to %s via %s',
                     endpoint.endpoints_to_str(opts.flags_spead),
                     'default interface' if opts.flags_interface is None else opts.flags_interface)
-        flags_interface_address = katsdpservices.get_interface_address(opts.flags_interface)
     else:
-        flags_interface_address = None
         logger.info('L1 flags not being sent')
 
     # Suppress SIGINT, so that the children inherit SIG_IGN. This ensures that
@@ -358,16 +351,19 @@ def run(opts, log_path, full_log):
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
                            opts.max_scans)
     with server:
-        ioloop.add_callback(server.start)
+        await server.start()
 
-        # allow remote debug connections and expose telescope state and tasks
-        manhole.install(oneshot_on='USR1', locals={
-            'ts': opts.telstate,
-            'server': server
-        })
+        # TODO: set up aiomonitor
 
         # Now install the signal handlers (which won't be inherited).
-        loop = trollius.get_event_loop()
+        loop = asyncio.get_event_loop()
+
+        async def shutdown(server, force):
+            await server.shutdown(force=force)
+            # If we were shut down by a katcp request, give a bit of time for the reply
+            # to be sent, just to avoid getting warnings.
+            await asyncio.sleep(0.01)
+            await server.stop()
 
         def signal_handler(signum, force):
             loop.remove_signal_handler(signum)
@@ -375,22 +371,18 @@ def run(opts, log_path, full_log):
             # be to try a hard kill, before going back to the default handler.
             if not force:
                 loop.add_signal_handler(signum, signal_handler, signum, True)
-            trollius.ensure_future(server.shutdown(force=force))
+            asyncio.ensure_future(shutdown(server, force))
+
         loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM, True)
         loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT, False)
         logger.info('katsdpcal started')
 
         # Run until shutdown
-        yield From(server.join())
-        # If we were shut down by a katcp request, give a bit of time for the reply
-        # to be sent, just to avoid getting warnings.
-        yield From(trollius.sleep(0.01))
-        yield From(to_asyncio_future(server.stop()))
+        await server.join()
         logger.info('Server stopped')
 
 
-@trollius.coroutine
-def main():
+async def main():
     opts = parse_opts()
 
     # set up logging. The Formatter class is replaced so that all log messages
@@ -403,9 +395,10 @@ def main():
     log_path = os.path.abspath(opts.log_path)
     setup_logger(log_name, log_path)
 
-    yield From(run(opts, log_path=log_path, full_log=log_name))
+    await run(opts, log_path=log_path, full_log=log_name)
 
 
 if __name__ == '__main__':
-    trollius.get_event_loop().run_until_complete(main())
-    trollius.get_event_loop().close()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
