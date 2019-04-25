@@ -1470,7 +1470,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
         self.report_writer = report_writer
         self.children = [pipeline, sender, report_writer]
         self.master_queue = master_queue
-        self._stopping = False
+        self._shutting_down = False
         self._capture_block_state = {}
         # Each capture block needs to be marked done twice: once from
         # Sender, once from ReportWriter.
@@ -1503,12 +1503,17 @@ class CalDeviceServer(aiokatcp.DeviceServer):
 
     async def join(self):
         await self._run_queue_task
+        await super().join()
+
+    async def stop(self, cancel: bool = True) -> None:
+        await self.shutdown(force=True)
+        await super().stop(cancel)
 
     async def request_capture_init(self, ctx, capture_block_id: str) -> None:
         """Start an observation"""
         if self.accumulator.capturing:
             raise FailReply('capture already in progress')
-        if self._stopping:
+        if self._shutting_down:
             raise FailReply('server is shutting down')
         if capture_block_id in self._capture_block_state:
             raise FailReply('capture block ID {} is already active'.format(capture_block_id))
@@ -1535,7 +1540,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
                 ctx.inform(msg)
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(1) as executor:
-            self._stopping = True
+            self._shutting_down = True
             if force:
                 if self._capture_block_state:
                     logger.warn('Forced shutdown with active capture blocks - data may be lost')
@@ -1562,7 +1567,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
                 logger.warn('Cannot force kill tasks, because they are threads')
         self.master_queue.put(StopEvent())
         # Wait until all pending sensor updates have been applied
-        await self.join()
+        await self._run_queue_task
 
     async def request_shutdown(self, ctx, force: bool = False) -> None:
         """Shut down the server.
@@ -1581,7 +1586,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
             If true, terminate processes immediately rather than waiting for
             them to finish pending work. This can cause data loss!
         """
-        if self._stopping and not force:
+        if self._shutting_down and not force:
             raise FailReply('server is already shutting down')
         await self.shutdown(force, ctx)
 
