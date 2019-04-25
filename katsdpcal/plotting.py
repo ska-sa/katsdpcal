@@ -10,9 +10,6 @@ use('Agg', warn=False)
 
 import matplotlib.pylab as plt     # noqa: E402
 
-# for multiple page pdf plotting
-from matplotlib.backends.backend_pdf import PdfPages     # noqa: E402
-
 # Figure sizes
 FIG_X = 10
 FIG_Y = 4
@@ -308,7 +305,8 @@ def plot_el_v_time(targets, times, elevations, title=None):
     return fig
 
 
-def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0, 1], phase_range=[-180, 180]):
+def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
+                     pol=[0, 1], phase_range=[-180, 180]):
     """
     Plots Amplitude and Phase vs UVdist
 
@@ -415,7 +413,8 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
     return fig
 
 
-def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None, pol=[0, 1], phase_range=[-180, 180]):
+def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None,
+                        pol=[0, 1], phase_range=[-180, 180]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -464,7 +463,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
     return fig
 
 
-def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False, pol=[0, 1], phase_range=[-180, 180]):
+def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False,
+              pol=[0, 1], phase_range=[-180, 180]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -590,7 +590,8 @@ def amp_range(data):
     return low_lim, upper_lim
 
 
-def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, pol=[0, 1], phase_range=[-180, 180]):
+def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
+                     pol=[0, 1], phase_range=[-180, 180]):
     """
     Plots amp/phase versus time
 

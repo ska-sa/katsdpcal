@@ -487,7 +487,9 @@ class SimDataMS(SimData):
         else:
             raise ValueError('Weird polarisation setup!')
         # combine antenna and polarisation strings to get full correlator product ordering
-        corrprods = np.array([[c1+p1, c2+p2] for c1, c2 in corrprods_nopol for p1, p2 in bls_pol_order])
+        corrprods = np.array([[c1+p1, c2+p2]
+                             for c1, c2 in corrprods_nopol
+                             for p1, p2 in bls_pol_order])
 
         return corrprods, corrprods_nopol
 
@@ -626,7 +628,8 @@ class SimDataMS(SimData):
         # write MS polarisation table
         pol_num = {'h': 0, 'v': 1}
         pol_types = {'hh': 9, 'vv': 12, 'hv': 10, 'vh': 11}
-        pol_type_array = np.array([pol_types[p1+p2] for p1, p2 in cal_bls_pol_ordering])[np.newaxis, :]
+        pol_type_array = np.array([pol_types[p1+p2]
+                                  for p1, p2 in cal_bls_pol_ordering])[np.newaxis, :]
         pol_index_array = np.array([[pol_num[p1], pol_num[p2]] for p1, p2 in cal_bls_pol_ordering],
                                    dtype=np.int32)[np.newaxis, :]
         with self.subtable('POLARIZATION', readonly=False) as poltable:

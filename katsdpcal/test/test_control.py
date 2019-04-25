@@ -1,12 +1,10 @@
 """Tests for control module"""
 
-import unittest
 from multiprocessing import Process
 import multiprocessing
 import multiprocessing.dummy
 import tempfile
 import shutil
-import functools
 import os
 import itertools
 from unittest import mock
@@ -15,8 +13,7 @@ import asyncio
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_regexp_matches, assert_almost_equal, assert_not_equal,
-    assert_raises, assert_raises_regex)
+    assert_almost_equal, assert_not_equal, assert_raises_regex)
 import asynctest
 
 import spead2
@@ -532,7 +529,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         """
         corrupted_vis = vis + 1e9j
         corrupt_times = (4, 17)
-        channel_slices = [np.s_[i * self.n_channels_per_substream: (i + 1) * self.n_channels_per_substream]
+        channel_slices = [np.s_[i * self.n_channels_per_substream :
+                                (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
         heaps = []
         for i in range(n_times):
@@ -633,7 +631,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert_equal(np.complex64, ret_G.dtype)
         assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
         ret_BG = ret_B * ret_G[np.newaxis, :, :]
-        BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
+        BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)   # noqa: F841
         # TODO: enable when fixed.
         # This test won't work yet:
         # - cal puts NaNs in B in the channels for which it applies the static
@@ -709,7 +707,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
          not set to the noisiest antenna.
         """
-        first_ts = ts = 100.0
+        ts = 100.0
         n_times = 25
         rs = np.random.RandomState(seed=1)
 
@@ -787,7 +785,8 @@ class TestCalDeviceServer(asynctest.TestCase):
             weights_channel = np.arange(1, n_times * self.n_channels + 1,
                                         dtype=np.float32).reshape(n_times, -1)
         ts = 100.0
-        channel_slices = [np.s_[i * self.n_channels_per_substream: (i + 1) * self.n_channels_per_substream]
+        channel_slices = [np.s_[i * self.n_channels_per_substream :
+                                (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
         heaps = []
         for i in range(n_times):
@@ -885,8 +884,8 @@ class TestCalDeviceServer(asynctest.TestCase):
                 server_id = s // n_substreams_per_server
                 s_rel = s % n_substreams_per_server
                 buffers = self.servers[server_id].buffers
-                channel_slice = np.s_[
-                    s_rel * self.n_channels_per_substream: (s_rel + 1) * self.n_channels_per_substream]
+                channel_slice = np.s_[s_rel * self.n_channels_per_substream :
+                                      (s_rel + 1) * self.n_channels_per_substream]
                 channel0 = self.servers[server_id].parameters['channel_slice'].start
                 channel0 += channel_slice.start
                 flags = buffers['flags'][t, channel_slice]
