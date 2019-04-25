@@ -347,7 +347,7 @@ class SimDataMS(SimData):
         try:
             self.file = table(filename, readonly=readonly)
         except RuntimeError as error:
-            raise WrongFileType(str(error))
+            raise WrongFileType(str(error)) from error
         self.intent_to_tag = {
             'CALIBRATE_PHASE,CALIBRATE_AMPLI': 'gaincal',
             'CALIBRATE_BANDPASS,CALIBRATE_FLUX,CALIBRATE_DELAY,CALIBRATE_POLARIZATION':
@@ -674,7 +674,7 @@ class SimDataKatdal(SimData):
         try:
             self.file = katdal.open(filename, mode=mode)
         except IOError as error:
-            raise WrongFileType(str(error))
+            raise WrongFileType(str(error)) from error
         self.file.select(channels=slice(bchan, echan))
         self.num_scans = len(self.file.scan_indices)
 
