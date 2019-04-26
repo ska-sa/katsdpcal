@@ -28,10 +28,16 @@ TAG_WHITELIST = ['gaincal', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 # --------------------------------------------------------------------------------------------------
 
 
-class rstReport(object):   # TODO: file
+class rstReport:
     """
     RST style report
     """
+
+    def __init__(self, filename):
+        self._file = open(filename, 'w')
+
+    def write(self, text):
+        self._file.write(text)
 
     def write_heading(self, heading, symbol):
         heading_len = len(heading)
@@ -60,6 +66,12 @@ class rstReport(object):   # TODO: file
         if line is not None:
             self.write(line)
         self.write('\n')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self._file.close()
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1264,7 +1276,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
     # --------------------------------------------------------------------
     # write heading
     with _lock:
-        with rstReport(report_file, 'w') as cal_rst:
+        with rstReport(report_file) as cal_rst:
             cal_rst.write_heading_0('Calibration pipeline report')
 
             # --------------------------------------------------------------------
