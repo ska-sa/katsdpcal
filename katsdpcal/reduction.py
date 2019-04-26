@@ -3,6 +3,7 @@ import logging
 import threading
 import pickle
 import katpoint
+from numbers import Integral
 
 import numpy as np
 
@@ -252,11 +253,13 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     info = ('CalSolution', soln.soltype, values, soln.time)
                 else:
                     info = ('CalSolutions', soln.soltype, values, soln.times)
-            elif isinstance(soln, (int, np.ndarray)):
+            elif isinstance(soln, (Integral, np.ndarray)):
                 info = ('soln', soln)
                 if solution_store is not None:
                     logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                                 ' and won\'t be stored in solution store')
+            else:
+                raise TypeError('Unhandled solution type {}'.format(type(soln)))
         except Exception as error:
             add_info(('Exception', pickle.dumps(error)))
             raise
