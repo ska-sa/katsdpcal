@@ -1430,11 +1430,12 @@ class ReportWriter(Task):
                     _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)
                     av_corr = _sum_corr(av_corr, event, self.max_scans)
                     scans_buffered = len(av_corr['targets'])
+                    if self.max_scans is None or scans_buffered < self.max_scans:
+                        status = aiokatcp.Sensor.Status.NOMINAL
+                    else:
+                        status = aiokatcp.Sensor.Status.WARN
                     report_scans_buffered_sensor.set_value(
-                        scans_buffered,
-                        status=(aiokatcp.Sensor.Status.NOMINAL if scans_buffered < self.max_scans
-                                else aiokatcp.Sensor.Status.WARN),
-                        timestamp=now)
+                        scans_buffered, status=status, timestamp=now)
 
             elif isinstance(event, ObservationEndEvent):
                 try:
