@@ -207,7 +207,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
 
     # major tick step
-    step = nscans / 25 + 1
+    step = nscans // 25 + 1
     axes[0, 0].set_yticks(np.arange(0, len(targets))[::step]+0.5)
     axes[0, 0].set_yticks(np.arange(0, len(targets))+0.5, minor=True)
     axes[0, 0].set_yticklabels(targets[::step])
