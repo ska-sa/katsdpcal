@@ -516,7 +516,7 @@ class TestCalDeviceServer(unittest.TestCase):
         B_interp : :class: `np.ndarray`
         """
         n_chans, n_pols, n_ants = B.shape
-        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex128)
+        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex64)
         for p in range(n_pols):
             for a in range(n_ants):
                 valid = np.isfinite(B[:, p, a])
