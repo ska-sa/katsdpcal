@@ -662,10 +662,10 @@ class SimDataMS(SimData):
 
 
 class SimDataKatdal(SimData):
-    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
+    def __init__(self, filename, server=None, bchan=0, echan=None):
         super(SimDataKatdal, self).__init__(filename, server, bchan, echan)
         try:
-            self.file = katdal.open(filename, mode=mode)
+            self.file = katdal.open(filename, upgrade_flags=False)
         except IOError as error:
             raise WrongFileType(str(error))
         self.file.select(channels=slice(bchan, echan))
