@@ -30,6 +30,7 @@ from katsdptelstate.endpoint import Endpoint
 from katsdpservices.asyncio import to_tornado_future
 import katpoint
 from katdal.h5datav3 import FLAG_NAMES
+from katdal.applycal import complex_interp
 
 from katsdpcal import control, calprocs, pipelineprocs, param_dir, rfi_dir
 
@@ -515,17 +516,14 @@ class TestCalDeviceServer(unittest.TestCase):
         B_interp : :class: `np.ndarray`
         """
         n_chans, n_pols, n_ants = B.shape
-        real = np.empty((n_chans, n_pols, n_ants))
-        imag = np.empty((n_chans, n_pols, n_ants))
+        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex128)
         for p in range(n_pols):
             for a in range(n_ants):
-                valid = ~np.isnan(B[:, p, a])
-                real[:, p, a] = np.interp(
-                     np.arange(n_chans), np.arange(n_chans)[valid], np.real(B[:, p, a][valid]))
-                imag[:, p, a] = np.interp(
-                     np.arange(n_chans), np.arange(n_chans)[valid], np.imag(B[:, p, a][valid]))
-
-        return real + 1j*imag
+                valid = np.isfinite(B[:, p, a])
+                if valid.any():
+                    B_interp[:, p, a] = complex_interp(
+                        np.arange(n_chans), np.arange(n_chans)[valid], B[:, p, a][valid])
+        return B_interp
 
     def assemble_bandpass(self, telstate_cb_cal, bp_key):
         """
