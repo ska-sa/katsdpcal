@@ -522,6 +522,13 @@ class SimDataMS(SimData):
         self.setup_capture_block(telstate, self.to_ut(self.file.getcell('TIME', 0)))
         telstate_cb = telstate.view(self.cbid)
 
+        # include dummy obs_params in telstate
+        obs_params = {'description' : 'MS observation',
+                      'sb_id_code' : 'None',
+                      'proposal_id' : 'None',
+                      'observer' : 'unknown'}
+        telstate_cb.add('obs_params', obs_params, immutable=True)
+
         time_ind = 0
         # send data scan by scan
         for scan_ind, tscan in enumerate(ordered_table.iter('SCAN_NUMBER')):
@@ -708,6 +715,8 @@ class SimDataKatdal(SimData):
         self.setup_capture_block(telstate, self.file.timestamps[0])
         telstate_cb = telstate.view(self.cbid)
 
+        # include obs params in telstate
+        telstate_cb.add('obs_params', self.file.obs_params, immutable=True)
         for scan_ind, scan_state, target in self.file.scans():
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate

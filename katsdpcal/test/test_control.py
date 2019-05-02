@@ -185,10 +185,14 @@ class ServerData(object):
         self.server = control.create_server(
             False, 'localhost', 0, buffers,
             'sdp_l0test', testcase.l0_endpoints, None,
-            flags_streams,
+            flags_streams, 1.0,
             testcase.telstate_cal, self.parameters, self.report_path, self.log_path, None)
         self.server.start()
-        testcase.addCleanup(testcase.ioloop.run_sync, self.stop_server)
+        # We can't simply do an addCleanup to stop the server, because the servers
+        # need to be shut down together (otherwise the dump alignment code in
+        # Accumulator._accumulate will deadlock). Instead, tell the testcase that
+        # we require cleanup.
+        testcase.cleanup_servers.append(self)
 
         bind_address = self.server.bind_address
         self.client = katcp.AsyncClient(bind_address[0], bind_address[1], timeout=15)
@@ -251,6 +255,11 @@ class TestCalDeviceServer(unittest.TestCase):
         telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
         telstate_cb = telstate.view('cb')
         telstate_cb.add('obs_activity', 'track', ts=0)
+        obs_params = {'description' : 'test observation',
+                      'proposal_id' : '123_03',
+                      'sb_id_code' : '123_0005',
+                      'observer' : 'Kim'}
+        telstate_cb.add('obs_params', obs_params, immutable=True)
         for antenna in self.antennas:
             # The position is irrelevant for now, so just give all the
             # antennas the same position.
@@ -325,11 +334,20 @@ class TestCalDeviceServer(unittest.TestCase):
 
         self.ig = spead2.send.ItemGroup()
         self.add_items(self.ig)
+        self.l0_queues = {endpoint: spead2.InprocQueue() for endpoint in self.l0_endpoints}
         self.l0_streams = {}
         sender_thread_pool = spead2.ThreadPool()
+        # For each server we only actually use a single queue (the readers on
+        # the other endpoints will just get no data). This ensures that
+        # heaps are received in a predictable order and not affected by timing.
+        endpoints_per_server = self.n_endpoints // self.n_servers
         for i, endpoint in enumerate(self.l0_endpoints):
-            queue = spead2.InprocQueue()
-            stream = spead2.send.InprocStream(sender_thread_pool, spead2.InprocQueue())
+            # Compute last endpoint index of the server. We use the last
+            # rather than the first as a quick workaround for
+            # https://github.com/ska-sa/spead2/issues/40
+            base = (i // endpoints_per_server + 1) * endpoints_per_server - 1
+            queue = self.l0_queues[self.l0_endpoints[base]]
+            stream = spead2.send.InprocStream(sender_thread_pool, queue)
             stream.set_cnt_sequence(i, self.n_endpoints)
             stream.send_heap(self.ig.get_heap(descriptors='all'))
             self.l0_streams[endpoint] = stream
@@ -338,7 +356,7 @@ class TestCalDeviceServer(unittest.TestCase):
         # a bound method.
         def _add_udp_reader(stream, port, max_size=None, buffer_size=None,
                             bind_hostname='', socket=None):
-            queue = self.l0_streams[Endpoint(bind_hostname, port)].queue
+            queue = self.l0_queues[Endpoint(bind_hostname, port)]
             stream.add_inproc_reader(queue)
 
         self.patch('spead2.recv.trollius.Stream.add_udp_reader', _add_udp_reader)
@@ -350,6 +368,8 @@ class TestCalDeviceServer(unittest.TestCase):
         self.patch('dask.distributed.LocalCluster')
         self.patch('dask.distributed.Client')
 
+        self.cleanup_servers = []
+        self.addCleanup(self.ioloop.run_sync, self._stop_servers)
         self.servers = [ServerData(self, i) for i in range(self.n_servers)]
 
     @tornado.gen.coroutine
@@ -462,6 +482,12 @@ class TestCalDeviceServer(unittest.TestCase):
         """Multiply `value` by an amount that sets `ref` to zero phase."""
         ref_phase = ref / np.abs(ref)
         return value * ref_phase.conj()
+
+    @tornado.gen.coroutine
+    def _stop_servers(self):
+        """Similar to shutdown_servers, but run as part of cleanup"""
+        futures = [server.stop_server() for server in self.cleanup_servers]
+        yield futures
 
     @tornado.gen.coroutine
     def shutdown_servers(self, timeout):
