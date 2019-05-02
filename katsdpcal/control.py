@@ -1151,7 +1151,7 @@ class FlagsStream(object):
 
 class Transmitter(object):
     """State for a single flags stream held by :class:`Sender`"""
-    def __init__(self, l0_name, l0_attr, flags_stream, telstate_cal, parameters):
+    def __init__(self, l0_name, l0_attr, flags_stream, clock_ratio, telstate_cal, parameters):
         self.flags_stream = flags_stream
         n_endpoints = len(flags_stream.endpoints)
         self._n_servers = n_servers = parameters['servers']
@@ -1167,6 +1167,7 @@ class Transmitter(object):
         n_bls = len(l0_attr['bls_ordering'])
         channel_slice = parameters['channel_slice']
         self.rate = n_chans * n_bls / float(l0_attr['int_time']) * flags_stream.rate_ratio
+        self.rate = self.rate / clock_ratio if clock_ratio else 0.0
         if n_chans % flags_stream.continuum_factor != 0:
             raise ValueError('Continuum factor {} does not divide into server channels {}'
                              .format(flags_stream.continuum_factor, n_chans))
@@ -1246,14 +1247,15 @@ class Transmitter(object):
 class Sender(Task):
     def __init__(self, task_class, buffers,
                  pipeline_sender_queue, master_queue,
-                 l0_name, flags_streams, telstate_cal, parameters):
+                 l0_name, flags_streams, clock_ratio, telstate_cal, parameters):
         super(Sender, self).__init__(task_class, master_queue, 'Sender')
         self.telstate_l0 = telstate_cal.root().view(l0_name)
         l0_attr = {key: self.telstate_l0[key]
                    for key in ['n_bls', 'bls_ordering', 'int_time', 'sync_time', 'excise',
                                'bandwidth', 'center_freq', 'n_chans']}
         n_servers = parameters['servers']
-        self._transmitters = [Transmitter(l0_name, l0_attr, flags_stream, telstate_cal, parameters)
+        self._transmitters = [Transmitter(l0_name, l0_attr, flags_stream, clock_ratio,
+                                          telstate_cal, parameters)
                               for flags_stream in flags_streams]
         self.int_time = self.telstate_l0['int_time']
         self.n_chans = self.telstate_l0['n_chans'] // n_servers
@@ -1677,7 +1679,8 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
 
 def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
-                  flags_stream, telstate_cal, parameters, report_path, log_path, full_log,
+                  flags_streams, clock_ratio, telstate_cal, parameters,
+                  report_path, log_path, full_log,
                   diagnostics=None, pipeline_profile_file=None, num_workers=None,
                   max_scans=None):
     # threading or multiprocessing imports
@@ -1702,7 +1705,7 @@ def create_server(use_multiprocessing, host, port, buffers,
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
-        flags_stream, telstate_cal, parameters)
+        flags_streams, clock_ratio, telstate_cal, parameters)
     # Set up the report writer
     report_writer = ReportWriter(
         module.Process, pipeline_report_queue, master_queue, l0_name, telstate_cal, parameters,

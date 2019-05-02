@@ -308,7 +308,7 @@ def plot_el_v_time(targets, times, elevations, title=None):
     return fig
 
 
-def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0, 1]):
+def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0, 1], phase_range=[-180, 180]):
     """
     Plots Amplitude and Phase vs UVdist
 
@@ -324,6 +324,8 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
         title of plot
     pol : list, optional
         list of polarisation descriptions
+    phase_range : list, optional
+        start and stop phase ranges to plot, optional
     """
 
     npols = data.shape[-2]
@@ -359,7 +361,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False, pol=[0,
                 axes[p, 1].set_ylim(*lim)
         else:
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
-            axes[p, 1].set_ylim(-180, 180)
+            axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -413,7 +415,7 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
     return fig
 
 
-def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None, pol=[0, 1]):
+def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None, pol=[0, 1], phase_range=[-180, 180]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -432,6 +434,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
         plot only amplitudes if True, else plot amplitude and phase
     pol : list, optional
         list of polarisation descriptions
+    phase_range : list, optional
+        start and stop phase ranges to plot, optional
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
@@ -443,7 +447,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
     for p in range(npols):
         # plot full range amplitude plots
         p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
-        axes[0, p].set_ylim(-180, 180)
+        axes[0, p].set_ylim(phase_range[0], phase_range[-1])
         axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
 
@@ -460,7 +464,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
     return fig
 
 
-def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False, pol=[0, 1]):
+def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False, pol=[0, 1], phase_range=[-180, 180]):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -479,6 +483,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         plot only amplitudes if True, else plot amplitude and phase
     pol : list, optional
         list of polarisation descriptions
+    phase_range : list, optional
+        start and stop phase ranges to plot, optional
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
@@ -500,7 +506,7 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
             axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
-            axes[p, 1].set_ylim(-180, 180)
+            axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
     # set range limit
@@ -584,7 +590,7 @@ def amp_range(data):
     return low_lim, upper_lim
 
 
-def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, pol=[0, 1]):
+def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, pol=[0, 1], phase_range=[-180, 180]):
     """
     Plots amp/phase versus time
 
@@ -602,6 +608,8 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, 
         title of plot
     pol : list, optional
         list of polarisation descriptions
+    phase_range : list, optional
+        start and stop phase ranges to plot, optional
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 1
@@ -623,8 +631,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None, 
             else:
                 p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.')
                 axes[p, 0].set_ylabel('Phase Pol_{0}'.format(pol[p]))
-                axes[p, 0].set_ylim(-180, 180)
-
+                axes[p, 0].set_ylim(phase_range[0], phase_range[-1])
             # Reset the colour cycle, so that all channels have the same plot color
             axes[p, 0].set_prop_cycle(None)
             plt.setp(axes[p, 0].get_xticklabels(), visible=False)

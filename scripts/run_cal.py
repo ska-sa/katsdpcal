@@ -145,19 +145,23 @@ def parse_opts():
         help='Name of the cal output in telstate. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
         '--flags-spead',
-        help='[DEPRECATED] endpoints for L1 flags. [default=none]', metavar='ENDPOINTS')
+        help='[DEPRECATED] endpoints for L1 flags. [default: none]', metavar='ENDPOINTS')
     parser.add_argument(
         '--flags-name', type=str, default='sdp_l1_flags',
-        help='[DEPRECATED] name for the flags stream. [default=%(default)s]', metavar='NAME')
+        help='[DEPRECATED] name for the flags stream. [default: %(default)s]', metavar='NAME')
     parser.add_argument(
         '--flags-interface',
-        help='[DEPRECATED] interface to send flags stream to. [default=auto]', metavar='INTERFACE')
+        help='[DEPRECATED] interface to send flags stream to. [default: auto]',
+        metavar='INTERFACE')
     parser.add_argument(
         '--flags-rate-ratio', type=float, default=8.0,
-        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default=%(default)s]', metavar='RATIO')
+        help='[DEPRECATED] speed to send flags, relative to incoming rate. [default: %(default)s]', metavar='RATIO')
     parser.add_argument(
         '--flags-streams', type=json.loads, default=[],
-        help='JSON document describing flags streams to send. [default=none]', metavar='JSON')
+        help='JSON document describing flags streams to send. [default: none]', metavar='JSON')
+    parser.add_argument(
+        '--clock-ratio', type=float, default=1.0,
+        help='Scale factor for transmission rate, smaller is faster [default: %(default)s]')
     parser.add_argument(
         '--threading', action='store_true',
         help='Use threading to control pipeline and accumulator '
@@ -349,7 +353,7 @@ def run(opts, log_path, full_log):
 
     server = create_server(not opts.threading, opts.host, opts.port, buffers,
                            opts.l0_name, opts.l0_spead, l0_interface_address,
-                           opts.flags_streams,
+                           opts.flags_streams, opts.clock_ratio,
                            telstate_cal, parameters, opts.report_path, log_path, full_log,
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
                            opts.max_scans)
