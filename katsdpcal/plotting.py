@@ -451,8 +451,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
         axes[0, p].set_xlabel('Channels')
 
     if antenna_names is not None:
-        axes[0, 1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
-                          loc="upper left", frameon=False, markerscale=5)
+        axes[0, npols-1].legend(p1, antenna_names, bbox_to_anchor=(1.0, 1.0),
+                                loc="upper left", frameon=False, markerscale=5)
 
     # If frequency range supplied, plot a frequency axis for the top row
     if freq_range is not None:

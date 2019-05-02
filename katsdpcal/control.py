@@ -992,6 +992,7 @@ class Pipeline(Task):
             'KCROSS': solutions.CalSolutionStoreLatest('KCROSS'),
             'KCROSS_DIODE': solutions.CalSolutionStoreLatest('KCROSS_DIODE'),
             'B': solutions.CalSolutionStoreLatest('B'),
+            'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
             'G': solutions.CalSolutionStore('G')
         }
 

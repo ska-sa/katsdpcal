@@ -57,19 +57,25 @@ class TestFinaliseParameters(unittest.TestCase):
             'rfi_freq_chunks': 8
         }
 
-        self.antenna_names = ['m001', 'm002', 'm004', 'm006']
         self.antennas = [
-            # One antenna has a baseline larger than 1000m to the other antennas
             katpoint.Antenna(
-                '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
+                'm001, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
                 '-0:05:44.7 0 0:00:22.6 -0:09:04.2 0:00:11.9 -0:00:12.8 -0:04:03.5 0 0 '
-                '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(name))
-            for name in self.antenna_names]
-
-        self.antennas[1] = katpoint.Antenna(
-            'm002,-30:42:39.8, 21:26:38.0, 1035.0, 13.5, 9.3645 -1304.462 7.632 '
-            '5872.543 5873.042 1.0, 0:06:11.7 0 -0:00:43.1 0:04:09.0 0:00:40.6 '
-            '0:00:04.9 0:09:00.9 0:01:31.7, 1.22')
+                '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'),
+            # this antenna has a baseline larger than 1000m to the other antennas
+            katpoint.Antenna(
+                'm002, -30:42:39.8, 21:26:38.0, 1035.0, 13.5, 9.3645 -1304.462 7.632 '
+                '5872.543 5873.042 1.0, 0:06:11.7 0 -0:00:43.1 0:04:09.0 0:00:40.6 '
+                '0:00:04.9 0:09:00.9 0:01:31.7, 1.22'),
+            katpoint.Antenna(
+                'm004, -30:42:39.8, 21:26:38.0, 1035.0, 13.5, -123.624 -252.946 1.113 '
+                '5870.119 5870.721 1.0, 1:03:04.1 0 0:00:43.8 0:00:44.8 -0:00:29.0 '
+                '-0:00:14.0 -0:08:42.9 0:01:15.1, 1.22'),
+            katpoint.Antenna(
+                'm006, -30:42:39.8, 21:26:38.0, 1035.0, 13.5, -18.2315 -295.428 1.788 '
+                '5880.189 5880.611 1.0, 1:58:23.5 0 0:00:23.3 0:01:44.4 -0:00:16.9 '
+                '-0:00:09.1 -0:07:41.5 0:01:19.5, 1.22')]
+        self.antenna_names = [a.name for a in self.antennas]
 
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
         for a in self.antenna_names:
@@ -125,13 +131,15 @@ class TestFinaliseParameters(unittest.TestCase):
                 parameters = pipelineprocs.finalise_parameters(
                     self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
 
-        # Check mask is False on long baselines
+        # Check mask is False on long baselines and auto-correlations
         mask = channel_mask[np.newaxis, :, np.newaxis, np.newaxis]
         mask = np.broadcast_to(mask, (1, 4096, 1, 10))
         bl_mask = mask.copy()
         bls_lookup = parameters['bls_lookup']
         long_bls = np.where((bls_lookup[:, 0] == 1) ^ (bls_lookup[:, 1] == 1))[0]
         bl_mask[..., long_bls] = False
+        auto_bls = np.where((bls_lookup[:, 0] == bls_lookup[:, 1]))[0]
+        bl_mask[..., auto_bls] = False
         np.testing.assert_array_equal(bl_mask[:, 2048:3072], parameters['rfi_mask'])
 
     def test_bad_rfi_mask(self):

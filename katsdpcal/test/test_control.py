@@ -24,6 +24,7 @@ import katsdptelstate
 from katsdptelstate.endpoint import Endpoint
 import katpoint
 from katdal.h5datav3 import FLAG_NAMES
+from katdal.applycal import complex_interp
 
 from katsdpcal import control, calprocs, pipelineprocs, param_dir, rfi_dir
 
@@ -212,8 +213,11 @@ class TestCalDeviceServer(asynctest.TestCase):
     def populate_telstate(self, telstate_l0):
         telstate = telstate_l0.root()
         bls_ordering = []
+        # target model must match the model used by the pipeline in order to produce
+        # meaningful calibration solutions. The pipeline model is supplied in
+        # conf/sky_models/3C286.txt
         target = ('3C286, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
-                  '(800.0 43200.0 0.956 0.584 -0.1644)')
+                  '(0 43200 1.2515 -0.4605 -0.1715 0.0336)')
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
         for a in self.antennas:
             ant_bls.append((a, a))
@@ -466,6 +470,55 @@ class TestCalDeviceServer(asynctest.TestCase):
                           b'Sender stopped',
                           b'ReportWriter stopped'], progress)
 
+    def interp_B(self, B):
+        """
+        Linearly interpolate NaN'ed channels in supplied bandbass [B]
+
+        Parameters:
+        -----------
+        B : :class: `np.ndarray`
+            bandpass, complex, shape (n_chans, n_pols, n_ants)
+        Returns:
+        --------
+        B_interp : :class: `np.ndarray`
+        """
+        n_chans, n_pols, n_ants = B.shape
+        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex64)
+        for p in range(n_pols):
+            for a in range(n_ants):
+                valid = np.isfinite(B[:, p, a])
+                if valid.any():
+                    B_interp[:, p, a] = complex_interp(
+                        np.arange(n_chans), np.arange(n_chans)[valid], B[:, p, a][valid])
+        return B_interp
+
+    def assemble_bandpass(self, telstate_cb_cal, bp_key):
+        """
+        Assemble a complete bandpass from the parts stored in
+        telstate. Check that each part has the expected shape and dtype.
+
+        Parameters:
+        -----------
+        telstate_cb_cal : :class:`katsdptelstate.TelescopeState`
+            telstate view to retrieve bandpass from
+        bandpass_key : str
+            telstate key of the bandpass
+        Returns:
+        --------
+        bandpass : :class: `np.ndarray`
+            bandpass, complex, shape (n_chans, n_pols, n_ants)
+        """
+        B = []
+        for i in range(self.n_servers):
+            cal_product_Bn = telstate_cb_cal.get_range(bp_key+'{}'.format(i), st=0)
+            assert_equal(1, len(cal_product_Bn))
+            Bn, Bn_ts = cal_product_Bn[0]
+            assert_equal(np.complex64, Bn.dtype)
+            assert_equal((self.n_channels // self.n_servers, 2, self.n_antennas), Bn.shape)
+            B.append(Bn)
+        assert_not_in(bp_key+'{}'.format(self.n_servers), telstate_cb_cal)
+        return np.concatenate(B)
+
     def make_vis(self, K, G, target, noise=np.array([])):
         """
         Compute visibilities for the supplied target, delays [K] and gains [G]
@@ -486,7 +539,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         bandwidth = self.telstate.sdp_l0test_bandwidth
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
-        flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
+        # The pipeline models require frequency in GHz
+        flux_density = target.flux_density(freqs / 1e9)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
 
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
@@ -614,16 +668,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
         assert_equal(self.n_servers, cal_product_B_parts)
-        ret_B = []
-        for i in range(self.n_servers):
-            cal_product_Bn = telstate_cb_cal.get_range('product_B{}'.format(i), st=0)
-            assert_equal(1, len(cal_product_Bn))
-            ret_Bn, ret_Bn_ts = cal_product_Bn[0]
-            assert_equal(np.complex64, ret_Bn.dtype)
-            assert_equal((self.n_channels // self.n_servers, 2, self.n_antennas), ret_Bn.shape)
-            ret_B.append(ret_Bn)
-        assert_not_in('product_B{}'.format(self.n_servers), telstate_cb_cal)
-        ret_B = np.concatenate(ret_B)
+        ret_B = self.assemble_bandpass(telstate_cb_cal, 'product_B')
 
         cal_product_G = telstate_cb_cal.get_range('product_G', st=0)
         assert_equal(expected_g, len(cal_product_G))
@@ -631,15 +676,14 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert_equal(np.complex64, ret_G.dtype)
         assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
         ret_BG = ret_B * ret_G[np.newaxis, :, :]
-        BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)   # noqa: F841
-        # TODO: enable when fixed.
-        # This test won't work yet:
-        # - cal puts NaNs in B in the channels for which it applies the static
-        #   RFI mask, instead of interpolating
-        # np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG), rtol=1e-3)
-        # np.testing.assert_allclose(self.normalise_phase(BG, BG[:, :, [0]]),
-        #                            self.normalise_phase(ret_BG, ret_BG[:, :, [0]]),
-        #                            rtol=1e-3)
+        BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
+        # cal puts NaNs in B in the channels for which it applies the static
+        # RFI mask, interpolate across these
+        ret_BG_interp = self.interp_B(ret_BG)
+        np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG_interp), rtol=1e-2)
+        np.testing.assert_allclose(self.normalise_phase(BG, BG[..., [0]]),
+                                   self.normalise_phase(ret_BG_interp, ret_BG_interp[..., [0]]),
+                                   rtol=1e-2)
 
         cal_product_K = telstate_cb_cal.get_range('product_K', st=0)
         assert_equal(1, len(cal_product_K))
@@ -654,6 +698,16 @@ class TestCalDeviceServer(asynctest.TestCase):
             assert_equal(np.float32, ret_KCROSS_DIODE.dtype)
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
                                        ret_KCROSS_DIODE, rtol=1e-3)
+
+            ret_BCROSS_DIODE = self.assemble_bandpass(telstate_cb_cal, 'product_BCROSS_DIODE')
+            ret_BCROSS_DIODE_interp = self.interp_B(ret_BCROSS_DIODE)
+            np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
+                                       np.abs(ret_BCROSS_DIODE_interp))
+            BG_angle = np.angle(BG)
+            ret_BG_interp_angle = np.angle(ret_BG_interp)
+            np.testing.assert_allclose(BG_angle - BG_angle[:, [1], :]
+                                       - (ret_BG_interp_angle - ret_BG_interp_angle[:, [1], :]),
+                                       np.angle(ret_BCROSS_DIODE_interp), rtol=1e-3)
 
         if 'polcal' in target.tags:
             cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)
@@ -699,7 +753,7 @@ class TestCalDeviceServer(asynctest.TestCase):
     async def test_capture_separate_tags(self):
         # Change the target to one with different tags
         target = ('3C286, radec delaycal gaincal bpcal polcal single_accumulation, '
-                  '13:31:08.29, +30:30:33.0, (800.0 43200.0 0.956 0.584 -0.1644)')
+                  '13:31:08.29, +30:30:33.0, (0 43200.0 1.2515 -0.4605 -0.1715 0.0336')
         self.telstate.add('cbf_target', target, ts=0.001)
         await self.test_capture(expected_g=2)
 
