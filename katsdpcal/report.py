@@ -13,6 +13,7 @@ from docutils.core import publish_file
 
 import matplotlib.pylab as plt
 import katpoint
+from katdal.sensordata import to_str
 import json
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,7 @@ def metadata(ts, capture_block_id, report_path, st=None):
     dict
     """
     telstate_cb = ts.root().view(capture_block_id)
-    obs_params = telstate_cb['obs_params']
+    obs_params = to_str(telstate_cb['obs_params'])
     metadata = {}
     product_type = {}
     product_type['ProductTypeName'] = 'MeerKATReductionProduct'
