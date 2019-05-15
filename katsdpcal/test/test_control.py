@@ -9,11 +9,13 @@ import os
 import itertools
 from unittest import mock
 import asyncio
+import json
+import datetime
 
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_almost_equal, assert_not_equal, assert_raises_regex)
+    assert_almost_equal, assert_not_equal, assert_raises_regex, assert_dict_equal)
 import asynctest
 
 import spead2
@@ -606,6 +608,30 @@ class TestCalDeviceServer(asynctest.TestCase):
             ts += self.telstate.sdp_l0test_int_time
         return heaps
 
+    @classmethod
+    def metadata_dict(cls, st=None):
+        """
+        Produce a metadata dictionary
+        Parameters:
+        -----------
+        st : int
+            time of first dump
+        """
+        metadata = {}
+        product_type = {}
+        product_type['ProductTypeName'] = 'MeerKATReductionProduct'
+        product_type['ReductionName'] = 'Calibration Report'
+        metadata['ProductType'] = product_type
+        # format time as required
+        time = datetime.datetime.utcfromtimestamp(st)
+        metadata['StartTime'] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        metadata['CaptureBlockId'] = 'cb'
+        metadata['Description'] = 'test observation' + ' cal report'
+        metadata['ProposalId'] = '123_03'
+        metadata['Observer'] = 'Kim'
+        metadata['ScheduleBlockIdCode'] = '123_0005'
+        return metadata
+
     async def test_capture(self, expected_g=1):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
@@ -662,8 +688,17 @@ class TestCalDeviceServer(asynctest.TestCase):
             reports = os.listdir(server.report_path)
             assert_equal(1, len(reports))
             report = os.path.join(server.report_path, reports[0])
-            assert_true(os.path.isfile(os.path.join(report, 'calreport.html')))
+            assert_true(os.path.isfile(os.path.join(report,
+                                       'calreport{}.html'.format(server.server_id + 1))))
             assert_true(os.path.samefile(report, report_last_path[server.server_id]))
+            # Check that metadata file is written and correct
+            meta_expected = self.metadata_dict(1400000098)
+            meta_expected['Run'] = server.server_id + 1
+            meta_file = os.path.join(report, 'metadata.json')
+            assert_true(os.path.isfile(meta_file))
+            with open(meta_file, 'r') as infile:
+                meta_out = json.load(infile)
+            assert_dict_equal(meta_out, meta_expected)
 
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
