@@ -728,6 +728,8 @@ class Accumulator:
         except (KeyError, IndexError):
             logger.info('No obs_activity found in telstate - ignoring dump')
             return None
+        if isinstance(activity, bytes):
+            activity = activity.decode('utf-8')
         # Get target from telescope state if present (otherwise 'unknown')
         try:
             target = self.telstate.get_range('cbf_target', et=data_ts,
@@ -735,6 +737,8 @@ class Accumulator:
         except (KeyError, IndexError):
             logger.warning('No cbf_target found in telstate')
             target = ''
+        if isinstance(target, bytes):
+            target = target.decode('utf-8')
         # Extract name and tags from target description string
         # XXX Rather use katpoint at some stage
         target_split = target.split(',')
