@@ -13,7 +13,7 @@ import operator
 import numpy as np
 import dask
 import dask.array as da
-import dask.sharedict
+from dask.highlevelgraph import HighLevelGraph
 
 from . import calprocs
 
@@ -65,9 +65,9 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
     def stefcal_wrapper(rawvis, weights, init_gain):
         return calprocs.stefcal(rawvis, num_ants, corrprod_lookup, weights, ref_ant, init_gain,
                                 *args, **kwargs)
-    return da.atop(stefcal_wrapper, out_dims,
-                   rawvis, rawvis_dims, weights, weights_dims, init_gain, init_gain_dims,
-                   concatenate=True, new_axes={-4: num_ants}, dtype=dtype)
+    return da.blockwise(stefcal_wrapper, out_dims,
+                        rawvis, rawvis_dims, weights, weights_dims, init_gain, init_gain_dims,
+                        concatenate=True, new_axes={-4: num_ants}, dtype=dtype)
 
 
 def where(condition, x, y):
@@ -295,21 +295,25 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     base_name = 'wavg_full_f-' + token
     keys = list(dask.core.flatten(data.__dask_keys__()))
 
-    base_graph = {
+    base_layer = {
         (base_name,) + key[1:]: (calprocs.wavg_full_f, key,
                                  (flags.name,) + key[1:],
                                  (weights.name,) + key[1:],
                                  chanav, threshold)
         for key in keys
     }
+    base_graph = HighLevelGraph.from_collections(base_name, base_layer, [data, flags, weights])
 
     def sub_array(name, idx, dtype):
-        graph = {
+        layer = {
             (name,) + key[1:]: (operator.getitem, (base_name,) + key[1:], idx)
             for key in keys
         }
-        dsk = dask.sharedict.merge((base_name, base_graph), (name, graph),
-                                   data.dask, flags.dask, weights.dask)
+        layers = dict(base_graph.layers)
+        layers[name] = layer
+        dependencies = dict(base_graph.dependencies)
+        dependencies[name] = base_name
+        dsk = HighLevelGraph(layers, dependencies)
         return da.Array(dsk, name, out_chunks, dtype)
 
     av_data = sub_array('wavg_full_f-data-' + token, 0, data.dtype)
