@@ -10,9 +10,6 @@ use('Agg', warn=False)
 
 import matplotlib.pylab as plt     # noqa: E402
 
-
-
-
 # Figure sizes
 FIG_X = 10
 FIG_Y = 4
