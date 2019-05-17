@@ -151,7 +151,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     report.writeln('* {0}:  {1}'.format(var_text, value))
 
 
-def metadata(ts, capture_block_id, report_path, st=None):
+def metadata(ts, capture_block_id, report_path, run, st=None):
     """
     Create a dictionary with required metadata
 
@@ -163,6 +163,8 @@ def metadata(ts, capture_block_id, report_path, st=None):
         capture_block_id
     report_path : string
         path where report is written
+    run : int
+        server index
     st : float, optional
         start time, seconds
 
@@ -185,6 +187,7 @@ def metadata(ts, capture_block_id, report_path, st=None):
     metadata['ProposalId'] = obs_params['proposal_id']
     metadata['Observer'] = obs_params['observer']
     metadata['ScheduleBlockIdCode'] = obs_params['sb_id_code']
+    metadata['Run'] = run
 
     return metadata
 
@@ -1332,7 +1335,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
     # --------------------------------------------------------------------
     # open report file
-    report_file = os.path.join(report_path, 'calreport.rst')
+    report_file = os.path.join(report_path, 'calreport{}.rst'.format(parameters['server_id']+1))
     # --------------------------------------------------------------------
     # write heading
     with _lock:
@@ -1367,7 +1370,8 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             else:
                 unique_targets = []
             write_summary(cal_rst, ts, stream_name, parameters, unique_targets, st=st, et=et)
-            metadata_dict = metadata(ts, capture_block_id, report_path, st)
+            metadata_dict = metadata(ts, capture_block_id, report_path,
+                                     parameters['server_id'] + 1, st)
 
             # get parameters
             correlator_freq = parameters['channel_freqs'] / 1e6
@@ -1447,7 +1451,8 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
         # convert to html
         stylesheet_path = os.path.join(docutils_dir, 'html4css1.css')
         overrides = {'stylesheet_path': stylesheet_path}
-        report_file_html = os.path.join(report_path, 'calreport.html')
+        report_file_html = os.path.join(report_path,
+                                        'calreport{}.html'.format(parameters['server_id']+1))
         publish_file(source_path=report_file, destination_path=report_file_html,
                      writer_name='html', settings_overrides=overrides)
 
