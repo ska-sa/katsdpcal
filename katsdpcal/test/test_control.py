@@ -15,7 +15,7 @@ import datetime
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_almost_equal, assert_not_equal, assert_raises_regex, assert_dict_equal)
+    assert_almost_equal, assert_not_equal, assert_raises_regex)
 import asynctest
 
 import spead2
@@ -698,7 +698,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             assert_true(os.path.isfile(meta_file))
             with open(meta_file, 'r') as infile:
                 meta_out = json.load(infile)
-            assert_dict_equal(meta_out, meta_expected)
+            assert_equal(meta_out, meta_expected)
 
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
