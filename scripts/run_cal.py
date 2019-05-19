@@ -131,7 +131,7 @@ def parse_opts():
         '--l0-spead', type=endpoint.endpoint_list_parser(7200, single_port=True),
         default=':7200',
         help='endpoints to listen for L0 spead stream (including multicast IPs). '
-        + '[<ip>[+<count>]][:port]. [default=%(default)s]', metavar='ENDPOINTS')
+        + '[<ip>[+<count>]][:port]. [default: %(default)s]', metavar='ENDPOINTS')
     parser.add_argument(
         '--l0-interface',
         help='interface to subscribe to for L0 spectral data. [default: auto]', metavar='INTERFACE')
@@ -185,9 +185,9 @@ def parse_opts():
         '--pipeline-profile', type=str, metavar='FILENAME',
         help='Write a file with a profile of the pipeline process. [default: none]')
     parser.add_argument(
-        '--port', '-p', type=int, default=2048, help='katcp host port [%(default)s]')
+        '--port', '-p', type=int, default=2048, help='katcp host port [default: %(default)s]')
     parser.add_argument(
-        '--host', '-a', type=str, default='', help='katcp host address [all hosts]')
+        '--host', '-a', type=str, default='', help='katcp host address [default: all hosts]')
     parser.add_argument(
         '--servers', type=int, default=1,
         help='number of parallel servers producing the output [default: %(default)s]')
