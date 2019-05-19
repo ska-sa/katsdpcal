@@ -184,6 +184,7 @@ def parse_opts():
     parser.add_argument(
         '--pipeline-profile', type=str, metavar='FILENAME',
         help='Write a file with a profile of the pipeline process. [default: none]')
+    parser.add_aiomonitor_arguments()
     parser.add_argument(
         '--port', '-p', type=int, default=2048, help='katcp host port [default: %(default)s]')
     parser.add_argument(
@@ -240,17 +241,37 @@ def setup_logger(log_name, log_path='.'):
     logging.getLogger('').addHandler(handler)
 
 
-async def run(opts, log_path, full_log):
+async def run(server):
     """
     Run the device server.
 
     Parameters
     ----------
-    opts : argparse.Namespace
-        Command-line options
-    log_path : str
-        Path for pipeline logs
+    server : :class:`.CalDeviceServer`
+        Device server
     """
+    with server:
+        await server.start()
+        logger.info('katsdpcal started')
+
+        # Run until shutdown
+        await server.join()
+        logger.info('Server stopped')
+
+
+def main():
+    opts = parse_opts()
+
+    # set up logging. The Formatter class is replaced so that all log messages
+    # show the process/thread name.
+    if opts.threading:
+        adapt_formatter('threadName')
+    else:
+        adapt_formatter('processName')
+    log_name = 'pipeline.log'
+    log_path = os.path.abspath(opts.log_path)
+    setup_logger(log_name, log_path)
+
     # deal with required input parameters
     telstate_l0 = opts.telstate.view(opts.l0_name)
     telstate_cal = opts.telstate.view(opts.cal_name)
@@ -347,14 +368,11 @@ async def run(opts, log_path, full_log):
     server = create_server(not opts.threading, opts.host, opts.port, buffers,
                            opts.l0_name, opts.l0_spead, l0_interface_address,
                            opts.flags_streams, opts.clock_ratio,
-                           telstate_cal, parameters, opts.report_path, log_path, full_log,
+                           telstate_cal, parameters, opts.report_path, log_path, log_name,
                            opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
                            opts.max_scans)
+
     with server:
-        await server.start()
-
-        # TODO: set up aiomonitor
-
         # Now install the signal handlers (which won't be inherited).
         loop = asyncio.get_event_loop()
 
@@ -375,30 +393,11 @@ async def run(opts, log_path, full_log):
 
         loop.add_signal_handler(signal.SIGTERM, signal_handler, signal.SIGTERM, True)
         loop.add_signal_handler(signal.SIGINT, signal_handler, signal.SIGINT, False)
-        logger.info('katsdpcal started')
 
-        # Run until shutdown
-        await server.join()
-        logger.info('Server stopped')
-
-
-async def main():
-    opts = parse_opts()
-
-    # set up logging. The Formatter class is replaced so that all log messages
-    # show the process/thread name.
-    if opts.threading:
-        adapt_formatter('threadName')
-    else:
-        adapt_formatter('processName')
-    log_name = 'pipeline.log'
-    log_path = os.path.abspath(opts.log_path)
-    setup_logger(log_name, log_path)
-
-    await run(opts, log_path=log_path, full_log=log_name)
+        with katsdpservices.start_aiomonitor(loop, opts, locals()):
+            loop.run_until_complete(run(server))
+        loop.close()
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    loop.close()
+    main()

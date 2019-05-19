@@ -1632,7 +1632,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
     def __exit__(self, exc_type, exc_value, traceback):
         # When used as a context manager, a server will ensure its child
         # processes are killed.
-        for task in [self.report_writer, self.pipeline]:
+        for task in self.children:
             if task.is_alive() and hasattr(task, 'terminate'):
                 task.terminate()
 
