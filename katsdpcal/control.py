@@ -178,7 +178,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
     if sum_corr:
         for key in list(new_corr.keys()):
             # sum the per scan sum of flags
-            if key is 't_flags':
+            if key == 't_flags':
                 sum_corr[key] += new_corr[key]
                 sum_corr[key] = [sum(sum_corr[key])]
                 del new_corr[key]

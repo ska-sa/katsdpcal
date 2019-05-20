@@ -513,7 +513,7 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
     if amp:
         lim = amp_range(data)
         if not np.isnan(lim).any():
-                axes[p, 1].set_ylim(*lim)
+            axes[p, 1].set_ylim(*lim)
 
     # For the last row, add in xticklabels and xlabels
     l_p = npols - 1

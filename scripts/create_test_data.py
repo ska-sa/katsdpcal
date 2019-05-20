@@ -18,7 +18,8 @@ from katsdpcal.simulator import get_antdesc_relative
 def parse_opts():
     parser = optparse.OptionParser(description='Create sumulated data files from KAT-7 h5 file')
     parser.add_option('-f', '--file', type=str, help='H5 file to use for the simulation.')
-    parser.add_option('-n', '--num-scans', type=int, default=0, help='Number of scans to keep in the output MS. Default: all')
+    parser.add_option('-n', '--num-scans', type=int, default=0,
+                      help='Number of scans to keep in the output MS. Default: all')
     parser.add_option('--image', action='store_true', help='Image the output MS files.')
     parser.set_defaults(image=False)
     return parser.parse_args()
@@ -26,7 +27,8 @@ def parse_opts():
 
 def h5toms(filename):
     # convert h5 to MS
-    proc = subprocess.Popen('h5toms.py -f {0}'.format(filename,), stderr=subprocess.PIPE, shell=True)
+    proc = subprocess.Popen('h5toms.py -f {0}'.format(filename),
+                            stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
     # if the MS file already exists, raise an error
     if 'RuntimeError' in errs:
@@ -37,9 +39,9 @@ def h5toms(filename):
 def get_msname(filename):
     # check if there is an MS for the base filename
     name_base = filename.split('.h5')[0]
-    ms_name = glob.glob('{0}*.ms'.format(name_base,))
+    ms_name = glob.glob('{0}*.ms'.format(name_base))
     if len(ms_name) > 1:
-        raise ValueError('Multiple matching MS files?! {0}'.format(ms_name,))
+        raise ValueError('Multiple matching MS files?! {0}'.format(ms_name))
     elif ms_name == []:
         return None
     else:
@@ -50,12 +52,14 @@ def extract_scans(msfile, num_scans):
     # extract the number of scans requored (starting at scan 0)
     new_ms = 'TEST_{0}scans.ms'.format(num_scans)
     scan_list = ','.join([str(i) for i in range(opts.num_scans)])
-    casa_command = 'casapy -c \"split(vis=\'{0}\',outputvis=\'{1}\',scan=\'{2}\',datacolumn=\'data\')\"'.format(msfile, new_ms, scan_list)
+    casa_command = (
+        'casapy -c \"split(vis=\'{0}\',outputvis=\'{1}\',scan=\'{2}\',datacolumn=\'data\')\"'
+        .format(msfile, new_ms, scan_list))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
     # if the MS file already exists, raise an error
     if 'already exists' in errs:
-        print('ms file {0} already exists - using it!'.format(new_ms,))
+        print('ms file {0} already exists - using it!'.format(new_ms))
     return new_ms
 
 
@@ -65,67 +69,85 @@ def calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions, re
 
     Parameters
     ----------
-    phase_centre : katpoint target for phase centre position
-    timestamps : times, array of floats, shape(nrows)
-    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
-    ant1, ant2: array of antenna indices, shape(nrows)
-    antenna_descriptions : description strings for the antennas, same order as antlist, list of string
-    refant_ind : index of reference antenna in antlist, integer
+    phase_centre
+        katpoint target for phase centre position
+    timestamps
+        times, array of floats, shape(nrows)
+    antlist
+        list of antenna names - used for associating antenna descriptions with
+        an1 and ant2 indices, shape(nant)
+    ant1, ant2
+        array of antenna indices, shape(nrows)
+    antenna_descriptions
+        description strings for the antennas, same order as antlist, list of string
+    refant_ind
+        index of reference antenna in antlist, integer
 
     Returns
     -------
-    uvw : uvw coordinates numpy array, shape (3,nbl x ntimes)
+    uvw
+        uvw coordinates numpy array, shape (3, nbl x ntimes)
     """
     # use the lat-long-alt values of one of the antennas as the array reference position
     refant = katpoint.Antenna(ant_descriptions[antlist[refant_ind]])
-    array_reference_position = katpoint.Antenna('array_position',*refant.ref_position_wgs84)
+    array_reference_position = katpoint.Antenna('array_position', *refant.ref_position_wgs84)
     # use the array reference position for the basis
     basis = phase_centre.uvw_basis(timestamp=to_ut(timestamps), antenna=array_reference_position)
     # get enu vector for each row in MS, for each antenna in the baseline pair for that row
-    antenna1_uvw = np.empty([3,len(timestamps)])
-    antenna2_uvw = np.empty([3,len(timestamps)])
-    for i, [a1, a2] in enumerate(zip(ant1,ant2)):
+    antenna1_uvw = np.empty([3, len(timestamps)])
+    antenna2_uvw = np.empty([3, len(timestamps)])
+    for i, [a1, a2] in enumerate(zip(ant1, ant2)):
         antenna1 = katpoint.Antenna(ant_descriptions[antlist[a1]])
         enu1 = np.array(antenna1.baseline_toward(array_reference_position))
-        antenna1_uvw[...,i] = np.tensordot(basis[...,i], enu1, ([1], [0]))
+        antenna1_uvw[..., i] = np.tensordot(basis[..., i], enu1, ([1], [0]))
 
         antenna2 = katpoint.Antenna(ant_descriptions[antlist[a2]])
         enu2 = np.array(antenna2.baseline_toward(array_reference_position))
-        antenna2_uvw[...,i] = np.tensordot(basis[...,i], enu2, ([1], [0]))
+        antenna2_uvw[..., i] = np.tensordot(basis[..., i], enu2, ([1], [0]))
 
     # then subtract the vectors for each antenna to get the baseline vectors
-    baseline_uvw = np.empty([3,len(timestamps)])
-    for i,[a1,a2] in enumerate(zip(ant1,ant2)):
-        baseline_uvw[...,i] = - antenna1_uvw[...,i] + antenna2_uvw[...,i]
+    baseline_uvw = np.empty([3, len(timestamps)])
+    for i, [a1, a2] in enumerate(zip(ant1, ant2)):
+        baseline_uvw[..., i] = - antenna1_uvw[..., i] + antenna2_uvw[..., i]
 
     return baseline_uvw
 
 
-def calc_uvw_wave(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions, refant_ind=0, wavelengths=None):
+def calc_uvw_wave(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions,
+                  refant_ind=0, wavelengths=None):
     """
     Calculate uvw coordinates
 
     Parameters
     ----------
-    phase_centre : katpoint target for phase centre position
-    timestamps : times, array of floats, shape(nrows)
-    antlist : list of antenna names - used for associating antenna descriptions with an1 and ant2 indices, shape(nant)
-    ant1, ant2: array of antenna indices, shape(nrows)
-    antenna_descriptions : description strings for the antennas, same order as antlist, string
-    refant_ind : index of reference antenna in antlist, integer
-    wavelengths : wavelengths, single value or array shape(nchans)
+    phase_centre
+        katpoint target for phase centre position
+    timestamps
+        times, array of floats, shape(nrows)
+    antlist
+        list of antenna names - used for associating antenna descriptions with
+        an1 and ant2 indices, shape(nant)
+    ant1, ant2
+        array of antenna indices, shape(nrows)
+    antenna_descriptions
+        description strings for the antennas, same order as antlist, string
+    refant_ind
+        index of reference antenna in antlist, integer
+    wavelengths
+        wavelengths, single value or array shape(nchans)
 
     Returns
     -------
-    uvw_wave : uvw coordinates normalised by wavelength, shape (3,nbl x ntimes,len(wavelengths))
+    uvw_wave
+        uvw coordinates normalised by wavelength, shape (3, nbl x ntimes, len(wavelengths))
     """
     uvw = calc_uvw(phase_centre, timestamps, antlist, ant1, ant2, ant_descriptions)
     if wavelengths is None:
         return uvw
     elif np.isscalar(wavelengths):
-        return uvw/wavelengths
+        return uvw / wavelengths
     else:
-        return uvw[:,:,np.newaxis]/wavelengths[np.newaxis,np.newaxis,:]
+        return uvw[:, :, np.newaxis] / wavelengths[np.newaxis, np.newaxis, :]
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -138,7 +160,7 @@ def create_point_simple(orig_msfile, basename='TEST0'):
     msfile = basename+'.ms'
     a0, a1, a2, a3 = [1.15, 0, 0, 0]
 
-    os.system('rm -rf {0}'.format(msfile,))
+    os.system('rm -rf {0}'.format(msfile))
     os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
 
     t = tables.table(msfile, readonly=False)
@@ -156,8 +178,9 @@ def create_point_simple(orig_msfile, basename='TEST0'):
     source_table.putcol('NAME', names)
 
     # source position
-    #   limit the precision of the RA DEC positions because of pyephem precision limitations on printing
-    #   (this becomes an issue when creating the target description trings in the simulator)
+    #   limit the precision of the RA DEC positions because of pyephem
+    #   precision limitations on printing (this becomes an issue when creating
+    #   the target description trings in the simulator)
     ra_string = '04:37:04.4'
     dec_string = '29:40:13.8'
     ra = ephem.hours(ra_string)
@@ -174,27 +197,30 @@ def create_point_simple(orig_msfile, basename='TEST0'):
     source_table.close()
 
     # change uvw coords in the MS file to reflect then new phase centre position
-    casa_command = 'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'.format(msfile, msfile)
+    casa_command = (
+        'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'
+        .format(msfile, msfile))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
+    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename,)
+    heading = 'Test data set {0}'.format(basename)
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading,))
-    f.write('# {0}\n'.format(underlining,))
+    f.write('# {0}\n'.format(heading))
+    f.write('# {0}\n'.format(underlining))
     f.write('# Simple point source in the phase centre\n')
-    f.write('# a0 = {0}\n'.format(a0,))
-    f.write('# a1 = {0}\n'.format(a1,))
-    f.write('# a2 = {0}\n'.format(a2,))
-    f.write('# a3 = {0}\n'.format(a3,))
-    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'.format(ra_string, dec_string, a0, a1, a2, a3))
+    f.write('# a0 = {0}\n'.format(a0))
+    f.write('# a1 = {0}\n'.format(a1))
+    f.write('# a2 = {0}\n'.format(a2))
+    f.write('# a3 = {0}\n'.format(a3))
+    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'
+            .format(ra_string, dec_string, a0, a1, a2, a3))
     f.write('\n')  # python will convert \n to os.linesep
     f.close()
 
@@ -214,7 +240,7 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
     msfile = basename+'.ms'
     a0, a1, a2, a3 = [1.8077, -0.8018, -0.1157, 0]
 
-    os.system('rm -rf {0}'.format(msfile,))
+    os.system('rm -rf {0}'.format(msfile))
     os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
 
     t = tables.table(msfile, readonly=False)
@@ -240,8 +266,9 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
     source_table.putcol('NAME', names)
 
     # source position
-    #   limit the precision of the RA DEC positions because of pyephem precision limitations on printing
-    #   (this becomes an issue when creating the target description trings in the simulator)
+    #   limit the precision of the RA DEC positions because of pyephem
+    #   precision limitations on printing (this becomes an issue when creating
+    #   the target description trings in the simulator)
     ra_string = '04:37:04.4'
     dec_string = '29:40:13.8'
     ra = ephem.hours(ra_string)
@@ -258,27 +285,30 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
     source_table.close()
 
     # change uvw coords in the MS file to reflect then new phase centre position
-    casa_command = 'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'.format(msfile, msfile)
+    casa_command = (
+        'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'
+        .format(msfile, msfile))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
+    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename,)
+    heading = 'Test data set {0}'.format(basename)
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading,))
-    f.write('# {0}\n'.format(underlining,))
+    f.write('# {0}\n'.format(heading))
+    f.write('# {0}\n'.format(underlining))
     f.write('# Point source in the phase centre, with frequency slope (from 3C123 model)\n')
-    f.write('# a0 = {0}\n'.format(a0,))
-    f.write('# a1 = {0}\n'.format(a1,))
-    f.write('# a2 = {0}\n'.format(a2,))
-    f.write('# a3 = {0}\n'.format(a3,))
-    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'.format(ra_string, dec_string, a0, a1, a2, a3))
+    f.write('# a0 = {0}\n'.format(a0))
+    f.write('# a1 = {0}\n'.format(a1))
+    f.write('# a2 = {0}\n'.format(a2))
+    f.write('# a3 = {0}\n'.format(a3))
+    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'
+            .format(ra_string, dec_string, a0, a1, a2, a3))
     f.write('\n')  # python will convert \n to os.linesep
     f.close()
 
@@ -294,7 +324,7 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
 def create_points_two(orig_msfile, basename='TEST2'):
     msfile = basename+'.ms'
 
-    os.system('rm -rf {0}'.format(msfile,))
+    os.system('rm -rf {0}'.format(msfile))
     os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
 
     t = tables.table(msfile, readonly=False)
@@ -319,8 +349,9 @@ def create_points_two(orig_msfile, basename='TEST2'):
     spw_table.close()
 
     # point source parameters
-    #   limit the precision of the RA DEC positions because of pyephem precision limitations on printing
-    #   (this becomes an issue when creating the target description trings in the simulator)
+    #   limit the precision of the RA DEC positions because of pyephem
+    #   precision limitations on printing (this becomes an issue when creating
+    #   the target description trings in the simulator)
     source_list = ['S0, P, 04:37:04.4, 0, -9:40:13.8, 0, 1.3, 0, 0, 0, 0, 0, 0',
                    'S1, P, 04:39:14.4, 0, -10:00:00.0, 0, 1.15, 0, 0, 0, 0, 0, 0']
 
@@ -332,18 +363,20 @@ def create_points_two(orig_msfile, basename='TEST2'):
     dec0 = ephem.degrees(dec0_string)
 
     # set up phase centre as katpoint target
-    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'.format(basename, ra0_string, dec0_string))
+    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'
+                                    .format(basename, ra0_string, dec0_string))
     # calculate uvw
     uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
-    uvw_wave = uvw[:,:,np.newaxis]/wl[np.newaxis,np.newaxis,:]
+    uvw_wave = uvw[:, :, np.newaxis] / wl[np.newaxis, np.newaxis, :]
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename,)
+    heading = 'Test data set {0}'.format(basename)
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading,))
-    f.write('# {0}\n'.format(underlining,))
-    f.write('# Two points: point source in the phase centre and an offset point, both with no frequency slope.\n')
+    f.write('# {0}\n'.format(heading))
+    f.write('# {0}\n'.format(underlining))
+    f.write('# Two points: point source in the phase centre and an offset point, '
+            'both with no frequency slope.\n')
     f.write('#\n')
 
     # calculate visibilities for these sources
@@ -363,11 +396,13 @@ def create_points_two(orig_msfile, basename='TEST2'):
         ra = ephem.hours(ra_string)
         dec = ephem.degrees(dec_string)
 
-        l = np.cos(dec)*np.sin(ra-ra0)
+        l = np.cos(dec)*np.sin(ra-ra0)     # noqa: E741
         m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
+        n = np.sqrt(1.0-l**2.0-m**2.0)
+        delay = uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(n-1.0)
 
         S = 10.**a0
-        new_data += S*np.exp(2.*np.pi*1j*(uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis]
+        new_data += S*np.exp(2.*np.pi*1j*delay)[:, :, np.newaxis]
 
     t.putcol('DATA', new_data)
     t.putcol('UVW', uvw.T)
@@ -393,7 +428,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
     source_table.close()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
+    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
@@ -415,7 +450,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
 def create_points_five(orig_msfile, basename='TEST3'):
     msfile = basename+'.ms'
 
-    os.system('rm -rf {0}'.format(msfile,))
+    os.system('rm -rf {0}'.format(msfile))
     os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
 
     t = tables.table(msfile, readonly=False)
@@ -441,8 +476,9 @@ def create_points_five(orig_msfile, basename='TEST3'):
     spw_table.close()
 
     # point source parameters
-    #   limit the precision of the RA DEC positions because of pyephem precision limitations on printing
-    #   (this becomes an issue when creating the target description trings in the simulator)
+    #   limit the precision of the RA DEC positions because of pyephem
+    #   precision limitations on printing (this becomes an issue when creating
+    #   the target description trings in the simulator)
     source_list = ['S0, P, 04:37:04.4, 0, -9:40:13.8, 0, 1.8077, -0.8018, -0.1157, 0, 0, 0, 0',
                    'S1, P, 04:39:14.4, 0, -10:00:00.0, 0, 1.45, -0.2, -0.05, 0.003, 0, 0, 0',
                    'S2, P, 04:38:0.0, 0, -10:10:00.0, 0, 1.15, 0.05, -0.1, -0.02, 0, 0, 0',
@@ -457,18 +493,20 @@ def create_points_five(orig_msfile, basename='TEST3'):
     dec0 = ephem.degrees(dec0_string)
 
     # set up phase centre as katpoint target
-    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'.format(basename, ra0_string, dec0_string))
+    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'
+                                    .format(basename, ra0_string, dec0_string))
     # calculate uvw
     uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
-    uvw_wave = uvw[:,:,np.newaxis]/wl[np.newaxis,np.newaxis,:]
+    uvw_wave = uvw[:, :, np.newaxis] / wl[np.newaxis, np.newaxis, :]
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename,)
+    heading = 'Test data set {0}'.format(basename)
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading,))
-    f.write('# {0}\n'.format(underlining,))
-    f.write('# Five points: point source in the phase centre and four offset points, all with frequency slope.\n')
+    f.write('# {0}\n'.format(heading))
+    f.write('# {0}\n'.format(underlining))
+    f.write('# Five points: point source in the phase centre and four offset points, '
+            'all with frequency slope.\n')
     f.write('#\n')
 
     # calculate visibilities for these sources
@@ -479,17 +517,20 @@ def create_points_five(orig_msfile, basename='TEST3'):
 
         source_params = source.split(',')
         a0, a1, a2, a3 = [float(s) for s in source_params[6:10]]
-        S = 10.**(a0 + a1*np.log10(nu_ghz) + a2*(np.log10(nu_ghz)**2.0) + a3*(np.log10(nu_ghz)**3.0))
+        log_nu = np.log10(nu_ghz)
+        S = 10.**(a0 + a1*log_nu + a2*(log_nu**2.0) + a3*(log_nu**3.0))
 
         ra_string = source_params[2].strip()
         dec_string = source_params[4].strip()
         ra = ephem.hours(ra_string)
         dec = ephem.degrees(dec_string)
-        l = np.cos(dec)*np.sin(ra-ra0)
+        l = np.cos(dec)*np.sin(ra-ra0)      # noqa: E741
         m = np.sin(dec)*np.cos(dec0)-np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
+        n = np.sqrt(1.0-l**2.0-m**2.0)
+        delay = uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(n-1.0)
 
         # add each source to the data
-        new_data += (S*np.exp(2.*np.pi*1j*(uvw_wave[0]*l + uvw_wave[1]*m + uvw_wave[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0))))[:, :, np.newaxis]
+        new_data += (S*np.exp(2.*np.pi*1j*delay))[:, :, np.newaxis]
 
     t.putcol('DATA', new_data)
     t.putcol('UVW', uvw.T)
@@ -515,7 +556,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
     source_table.close()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile,)
+    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
@@ -523,6 +564,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
     f.close()
 
 # ---------------------------------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     # parse command line options
@@ -544,7 +586,7 @@ if __name__ == "__main__":
     create_point_simple(msfile, basename=basename)
     if opts.image:
         # don't clean, just invert (niter=0)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)
+        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)     # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -552,7 +594,7 @@ if __name__ == "__main__":
     create_point_spectral(msfile, basename=basename)
     if opts.image:
         # don't clean, just invert (niter=0)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)
+        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)     # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -560,7 +602,7 @@ if __name__ == "__main__":
     create_points_two(msfile, basename=basename)
     if opts.image:
         # clean (niter=100)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)
+        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)   # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -568,6 +610,6 @@ if __name__ == "__main__":
     create_points_five(msfile, basename=basename)
     if opts.image:
         # clean (niter=100)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)
+        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)   # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
