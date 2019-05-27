@@ -705,7 +705,7 @@ class Scan:
             soln = np.repeat(soln, self.nant, axis=-1)
             return self._apply(soln, vis, cross_pol)
 
-        elif soln.soltype is 'B':
+        elif soln.soltype == 'B':
             return self._apply(soln_values, vis, cross_pol)
         else:
             raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
