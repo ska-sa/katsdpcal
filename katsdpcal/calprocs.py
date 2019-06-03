@@ -341,9 +341,9 @@ def best_refant(data, corrprod_lookup, chans):
 
     Parameters:
     -----------
-    data : :class:`np.ndarray`, array of complex, shape(n_chans, n_pols, n_bls)
+    data : :class:`np.ndarray`, complex, shape(n_chans, n_pols, n_bls)
         visibility data
-    corrprod_lookup : :class:`np.ndarray`, array of int,  shape (2, n_bls)
+    corrprod_lookup : :class:`np.ndarray`, int,  shape (2, n_bls)
         antenna pairs for selected baselines
     chans : :class:`np.ndarray`
         channel frequencies in Hz
