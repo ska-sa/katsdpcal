@@ -44,7 +44,7 @@ def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1],
     fig, axes = plt.subplots(1, figsize=(2 * FIG_X, FIG_Y / 2.0))
 
     for p in range(npols):
-        axes.plot(data[p], '.', label=pol[p], **plot_kwargs):
+        axes.plot(data[p], '.', label=pol[p], **plot_kwargs)
 
     axes.set_xticks(np.arange(0, nants))
     if antenna_names is not None:
@@ -88,11 +88,11 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1], **plot_kwar
 
     for p in range(npols):
         # plot amplitude
-        p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-', **plot_kwargs):
+        p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-', **plot_kwargs)
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
 
         # plot phase
-        axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-', **plot_kwargs):
+        axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-', **plot_kwargs)
         axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
