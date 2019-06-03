@@ -209,7 +209,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1], **plot_kwar
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(
             chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower',
-            cmap=plt.cm.jet, **plot_kwargs):
+            cmap=plt.cm.jet, **plot_kwargs)
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
