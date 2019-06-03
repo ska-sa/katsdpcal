@@ -19,7 +19,8 @@ colors = plt.cm.tab20.colors
 plt.rc('axes', prop_cycle=(cycler('color', colors)))
 
 
-def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1]):
+def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1],
+                   **plot_kwargs):
     """
     Plots a value vs antenna
 
@@ -35,13 +36,15 @@ def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1]):
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nants = data.shape[-1]
     fig, axes = plt.subplots(1, figsize=(2 * FIG_X, FIG_Y / 2.0))
 
     for p in range(npols):
-        axes.plot(data[p], '.', label=pol[p])
+        axes.plot(data[p], '.', label=pol[p], **plot_kwargs)
 
     axes.set_xticks(np.arange(0, nants))
     if antenna_names is not None:
@@ -57,7 +60,7 @@ def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1]):
     return fig
 
 
-def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
+def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
     """
     Plots gain solutions
 
@@ -71,6 +74,8 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
@@ -83,11 +88,11 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
 
     for p in range(npols):
         # plot amplitude
-        p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-')
+        p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-', **plot_kwargs)
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
 
         # plot phase
-        axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-')
+        axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-', **plot_kwargs)
         axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
@@ -105,7 +110,7 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1]):
     return fig
 
 
-def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
+def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1], **plot_kwargs):
     """
     Make a waterfall plot of flagged data in Channels vs Baselines
 
@@ -121,6 +126,8 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
         list of start and stop frequencies of the array, optional
     pol : list
         list of polarisation descriptions, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nbls = data.shape[-1]
@@ -130,10 +137,11 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1]):
     rowsize = max(1, nbls / 1000.0)
     fig, axes = plt.subplots(nrows, ncols,
                              figsize=(ncols * FIG_X, rowsize * FIG_Y),
-                             squeeze=False, sharey='row')
+                             squeeze=False, sharey='row', **plot_kwargs)
     for p in range(npols):
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
-            chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower', cmap=plt.cm.jet)
+            chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower',
+            cmap=plt.cm.jet, **plot_kwargs)
         axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
         bl_labels(axes[0, p], uvlist)
@@ -170,7 +178,7 @@ def bl_labels(ax, seplist):
     ax.set_yticklabels(np.int_(seplist[valid_yticks]))
 
 
-def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
+def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1], **plot_kwargs):
     """
     Make a waterfall plot of flagged data in channels vs time
 
@@ -186,6 +194,8 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
         start and stop frequencies of the array, optional
     pol : list
         list of polarisation descriptions, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-1]
     nscans = data.shape[0]
@@ -198,7 +208,8 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1]):
         ncols * FIG_X, rowsize * FIG_Y), squeeze=False, sharey='row')
     for p in range(npols):
         im = axes[0, p].imshow(data[..., p], extent=(
-            chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower', cmap=plt.cm.jet)
+            chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower',
+            cmap=plt.cm.jet, **plot_kwargs)
         axes[0, p].set_ylabel('Pol {0}  Scans'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
@@ -267,7 +278,7 @@ def time_label(ax, timerange):
     ax.set_xlabel('Times (UTC) \n Date: ' + datelabel)
 
 
-def plot_el_v_time(targets, times, elevations, title=None):
+def plot_el_v_time(targets, times, elevations, title=None, **plot_kwargs):
     """
     Make a plot of elevation vs time for a number of targets
 
@@ -281,6 +292,8 @@ def plot_el_v_time(targets, times, elevations, title=None):
         real, elevations for each target
     title : str, optional
         title of the plot
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     fig, axes = plt.subplots(1, 1, figsize=(2 * FIG_X, FIG_Y))
     if title is not None:
@@ -295,7 +308,8 @@ def plot_el_v_time(targets, times, elevations, title=None):
         datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp)
                      for unix_timestamp in times[idx]]
         dates = md.date2num(datetimes)
-        axes.plot(dates, np.rad2deg(elevations[idx]), '.', label=target)
+        axes.plot(dates, np.rad2deg(elevations[idx]), '.', label=target,
+                  **plot_kwargs)
 
     axes.legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
     axes.set_ylabel('Elevation (degrees)')
@@ -306,7 +320,7 @@ def plot_el_v_time(targets, times, elevations, title=None):
 
 
 def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
-                     pol=[0, 1], phase_range=[-180, 180]):
+                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
     """
     Plots Amplitude and Phase vs UVdist
 
@@ -324,8 +338,9 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
-
     npols = data.shape[-2]
     nrows, ncols = npols, 2
     times = data.shape[0]
@@ -338,14 +353,17 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
         for i in range(times):
             # Transpose the axes to ensure that the color cycles on frequencies not on baseline
             p1 = axes[p, 0].plot(uvdist[i, :, :].transpose(),
-                                 np.absolute(data[i, :, p, :]).transpose(), '.', ms='3')
+                                 np.absolute(data[i, :, p, :]).transpose(), '.', ms='3',
+                                 **plot_kwargs)
 
             if amp:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                                np.absolute(data[i, :, p, :]).transpose(), '.', ms='3')
+                                np.absolute(data[i, :, p, :]).transpose(), '.', ms='3',
+                                **plot_kwargs)
             else:
                 axes[p, 1].plot(uvdist[i, :, :].transpose(),
-                                np.angle(data[i, :, p, :], deg=True).transpose(), '.', ms='3')
+                                np.angle(data[i, :, p, :], deg=True).transpose(), '.', ms='3',
+                                **plot_kwargs)
 
             # Reset color cycle so that channels have the same color
             axes[p, 0].set_prop_cycle(None)
@@ -378,7 +396,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
     return fig
 
 
-def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
+def plot_delays(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
     """
     Plots delay vs time
 
@@ -392,6 +410,8 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
         antenna names for legend, optional
     pol : list
         list of polarisation descriptions, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
@@ -402,7 +422,7 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
     time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
 
     for p in range(npols):
-        p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted')
+        p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted', **plot_kwargs)
         axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
@@ -414,7 +434,7 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1]):
 
 
 def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None,
-                        pol=[0, 1], phase_range=[-180, 180]):
+                        pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -435,6 +455,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nrows, ncols = 1, npols
@@ -445,7 +467,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
     for p in range(npols):
         # plot full range amplitude plots
-        p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
+        p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1,
+                             **plot_kwargs)
         axes[0, p].set_ylim(phase_range[0], phase_range[-1])
         axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
         axes[0, p].set_xlabel('Channels')
@@ -464,7 +487,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
 
 def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False,
-              pol=[0, 1], phase_range=[-180, 180]):
+              pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -485,6 +508,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 2
@@ -495,17 +520,18 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
 
     for p in range(npols):
         # plot full range amplitude plots
-        p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1)
+        p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
         axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
-            axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1)
+            axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
             axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
         else:
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
-            axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1)
+            axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1,
+                            **plot_kwargs)
             axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
 
@@ -591,7 +617,7 @@ def amp_range(data):
 
 
 def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
-                     pol=[0, 1], phase_range=[-180, 180]):
+                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
     """
     Plots amp/phase versus time
 
@@ -611,6 +637,8 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    plot_kwargs : keyword arguments, optional
+        additional keyword arguments for plotting function
     """
     npols = data.shape[-2]
     nrows, ncols = npols, 1
@@ -627,10 +655,11 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         data_pol = data[:, :, p, :]
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
-                p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.')
+                p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.', **plot_kwargs)
                 axes[p, 0].set_ylabel('Amp Pol_{0}'.format(pol[p]))
             else:
-                p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.')
+                p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.',
+                                     **plot_kwargs)
                 axes[p, 0].set_ylabel('Phase Pol_{0}'.format(pol[p]))
                 axes[p, 0].set_ylim(phase_range[0], phase_range[-1])
             # Reset the colour cycle, so that all channels have the same plot color
