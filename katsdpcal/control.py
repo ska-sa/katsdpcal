@@ -17,6 +17,7 @@ import spead2.recv
 import spead2.recv.asyncio
 import spead2.send
 
+import async_timeout
 import aiokatcp
 from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
@@ -241,7 +242,7 @@ def make_telstate_cb(telstate, capture_block_id):
     telstate_cb : :class:`katsdptelstate.TelescopeState`
         Telescope state with `capture_block_id` prepended to the first prefix
     """
-    prefix = telstate.SEPARATOR.join([capture_block_id, telstate.prefixes[0]])
+    prefix = telstate.join(capture_block_id, telstate.prefixes[0])
     return telstate.view(capture_block_id).view(prefix)
 
 
@@ -327,12 +328,446 @@ def _run_task(task):
 class Accumulator:
     """Manages accumulation of L0 data into buffers"""
 
+    class _CaptureBlock:
+        def __init__(self, owner, capture_block_id, rx, previous):
+            self.owner = owner
+            self.capture_block_id = capture_block_id
+            self._rx = rx
+            self._previous = previous
+            self._stopping = False
+            self._drained_rx_event = asyncio.Event()
+            self.done_event = asyncio.Event()
+            self._logger = logging.LoggerAdapter(logger, dict(capture_block_id=capture_block_id))
+            # Prepend the CBID to the cal_name to form a new namespace
+            self.telstate_cb_cal = make_telstate_cb(self.owner.telstate_cal, capture_block_id)
+            # First and last timestamps in observation
+            self._obs_start = None
+            self._obs_end = None
+            self._state = None
+            self._first_timestamp = None
+            self._last_idx = -1                # Last dump index that has a slot
+            # List of slots that have been filled in for this batch
+            self._slots = []
+            # Look up slot by dump index
+            self._slot_for_index = {}
+
+        async def _next_heap(self, ig):
+            """Retrieve the next usable heap from receiver and apply it to `ig`.
+
+            Returns
+            -------
+            dict
+                Keys that were updated in `ig`, or ``None`` if the receiver was stopped
+
+            Raises
+            ------
+            spead2.Stopped
+                if the stream stopped
+            """
+            async for heap in self._rx:
+                if heap.is_end_of_stream():
+                    return None
+                if isinstance(heap, spead2.recv.IncompleteHeap):
+                    self._logger.debug('dropped incomplete heap %d (%d/%d bytes of payload)',
+                                       heap.cnt, heap.received_length, heap.heap_length)
+                    _inc_sensor(self.owner.sensors['input-incomplete-heaps-total'], 1,
+                                status=aiokatcp.Sensor.Status.WARN)
+                    continue
+                updated = ig.update(heap)
+                if not updated:
+                    self._logger.info('==== empty heap received ====')
+                    continue
+                have_items = True
+                for key in ('dump_index', 'frequency',
+                            'correlator_data', 'flags', 'weights', 'weights_channel'):
+                    if key not in updated:
+                        self._logger.warning('heap received without %s', key)
+                        have_items = False
+                        break
+                if not have_items:
+                    continue
+                return updated
+            raise spead2.Stopped
+
+        def _get_activity_state(self, data_ts):
+            """Extract telescope state information about current activity.
+
+            Parameters
+            ----------
+            data_ts : float
+                Timestamp (UNIX time) for the query.
+
+            Returns
+            -------
+            :class:`ActivityState`
+                Current state, or ``None`` if no activity was recorded
+            """
+            try:
+                activity, activity_time = self.telstate_cb_cal.get_range(
+                    'obs_activity', et=data_ts, include_previous=True)[0]
+            except (KeyError, IndexError):
+                self._logger.info('No obs_activity found in telstate - ignoring dump')
+                return None
+            if isinstance(activity, bytes):
+                activity = activity.decode('utf-8')
+            # Get target from telescope state if present (otherwise 'unknown')
+            try:
+                target = self.owner.telstate.get_range('cbf_target', et=data_ts,
+                                                       include_previous=True)[0][0]
+            except (KeyError, IndexError):
+                logger.warning('No cbf_target found in telstate')
+                target = ''
+            if isinstance(target, bytes):
+                target = target.decode('utf-8')
+            # Extract name and tags from target description string
+            # XXX Rather use katpoint at some stage
+            target_split = target.split(',')
+            target_name = target_split[0] if target else 'unknown'
+            target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
+            return ActivityState(activity, activity_time, target_name, target_tags)
+
+        def _is_break(self, old, new, slots):
+            """Determine whether to break batches between `old` and `new`:
+             * case 1 -- activity change (unless gain cal following target)
+             * case 2 -- beamformer phase up ended
+             * case 3 -- buffer capacity limit reached
+
+            Parameters
+            ----------
+            old, new : :class:`ActivityState`
+                Encapsulated activity sensors for the previous and next dump
+            slots : list
+                Already accumulated slots (including `old` but not `new`)
+
+            Returns
+            -------
+            bool
+                Whether to insert a break between `old` and `new`
+            """
+            # **************** ACCUMULATOR BREAK CONDITIONS ****************
+            # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
+            ignore_states = ['slew', 'stop', 'unknown']
+            if new is not None and old is not None:
+                # CASE 1 -- break if activity has changed (i.e. the activity time has changed)
+                #   unless previous scan was a target, in which case accumulate
+                #   subsequent gain scan too
+                if (new.activity_time != old.activity_time) \
+                        and not np.any([ignore in old.activity for ignore in ignore_states]) \
+                        and ('unknown' not in new.target_tags) \
+                        and ('target' not in old.target_tags):
+                    self._logger.info('Accumulation break - transition %s -> %s',
+                                      old.activity, new.activity)
+                    return True
+
+                # CASE 2 -- beamformer special case
+                if (new.activity_time != old.activity_time) \
+                        and ('single_accumulation' in old.target_tags):
+                    self._logger.info('Accumulation break - single scan accumulation')
+                    return True
+
+            # CASE 3 -- end accumulation if maximum array size has been accumulated
+            if len(slots) >= self.owner.max_length:
+                self._logger.warning('Accumulate break - buffer size limit %d',
+                                     self.owner.max_length)
+                return True
+
+            return False
+
+        async def _ensure_slots(self, cur_idx, stop_pred=lambda: False):
+            """Add new slots until there is one for `cur_idx`.
+
+            This assumes that ``self._last_idx`` is less than `cur_idx`.
+
+            Returns
+            -------
+            bool
+                True if successful, False if we were interrupted by a force stop
+            """
+            for idx in range(self._last_idx + 1, cur_idx + 1):
+                data_ts = self._first_timestamp + idx * self.owner.int_time + self.owner.sync_time
+                if self._obs_start is None:
+                    self._obs_start = data_ts - 0.5 * self.owner.int_time
+                self._obs_end = data_ts + 0.5 * self.owner.int_time
+
+                # get activity and target tag from telescope state
+                new_state = self._get_activity_state(data_ts)
+
+                # if this is the first heap of the batch, log a header
+                if self._state is None:
+                    self._logger.info('accumulating data from targets:')
+
+                # flush a batch if necessary
+                if self._is_break(self._state, new_state, self._slots):
+                    self._flush_slots()
+
+                # print name of target and activity type on changes (and start of batch)
+                if new_state is not None and self._state != new_state:
+                    self._logger.info(' - %s (%s)', new_state.target_name, new_state.activity)
+
+                # Obtain a slot to copy to
+                slot = await self.owner._next_slot(stop_pred)
+                if slot is None:
+                    self._logger.info('Accumulation interrupted while waiting for a slot')
+                    return False
+                self._slots.append(slot)
+                self._slot_for_index[idx] = slot
+                self.owner.buffers['times'][slot] = data_ts
+                self.owner.buffers['dump_indices'][slot] = idx
+                self._state = new_state
+                self._last_idx = idx
+            return True
+
+        def _flush_slots(self):
+            now = time.time()
+            self._logger.info('Accumulated %d timestamps', len(self._slots))
+            _inc_sensor(self.owner.sensors['accumulator-batches'], 1, timestamp=now)
+
+            # pass the buffer to the pipeline
+            if self._slots:
+                self.owner.accum_pipeline_queue.put(
+                    BufferReadyEvent(self.capture_block_id, self._slots))
+                self._logger.info('accum_pipeline_queue updated by %s', self.owner.name)
+                _inc_sensor(self.owner.sensors['pipeline-slots'],
+                            len(self._slots), timestamp=now)
+                _inc_sensor(self.owner.sensors['accumulator-slots'],
+                            -len(self._slots), timestamp=now)
+
+            self._slots = []
+            self._slot_for_index.clear()
+            self._state = None
+
+        @classmethod
+        def _update_buffer(cls, out, l0, ordering):
+            """Copy values from an item group to the accumulation buffer.
+
+            The input has a single dimension representing both baseline and
+            polarisation, while the output has separate dimensions. There can
+            be an arbitrary permutation (given by `ordering`) of the
+            pol-baselines.
+
+            This is equivalent to
+
+            .. code:: python
+                out[:] = l0[:, ordering].reshape(out.shape)
+
+            but more efficient as it does not construct a temporary array.
+
+            It is required that the output can be reshaped to collapse the
+            pol and baseline dimensions. Being C-contiguous is sufficient for
+            this.
+
+            Parameters
+            ----------
+            out : :class:`np.ndarray`
+                Output array, shape (nchans, npols, nbls)
+            l0 : :class:`np.ndarray`
+                Input array, shape (nchans, npols * nbls)
+            ordering:
+                Indices into l0's last dimension to permute them before
+                reshaping into separate polarisation and baseline dimensions.
+            """
+            # Assign to .shape instead of using reshape so that an exception
+            # is raised if a view cannot be created (see np.reshape).
+            out_view = out.view()
+            out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
+            np.take(l0, ordering, axis=1, out=out_view)
+
+        def _stop_and_drain_rx(self):
+            self._rx.stop()
+            # Discard any heaps still in the ringbuffer, to free the memory
+            while True:
+                try:
+                    self._rx.get_nowait()
+                except spead2.Stopped:
+                    break
+            self._drained_rx_event.set()
+
+        async def _accumulate(self):
+            """
+            Accumulate SPEAD heaps into arrays and send batches to the pipeline.
+
+            This does the main work of :meth:`run`, which just wraps
+            it to handle startup and cleanup.
+
+            SPEAD item groups contain:
+               correlator_data
+               flags
+               weights
+               weights_channel
+               dump_index
+            """
+
+            ig = spead2.ItemGroup()
+            n_stop = 0                   # Number of stop heaps received
+            telstate_cb_l0 = make_telstate_cb(self.owner.telstate_l0, self.capture_block_id)
+
+            # receive SPEAD stream
+            self._logger.info('waiting to start accumulating data')
+            while True:
+                try:
+                    updated = await self._next_heap(ig)
+                except spead2.Stopped:
+                    break
+                if not updated:   # stop heap was received
+                    n_stop += 1
+                    if n_stop == len(self.owner.l0_endpoints):
+                        break
+                    else:
+                        continue
+
+                if self._first_timestamp is None:
+                    self._first_timestamp = telstate_cb_l0['first_timestamp']
+                # Convert from np.uint64, which behaves oddly
+                data_idx = int(ig['dump_index'].value)
+                if data_idx < self._last_idx:
+                    try:
+                        slot = self._slot_for_index[data_idx]
+                        self._logger.info(
+                            'Dump index went backwards (%d < %d), but managed to accept it',
+                            data_idx, self._last_idx)
+                    except KeyError:
+                        self._logger.warning(
+                            'Dump index went backwards (%d < %d), skipping heap',
+                            data_idx, self._last_idx)
+                        _inc_sensor(self.owner.sensors['input-too-old-heaps-total'], 1,
+                                    status=aiokatcp.Sensor.Status.WARN)
+                        continue
+                else:
+                    # Create slots for all entries we haven't seen yet
+                    if not await self._ensure_slots(data_idx, stop_pred=lambda: self._stopping):
+                        break
+                    slot = self._slots[-1]
+
+                channel0 = ig['frequency'].value
+                # Range of channels provided by the heap (from full L0 range)
+                src_range = slice(channel0, channel0 + ig['flags'].shape[0])
+                # Range of channels in the buffer (from full L0 range)
+                trg_range = self.owner.parameters['channel_slice']
+                # Intersection of the two
+                common_range = slice(max(src_range.start, trg_range.start),
+                                     min(src_range.stop, trg_range.stop))
+                if common_range.start < common_range.stop:
+                    # Compute slice to apply to src/trg to get the common part
+                    src_subset = slice(common_range.start - src_range.start,
+                                       common_range.stop - src_range.start)
+                    trg_subset = slice(common_range.start - trg_range.start,
+                                       common_range.stop - trg_range.start)
+                    # reshape data and put into relevant arrays
+                    vis = ig['correlator_data'].value[src_subset]
+                    flags = ig['flags'].value[src_subset]
+                    weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
+                    weights = ig['weights'].value[src_subset] * weights_channel
+                    if self.owner.need_weights_power_scale:
+                        # weight_power_scale expects a time axis, hence newaxis
+                        weights = weights[np.newaxis, ...]
+                        katdal.datasources.weight_power_scale(
+                            vis[np.newaxis, ...], weights, *self.owner.weights_power_scale_params,
+                            out=weights)
+                        weights = weights[0]
+                    self._update_buffer(self.owner.buffers['vis'][slot, trg_subset],
+                                        vis, self.owner.ordering)
+                    self._update_buffer(self.owner.buffers['flags'][slot, trg_subset],
+                                        flags, self.owner.ordering)
+                    self._update_buffer(self.owner.buffers['weights'][slot, trg_subset],
+                                        weights, self.owner.ordering)
+                    # Excise bits are computed from the original (L0) bls ordering,
+                    # not the cal ordering, because that's the order it's needed in
+                    # the flag sender.
+                    if self.owner.l0_excise:
+                        self.owner.buffers['excise'][slot, trg_subset] = \
+                            np.packbits(ig['flags'].value[src_subset], axis=-1)
+                    else:
+                        self.owner.buffers['excise'][slot, trg_subset] = 0
+                heap_nbytes = 0
+                for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
+                    heap_nbytes += ig[field].value.nbytes
+                now = time.time()
+                _inc_sensor(self.owner.sensors['input-bytes-total'], heap_nbytes, timestamp=now)
+                _inc_sensor(self.owner.sensors['input-heaps-total'], 1, timestamp=now)
+
+            self._stop_and_drain_rx()
+
+            # Need to ensure that all parallel cal servers get the same number of
+            # dumps, and hence the same batches. Record the last index of each,
+            # exchange, and take the largest.
+            max_idx = self._last_idx
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(1) as executor:
+                server_id = self.owner.parameters['server_id']
+                n_servers = self.owner.parameters['servers']
+                self.telstate_cb_cal.add('last_dump_index{}'.format(server_id),
+                                         self._last_idx, immutable=True)
+                for i in range(n_servers):
+                    if i != server_id:
+                        key = 'last_dump_index{}'.format(i)
+                        self._logger.debug('Waiting for %s', key)
+                        await loop.run_in_executor(
+                            executor, self.telstate_cb_cal.wait_key, key)
+                        other_last_idx = self.telstate_cb_cal[key]
+                        self._logger.debug('Got %s = %d', key, other_last_idx)
+                        max_idx = max(max_idx, other_last_idx)
+            if max_idx > self._last_idx:
+                logger.info('Adding %d extra slots to align end of observation',
+                            max_idx - self._last_idx)
+                await self._ensure_slots(max_idx)
+
+            # Flush out the final batch
+            self._flush_slots()
+            self._logger.info('Accumulation ended')
+
+        async def run(self):
+            try:
+                if self._previous is not None:
+                    self._logger.info('waiting for %s to finish', self._previous.capture_block_id)
+                    await self._previous.done_event.wait()
+
+                await self._accumulate()
+                # Tell the pipeline that the observation ended, but only if there
+                # was something to work on.
+                if self._obs_end is not None:
+                    self.owner.master_queue.put(
+                        ObservationStateEvent(self.capture_block_id, State.PROCESSING))
+                    self.owner.accum_pipeline_queue.put(
+                        ObservationEndEvent(self.capture_block_id, self._obs_start, self._obs_end))
+                    _inc_sensor(self.owner.sensors['accumulator-observations'], 1)
+                else:
+                    self._logger.info(' --- no data flowed ---')
+                    # Send it twice, since the master expects it from both flag
+                    # sender and report writer.
+                    for i in range(2):
+                        self.owner.master_queue.put(
+                            ObservationEndEvent(self.capture_block_id, None, None))
+                self._logger.info('Observation ended')
+            except asyncio.CancelledError:
+                self._logger.info('Observation cancelled')
+            except Exception as error:
+                self._logger.error('Exception in capture: %s', error, exc_info=True)
+            finally:
+                self._stop_and_drain_rx()
+                self.done_event.set()
+
+        async def capture_done(self):
+            # Give it a chance to stop on its own (from stop heaps)
+            logger.info('Waiting for capture to finish (5s timeout)...')
+            try:
+                with async_timeout.timeout(5):
+                    await self._drained_rx_event.wait()
+            except asyncio.TimeoutError:
+                self._logger.info('Stopping receiver')
+                self._rx.stop()
+                # Interrupt any wait for space so that capture_done will
+                # return promptly.
+                self._stopping = True
+                await self.owner._wake_next_slot()
+                self._logger.info('Waiting for capture to finish...')
+                await self._drained_rx_event.wait()
+            self._logger.info('Capture stopped')
+
     def __init__(self, buffers, accum_pipeline_queue, master_queue,
                  l0_name, l0_endpoints, l0_interface_address, telstate_cal, parameters):
         self.buffers = buffers
         self.telstate = telstate_cal.root()
         self.telstate_cal = telstate_cal
-        self.telstate_cb_cal = None    # Capture block-specific view
         self.l0_name = l0_name
         self.l0_interface_address = l0_interface_address
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -348,9 +783,7 @@ class Accumulator:
         self.set_ordering_parameters()
 
         self.name = 'Accumulator'
-        self._rx = None
-        self._run_future = None
-        self._reset_capture_state()
+        self._last_capture_block = None
 
         # Get data shape
         buffer_shape = buffers['vis'].shape
@@ -365,8 +798,6 @@ class Accumulator:
         self._slots_cond = asyncio.Condition()  # Signalled when new slots are available
         # Set if stop(force=True) is called, to abort waiting for an available slot
         self._force_stopping = False
-        # Enforce only one capture_done at a time
-        self._done_lock = asyncio.Lock()
 
         # Allocate storage and thread pool for receiver
         # Main data is 10 bytes per entry: 8 for vis, 1 for flags, 1 for weights.
@@ -451,9 +882,26 @@ class Accumulator:
 
     @property
     def capturing(self):
-        return self._rx is not None
+        return self.sensors['accumulator-capture-active'].value
 
-    async def _next_slot(self):
+    async def _next_slot(self, stop_pred=lambda: False):
+        """Obtain a new slot in which to store data.
+
+        This will block until
+        - a free slot is available
+        - :meth:`stop` is called with ``force=True``.
+        - a call to `stop_pred` returns True.
+
+        To ensure that the last happens promptly, one must call
+        :meth:`_wake_next_slot` after state changes that may change the return
+        value of `stop_pred`.
+
+        Returns
+        -------
+        slot
+            A slot index, or ``None`` if no slot was available before one of the other
+            conditions was triggered.
+        """
         wait_sensor = self.sensors['accumulator-last-wait']
         async with self._slots_cond:
             if self._force_stopping:
@@ -461,12 +909,12 @@ class Accumulator:
             elif self._free_slots:
                 wait_sensor.set_value(0.0)
             else:
-                logger.warn('no slots available - waiting for pipeline to return buffers')
+                logger.warning('no slots available - waiting for pipeline to return buffers')
                 loop = asyncio.get_event_loop()
                 now = loop.time()
-                while not self._force_stopping and not self._free_slots:
+                while not self._force_stopping and not stop_pred() and not self._free_slots:
                     await self._slots_cond.wait()
-                if self._force_stopping:
+                if not self._free_slots:
                     return None
                 elapsed = loop.time() - now
                 logger.info('slot acquired')
@@ -481,6 +929,10 @@ class Accumulator:
             # by data will have this value.
             self.buffers['flags'][slot].fill(np.uint8(2 ** FLAG_NAMES.index('data_lost')))
             return slot
+
+    async def _wake_next_slot(self):
+        async with self._slots_cond:
+            self._slots_cond.notify()
 
     async def buffer_free(self, event):
         """Return slots to the free list.
@@ -498,40 +950,8 @@ class Accumulator:
                 _inc_sensor(self.sensors['pipeline-slots'], -len(event.slots), timestamp=now)
                 self._slots_cond.notify()
 
-    async def _run_observation(self, capture_block_id):
-        """Runs for a single observation i.e., until a stop heap is received."""
-        try:
-            self._reset_capture_state(capture_block_id)
-            await self._accumulate(capture_block_id)
-            # Tell the pipeline that the observation ended, but only if there
-            # was something to work on.
-            if self._obs_end is not None:
-                self.master_queue.put(ObservationStateEvent(capture_block_id, State.PROCESSING))
-                self.accum_pipeline_queue.put(
-                    ObservationEndEvent(capture_block_id, self._obs_start, self._obs_end))
-                _inc_sensor(self.sensors['accumulator-observations'], 1)
-            else:
-                logger.info(' --- no data flowed ---')
-                # Send it twice, since the master expects it from both flag
-                # sender and report writer.
-                for i in range(2):
-                    self.master_queue.put(ObservationEndEvent(capture_block_id, None, None))
-            logger.info('Observation %s ended', capture_block_id)
-        except asyncio.CancelledError:
-            logger.info('Observation %s cancelled', capture_block_id)
-        except Exception as error:
-            logger.error('Exception in capture: %s', error, exc_info=True)
-        finally:
-            self._rx.stop()
-
-    def capture_init(self, capture_block_id):
-        assert self._rx is None, "observation already running"
-        assert self._run_future is None, "inconsistent state"
-        logger.info('===========================')
-        logger.info('   Starting new observation')
-        # Prepend the CBID to the cal_name to form a new namespace
-        self.telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
-        # Initialise SPEAD receiver
+    def _make_rx(self):
+        """Initialise SPEAD receiver"""
         logger.info('Initializing SPEAD receiver')
         rx = spead2.recv.asyncio.Stream(
             self._thread_pool,
@@ -549,8 +969,16 @@ class Accumulator:
                 rx.add_udp_reader(l0_endpoint.port, bind_hostname=l0_endpoint.host,
                                   buffer_size=64 * 1024**2)
         logger.info('reader added')
-        self._rx = rx
-        self._run_future = asyncio.ensure_future(self._run_observation(capture_block_id))
+        return rx
+
+    def capture_init(self, capture_block_id):
+        assert not self.capturing, "observation already running"
+        logger.info('===========================')
+        logger.info('   Starting new observation')
+        rx = self._make_rx()
+        cb = Accumulator._CaptureBlock(self, capture_block_id, rx, self._last_capture_block)
+        self._last_capture_block = cb
+        asyncio.ensure_future(cb.run())
         self.sensors['accumulator-capture-active'].set_value(True)
         self.sensors['input-bytes-total'].set_value(0)
         self.sensors['input-heaps-total'].set_value(0)
@@ -558,22 +986,12 @@ class Accumulator:
         self.sensors['input-too-old-heaps-total'].set_value(0)
 
     async def capture_done(self):
-        assert self._rx is not None, "observation not running"
-        assert self._run_future is not None, "inconsistent state"
-        async with self._done_lock:
-            future = self._run_future
-            # Give it a chance to stop on its own (from stop heaps)
-            logger.info('Waiting for capture to finish (5s timeout)...')
-            done, _ = await asyncio.wait([self._run_future], timeout=5)
-            if future not in done:
-                logger.info('Stopping receiver')
-                self._rx.stop()
-                logger.info('Waiting for capture to finish...')
-                await self._run_future
-            logger.info('Joined with _run_observation')
-            self._run_future = None
-            self._rx = None
-            self.telstate_cb_cal = None
+        assert self.capturing, "observation not running"
+        cb = self._last_capture_block
+        await cb.capture_done()
+        # Ensure that only the first capture_done for a particular CB updates
+        # the state.
+        if self._last_capture_block is cb:
             self.sensors['accumulator-capture-active'].set_value(False)
 
     async def stop(self, force=False):
@@ -585,12 +1003,14 @@ class Accumulator:
         """
         if force:
             self._force_stopping = True
-            async with self._slots_cond:
-                # Interrupts wait for free slot, if any
-                self._slots_cond.notify()
+            await self._wake_next_slot()
 
-        if self._run_future is not None:
+        if self.capturing:
             await self.capture_done()
+        # Wait for the last capture block to be completely finished, not just
+        # shut down the receiver.
+        if self._last_capture_block is not None:
+            await self._last_capture_block.done_event.wait()
 
         if not force and self.accum_pipeline_queue is not None:
             self.accum_pipeline_queue.put(StopEvent())
@@ -606,364 +1026,6 @@ class Accumulator:
         bls_ordering = self.telstate_l0['bls_ordering']
         self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
         self.weights_power_scale_params = katdal.datasources.corrprod_to_autocorr(bls_ordering)
-
-    def _reset_capture_state(self, capture_block_id=None):
-        self._capture_block_id = capture_block_id
-        # First and last timestamps in observation
-        self._obs_start = None
-        self._obs_end = None
-        self._state = None
-        self._first_timestamp = None
-        self._last_idx = -1                # Last dump index that has a slot
-        # List of slots that have been filled in for this batch
-        self._slots = []
-        # Look up slot by dump index
-        self._slot_for_index = {}
-
-    @classmethod
-    def _update_buffer(cls, out, l0, ordering):
-        """Copy values from an item group to the accumulation buffer.
-
-        The input has a single dimension representing both baseline and
-        polarisation, while the output has separate dimensions. There can
-        be an arbitrary permutation (given by `ordering`) of the
-        pol-baselines.
-
-        This is equivalent to
-
-        .. code:: python
-            out[:] = l0[:, ordering].reshape(out.shape)
-
-        but more efficient as it does not construct a temporary array.
-
-        It is required that the output can be reshaped to collapse the
-        pol and baseline dimensions. Being C-contiguous is sufficient for
-        this.
-
-        Parameters
-        ----------
-        out : :class:`np.ndarray`
-            Output array, shape (nchans, npols, nbls)
-        l0 : :class:`np.ndarray`
-            Input array, shape (nchans, npols * nbls)
-        ordering:
-            Indices into l0's last dimension to permute them before
-            reshaping into separate polarisation and baseline dimensions.
-        """
-        # Assign to .shape instead of using reshape so that an exception
-        # is raised if a view cannot be created (see np.reshape).
-        out_view = out.view()
-        out_view.shape = (out.shape[0], out.shape[1] * out.shape[2])
-        np.take(l0, ordering, axis=1, out=out_view)
-
-    def _flush_slots(self):
-        now = time.time()
-        logger.info('Accumulated %d timestamps', len(self._slots))
-        _inc_sensor(self.sensors['accumulator-batches'], 1, timestamp=now)
-
-        # pass the buffer to the pipeline
-        if self._slots:
-            self.accum_pipeline_queue.put(BufferReadyEvent(self._capture_block_id, self._slots))
-            logger.info('accum_pipeline_queue updated by %s', self.name)
-            _inc_sensor(self.sensors['pipeline-slots'], len(self._slots), timestamp=now)
-            _inc_sensor(self.sensors['accumulator-slots'], -len(self._slots), timestamp=now)
-
-        self._slots = []
-        self._slot_for_index.clear()
-        self._state = None
-
-    async def _next_heap(self, rx, ig):
-        """Retrieve the next usable heap from `rx` and apply it to `ig`.
-
-        Returns
-        -------
-        dict
-            Keys that were updated in `ig`, or ``None`` for a stop heap
-
-        Raises
-        ------
-        spead2.Stopped
-            if the stream stopped
-        """
-        async for heap in rx:
-            if heap.is_end_of_stream():
-                return {}
-            if isinstance(heap, spead2.recv.IncompleteHeap):
-                logger.debug('dropped incomplete heap %d (%d/%d bytes of payload)',
-                             heap.cnt, heap.received_length, heap.heap_length)
-                _inc_sensor(self.sensors['input-incomplete-heaps-total'], 1,
-                            status=aiokatcp.Sensor.Status.WARN)
-                continue
-            updated = ig.update(heap)
-            if not updated:
-                logger.info('==== empty heap received ====')
-                continue
-            have_items = True
-            for key in ('dump_index', 'frequency',
-                        'correlator_data', 'flags', 'weights', 'weights_channel'):
-                if key not in updated:
-                    logger.warn('heap received without %s', key)
-                    have_items = False
-                    break
-            if not have_items:
-                continue
-            return updated
-
-    def _get_activity_state(self, data_ts):
-        """Extract telescope state information about current activity.
-
-        Parameters
-        ----------
-        data_ts : float
-            Timestamp (UNIX time) for the query.
-
-        Returns
-        -------
-        :class:`ActivityState`
-            Current state, or ``None`` if no activity was recorded
-        """
-        try:
-            activity, activity_time = self.telstate_cb_cal.get_range(
-                'obs_activity', et=data_ts, include_previous=True)[0]
-        except (KeyError, IndexError):
-            logger.info('No obs_activity found in telstate - ignoring dump')
-            return None
-        if isinstance(activity, bytes):
-            activity = activity.decode('utf-8')
-        # Get target from telescope state if present (otherwise 'unknown')
-        try:
-            target = self.telstate.get_range('cbf_target', et=data_ts,
-                                             include_previous=True)[0][0]
-        except (KeyError, IndexError):
-            logger.warning('No cbf_target found in telstate')
-            target = ''
-        if isinstance(target, bytes):
-            target = target.decode('utf-8')
-        # Extract name and tags from target description string
-        # XXX Rather use katpoint at some stage
-        target_split = target.split(',')
-        target_name = target_split[0] if target else 'unknown'
-        target_tags = target_split[1] if len(target_split) > 1 else 'unknown'
-        return ActivityState(activity, activity_time, target_name, target_tags)
-
-    def _is_break(self, old, new, slots):
-        """Determine whether to break batches between `old` and `new`:
-         * case 1 -- activity change (unless gain cal following target)
-         * case 2 -- beamformer phase up ended
-         * case 3 -- buffer capacity limit reached
-
-        Parameters
-        ----------
-        old, new : :class:`ActivityState`
-            Encapsulated activity sensors for the previous and next dump
-        slots : list
-            Already accumulated slots (including `old` but not `new`)
-
-        Returns
-        -------
-        bool
-            Whether to insert a break between `old` and `new`
-        """
-        # **************** ACCUMULATOR BREAK CONDITIONS ****************
-        # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-        ignore_states = ['slew', 'stop', 'unknown']
-        if new is not None and old is not None:
-            # CASE 1 -- break if activity has changed (i.e. the activity time has changed)
-            #   unless previous scan was a target, in which case accumulate
-            #   subsequent gain scan too
-            if (new.activity_time != old.activity_time) \
-                    and not np.any([ignore in old.activity for ignore in ignore_states]) \
-                    and ('unknown' not in new.target_tags) \
-                    and ('target' not in old.target_tags):
-                logger.info('Accumulation break - transition %s -> %s', old.activity, new.activity)
-                return True
-
-            # CASE 2 -- beamformer special case
-            if (new.activity_time != old.activity_time) \
-                    and ('single_accumulation' in old.target_tags):
-                logger.info('Accumulation break - single scan accumulation')
-                return True
-
-        # CASE 3 -- end accumulation if maximum array size has been accumulated
-        if len(slots) >= self.max_length:
-            logger.warn('Accumulate break - buffer size limit %d', self.max_length)
-            return True
-
-        return False
-
-    async def _ensure_slots(self, cur_idx):
-        """Add new slots until there is one for `cur_idx`.
-
-        This assumes that ``self._last_idx`` is less than `cur_idx`.
-
-        Returns
-        -------
-        bool
-            True if successful, False if we were interrupted by a force stop
-        """
-        for idx in range(self._last_idx + 1, cur_idx + 1):
-            data_ts = self._first_timestamp + idx * self.int_time + self.sync_time
-            if self._obs_start is None:
-                self._obs_start = data_ts - 0.5 * self.int_time
-            self._obs_end = data_ts + 0.5 * self.int_time
-
-            # get activity and target tag from telescope state
-            new_state = self._get_activity_state(data_ts)
-
-            # if this is the first heap of the batch, log a header
-            if self._state is None:
-                logger.info('accumulating data from targets:')
-
-            # flush a batch if necessary
-            if self._is_break(self._state, new_state, self._slots):
-                self._flush_slots()
-
-            # print name of target and activity type on changes (and start of batch)
-            if new_state is not None and self._state != new_state:
-                logger.info(' - %s (%s)', new_state.target_name, new_state.activity)
-
-            # Obtain a slot to copy to
-            slot = await self._next_slot()
-            if slot is None:
-                logger.info('Accumulation interrupted while waiting for a slot')
-                return False
-            self._slots.append(slot)
-            self._slot_for_index[idx] = slot
-            self.buffers['times'][slot] = data_ts
-            self.buffers['dump_indices'][slot] = idx
-            self._state = new_state
-            self._last_idx = idx
-        return True
-
-    async def _accumulate(self, capture_block_id):
-        """
-        Accumulate SPEAD heaps into arrays and send batches to the pipeline.
-
-        This does the main work of :meth:`_run_observation`, which just wraps
-        it to handle cleanup at the end.
-
-        SPEAD item groups contain:
-           correlator_data
-           flags
-           weights
-           weights_channel
-           dump_index
-        """
-
-        rx = self._rx
-        ig = spead2.ItemGroup()
-        n_stop = 0                   # Number of stop heaps received
-        telstate_cb_l0 = make_telstate_cb(self.telstate_l0, capture_block_id)
-
-        # receive SPEAD stream
-        logger.info('waiting to start accumulating data')
-        while True:
-            try:
-                updated = await self._next_heap(rx, ig)
-            except spead2.Stopped:
-                break
-            if not updated:   # stop heap was received
-                n_stop += 1
-                if n_stop == len(self.l0_endpoints):
-                    rx.stop()
-                    break
-                else:
-                    continue
-
-            if self._first_timestamp is None:
-                self._first_timestamp = telstate_cb_l0['first_timestamp']
-            data_idx = int(ig['dump_index'].value)  # Convert from np.uint64, which behaves oddly
-            if data_idx < self._last_idx:
-                try:
-                    slot = self._slot_for_index[data_idx]
-                    logger.info('Dump index went backwards (%d < %d), but managed to accept it',
-                                data_idx, self._last_idx)
-                except KeyError:
-                    logger.warning('Dump index went backwards (%d < %d), skipping heap',
-                                   data_idx, self._last_idx)
-                    _inc_sensor(self.sensors['input-too-old-heaps-total'], 1,
-                                status=aiokatcp.Sensor.Status.WARN)
-                    continue
-            else:
-                # Create slots for all entries we haven't seen yet
-                if not await self._ensure_slots(data_idx):
-                    break
-                slot = self._slots[-1]
-
-            channel0 = ig['frequency'].value
-            # Range of channels provided by the heap (from full L0 range)
-            src_range = slice(channel0, channel0 + ig['flags'].shape[0])
-            # Range of channels in the buffer (from full L0 range)
-            trg_range = self.parameters['channel_slice']
-            # Intersection of the two
-            common_range = slice(max(src_range.start, trg_range.start),
-                                 min(src_range.stop, trg_range.stop))
-            if common_range.start < common_range.stop:
-                # Compute slice to apply to src/trg to get the common part
-                src_subset = slice(common_range.start - src_range.start,
-                                   common_range.stop - src_range.start)
-                trg_subset = slice(common_range.start - trg_range.start,
-                                   common_range.stop - trg_range.start)
-                # reshape data and put into relevant arrays
-                vis = ig['correlator_data'].value[src_subset]
-                flags = ig['flags'].value[src_subset]
-                weights_channel = ig['weights_channel'].value[src_subset, np.newaxis]
-                weights = ig['weights'].value[src_subset] * weights_channel
-                if self.need_weights_power_scale:
-                    # weight_power_scale expects a time axis, hence newaxis
-                    weights = weights[np.newaxis, ...]
-                    katdal.datasources.weight_power_scale(
-                        vis[np.newaxis, ...], weights, *self.weights_power_scale_params,
-                        out=weights)
-                    weights = weights[0]
-                self._update_buffer(self.buffers['vis'][slot, trg_subset],
-                                    vis, self.ordering)
-                self._update_buffer(self.buffers['flags'][slot, trg_subset],
-                                    flags, self.ordering)
-                self._update_buffer(self.buffers['weights'][slot, trg_subset],
-                                    weights, self.ordering)
-                # Excise bits are computed from the original (L0) bls ordering,
-                # not the cal ordering, because that's the order it's needed in
-                # the flag sender.
-                if self.l0_excise:
-                    self.buffers['excise'][slot, trg_subset] = \
-                        np.packbits(ig['flags'].value[src_subset], axis=-1)
-                else:
-                    self.buffers['excise'][slot, trg_subset] = 0
-            heap_nbytes = 0
-            for field in ['correlator_data', 'flags', 'weights', 'weights_channel']:
-                heap_nbytes += ig[field].value.nbytes
-            now = time.time()
-            _inc_sensor(self.sensors['input-bytes-total'], heap_nbytes, timestamp=now)
-            _inc_sensor(self.sensors['input-heaps-total'], 1, timestamp=now)
-
-        # Need to ensure that all parallel cal servers get the same number of
-        # dumps, and hence the same batches. Record the last index of each,
-        # exchange, and take the largest.
-        max_idx = self._last_idx
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor(1) as executor:
-            server_id = self.parameters['server_id']
-            n_servers = self.parameters['servers']
-            self.telstate_cb_cal.add('last_dump_index{}'.format(server_id),
-                                     self._last_idx, immutable=True)
-            for i in range(n_servers):
-                if i != server_id:
-                    key = 'last_dump_index{}'.format(i)
-                    logger.debug('Waiting for %s', key)
-                    await loop.run_in_executor(
-                        executor, self.telstate_cb_cal.wait_key, key)
-                    other_last_idx = self.telstate_cb_cal[key]
-                    logger.debug('Got %s = %d', key, other_last_idx)
-                    max_idx = max(max_idx, other_last_idx)
-        if max_idx > self._last_idx:
-            logger.info('Adding %d extra slots to align end of observation',
-                        max_idx - self._last_idx)
-            await self._ensure_slots(max_idx)
-
-        # Flush out the final batch
-        self._flush_slots()
-        logger.info('Accumulation ended')
 
 
 class Pipeline(Task):
@@ -1538,7 +1600,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
         This is a potentially long-running operation, particularly if `force`
         is false. While it is running, no new capture sessions can be started.
 
-        If `conn` is given, it is updated with progress of the shutdown.
+        If `ctx` is given, it is updated with progress of the shutdown.
         """
         def progress(msg):
             logger.info(msg)
