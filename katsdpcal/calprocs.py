@@ -372,6 +372,8 @@ def best_refant(data, corrprod_lookup, chans):
     med_pnr_ants = np.zeros(num_ants)
     for a in range(num_ants):
         mask = (corrprod_lookup[:, 0] == a) ^ (corrprod_lookup[:, 1] == a)
+        # NB: it's important that mask is an np.ndarray here and not a list,
+        # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
         med_pnr_ants[a] = np.median(pnr)
     return np.argmax(med_pnr_ants)
