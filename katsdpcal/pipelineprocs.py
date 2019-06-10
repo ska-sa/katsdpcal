@@ -350,6 +350,7 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
             value = parameter.converter.to_telstate(parameters[parameter.name], parameters)
             telstate_cal.add(key, value, immutable=True)
 
+    telstate_cal.add('stream_type', 'sdp.cal', immutable=True)
     # Transfer some keys from L0 stream to cal "stream", to help consumers compute
     # frequencies.
     telstate_l0 = telstate_cal.root().view(l0_name)
