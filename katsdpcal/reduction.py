@@ -219,7 +219,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     # sequence number. If `name` is not given, the metadata contains the actual
     # values.
     def add_info(info):
-        telstate.add(shared_key, info, immutable=True)
+        telstate[shared_key] = info
         logger.debug('Added shared key %s', shared_key)
 
     if '_seq' in kwargs:
@@ -434,7 +434,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             model_params, model_file = pp.get_model(target_name, lsm_dir)
             if model_params is not None:
                 s.add_model(model_params)
-                ts.add(model_key, model_params, immutable=True)
+                ts[model_key] = model_params
                 logger.info('   Model file: {0}'.format(model_file))
         else:
             s.add_model(model_params)
@@ -455,7 +455,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 parameters['refant_index'] = best_refant_index
                 parameters['refant'] = parameters['antennas'][best_refant_index]
                 logger.info('Reference antenna set to %s', parameters['refant'].name)
-                ts.add('refant', parameters['refant'].description, immutable=True)
+                ts['refant'] = parameters['refant'].description
                 s.refant = best_refant_index
 
         # run_t0 = time.time()
