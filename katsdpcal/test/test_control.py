@@ -232,28 +232,28 @@ class TestCalDeviceServer(asynctest.TestCase):
             bls_ordering.append((a + 'v', b + 'v'))
             bls_ordering.append((a + 'h', b + 'v'))
             bls_ordering.append((a + 'v', b + 'h'))
-        telstate.add('subarray_product_id', 'c856M4k', immutable=True)
-        telstate.add('sub_band', 'l', immutable=True)
+        telstate['subarray_product_id'] = 'c856M4k'
+        telstate['sub_band'] = 'l'
         telstate.add('cbf_target', target, ts=0)
-        telstate_l0.add('int_time', 4.0, immutable=True)
-        telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
-        telstate_l0.add('n_bls', len(bls_ordering), immutable=True)
-        telstate_l0.add('bandwidth', 856000000.0, immutable=True)
-        telstate_l0.add('center_freq', 1284000000.0, immutable=True)
-        telstate_l0.add('n_chans', self.n_channels, immutable=True)
-        telstate_l0.add('n_chans_per_substream', self.n_channels_per_substream, immutable=True)
-        telstate_l0.add('sync_time', 1400000000.0, immutable=True)
-        telstate_l0.add('excise', True, immutable=True)
-        telstate_l0.add('need_weights_power_scale', True, immutable=True)
-        telstate_cb_l0 = telstate.view(telstate.SEPARATOR.join(('cb', 'sdp_l0test')))
-        telstate_cb_l0.add('first_timestamp', 100.0, immutable=True)
+        telstate_l0['int_time'] = 4.0
+        telstate_l0['bls_ordering'] = bls_ordering
+        telstate_l0['n_bls'] = len(bls_ordering)
+        telstate_l0['bandwidth'] = 856000000.0
+        telstate_l0['center_freq'] = 1284000000.0
+        telstate_l0['n_chans'] = self.n_channels
+        telstate_l0['n_chans_per_substream'] = self.n_channels_per_substream
+        telstate_l0['sync_time'] = 1400000000.0
+        telstate_l0['excise'] = True
+        telstate_l0['need_weights_power_scale'] = True
+        telstate_cb_l0 = telstate.view(telstate.join('cb', 'sdp_l0test'))
+        telstate_cb_l0['first_timestamp'] = 100.0
         telstate_cb = telstate.view('cb')
         telstate_cb.add('obs_activity', 'track', ts=0)
         obs_params = {'description' : 'test observation',
                       'proposal_id' : '123_03',
                       'sb_id_code' : '123_0005',
                       'observer' : 'Kim'}
-        telstate_cb.add('obs_params', obs_params, immutable=True)
+        telstate_cb['obs_params'] = obs_params
         for antenna in self.antennas:
             # The position is irrelevant for now, so just give all the
             # antennas the same position.
