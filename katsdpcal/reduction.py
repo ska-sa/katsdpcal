@@ -171,6 +171,11 @@ def save_solution(telstate, key, solution_store, soln):
     def save_one(soln):
         if telstate is not None:
             telstate.add(key, soln.values, ts=soln.time)
+            if soln.snr is not None:
+                key_list = key.split('_')
+                key_list.insert(1, 'SNR')
+                snrkey = '_'.join(key_list)
+                telstate.add(snrkey, soln.snr, ts=soln.time)
         solution_store.add(soln)
 
     logger.info("  - Saving solution '%s' to Telescope State", soln)
@@ -178,8 +183,12 @@ def save_solution(telstate, key, solution_store, soln):
     if isinstance(soln, solutions.CalSolution):
         save_one(soln)
     else:
-        for v, t in zip(soln.values, soln.times):
-            save_one(solutions.CalSolution(soln.soltype, v, t))
+        if soln.snr is not None:
+            for v, t, s in zip(soln.values, soln.times, soln.snr):
+                save_one(solutions.CalSolution(soln.soltype, v, t, s))
+        else:
+            for v, t in zip(soln.values, soln.times):
+                save_one(solutions.CalSolution(soln.soltype, v, t))
 
 
 def shared_solve(telstate, parameters, solution_store, bchan, echan,
@@ -544,7 +553,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['k_bchan'], parameters['k_echan'],
-                                      s.g_sol, k_solint, g0_h)
+                                      s.g_sol, k_solint, g0_h, calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -572,7 +581,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # solve (pre-applying given solutions)
                 pre_g_soln = shared_solve(ts, parameters, None,
                                           parameters['k_bchan'], parameters['k_echan'],
-                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply)
+                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply,
+                                          calc_snr=False)
                 # interpolate to scan timestamps
                 g_to_apply = s.interpolate(pre_g_soln)
                 solns_to_apply.append(g_to_apply)
@@ -597,7 +607,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['g_bchan'], parameters['g_echan'],
-                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply)
+                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply,
+                                      calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------

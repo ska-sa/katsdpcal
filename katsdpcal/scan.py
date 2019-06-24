@@ -375,6 +375,7 @@ class Scan:
             # use channel averaged data to calculate snr
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
+            cal_soln = CalSolutions('G', g_soln, ave_times, snr)
 
         return cal_soln
 
@@ -565,6 +566,7 @@ class Scan:
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = np.squeeze(snr)
+            cal_soln = CalSolution('K', k_soln, ave_time, snr)
 
         return cal_soln
 
@@ -631,6 +633,7 @@ class Scan:
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = np.squeeze(snr)
+            cal_soln = CalSolution('B', b_soln, ave_time, snr)
 
         return cal_soln
 
