@@ -11,6 +11,7 @@ from scipy.constants import c as light_speed
 import scipy.interpolate
 
 from katdal.h5datav3 import FLAG_NAMES
+from katdal.applycal import complex_interp
 import katpoint
 
 from . import calprocs, calprocs_dask, inplace
@@ -779,8 +780,9 @@ class Scan:
     # ---------------------------------------------------------------------------------------------
     # interpolation
 
-    def interpolate(self, solns):
+    def interpolate(self, solns, interp_chan=True):
         """Interpolate a solution to the timestamps of the scan.
+           Optionally interpolate across NaNs along the frequency axis
 
         Converts either a :class:`CalSolution` or :class:`CalSolutions` to a
         :class:`CalSolutions`. A :class:`CalSolution` is simply expanded to a
@@ -793,7 +795,7 @@ class Scan:
         if isinstance(solns, CalSolutions):
             return self.linear_interpolate(solns)
         else:
-            return self.inf_interpolate(solns)
+            return self.inf_interpolate(solns, interp_chan)
 
     def linear_interpolate(self, solns):
         values = solns.values
@@ -812,10 +814,23 @@ class Scan:
                 + 1.0j * imag_interp(self.timestamps).astype(np.float32)
             return CalSolutions(solns.soltype, interp_solns, self.timestamps)
 
-    def inf_interpolate(self, soln):
-        """Expand a single solution to span all timestamps of the scan"""
+    def inf_interpolate(self, soln, interp_chan):
+        """Expand a single solution to span all timestamps of the scan, optionally
+           interpolate across NaNs along the frequency axis"""
         values = soln.values
         interp_solns = np.expand_dims(values, axis=0)
+
+        if interp_solns.ndim == 4 and interp_chan:
+            ntimes, nchans, npols, nants = interp_solns.shape
+            interp_chans = np.empty_like(interp_solns)
+            for p in range(npols):
+                for a in range(nants):
+                    valid = np.isfinite(interp_solns[0, :, p, a])
+                    interp_chans[0, :, p, a] = complex_interp(np.arange(nchans),
+                                                              np.arange(nchans)[valid],
+                                                              interp_solns[0, :, p, a][valid])
+            interp_solns = interp_chans
+
         return CalSolutions(soln.soltype, interp_solns, self.timestamps)
 
     # ---------------------------------------------------------------------------------------------
