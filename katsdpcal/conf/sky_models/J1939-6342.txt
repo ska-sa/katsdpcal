@@ -1,0 +1,10 @@
+# References: 
+# position: Simbad ICRS
+# flux model a0, a1, a2, a3: from "A revised flux scale for the AT compact array", Reynolds, 1994
+#    parameters in the movel given for MHz scale:
+#    b0 = -30.7667; b1 = 26.4908; b2 = -7.0977; b3 = 0.605334
+#    to convert to GHz scale:
+#    a0 = b0 + 3.*b1 + 9*b2 + 27*b3; a1 = b1 + 6*b2 + 27*b3; a2 = b2 + 9*b3; a3 = b3
+#    ==> a0 = 1.1704; a1 = 0.2486; a2 = -1.6497; a3 = 0.605334
+#
+S0, P, 19:39:25.02671, 0, -63:42:45.6255, 0, 1.1704, 0.2486, -1.6497, 0.605334, 0, 0, 0
