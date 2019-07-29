@@ -1035,7 +1035,7 @@ class Pipeline(Task):
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
                  l0_name, telstate_cal, parameters,
-                 diagnostics=None, profile_file=None, num_workers=None):
+                 diagnostics=None, bokeh_kwargs=None, profile_file=None, num_workers=None):
         super().__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -1045,6 +1045,7 @@ class Pipeline(Task):
         self.parameters = parameters
         self.l0_name = l0_name
         self.diagnostics = diagnostics
+        self.bokeh_kwargs = bokeh_kwargs
         if num_workers is None:
             # Leave a core free to avoid starving the accumulator
             num_workers = max(1, multiprocessing.cpu_count() - 1)
@@ -1098,9 +1099,13 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
+        service_kwargs = {}
+        if self.bokeh_kwargs:
+            service_kwargs['bokeh'] = self.bokeh_kwargs
         cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=self.num_workers,
-            processes=False, memory_limit=0, diagnostics_port=self.diagnostics)
+            processes=False, memory_limit=0, diagnostics_port=self.diagnostics,
+            service_kwargs=service_kwargs)
         with cluster, dask.distributed.Client(cluster):
             self._run_impl()
 
@@ -1724,7 +1729,8 @@ def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_streams, clock_ratio, telstate_cal, parameters,
                   report_path, log_path, full_log,
-                  diagnostics=None, pipeline_profile_file=None, num_workers=None,
+                  diagnostics=None, bokeh_kwargs=None,
+                  pipeline_profile_file=None, num_workers=None,
                   max_scans=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
@@ -1744,7 +1750,8 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-        l0_name, telstate_cal, parameters, diagnostics, pipeline_profile_file, num_workers)
+        l0_name, telstate_cal, parameters, diagnostics, bokeh_kwargs,
+        pipeline_profile_file, num_workers)
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,
