@@ -1101,7 +1101,7 @@ class Pipeline(Task):
         """
         service_kwargs = {}
         if self.bokeh_kwargs:
-            service_kwargs['bokeh'] = self.bokeh_kwargs
+            service_kwargs['dashboard'] = self.bokeh_kwargs
         cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=self.num_workers,
             processes=False, memory_limit=0, diagnostics_port=self.diagnostics,
