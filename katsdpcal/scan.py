@@ -7,7 +7,6 @@ import operator
 
 import numpy as np
 import dask.array as da
-from scipy.constants import c as light_speed
 import scipy.interpolate
 
 from katdal.h5datav3 import FLAG_NAMES
@@ -820,7 +819,7 @@ class Scan:
 
     # ---------------------------------------------------------------------------------------------
     # model related functions
-
+    @logsolutiontime
     def _create_model(self, max_offset=8., timestamps=None):
         """
         Creates models from raw model parameters. *** models are currently unpolarised ***
@@ -892,14 +891,20 @@ class Scan:
 
             # calculate uvw, if it hasn't already been calculated
             if self.uvw is None:
-                wl = light_speed / self.channel_freqs
-                self.uvw = calprocs.calc_uvw_wave(
-                    self.target, self.timestamps, self.cross_ant.bls_lookup,
-                    self.antennas, wl, self.array_position)
+                uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
+                self.uvw = np.array(uvw, np.float32)
 
             # set up model visibility
-            complexmodel = np.zeros_like(self.cross_ant.orig.auto_pol.vis)
+            ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
+            nants = len(self.antennas)
 
+            # currently model is the same for both polarisations
+            # TODO: include polarisation in models
+            k_ant = np.zeros((ntimes, nchans, 1, nants), np.complex64)
+            k_bls = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
+            complexmodel = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
+
+            wl = katpoint.lightspeed / self.channel_freqs
             # iteratively add sources to the model
             for source in np.atleast_1d(self.model_raw_params):
                 # source spectral flux
@@ -914,18 +919,18 @@ class Scan:
                 # (so use frequencies in GHz)
                 #   currently using the same flux model for both polarisations
                 S = source_flux.flux_density(
-                    self.channel_freqs / 1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
+                    self.channel_freqs / 1.0e9)
                 # source position
                 source_position = katpoint.construct_radec_target(source['RA'].item(),
                                                                   source['DEC'].item())
                 l, m = self.target.sphere_to_plane(
                     *source_position.radec(), projection_type='SIN', coord_system='radec')
-                # the axis awkwardness is to allow appropriate broadcasting
-                #    this may be a ***terrible*** way to do this - will see!
-                complexmodel += \
-                    S * (np.exp(2. * np.pi * 1j
-                         * (self.uvw[0]*l + self.uvw[1]*m
-                            + self.uvw[2]*(np.sqrt(1.0-l**2.0-m**2.0)-1.0)))[:, :, np.newaxis, :])
+
+                k_ant = calprocs.K_ant(self.uvw[:, :, np.newaxis, :], l, m, wl, k_ant)
+                k_bls = calprocs.ant_to_bls(k_ant, self.cross_ant.bls_lookup[:, 0],
+                                            self.cross_ant.bls_lookup[:, 1], k_bls)
+                complexmodel = calprocs.add_model_vis(k_bls, S, complexmodel)
+
             self.model = complexmodel
         return
 

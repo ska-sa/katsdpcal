@@ -583,6 +583,124 @@ def normalise_complex(x):
     return norm_factor
 
 
+@numba.jit(nopython=True, parallel=True)
+def K_ant(uvw, l, m, wl, k_ant):
+    """
+    Calculate K-Jones term per antenna
+
+    Calculate the K-Jones term, i.e the fourier transform phase term,
+    for a source with the given position (l, m) at the given wavelengths
+
+    Parameters
+    ----------
+    uvw : :class:`np.ndarray`, real, shape (3, ntimes, npols, nants)
+        uvw co-ordinates of antennas
+    l : float
+        direction cosine, right ascension
+    m : float
+        direction cosine, declination
+    wl : :class:`np.ndarray`, real, shape (nchans)
+        wavelengths
+    k_ant : :class:`np.ndarray`, complex, shape (ntimes, nchans, npols, nants)
+        array to update with K-Jones term
+
+    Returns
+    -------
+    :class: `np.ndarray`, complex, shape (ntimes, nchans, npols, nants)
+        K-Jones term per antenna
+    """
+    n = np.sqrt(1 - l**2 - m**2)
+    _, ntimes, npols, nants = uvw.shape
+    nchans = wl.shape[0]
+
+    for t in range(ntimes):
+        cstep = 128
+        cblocks = (nchans + cstep - 1) // cstep
+        for cblock in numba.prange(cblocks):
+            cstart = cblock * cstep
+            cstop = min(nchans, cstart + cstep)
+            for c in range(cstart, cstop):
+                for p in range(npols):
+                    for a in range(nants):
+                        phase = l * uvw[0, t, p, a] + m * uvw[1, t, p, a] + (n-1) * uvw[2, t, p, a]
+                        k_ant[t, c, p, a] = np.exp(2 * np.pi * 1j * phase / wl[c])
+    return k_ant
+
+
+@numba.jit(nopython=True, parallel=True)
+def ant_to_bls(k_ant, ant1, ant2, k_bls):
+    """
+    Convert an array of per antenna complex gains to a per baseline array
+
+    Parameters
+    ----------
+    k_ant : :class:`np.ndarray`, complex, shape (ntimes, nchans, npols, nants)
+        array of per antenna quantities
+    ant1 : :class:`np.ndarray`, int, shape (nbls)
+        index of first antenna of each baseline pair
+    ant2 : :class:`np.ndarray`, int, shape (nbls)
+        index of second antenna of each baseline pair
+    k_bls : :class:`np.ndarray`, complex, shape (ntimes, nchans, npols, nbls)
+        array to update with per baseline gains
+
+    Returns
+    -------
+    :class: `np.ndarray`, complex, shape (ntimes, nchans, npols, nbls)
+        per baseline gain
+    """
+    ntimes, nchans, npols, nants = k_ant.shape
+    nbls = ant1.shape[0]
+    for t in range(ntimes):
+        cstep = 128
+        cblocks = (nchans + cstep - 1) // cstep
+        for cblock in numba.prange(cblocks):
+            cstart = cblock * cstep
+            cstop = min(nchans, cstart + cstep)
+            for c in range(cstart, cstop):
+                for p in range(npols):
+                    for b in range(nbls):
+                        k_bls[t, c, p, b] = (k_ant[t, c, p, ant1[b]]
+                                             * np.conj(k_ant[t, c, p, ant2[b]]))
+    return k_bls
+
+
+@numba.jit(nopython=True, parallel=True)
+def add_model_vis(K, S, model):
+    """
+    Add model visibilities to model
+
+    Calculate model visibilities from the K-jones term
+    per baseline and source flux densities and add them
+    to the model array
+
+    Parameters
+    ----------
+    K : :class:`np.ndarray`, complex, shape (ntimes, nchans, npols, nbls)
+        K-jones term per baseline
+    S : :class:`np.ndarray`, real, shape (nchans)
+        Source flux densities per channel
+    model : :class:`np.ndarray`, complex, shape (ntimes, nchans, npols, nbls)
+        array to add the visibilities to
+
+    Returns
+    -------
+    :class: `np.ndarray`, complex, shape (ntimes, nchns, nbls)
+        array with model visiblities added to it
+    """
+    ntimes, nchans, npols, nbls = K.shape
+    for t in range(ntimes):
+        cstep = 128
+        cblocks = (nchans + cstep - 1) // cstep
+        for cblock in numba.prange(cblocks):
+            cstart = cblock * cstep
+            cstop = min(nchans, cstart + cstep)
+            for c in range(cstart, cstop):
+                for p in range(npols):
+                    for b in range(nbls):
+                        model[t, c, p, b] += K[t, c, p, b] * S[c]
+    return model
+
+
 def asbool(arr):
     """View an array as boolean.
 
