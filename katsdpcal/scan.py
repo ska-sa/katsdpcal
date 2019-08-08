@@ -929,7 +929,7 @@ class Scan:
                 k_ant = calprocs.K_ant(self.uvw[:, :, np.newaxis, :], l, m, wl, k_ant)
                 k_bls = calprocs.ant_to_bls(k_ant, self.cross_ant.bls_lookup[:, 0],
                                             self.cross_ant.bls_lookup[:, 1], k_bls)
-                complexmodel = calprocs.add_model_vis(k_bls, S, complexmodel)
+                complexmodel = calprocs.add_model_vis(k_bls, S.astype(np.float32), complexmodel)
 
             self.model = complexmodel
         return
