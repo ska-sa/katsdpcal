@@ -1,6 +1,10 @@
 # References: 
 # position: Simbad ICRS
-# flux model a0, a1, a2, a3: "An accurate flux density scale from 1 to 50 GHz", Perley & Butler, 2013
-#    ==> a0 = 1.4866; a1 = -0.7871; a2 = -0.3440; a3 = 0.0749
+# flux model b0, b1, b2, b3: "An accurate flux density scale from 1 to 50 GHz", Perley & Butler, 2013
+#    parameters in the model given for GHz scale are:
+#    b0 = 1.4866; b1 = -0.7871; b2 = -0.3440; b3 = 0.0749
+#    To convert to MHz scale:
+#    a0 = b0 - 3*b1 + 9*b2 - 27*b3; a1 = b1 - 6*b2 + 27*b3; a2 = b2 - 9*b3; a3 = b3
+#    ==> a0 = 4.9216, a1 = -0.8288, a2 = -0.3301, a3 = 0.0749
 #
-S0, P, 14:11:20.467, 0, 52:12:09.52, 0, 1.4866, -0.7871, -0.3440, 0.0749, 0, 0, 0
+S0, P, 14:11:20.467, 52:12:09.52, 400, 50e3, 4.9216, -0.8288, -0.3301, 0.0749, 0, 0, 1, 0, 0, 0

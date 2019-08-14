@@ -431,7 +431,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         try:
             model_params = ts[model_key]
         except KeyError:
-            model_params, model_file = pp.get_model(target_name, lsm_dir)
+            model_params, model_file = pp.get_model(s.target, lsm_dir)
             if model_params is not None:
                 s.add_model(model_params)
                 ts[model_key] = model_params

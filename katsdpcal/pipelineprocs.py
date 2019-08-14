@@ -385,15 +385,17 @@ def get_baseline_mask(bls_lookup, ants, limits):
     return baseline_mask
 
 
-def get_model(name, lsm_dir_list=[]):
+def get_model(target, lsm_dir_list=[]):
     """
-    Get a sky model from a text file.
+    Get a sky model from a text file if one exists.
+
     The name of the text file must incorporate the name of the source.
+    If no text file is found, return the target sky model.
 
     Parameters
     ----------
-    name : str
-        name of source
+    name : :class:`katpoint.Target`
+        target
     lsm_dir_list : list
         search path for the source model txt file
 
@@ -409,29 +411,44 @@ def get_model(name, lsm_dir_list=[]):
     # default to check the current directory first
     lsm_dir_list.append('.')
 
+    allnames = [target.name] + target.aliases
+    model_file = []
     # iterate through the list from the end so the model from the earliest
     # directory in the list is used
-    model_file = []
     for lsm_dir in reversed(lsm_dir_list):
-        model_file_list = glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
+        model_list = []
+        # iterate over all aliases
+        for name in allnames:
+            model_list += glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
         # ignore tilde ~ backup files
-        model_file_list = [f for f in model_file_list if f[-1] != '~']
+        model_list = [f for f in model_list if f[-1] != '~']
 
-        if len(model_file_list) == 1:
-            model_file = model_file_list[0]
-        elif len(model_file_list) > 1:
+        if len(model_list) == 1:
+            model_file = model_list[0]
+        elif len(model_list) > 1:
             # if there are more than one model files for the source IN THE SAME
             # DIRECTORY, raise an error
             raise ValueError(
-                'More than one possible sky model file for {0}: {1}'.format(name, model_file_list))
+                'More than one possible sky model file for'
+                ' {0}: {1}'.format(target.name, model_list))
 
-    # if there is not model file, return model components as None
+    # if there is no model file, use the target flux model if provided,
+    # else return model components as None
+    model_dtype = [('name', 'S16'), ('tag', 'S4'), ('RA', 'S24'), ('DEC', 'S24'),
+                   ('min_freq', 'f8'), ('max_freq', 'f8'), ('a0', 'f8'), ('a1', 'f8'),
+                   ('a2', 'f8'), ('a3', 'f8'), ('a4', 'f8'), ('a5', 'f8'),
+                   ('fi', 'f8'), ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
+
     if model_file == []:
-        model_components = None
+        if target.flux_model is not None:
+            model_components = np.array([(target.name, 'P', target.radec()[0], target.radec()[1],
+                                         target.flux_model.min_freq_MHz,
+                                         target.flux_model.max_freq_MHz,
+                                         *target.flux_model.coefs)], dtype=model_dtype)
+
+        else:
+            model_components = None
+
     else:
-        model_dtype = [('tag', 'S4'), ('name', 'S16'),
-                       ('RA', 'S24'), ('dRA', 'S8'), ('DEC', 'S24'), ('dDEC', 'S8'),
-                       ('a0', 'f8'), ('a1', 'f8'), ('a2', 'f8'), ('a3', 'f8'),
-                       ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
         model_components = np.genfromtxt(model_file, delimiter=',', dtype=model_dtype)
     return model_components, model_file

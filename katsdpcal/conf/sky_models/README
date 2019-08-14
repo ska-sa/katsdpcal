@@ -1,16 +1,19 @@
 Model columns:
 --------------
 
-name    component name
-tag     component tag
-RA      RA position
-dRA     RA position uncertainty
-DEC     DEC position
-dDEC    DEC position uncertainty
-a0      Stokes I flux model coefficient a0
-a1      Stokes I flux model coefficient a1
-a2      Stokes I flux model coefficient a2
-a3      Stokes I flux model coefficient a3
-fq      fractional Stokes Q
-fu      fractional Stokes U
-fv      fractional Stokes V
+name      component name
+tag       component tag
+RA        RA position
+DEC       DEC position
+min_freq  Minimum freq of flux model (MHz)
+max_freq  Maximum freq of flux model (MHz)
+a0        Stokes I flux model coefficient a0
+a1        Stokes I flux model coefficient a1
+a2        Stokes I flux model coefficient a2
+a3        Stokes I flux model coefficient a3
+a4        Stokes I flux model coefficient a4
+a5        Stokes I flux model coefficient a5
+fi        fractional Stokes I
+fq        fractional Stokes Q
+fu        fractional Stokes U
+fv        fractional Stokes V

@@ -848,90 +848,94 @@ class Scan:
         position_offset = self.target.separation(first_source,
                                                  antenna=self.array_position)
 
-        # deal with easy case first - single point at the phase centre
-        if (self.model_raw_params.size == 1) \
-                and (position_offset < calprocs.arcsec_to_rad(max_offset)):
-            if (('a1' not in self.model_raw_params.dtype.names
-                 or self.model_raw_params['a1'] == 0) and
-                ('a2' not in self.model_raw_params.dtype.names
-                 or self.model_raw_params['a2'] == 0) and
-                ('a3' not in self.model_raw_params.dtype.names
-                 or self.model_raw_params['a3'] == 0)):
-                # CASE A - Point source as the phase centre, no spectral slope
-                # spectral index is zero
-                self.model = np.array([10.**self.model_raw_params['a0'].item()], np.float32)
-                self.logger.info(
-                    '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
-                        self.model[0],))
-            else:
-                # CASE B - Point source at the phase centre, with spectral slope
-                source_coefs = [self.model_raw_params[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
-                # full spectral model
-                # katpoint.FluxDensityModel needs upper and lower limits of
-                # applicability of the model.
-                #   we make the assumptions that models provided will apply to
-                #   our data so ignore this functionality by using frequency
-                #   range 0 -- 100 GHz (==100e3 MHz)
-                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-                # katsdpcal flux model parameters referenced to GHz, not MHz
-                # (so use frequencies in GHz)
-                self.model = source_flux.flux_density(
-                    self.channel_freqs / 1.0e9)[np.newaxis, :, np.newaxis, np.newaxis]
-                self.model = np.require(self.model, dtype=np.float32)
-                self.logger.info(
-                    '     Model: single point source, spectral model, average flux over '
-                    '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
-                        self.channel_freqs[0] / 1.e9, self.channel_freqs[-1] / 1.e9,
-                        np.mean(self.model)))
-        # CASE C - Complex model requiring calculation via uvw coordinates ####
-        # If not one of the simple cases above, make a proper full model
-        else:
+        # check supplied model components are valid for entire frequency range of the band
+        min_freq = self.model_raw_params['min_freq']
+        max_freq = self.model_raw_params['max_freq']
+        if (min(min_freq) > min(self.channel_freqs / 1e6)) \
+                & (max(max_freq) < max(self.channel_freqs / 1e6)):
+
             self.logger.info(
-                '     Model: {0} point sources'.format(len(np.atleast_1d(self.model_raw_params)),))
+                '     A point source in the model has a model which '
+                'is not applicable for part of the band, setting model flux to 1')
+            self.model = np.array([1], np.float32)
 
-            # calculate uvw, if it hasn't already been calculated
-            if self.uvw is None:
-                uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
-                self.uvw = np.array(uvw, np.float32)
+        else:
+            # deal with easy case first - single point at the phase centre
+            if (self.model_raw_params.size == 1) \
+                    and (position_offset < calprocs.arcsec_to_rad(max_offset)):
+                if (('a1' not in self.model_raw_params.dtype.names
+                     or self.model_raw_params['a1'] == 0) and
+                    ('a2' not in self.model_raw_params.dtype.names
+                     or self.model_raw_params['a2'] == 0) and
+                    ('a3' not in self.model_raw_params.dtype.names
+                     or self.model_raw_params['a3'] == 0)):
+                    # CASE A - Point source as the phase centre, no spectral slope
+                    # spectral index is zero
+                    self.model = np.array([10.**self.model_raw_params['a0'].item()], np.float32)
+                    self.logger.info(
+                        '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
+                            self.model[0],))
+                else:
+                    # CASE B - Point source at the phase centre, with spectral slope
+                    source_coefs = [self.model_raw_params[a].item()
+                                    for a in ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']]
+                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
 
-            # set up model visibility
-            ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
-            nants = len(self.antennas)
+                    # katsdpcal flux model parameters referenced to GHz, not MHz
+                    # (so use frequencies in GHz)
+                    self.model = source_flux.flux_density(
+                        self.channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
+                    self.model = np.require(self.model, dtype=np.float32)
+                    self.logger.info(
+                        '     Model: single point source, spectral model, average flux over '
+                        '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
+                            self.channel_freqs[0] / 1.e9, self.channel_freqs[-1] / 1.e9,
+                            np.mean(self.model)))
+            # CASE C - Complex model requiring calculation via uvw coordinates ####
+            # If not one of the simple cases above, make a proper full model
+            else:
+                self.logger.info(
+                    '     Model: {0} point sources'.format(
+                        len(np.atleast_1d(self.model_raw_params)),))
 
-            # currently model is the same for both polarisations
-            # TODO: include polarisation in models
-            k_ant = np.zeros((ntimes, nchans, 1, nants), np.complex64)
-            k_bls = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
-            complexmodel = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
+                # calculate uvw, if it hasn't already been calculated
+                if self.uvw is None:
+                    uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
+                    self.uvw = np.array(uvw, np.float32)
 
-            wl = katpoint.lightspeed / self.channel_freqs
-            # iteratively add sources to the model
-            for source in np.atleast_1d(self.model_raw_params):
-                # source spectral flux
-                source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3']]
-                # katpoint.FluxDensityModel needs upper and lower limits of
-                # applicability of the model. we make the assumptions that
-                # models provided will apply to our data so ignore this
-                # functionality by using frequency range
-                # 0 -- 100 GHz (==100e3 MHz)
-                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-                # katsdpcal flux model parameters referenced to GHz, not MHz
-                # (so use frequencies in GHz)
-                #   currently using the same flux model for both polarisations
-                S = source_flux.flux_density(
-                    self.channel_freqs / 1.0e9)
-                # source position
-                source_position = katpoint.construct_radec_target(source['RA'].item(),
-                                                                  source['DEC'].item())
-                l, m = self.target.sphere_to_plane(
-                    *source_position.radec(), projection_type='SIN', coord_system='radec')
+                # set up model visibility
+                ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
+                nants = len(self.antennas)
 
-                k_ant = calprocs.K_ant(self.uvw[:, :, np.newaxis, :], l, m, wl, k_ant)
-                k_bls = calprocs.ant_to_bls(k_ant, self.cross_ant.bls_lookup[:, 0],
-                                            self.cross_ant.bls_lookup[:, 1], k_bls)
-                complexmodel = calprocs.add_model_vis(k_bls, S.astype(np.float32), complexmodel)
+                # currently model is the same for both polarisations
+                # TODO: include polarisation in models
+                k_ant = np.zeros((ntimes, nchans, 1, nants), np.complex64)
+                k_bls = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
+                complexmodel = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
 
-            self.model = complexmodel
+                wl = katpoint.lightspeed / self.channel_freqs
+                # iteratively add sources to the model
+                for source in np.atleast_1d(self.model_raw_params):
+                    # source spectral flux
+                    source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']]
+                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
+                    # katsdpcal flux model parameters referenced to GHz, not MHz
+                    # (so use frequencies in GHz)
+                    #   currently using the same flux model for both polarisations
+                    S = source_flux.flux_density(
+                        self.channel_freqs / 1.0e6)
+                    # source position
+                    source_position = katpoint.construct_radec_target(source['RA'].item(),
+                                                                      source['DEC'].item())
+                    l, m = self.target.sphere_to_plane(
+                        *source_position.radec(), projection_type='SIN', coord_system='radec')
+
+                    k_ant = calprocs.K_ant(self.uvw[:, :, np.newaxis, :], l, m, wl, k_ant)
+                    k_bls = calprocs.ant_to_bls(k_ant, self.cross_ant.bls_lookup[:, 0],
+                                                self.cross_ant.bls_lookup[:, 1], k_bls)
+                    complexmodel = calprocs.add_model_vis(k_bls, S.astype(np.float32), complexmodel)
+
+                self.model = complexmodel
         return
 
     def _init_model(self, max_offset=8.0):
