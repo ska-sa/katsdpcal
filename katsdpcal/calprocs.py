@@ -134,17 +134,12 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
         # antenna in the antenna list
         array_centre = katpoint.Antenna('array_position', *antennas[0].ref_position_wgs84)
 
-    # use the array reference position for the basis
-    basis = phase_centre.uvw_basis(timestamp=timestamps, antenna=array_centre)
-    antenna_uvw = np.empty([len(antennas), 3, len(timestamps)])
-
-    for i, ant in enumerate(antennas):
-        enu = np.array(ant.baseline_toward(array_centre))
-        antenna_uvw[i, ...] = np.tensordot(basis, enu, ([1], [0]))
+    # use the array reference position of antenna_uvw
+    antenna_uvw = np.array(phase_centre.uvw(antennas, timestamps, array_centre))
 
     baseline_uvw = np.empty([3, len(timestamps), len(corrprod_lookup)])
     for i, [a1, a2] in enumerate(corrprod_lookup):
-        baseline_uvw[..., i] = antenna_uvw[a2] - antenna_uvw[a1]
+        baseline_uvw[..., i] = antenna_uvw[..., a1] - antenna_uvw[..., a2]
 
     return baseline_uvw
 
