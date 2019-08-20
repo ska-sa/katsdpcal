@@ -518,7 +518,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 s.refant = best_refant_index
 
             # Add the reference antenna to telstate for each new cbid
-            if ts.get('refant') is None:
+            if 'refant' not in ts:
                 ts['refant'] = parameters['refant']
         # run_t0 = time.time()
 
