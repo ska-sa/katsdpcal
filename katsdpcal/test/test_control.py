@@ -841,7 +841,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.shutdown_servers(180)
         await self.assert_sensor_value('accumulator-capture-active', 0)
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
-        refant_name = katpoint.Antenna(telstate_cb_cal['refant']).name
+        refant_name = telstate_cb_cal['refant']
         assert_not_equal(self.antennas[worst_index], refant_name)
 
     def prepare_heaps(self, rs, n_times,

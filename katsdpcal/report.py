@@ -1356,11 +1356,10 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             # Obtain reference antenna selected by the pipeline
             refant_index = parameters['refant_index']
             if refant_index is None:
-                refant = ts.get('refant')
-                if refant is not None:
-                    refant = katpoint.Antenna(refant)
-                    refant_index = parameters['antenna_names'].index(refant.name)
-                    parameters['refant'] = refant
+                refant_name = ts.get('refant')
+                if refant_name is not None:
+                    refant_index = parameters['antenna_names'].index(refant_name)
+                    parameters['refant'] = refant_name
                     parameters['refant_index'] = refant_index
 
             antennas = parameters['antennas']

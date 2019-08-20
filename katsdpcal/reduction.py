@@ -513,11 +513,13 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                                  parameters['k_bchan'], parameters['k_echan'],
                                                  s.refant_find)
                 parameters['refant_index'] = best_refant_index
-                parameters['refant'] = parameters['antennas'][best_refant_index]
-                logger.info('Reference antenna set to %s', parameters['refant'].name)
-                ts['refant'] = parameters['refant'].description
+                parameters['refant'] = parameters['antenna_names'][best_refant_index]
+                logger.info('Reference antenna set to %s', parameters['refant'])
                 s.refant = best_refant_index
 
+            # Add the reference antenna to telstate for each new cbid
+            if ts.get('refant') is None:
+                ts['refant'] = parameters['refant']
         # run_t0 = time.time()
 
         # perform calibration as appropriate, from scan intent tags:
