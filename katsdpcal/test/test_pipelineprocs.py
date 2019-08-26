@@ -1,7 +1,10 @@
 """Tests for :mod:`katsdpcal.pipelineprocs`"""
 
+import os
 import argparse
 import unittest
+import tempfile
+import shutil
 from unittest import mock
 
 import numpy as np
@@ -177,3 +180,74 @@ class TestFinaliseParameters(unittest.TestCase):
         self.parameters['foo'] = 'bar'
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
+
+
+class TestCreateModel(unittest.TestCase):
+    """Tests for 'katsdpcal.pipelineprocs.get_model'"""
+    def setUp(self):
+        self.lsm_dir = tempfile.mkdtemp()
+        self.file_model = ('S0, P, 08:25:26.87, -50:10:38.49, 800, 1712,'
+                           ' 5, 6, 7, 8, 0, 0, 1, 0, 0, 0')
+
+        self.target = katpoint.Target('cal | alias, radec target, '
+                                      '08:25:26.87, -50:10:38.49, '
+                                      '(800.0 8400.0 1 2 3)')
+
+        self.dtype = [('name', 'S16'), ('tag', 'S4'), ('RA', 'S24'), ('DEC', 'S24'),
+                      ('min_freq', 'f8'), ('max_freq', 'f8'), ('a0', 'f8'), ('a1', 'f8'),
+                      ('a2', 'f8'), ('a3', 'f8'), ('a4', 'f8'), ('a5', 'f8'),
+                      ('fi', 'f8'), ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
+
+        self.addCleanup(shutil.rmtree, self.lsm_dir)
+
+        # create file whose name doesn't match target
+        fname = os.path.join(self.lsm_dir, 'not.txt')
+        f = open(fname, 'w')
+        f.close()
+
+    def test_one_file(self):
+        """If one model file matching the target name/alias exists, use it as a model"""
+        # create model file with name that matches target name
+        for name in ['cal', 'alias']:
+            fname = os.path.join(self.lsm_dir, name + '.txt')
+            f = open(fname, 'w')
+            f.write(self.file_model)
+            f.close()
+
+            expected_params = np.array([('S0', ' P', ' 08:25:26.87', ' -50:10:38.49', '800', '1712',
+                                       '5', '6', '7', '8', '0', '0', '1', '0', '0', '0')],
+                                       self.dtype)
+
+            model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+            self.assertEqual(fname, model_file)
+            np.testing.assert_equal(model_params, expected_params)
+
+            os.remove(fname)
+
+    def test_nofile_model(self):
+        """If no matching model file exists, use the target model"""
+        expected_params = np.array([('cal', 'P',
+                                     self.target.radec()[0], self.target.radec()[1],
+                                     '800', '8400', '1', '2', '3', '0', '0', '0',
+                                     '1', '0', '0', '0')], self.dtype)
+
+        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+        self.assertEqual([], model_file)
+        np.testing.assert_equal(model_params, expected_params)
+
+    def test_nomodel(self):
+        """If no model file and no target model, return None"""
+        target = katpoint.Target('cal | cal_alias, radec target, 08:25:26.87, -50:10:38.49')
+        model_params, model_file = pipelineprocs.get_model(target, self.lsm_dir)
+        self.assertEqual([], model_file)
+        self.assertEqual(None, model_params)
+
+    def test_two_files(self):
+        """If two files match target name, raise ValueError"""
+        for name in ['cal', 'alias']:
+            fname = os.path.join(self.lsm_dir, name + '.txt')
+            f = open(fname, 'w')
+            f.write(self.file_model)
+            f.close()
+        with self.assertRaises(ValueError):
+            model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)

@@ -219,7 +219,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         # meaningful calibration solutions. The pipeline model is supplied in
         # conf/sky_models/3C286.txt
         target = ('3C286, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
-                  '(0 43200 1.2515 -0.4605 -0.1715 0.0336)')
+                  '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
         for a in self.antennas:
             ant_bls.append((a, a))
@@ -541,8 +541,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         bandwidth = self.telstate.sdp_l0test_bandwidth
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
-        # The pipeline models require frequency in GHz
-        flux_density = target.flux_density(freqs / 1e9)[:, np.newaxis]
+        # The pipeline models require frequency in MHz
+        flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
 
         bls_ordering = self.telstate.sdp_l0test_bls_ordering
@@ -554,6 +554,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         vis = flux_density * np.exp(2j * np.pi * (K[pol1, ant1] - K[pol2, ant2]) * freqs) \
             * (G[pol1, ant1] * G[pol2, ant2].conj())
 
+        print(np.average(flux_density))
         if noise.size > 0:
             noiseboth = noise[:, pol1, ant1] + noise[:, pol2, ant2]
             vis += noiseboth
@@ -632,7 +633,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         metadata['ScheduleBlockIdCode'] = '123_0005'
         return metadata
 
-    async def test_capture(self, expected_g=1):
+    async def test_capture(self, expected_g=1, expected_BG_rtol=1e-2,
+                           expected_BCROSS_DIODE_rtol=1e-3):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
@@ -715,10 +717,10 @@ class TestCalDeviceServer(asynctest.TestCase):
         # cal puts NaNs in B in the channels for which it applies the static
         # RFI mask, interpolate across these
         ret_BG_interp = self.interp_B(ret_BG)
-        np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG_interp), rtol=1e-2)
+        np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG_interp), rtol=expected_BG_rtol)
         np.testing.assert_allclose(self.normalise_phase(BG, BG[..., [0]]),
                                    self.normalise_phase(ret_BG_interp, ret_BG_interp[..., [0]]),
-                                   rtol=1e-2)
+                                   rtol=expected_BG_rtol)
 
         cal_product_K = telstate_cb_cal.get_range('product_K', st=0)
         assert_equal(1, len(cal_product_K))
@@ -742,7 +744,8 @@ class TestCalDeviceServer(asynctest.TestCase):
             ret_BG_interp_angle = np.angle(ret_BG_interp)
             np.testing.assert_allclose(BG_angle - BG_angle[:, [1], :]
                                        - (ret_BG_interp_angle - ret_BG_interp_angle[:, [1], :]),
-                                       np.angle(ret_BCROSS_DIODE_interp), rtol=1e-3)
+                                       np.angle(ret_BCROSS_DIODE_interp),
+                                       rtol=expected_BCROSS_DIODE_rtol)
 
         if 'polcal' in target.tags:
             cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)
@@ -788,9 +791,20 @@ class TestCalDeviceServer(asynctest.TestCase):
     async def test_capture_separate_tags(self):
         # Change the target to one with different tags
         target = ('3C286, radec delaycal gaincal bpcal polcal single_accumulation, '
-                  '13:31:08.29, +30:30:33.0, (0 43200.0 1.2515 -0.4605 -0.1715 0.0336')
+                  '13:31:08.29, +30:30:33.0, (0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.001)
         await self.test_capture(expected_g=2)
+
+    async def test_capture_complex_models(self):
+        # Change the target to one with a complex model,
+        # (i.e. one with sources not located at the phase centre)
+        target = ('J0408-6545, radec bfcal, '
+                  '4:8:20.38, -65:45:09.09, (0 50e3 -113.518 110.7809 -35.2682 3.7012)')
+        self.telstate.add('cbf_target', target, ts=0.002)
+        # Relax the tolerances as the visibilities are generated using
+        # the model given by the target string,
+        # but calibration is performed using the full sky model.
+        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2)
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
