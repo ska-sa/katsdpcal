@@ -427,8 +427,8 @@ class TestCalcSnr(unittest.TestCase):
         self.data[:, 2, 0] = np.nan
 
         self.weights = np.ones(shape, np.float32)
-        # Set some weights to zeros and NaNs
-        self.weights[:, 0, 0] = [1, 2, 3, 2, 5, 0, np.nan]
+        # Set some weights to zeros
+        self.weights[:, 0, 0] = [1, 2, 3, 2, 5, 0, 0]
 
         self.expected_rms = np.ones((3, 2), np.float32)
         self.expected_rms[:, 0] = [np.sqrt(31 / 8), 1, np.nan]

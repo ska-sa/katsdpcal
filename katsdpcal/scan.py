@@ -321,11 +321,18 @@ class Scan:
 
         Parameters
         ----------
-        input_solint : nominal solution interval to use for the fit
-        g0 : initial estimate of gains for solver, shape (time, pol, nant)
-        bchan : start channel for fit, int, optional
-        echan : end channel for fit, int, optional
-        pre_apply : calibration solutions to apply, list of :class:`~.CalSolutions`, optional
+        input_solint : float
+            nominal solution interval to use for the fit, in seconds
+        g0 : :class: `np.ndarray`, complex, shape (time, pol, nant) or None
+            initial estimate of gains for solver
+        bchan : int, optional
+            start channel for fit
+        echan : int, optional
+            end channel for fit
+        pre_apply : list of :class:`~.CalSolutions`, optional
+            calibration solutions to apply
+        calc_snr : bool, optional
+            if True calculate SNR for G solution, default True
 
         Returns
         -------
@@ -517,10 +524,14 @@ class Scan:
 
         Parameters
         ----------
-        bchan : start channel for fit, int, optional
-        echan : end channel for fit, int, optional
-        chan_sample : channel sampling to use in delay fit, optional
-        pre_apply : calibration solutions to apply, list of :class:`CalSolutions`, optional
+        bchan : int, optional
+            start channel for fit
+        echan : int, optional
+            end channel for fit
+        chan_sample : int, optional
+            channel sampling to use in delay fit
+        pre_apply : list of :class:`CalSolutions`, optional
+            calibration solutions to apply
         calc_snr : bool, optional
             if True calculate snr of solution, default True
 
@@ -565,7 +576,7 @@ class Scan:
             ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
-            snr = np.squeeze(snr)
+            snr = snr[0]
             cal_soln = CalSolution('K', k_soln, ave_time, snr)
 
         return cal_soln
@@ -583,6 +594,8 @@ class Scan:
             calibration solutions to apply
         bp_flagger : :class:`SumThresholdFlagger`, optional
             Flagger, with :meth:`get_flags` to detect rfi in bandpass
+        calc_snr : bool, optional
+            if True calculate snr for solution, default is True
 
         Returns
         -------
@@ -632,7 +645,7 @@ class Scan:
             ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
-            snr = np.squeeze(snr)
+            snr = snr[0]
             cal_soln = CalSolution('B', b_soln, ave_time, snr)
 
         return cal_soln
@@ -643,8 +656,8 @@ class Scan:
         Calculates an array of complex numbers which normalises
         b_soln in the specified channel range
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         bchan : int, optional
             start channel to use in normalisation
         echan : int, optional
@@ -652,7 +665,7 @@ class Scan:
         b_soln : :class: `~.CalSolution`
             Solution with soltype 'B' to be normalised, shape(nchans, npols, nants)
 
-        Returns:
+        Returns
         -------
         :class:`np.ndarray`
             normalisation factor, complex, shape(npols, nants)
@@ -671,8 +684,8 @@ class Scan:
         to the timestamps of data and data may omit the channel axis.
         If soln is of :class:`CalSolution` then data may omit the time axis.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         soln : :class:`~.CalSolution ` or `~.CalSolutions`
             solution to evaluate SNR
         data : :class: `np.ndarray`
@@ -682,12 +695,12 @@ class Scan:
         **kwargs
             Additional keyword arguments passed to `apply`
 
-        Returns:
-        --------
-        snr : :class: `np.ndarray`
-            complex, same shape as solution
-        ant_flags : :class: `np.ndarray`
-            bool, shape (npols, nbaselines)
+        Returns
+        -------
+        resid : :class: `np.ndarray`, complex (ntimes, nchans, npols, nbls)
+            residuals after applying solution
+        weights : :class: `np.ndarray`, real (ntimes, nchans, npols, nbls)
+            weights expanded to 4 dimensions
         """
 
         if isinstance(soln, CalSolution):
@@ -764,8 +777,8 @@ class Scan:
         """
         Applies calibration solutions.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         soln : `~.CalSolutions`
             solution to apply
         vis : :class: `np.ndarray`
@@ -776,8 +789,8 @@ class Scan:
         channel_freqs : :class:`np.ndarray`, optional
             real, shape (nchans). Frequency of channels in data, default is all channels in scan.
 
-        Returns:
-        --------
+        Returns
+        -------
         :class: `np.ndarray`, corrected visibility data
         """
         if channel_freqs is None:

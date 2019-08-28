@@ -767,8 +767,7 @@ def draw_errorplot(times, data, ax, pol_label=0, **kwargs):
     pol_label : label for the pol axis
     **kwargs : additional keyword arguments passed to 'ax.errorbar'
     """
-    p25, p75 = np.nanpercentile(data, (25, 75), axis=-1)
-    median = np.nanmedian(data, axis=-1)
+    p25, median, p75 = np.nanpercentile(data, (25, 50, 75), axis=-1)
     low_error = median - p25
     up_error = p75 - median
 
