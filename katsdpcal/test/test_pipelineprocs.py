@@ -94,12 +94,12 @@ class TestFinaliseParameters(unittest.TestCase):
         self.telstate = katsdptelstate.TelescopeState()
         self.telstate.clear()
         self.telstate_l0 = self.telstate.view('sdp_l0test')
-        self.telstate_l0.add('n_chans', 4096, immutable=True)
-        self.telstate_l0.add('bandwidth', 856000000.0, immutable=True)
-        self.telstate_l0.add('center_freq', 1284000000.0, immutable=True)
-        self.telstate_l0.add('bls_ordering', bls_ordering, immutable=True)
+        self.telstate_l0['n_chans'] = 4096
+        self.telstate_l0['bandwidth'] = 856000000.0
+        self.telstate_l0['center_freq'] = 1284000000.0
+        self.telstate_l0['bls_ordering'] = bls_ordering
         for antenna in self.antennas:
-            self.telstate.add(antenna.name + '_observer', antenna.description, immutable=True)
+            self.telstate[self.telstate.join(antenna.name, 'observer')] = antenna.description
 
     def test_normal(self):
         parameters = pipelineprocs.finalise_parameters(

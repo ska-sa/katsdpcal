@@ -342,7 +342,7 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
             else:
                 key = 'param_' + parameter.name
             value = parameter.converter.to_telstate(parameters[parameter.name], parameters)
-            telstate_cal.add(key, value, immutable=True)
+            telstate_cal[key] = value
     for parameter in COMPUTED_PARAMETERS:
         # Only put them in if explicitly set to True
         if parameter.telstate:
@@ -351,16 +351,16 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
             else:
                 key = parameter.name
             value = parameter.converter.to_telstate(parameters[parameter.name], parameters)
-            telstate_cal.add(key, value, immutable=True)
+            telstate_cal[key] = value
 
-    telstate_cal.add('stream_type', 'sdp.cal', immutable=True)
+    telstate_cal['stream_type'] = 'sdp.cal'
     # Transfer some keys from L0 stream to cal "stream", to help consumers compute
     # frequencies.
     telstate_l0 = telstate_cal.root().view(l0_name)
     for key in ['bandwidth', 'n_chans', 'center_freq']:
-        telstate_cal.add(key, telstate_l0[key], immutable=True)
+        telstate_cal[key] = telstate_l0[key]
     # Add the L0 stream name too, so that any other information can be found there.
-    telstate_cal.add('src_streams', [l0_name], immutable=True)
+    telstate_cal['src_streams'] = [l0_name]
 
 
 def get_baseline_mask(bls_lookup, ants, limits):

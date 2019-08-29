@@ -13,6 +13,7 @@ import numba
 
 import katpoint
 
+from katdal.applycal import complex_interp
 
 logger = logging.getLogger(__name__)
 
@@ -597,6 +598,34 @@ def normalise_complex(x, weights=None, axis=0):
     norm_factor = centre_rotation / average_amplitude
 
     return norm_factor
+
+
+def interpolate_bandpass(x):
+    """
+    Interpolate over NaNs in the channel axis of a bandpass
+
+    Parameters
+    ----------
+    x : :class:`np.ndarray`, complex, shape(nchans, npols, nants)
+        bandpass to interpolate over
+
+    Returns
+    -------
+    x_interp : :class`np.ndarray`
+         interpolated bandpass
+    """
+    nchans, npols, nants = x.shape
+    x_interp = np.empty_like(x)
+    for p in range(npols):
+        for a in range(nants):
+            valid = np.isfinite(x[:, p, a])
+            if np.any(valid):
+                x_interp[:, p, a] = complex_interp(np.arange(nchans),
+                                                   np.arange(nchans)[valid],
+                                                   x[:, p, a][valid])
+            else:
+                x_interp[:, p, a] = np.nan
+    return x_interp
 
 
 def asbool(arr):

@@ -185,7 +185,7 @@ class SimData:
         # add parameters to telescope state
         for key, value in sorted(notime_dict.items()):
             logger.info('Setting %s = %s', key, value)
-            telstate.add(key, value, immutable=True)
+            telstate[key] = value
 
         for key, value in sorted(time_dict.items()):
             logger.info('Setting %s', key)
@@ -256,7 +256,8 @@ class SimData:
 
     def setup_capture_block(self, telstate, first_timestamp):
         """Set per-capture-block keys in telstate."""
-        telstate.add(self.cbid + '_sdp_l0_first_timestamp', first_timestamp, immutable=True)
+        key = telstate.join(self.cbid, 'sdp_l0', 'first_timestamp')
+        telstate[key] = first_timestamp
 
     def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
         """
@@ -533,7 +534,7 @@ class SimDataMS(SimData):
                       'sb_id_code' : 'None',
                       'proposal_id' : 'None',
                       'observer' : 'unknown'}
-        telstate_cb.add('obs_params', obs_params, immutable=True)
+        telstate_cb['obs_params'] = obs_params
 
         time_ind = 0
         # send data scan by scan
@@ -723,7 +724,7 @@ class SimDataKatdal(SimData):
         telstate_cb = telstate.view(self.cbid)
 
         # include obs params in telstate
-        telstate_cb.add('obs_params', self.file.obs_params, immutable=True)
+        telstate_cb['obs_params'] = self.file.obs_params
         for scan_ind, scan_state, target in self.file.scans():
             # update telescope state with scan information
             #   subtract random offset to time, <= 0.1 seconds, to simulate

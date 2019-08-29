@@ -695,8 +695,7 @@ class Accumulator:
             with concurrent.futures.ThreadPoolExecutor(1) as executor:
                 server_id = self.owner.parameters['server_id']
                 n_servers = self.owner.parameters['servers']
-                self.telstate_cb_cal.add('last_dump_index{}'.format(server_id),
-                                         self._last_idx, immutable=True)
+                self.telstate_cb_cal['last_dump_index{}'.format(server_id)] = self._last_idx
                 for i in range(n_servers):
                     if i != server_id:
                         key = 'last_dump_index{}'.format(i)
@@ -1036,7 +1035,7 @@ class Pipeline(Task):
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
                  l0_name, telstate_cal, parameters,
-                 diagnostics=None, profile_file=None, num_workers=None):
+                 diagnostics=None, bokeh_kwargs=None, profile_file=None, num_workers=None):
         super().__init__(task_class, master_queue, 'Pipeline', profile_file)
         self.buffers = buffers
         self.accum_pipeline_queue = accum_pipeline_queue
@@ -1046,6 +1045,7 @@ class Pipeline(Task):
         self.parameters = parameters
         self.l0_name = l0_name
         self.diagnostics = diagnostics
+        self.bokeh_kwargs = bokeh_kwargs
         if num_workers is None:
             # Leave a core free to avoid starving the accumulator
             num_workers = max(1, multiprocessing.cpu_count() - 1)
@@ -1099,9 +1099,13 @@ class Pipeline(Task):
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
         """
+        service_kwargs = {}
+        if self.bokeh_kwargs:
+            service_kwargs['dashboard'] = self.bokeh_kwargs
         cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=self.num_workers,
-            processes=False, memory_limit=0, diagnostics_port=self.diagnostics)
+            processes=False, memory_limit=0, diagnostics_port=self.diagnostics,
+            service_kwargs=service_kwargs)
         with cluster, dask.distributed.Client(cluster):
             self._run_impl()
 
@@ -1251,19 +1255,19 @@ class Transmitter:
         # The flags stream is mostly the same shape/layout as the L0 stream,
         # with the exception of channelisation.
         for key in ['bandwidth', 'int_time', 'sync_time', 'excise', 'n_bls', 'bls_ordering']:
-            self.telstate_flags.add(key, l0_attr[key], immutable=True)
+            self.telstate_flags[key] = l0_attr[key]
         old_spw = SpectralWindow(centre_freq=l0_attr['center_freq'],
                                  bandwidth=l0_attr['bandwidth'],
                                  num_chans=l0_attr['n_chans'],
                                  channel_width=None,    # Computed from bandwidth
                                  sideband=1)
         new_spw = old_spw.rechannelise(l0_attr['n_chans'] // flags_stream.continuum_factor)
-        self.telstate_flags.add('center_freq', new_spw.centre_freq, immutable=True)
-        self.telstate_flags.add('n_chans', new_spw.num_chans, immutable=True)
-        self.telstate_flags.add('n_chans_per_substream', out_chans, immutable=True)
-        self.telstate_flags.add('src_streams', [flags_stream.src_stream], immutable=True)
-        self.telstate_flags.add('stream_type', 'sdp.flags', immutable=True)
-        self.telstate_flags.add('calibrations_applied', [cal_name], immutable=True)
+        self.telstate_flags['center_freq'] = new_spw.centre_freq
+        self.telstate_flags['n_chans'] = new_spw.num_chans
+        self.telstate_flags['n_chans_per_substream'] = out_chans
+        self.telstate_flags['src_streams'] = [flags_stream.src_stream]
+        self.telstate_flags['stream_type'] = 'sdp.flags'
+        self.telstate_flags['calibrations_applied'] = [cal_name]
 
     def prepare(self):
         """Do further setup in the child process."""
@@ -1278,7 +1282,7 @@ class Transmitter:
         self._tx.send_heap(self._ig.get_start())
         self._ig['capture_block_id'].value = cbid
         telstate_cb_flags = make_telstate_cb(self.telstate_flags, cbid)
-        telstate_cb_flags.add('first_timestamp', first_timestamp, immutable=True)
+        telstate_cb_flags['first_timestamp'] = first_timestamp
 
     def end_capture_block(self):
         """Send an end-of-stream heap that includes capture block ID"""
@@ -1725,7 +1729,8 @@ def create_server(use_multiprocessing, host, port, buffers,
                   l0_name, l0_endpoints, l0_interface_address,
                   flags_streams, clock_ratio, telstate_cal, parameters,
                   report_path, log_path, full_log,
-                  diagnostics=None, pipeline_profile_file=None, num_workers=None,
+                  diagnostics=None, bokeh_kwargs=None,
+                  pipeline_profile_file=None, num_workers=None,
                   max_scans=None):
     # threading or multiprocessing imports
     if use_multiprocessing:
@@ -1745,7 +1750,8 @@ def create_server(use_multiprocessing, host, port, buffers,
     pipeline = Pipeline(
         module.Process, buffers,
         accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
-        l0_name, telstate_cal, parameters, diagnostics, pipeline_profile_file, num_workers)
+        l0_name, telstate_cal, parameters, diagnostics, bokeh_kwargs,
+        pipeline_profile_file, num_workers)
     # Set up the sender
     sender = Sender(
         module.Process, buffers, pipeline_sender_queue, master_queue, l0_name,

@@ -6,6 +6,7 @@ import katpoint
 from numbers import Integral
 
 import numpy as np
+import katsdptelstate
 
 from collections import defaultdict
 from katdal.sensordata import TelstateSensorData, SensorCache
@@ -17,6 +18,7 @@ from . import solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
+from .calprocs import interpolate_bandpass
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +230,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
     # sequence number. If `name` is not given, the metadata contains the actual
     # values.
     def add_info(info):
-        telstate.add(shared_key, info, immutable=True)
+        telstate[shared_key] = info
         logger.debug('Added shared key %s', shared_key)
 
     if '_seq' in kwargs:
@@ -321,6 +323,64 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                 logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                             ' and won\'t be stored in solution store')
         return soln
+
+
+def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
+    """
+    Interpolate over NaNs in the channel axis of the bandpass
+
+    If there are multiple cal nodes, retrieve all parts of the
+    bandpass from telstate prior to interpolation.
+
+    Parameters:
+    -----------
+    telstate : :class:`katsdptelstate.TelescopeState`
+        Telescope state in which the solution is stored
+    parameters : dict
+        Pipeline parameters
+    b_soln : :class:`~.CalSolution`
+        bandpass solution for this cal node
+    st : float
+        start time for retrieving solutions from telstate
+    et : float
+        end time for retrieving solutions from telstate
+
+    Returns:
+    --------
+    :class:`~.CalSolution`
+        interpolated solution for this cal node
+    """
+    # if there are multiple cal nodes
+    # retrieve parts of the bandpass computed by other cal nodes
+    if parameters['servers'] > 1:
+        parts = []
+        for n in range(parameters['servers']):
+            if n == parameters['server_id']:
+                parts.append(b_soln.values)
+
+            else:
+                key = 'product_B{0}'.format(n)
+                try:
+                    telstate.wait_key(key, lambda value, ts: ts > st, 30)
+                    valid_part = telstate.get_range('product_B{0}'.format(n), st, et)
+                    parts.append(valid_part[0][0])
+
+                except (KeyError, katsdptelstate.TimeoutError):
+                    logger.info("Unable to retrieve %s from telstate,"
+                                " filling with NaNs while interpolating", key)
+                    parts.append(np.full_like(b_soln.values, np.nan))
+
+        b_values = np.concatenate(parts)
+    else:
+        # else use the values computed by this (the only) node
+        b_values = b_soln.values
+
+    # interpolate over NaNs along the channel axis
+    b_interp = interpolate_bandpass(b_values)
+
+    # select channels processed by this cal node
+    b_interp = b_interp[parameters['channel_slice']]
+    return solutions.CalSolution('B', b_interp, b_soln.time)
 
 
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
@@ -443,7 +503,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             model_params, model_file = pp.get_model(target_name, lsm_dir)
             if model_params is not None:
                 s.add_model(model_params)
-                ts.add(model_key, model_params, immutable=True)
+                ts[model_key] = model_params
                 logger.info('   Model file: {0}'.format(model_file))
         else:
             s.add_model(model_params)
@@ -462,11 +522,13 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                                  parameters['k_bchan'], parameters['k_echan'],
                                                  s.refant_find)
                 parameters['refant_index'] = best_refant_index
-                parameters['refant'] = parameters['antennas'][best_refant_index]
-                logger.info('Reference antenna set to %s', parameters['refant'].name)
-                ts.add('refant', parameters['refant'].description, immutable=True)
+                parameters['refant'] = parameters['antenna_names'][best_refant_index]
+                logger.info('Reference antenna set to %s', parameters['refant'])
                 s.refant = best_refant_index
 
+            # Add the reference antenna to telstate for each new cbid
+            if 'refant' not in ts:
+                ts['refant'] = parameters['refant']
         # run_t0 = time.time()
 
         # perform calibration as appropriate, from scan intent tags:
@@ -491,7 +553,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
+            # flagged bandpasses (with NaNs) are stored in telstate
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
+                                                 s.timestamps[0], s.timestamps[-1])
+
+            # interpolated bandpasses (without NaNs) are stored in solution store
+            # so they can be applied to target/calibrator data without propagating NaNs
+            solution_stores['B'].add(b_soln_nonans)
 
             # ---------------------------------------
             # G solution
@@ -620,7 +689,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
+            # flagged solutions (with NaNs) are stored in telstate
+            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
+                                                 s.timestamps[0], s.timestamps[-1])
+
+            # interpolated solutions (without NaNs) are stored in the solution store
+            # so they can be applied to target/calibrator data without propagating NaNs
+            solution_stores['B'].add(b_soln_nonans)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
