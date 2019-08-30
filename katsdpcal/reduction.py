@@ -169,6 +169,7 @@ def save_solution(telstate, key, solution_store, soln):
 
     The `soln` may be either a :class:`CalSolution` or a :class:`CalSolutions`.
     The `telstate` may be ``None`` to save only to the solution store.
+    The `solution_store` may be ``None`` to save only to the telstate.
     """
     def save_one(soln):
         if telstate is not None:
@@ -178,7 +179,8 @@ def save_solution(telstate, key, solution_store, soln):
                 key_list.insert(1, 'SNR')
                 snrkey = '_'.join(key_list)
                 telstate.add(snrkey, soln.snr, ts=soln.time)
-        solution_store.add(soln)
+        if solution_store is not None:
+            solution_store.add(soln)
 
     logger.info("  - Saving solution '%s' to Telescope State", soln)
     assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
@@ -553,8 +555,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            # flagged bandpasses (with NaNs) are stored in telstate
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
             b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
                                                  s.timestamps[0], s.timestamps[-1])
 
@@ -689,8 +691,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            # flagged solutions (with NaNs) are stored in telstate
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
             b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
                                                  s.timestamps[0], s.timestamps[-1])
 
