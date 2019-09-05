@@ -54,8 +54,8 @@ tornado==6.0.2          # for distributed, bokeh
 urllib3                 # for requests
 zict==0.1.3             # for distributed
 
-katdal @ git+https://git@github.com/ska-sa/katdal
-katpoint @ git+https://git@github.com/ska-sa/katpoint
-katsdpservices @ git+https://git@github.com/ska-sa/katsdpservices
-katsdpsigproc @ git+https://git@github.com/ska-sa/katsdpsigproc
-katsdptelstate @ git+https://git@github.com/ska-sa/katsdptelstate
+katdal @ git+https://github.com/ska-sa/katdal
+katpoint @ git+https://github.com/ska-sa/katpoint
+katsdpservices @ git+https://github.com/ska-sa/katsdpservices
+katsdpsigproc @ git+https://github.com/ska-sa/katsdpsigproc
+katsdptelstate @ git+https://github.com/ska-sa/katsdptelstate
