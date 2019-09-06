@@ -332,7 +332,7 @@ class Scan:
         pre_apply : list of :class:`~.CalSolutions`, optional
             calibration solutions to apply
         calc_snr : bool, optional
-            if True calculate SNR for G solution, default True
+            if True calculate SNR for G solution
 
         Returns
         -------
@@ -533,7 +533,7 @@ class Scan:
         pre_apply : list of :class:`CalSolutions`, optional
             calibration solutions to apply
         calc_snr : bool, optional
-            if True calculate snr of solution, default True
+            if True calculate snr of solution
 
         Returns
         -------
@@ -595,7 +595,7 @@ class Scan:
         bp_flagger : :class:`SumThresholdFlagger`, optional
             Flagger, with :meth:`get_flags` to detect rfi in bandpass
         calc_snr : bool, optional
-            if True calculate snr for solution, default is True
+            if True calculate snr for solution
 
         Returns
         -------
