@@ -315,17 +315,24 @@ class Scan:
     # Calibration solution functions
 
     @logsolutiontime
-    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], **kwargs):
+    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], calc_snr=True, **kwargs):
         """
         Solve for gain
 
         Parameters
         ----------
-        input_solint : nominal solution interval to use for the fit
-        g0 : initial estimate of gains for solver, shape (time, pol, nant)
-        bchan : start channel for fit, int, optional
-        echan : end channel for fit, int, optional
-        pre_apply : calibration solutions to apply, list of :class:`~.CalSolutions`, optional
+        input_solint : float
+            nominal solution interval to use for the fit, in seconds
+        g0 : :class: `np.ndarray`, complex, shape (time, pol, nant) or None
+            initial estimate of gains for solver
+        bchan : int, optional
+            start channel for fit
+        echan : int, optional
+            end channel for fit
+        pre_apply : list of :class:`~.CalSolutions`, optional
+            calibration solutions to apply
+        calc_snr : bool, optional
+            if True calculate SNR for G solution
 
         Returns
         -------
@@ -344,25 +351,40 @@ class Scan:
             echan = None
         chan_slice = np.s_[:, bchan:echan, :, :]
 
+        g_freqs = self.channel_freqs[bchan:echan]
         # initialise and apply model, for if this scan target has an associated model
         self._init_model()
         fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
 
         # first averge in time over solution interval, for specified channel
         # range (no averaging over channel)
-        ave_vis, ave_flags, ave_weights, ave_times = calprocs_dask.wavg_full_t(
+        ave_vis_t, ave_flags_t, ave_weights_t, ave_times = calprocs_dask.wavg_full_t(
             fitvis, self.cross_ant.tf.auto_pol.flags[chan_slice],
             self.cross_ant.tf.auto_pol.weights[chan_slice], dumps_per_solint, times=self.timestamps)
         # secondly, average channels
-        ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(ave_vis, ave_flags, ave_weights,
-                                                                  axis=1)
+        ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(ave_vis_t, ave_flags_t,
+                                                                  ave_weights_t, axis=1)
         # solve for gain
         ave_vis, ave_weights = da.compute(ave_vis, ave_weights)
         g_soln = calprocs.g_fit(ave_vis, ave_weights,
                                 self.cross_ant.bls_lookup, g0,
                                 self.refant, **kwargs)
 
-        return CalSolutions('G', g_soln, ave_times)
+        cal_soln = CalSolutions('G', g_soln, ave_times)
+        if calc_snr:
+            ave_vis_t, ave_weights_t = da.compute(ave_vis_t, ave_weights_t)
+            # use non channel-averaged data to calculate poor antennas,
+            # averaging tends to improve the rms measurement
+            resid, weights = self._resid(cal_soln, ave_vis_t, ave_weights_t,
+                                         channel_freqs=g_freqs)
+            mask = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
+
+            # use channel averaged data to calculate snr
+            resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
+            snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
+            cal_soln = CalSolutions('G', g_soln, ave_times, snr)
+
+        return cal_soln
 
     @logsolutiontime
     def bcross_sol(self, pre_apply=[], nd=None):
@@ -496,16 +518,22 @@ class Scan:
         return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
 
     @logsolutiontime
-    def k_sol(self, bchan=1, echan=None, chan_sample=1, pre_apply=[]):
+    def k_sol(self, bchan=1, echan=None, chan_sample=1, pre_apply=[], calc_snr=True):
         """
         Solve for delay
 
         Parameters
         ----------
-        bchan : start channel for fit, int, optional
-        echan : end channel for fit, int, optional
-        chan_sample : channel sampling to use in delay fit, optional
-        pre_apply : calibration solutions to apply, list of :class:`CalSolutions`, optional
+        bchan : int, optional
+            start channel for fit
+        echan : int, optional
+            end channel for fit
+        chan_sample : int, optional
+            channel sampling to use in delay fit
+        pre_apply : list of :class:`CalSolutions`, optional
+            calibration solutions to apply
+        calc_snr : bool, optional
+            if True calculate snr of solution
 
         Returns
         -------
@@ -542,10 +570,19 @@ class Scan:
                                 self.cross_ant.bls_lookup,
                                 k_freqs, self.refant, True, chan_sample)
 
-        return CalSolution('K', k_soln, ave_time)
+        cal_soln = CalSolution('K', k_soln, ave_time)
+        if calc_snr:
+            resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=k_freqs)
+            ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
+            snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
+            # remove time axis to match solution shape
+            snr = snr[0]
+            cal_soln = CalSolution('K', k_soln, ave_time, snr)
+
+        return cal_soln
 
     @logsolutiontime
-    def b_sol(self, bp0, pre_apply=[], bp_flagger=None):
+    def b_sol(self, bp0, pre_apply=[], bp_flagger=None, calc_snr=True):
         """
         Solve for bandpass
 
@@ -557,6 +594,8 @@ class Scan:
             calibration solutions to apply
         bp_flagger : :class:`SumThresholdFlagger`, optional
             Flagger, with :meth:`get_flags` to detect rfi in bandpass
+        calc_snr : bool, optional
+            if True calculate snr for solution
 
         Returns
         -------
@@ -598,10 +637,18 @@ class Scan:
             b_soln = da.where(rfi_flags, np.nan, b_soln)
             b_soln = b_soln[0]
 
-        # normalise after flagging solution
-        b_soln = b_soln.compute()
+        b_soln, ave_vis, ave_weights = da.compute(b_soln, ave_vis, ave_weights)
+        cal_soln = CalSolution('B', b_soln, ave_time)
 
-        return CalSolution('B', b_soln, ave_time)
+        if calc_snr:
+            resid, weights = self._resid(cal_soln, ave_vis, ave_weights)
+            ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
+            snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
+            # remove time axis to match solution shape
+            snr = snr[0]
+            cal_soln = CalSolution('B', b_soln, ave_time, snr)
+
+        return cal_soln
 
     @logsolutiontime
     def b_norm(self, b_soln, bchan=1, echan=None):
@@ -609,8 +656,8 @@ class Scan:
         Calculates an array of complex numbers which normalises
         b_soln in the specified channel range
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         bchan : int, optional
             start channel to use in normalisation
         echan : int, optional
@@ -618,7 +665,7 @@ class Scan:
         b_soln : :class: `~.CalSolution`
             Solution with soltype 'B' to be normalised, shape(nchans, npols, nants)
 
-        Returns:
+        Returns
         -------
         :class:`np.ndarray`
             normalisation factor, complex, shape(npols, nants)
@@ -629,6 +676,58 @@ class Scan:
         else:
             raise ValueError('b_soln has soltype {}, expected soltype B'.format(b_soln.soltype))
         return norm_fact
+
+    def _resid(self, soln, data, weights, **kwargs):
+        """
+        Calculate residuals and weights for a given solution, data and weights.
+        If solution is of :class:`CalSolutions` the solution must already be interpolated
+        to the timestamps of data and data may omit the channel axis.
+        If soln is of :class:`CalSolution` then data may omit the time axis.
+
+        Parameters
+        ----------
+        soln : :class:`~.CalSolution ` or `~.CalSolutions`
+            solution to evaluate SNR
+        data : :class: `np.ndarray`
+            complex, shape (ntimes/nchans, npols, nbls) or (ntimes, nchans, npols, nbls)
+        weights : :class: `np.ndarray`
+            real, shape to match data
+        **kwargs
+            Additional keyword arguments passed to `apply`
+
+        Returns
+        -------
+        resid : :class: `np.ndarray`, complex (ntimes, nchans, npols, nbls)
+            residuals after applying solution
+        weights : :class: `np.ndarray`, real (ntimes, nchans, npols, nbls)
+            weights expanded to 4 dimensions
+        """
+
+        if isinstance(soln, CalSolution):
+            solns_to_apply = self.interpolate(soln)
+            expand_axis = 0
+
+        else:
+            solns_to_apply = soln
+            expand_axis = 1
+            if data.shape[0] != soln.values.shape[0]:
+                raise ValueError('Time axis of solutions {} does not match data {}'.format(
+                                 soln.values.shape[0], data.shape[0]))
+
+        # add chan/time axis if required
+        if data.ndim < 4:
+            data = np.expand_dims(data, expand_axis)
+            weights = np.expand_dims(weights, expand_axis)
+
+        # TODO update weights after applying solution
+        resid = self.apply(solns_to_apply, data, **kwargs).compute()
+        # zero residual phase before measuring variance, snr_antenna assumes a mean phase of zero
+        # 'B' and 'G' solutions should already be normalised by stefcal
+        if soln.soltype == 'K':
+            norm_factor = calprocs.normalise_complex(resid, weights, axis=1)
+            resid *= norm_factor
+
+        return resid, weights
 
     # ---------------------------------------------------------------------------------------------
     # solution application
@@ -674,7 +773,29 @@ class Scan:
             correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
         return vis * correction
 
-    def apply(self, soln, vis, cross_pol=False):
+    def apply(self, soln, vis, cross_pol=False, channel_freqs=None):
+        """
+        Applies calibration solutions.
+
+        Parameters
+        ----------
+        soln : `~.CalSolutions`
+            solution to apply
+        vis : :class: `np.ndarray`
+            complex, shape (ntimes, nchans, npols, nbls)
+        cross_pol : bool, optional
+            apply cross hand style corrections if True, else parallel hand corrections. Default
+            is False
+        channel_freqs : :class:`np.ndarray`, optional
+            real, shape (nchans). Frequency of channels in data, default is all channels in scan.
+
+        Returns
+        -------
+        :class: `np.ndarray`, corrected visibility data
+        """
+        if channel_freqs is None:
+            channel_freqs = self.channel_freqs
+        channel_freqs = da.asarray(channel_freqs)
         # set up more complex interpolation methods later
         soln_values = da.asarray(soln.values)
         if soln.soltype == 'G':
@@ -685,13 +806,11 @@ class Scan:
 
         elif soln.soltype == 'K':
             # want shape (ntime, nchan, npol, nant)
-            channel_freqs = da.asarray(self.channel_freqs)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
             # select HV delay at refant
-            channel_freqs = da.asarray(self.channel_freqs)
             soln = soln.values[..., self.refant][..., np.newaxis]
             soln = np.repeat(soln, self.nant, axis=-1)
 

@@ -169,19 +169,30 @@ def save_solution(telstate, key, solution_store, soln):
 
     The `soln` may be either a :class:`CalSolution` or a :class:`CalSolutions`.
     The `telstate` may be ``None`` to save only to the solution store.
+    The `solution_store` may be ``None`` to save only to the telstate.
     """
     def save_one(soln):
         if telstate is not None:
             telstate.add(key, soln.values, ts=soln.time)
-        solution_store.add(soln)
+            if soln.snr is not None:
+                key_list = key.split('_')
+                key_list.insert(1, 'SNR')
+                snrkey = '_'.join(key_list)
+                telstate.add(snrkey, soln.snr, ts=soln.time)
+        if solution_store is not None:
+            solution_store.add(soln)
 
     logger.info("  - Saving solution '%s' to Telescope State", soln)
     assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
     if isinstance(soln, solutions.CalSolution):
         save_one(soln)
     else:
-        for v, t in zip(soln.values, soln.times):
-            save_one(solutions.CalSolution(soln.soltype, v, t))
+        if soln.snr is not None:
+            for v, t, s in zip(soln.values, soln.times, soln.snr):
+                save_one(solutions.CalSolution(soln.soltype, v, t, s))
+        else:
+            for v, t in zip(soln.values, soln.times):
+                save_one(solutions.CalSolution(soln.soltype, v, t))
 
 
 def shared_solve(telstate, parameters, solution_store, bchan, echan,
@@ -544,8 +555,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            # flagged bandpasses (with NaNs) are stored in telstate
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
             b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
                                                  s.timestamps[0], s.timestamps[-1])
 
@@ -613,7 +624,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['k_bchan'], parameters['k_echan'],
-                                      s.g_sol, k_solint, g0_h)
+                                      s.g_sol, k_solint, g0_h, calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -641,7 +652,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # solve (pre-applying given solutions)
                 pre_g_soln = shared_solve(ts, parameters, None,
                                           parameters['k_bchan'], parameters['k_echan'],
-                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply)
+                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply,
+                                          calc_snr=False)
                 # interpolate to scan timestamps
                 g_to_apply = s.interpolate(pre_g_soln)
                 solns_to_apply.append(g_to_apply)
@@ -666,7 +678,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['g_bchan'], parameters['g_echan'],
-                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply)
+                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply,
+                                      calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -678,8 +691,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            # flagged solutions (with NaNs) are stored in telstate
-            ts.add(parameters['product_names']['B'], b_soln.values, ts=b_soln.time)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
             b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
                                                  s.timestamps[0], s.timestamps[-1])
 

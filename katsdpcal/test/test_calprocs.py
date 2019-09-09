@@ -360,27 +360,171 @@ class TestWavgFlagsF(unittest.TestCase):
 class TestNormaliseComplex(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs.normalise_complex`"""
     def setUp(self):
-        shape = (6, 7)
+        shape = (6, 7, 2)
         self.data = np.ones(shape, np.complex64) + 1.j
-        self.data[:, 2] += 1+1j
+        self.data[:, 2, 0] += 1+1j
         # Put in some zeros and NaNs to check they're handled correctly
-        self.data[2, 2] = 0
-        self.data[3, 1] = np.nan
-        self.data[:, 0] = [np.sqrt(2)+0j, 1+1j, 2+2j, 1+1j, 0, np.nan]
-        self.data[5, :] = np.nan
+        self.data[2, 2, 0] = 0
+        self.data[3, 1, 0] = np.nan
+        self.data[:, 0, 0] = [np.sqrt(2)+0j, 1+1j, 2+2j, 1+1j, 0, np.nan]
+        self.data[5, :, 0] = np.nan
         # columns which consist of only NaNs and/or zeros => 1 + 0j in the normalisation factor
-        self.data[:, 4] = np.nan
-        self.data[:, 5] = 0
-        self.data[:, 6] = [0, 0, 0, np.nan, np.nan, np.nan]
+        self.data[:, 4, 0] = np.nan
+        self.data[:, 5, 0] = 0
+        self.data[:, 6, 0] = [0, 0, 0, np.nan, np.nan, np.nan]
 
-        self.expected_angle = -1j * np.pi / 4 * np.array([3. / 5., 1, 4. / 5., 1, 0, 0, 0])
-        self.expected_amp = np.array([1, 1, 5. / 8, 1, 0, 0, 0]) / np.sqrt(2)
-        self.expected = self.expected_amp * np.exp(self.expected_angle)
-        self.expected[4:] = 1
+        self.expected = np.ones((1, 7, 2), np.complex64)
+        self.expected *= 1/np.sqrt(2) * np.exp(-1j * np.pi/4)
+        expected_angle = -1j * np.pi / 4 * np.array([3. / 5., 1, 4. / 5., 1, 0, 0, 0])
+        expected_amp = np.array([1, 1, 5. / 8, 1, 0, 0, 0]) / np.sqrt(2)
+        self.expected[0, :, 0] = expected_amp * np.exp(expected_angle)
+        self.expected[0, 4:, 0] = 1
 
-    def test_normalise(self):
-        """Test normalisation factor is correct"""
-        data = self.data.copy()
-        norm_factor = calprocs.normalise_complex(data)
-        # check normalisation factor is correct
-        np.testing.assert_allclose(self.expected, norm_factor, rtol=1e-6)
+    def test_unweighted(self):
+        """Test normalisation factor is correct without weights"""
+        # check for all axes
+        for i in [0, 1, 2, -1, -2, -3]:
+            data_i = np.moveaxis(self.data, 0, i)
+            expected_i = np.moveaxis(self.expected, 0, i)
+            norm_factor = calprocs.normalise_complex(data_i, axis=i)
+            # check normalisation factor is correct
+            np.testing.assert_allclose(expected_i, norm_factor, rtol=1e-6)
+            # check results are the same for unweighted data and all equal weights
+            weights_i = np.ones(data_i.shape) * 2
+            norm_factor = calprocs.normalise_complex(data_i, weights_i, axis=i)
+            np.testing.assert_allclose(expected_i, norm_factor, rtol=1e-6)
+
+    def test_weighted(self):
+        """Test normalisation factor is correct with weights"""
+        weights = np.ones(self.data.shape)
+        # Include some NaNs and zeros in weights to check they are handled correctly
+        # Data with NaN weights should be ignored in normalisation factor calculation
+        weights[:, 0, 0] = [1, 0, 2, np.nan, 1, 5]
+        expected = self.expected
+        expected_angle = -1j * np.pi / 4 * (2 / 5)
+        expected_amp = 4 / (5 * np.sqrt(2))
+        weights[:, 0, 0] = expected_amp * np.exp(expected_angle)
+
+        # check for all axes
+        for i in [0, 1, 2, -1, -2, -3]:
+            data_i = np.moveaxis(self.data, 0, i)
+            weights_i = np.moveaxis(weights, 0, i)
+            expected_i = np.moveaxis(expected, 0, i)
+
+            norm_factor = calprocs.normalise_complex(data_i, weights_i, axis=i)
+            np.testing.assert_allclose(expected_i, norm_factor, rtol=1e-6)
+
+
+class TestCalcSnr(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.calc_snr`"""
+    def setUp(self):
+        shape = (7, 3, 2)
+        self.data = np.ones(shape, np.float32)
+        # Put in some NaNs to check they're handled correctly
+        self.data[:, 0, 0] = [1, 0, 2, 3, np.nan, 4, 5]
+        self.data[4, 1, 0] = np.nan
+        # A completely NaN column => NaNs in the output
+        self.data[:, 2, 0] = np.nan
+
+        self.weights = np.ones(shape, np.float32)
+        # Set some weights to zeros
+        self.weights[:, 0, 0] = [1, 2, 3, 2, 5, 0, 0]
+
+        self.expected_rms = np.ones((3, 2), np.float32)
+        self.expected_rms[:, 0] = [np.sqrt(31 / 8), 1, np.nan]
+
+    def test_basic(self):
+        for axis in [0, 1, 2, -1, -2, -3]:
+            data = np.moveaxis(self.data, 0, axis)
+            weights = np.moveaxis(self.weights, 0, axis)
+            rms = calprocs.calc_rms(data, weights, axis)
+            np.testing.assert_equal(self.expected_rms, rms)
+
+
+class TestPoorAntennaFlags(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.poor_antenna_flags`"""
+    def test(self):
+        nants = 5
+        shape = (2, 10, 2, nants*(nants-1)//2)
+        vis = np.ones(shape, np.complex64)
+        weights = np.ones(shape, np.float32)
+        bls_lookup = np.array([
+            (0, 1), (0, 2), (0, 3), (0, 4), (1, 2),
+            (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)
+            ])
+
+        # Add some noise to visibility angles
+        random_state = np.random.RandomState(seed=1)
+        angle_noise = 0.2*(random_state.random_sample(shape)) - 0.1
+        vis *= np.exp(1.j * angle_noise)
+
+        # Add higher noise and NaNs to baselines to particular antennas
+        # high noise antennas should be flagged, all NaN'd antennas should not
+        high_bls = [np.any(1 == b) for b in bls_lookup]
+        nan_bls = [np.any(2 == b) for b in bls_lookup]
+        high_noise = 0.8 * random_state.random_sample((4, 10)) - 0.4
+        vis[0, :, 0, high_bls] = np.exp(1.j * high_noise)
+        vis[0, :, 0, nan_bls] = np.nan
+
+        expected_flags = np.zeros(shape).astype(bool)
+        expected_flags[0, :, 0, high_bls] = True
+
+        flags = calprocs.poor_antenna_flags(vis, weights, bls_lookup, 0.2)
+        np.testing.assert_equal(expected_flags, flags)
+
+
+class TestSnrAntenna(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.snr_antenna`"""
+    def setUp(self):
+        nants = 5
+        self.shape = (2, 10, 2, nants*(nants-1)//2)
+        self.vis = np.ones(self.shape, np.complex64)
+        self.weights = np.ones(self.shape, np.float32)
+        self.bls_lookup = np.array([
+            (0, 1), (0, 2), (0, 3), (0, 4), (1, 2),
+            (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)
+            ])
+
+        # alter visibility angles from zero
+        self.vis *= np.exp(1.j * 0.01)
+        vis_angle = np.array([(0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.02, 0.04, 0.04, 0.01)])
+        self.vis[0] = np.exp(1.j * vis_angle)
+
+        # alter the weights
+        self.weights[0] = np.array([(2, 2, 2, 1, 2, 2, 1, 1, 1, 4)])
+
+        # Put in a NaN and check it is excluded from calculated SNR
+        self.vis[0, 5, 1, 0] = np.nan
+
+        # Put in a completely NaN'ed antenna => NaN snr
+        nan_bls = [np.any(2 == b) for b in self.bls_lookup]
+        self.vis[1, :, 0, nan_bls] = np.nan
+
+        # Set one antenna to have higher noise than the others
+        self.high_bls = [np.any(1 == b) for b in self.bls_lookup]
+        self.vis[1, :, 1, self.high_bls] = np.exp(1.j * 0.5)
+
+        self.expected = 100 * np.ones((2, 2, nants), np.float32)
+        self.expected[0] = [100, 100 / np.sqrt(16 / 7), 100 / np.sqrt(6),
+                            100 / np.sqrt(30 / 9), 100 / np.sqrt(25 / 7)]
+        self.expected[0, 1, 1] = 100 / (np.sqrt(158 / 68))
+        self.expected[1, 0, 2] = np.nan
+
+    def test_basic(self):
+        expected = self.expected
+        expected[1, 1, :] = 100 / np.sqrt(2503 / 4)
+        expected[1, 1, 1] = 100 / 50
+
+        snr = calprocs.snr_antenna(self.vis, self.weights, self.bls_lookup)
+        np.testing.assert_allclose(expected, snr, rtol=1e-3)
+
+    def test_mask(self):
+        expected = self.expected
+        ant_flags = np.ones(self.shape, bool)
+        # Flag the noisier antenna, check that SNR excludes baselines
+        # to this antenna when calculating SNR for other antennas.
+        ant_flags[1, :, 1, self.high_bls] = True
+
+        expected[1, 1, 1] = 2
+        snr = calprocs.snr_antenna(self.vis, self.weights, self.bls_lookup, ant_flags)
+        np.testing.assert_allclose(expected, snr, rtol=1e3)

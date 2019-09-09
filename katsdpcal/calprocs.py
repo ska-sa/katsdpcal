@@ -548,37 +548,53 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
     return np.atleast_2d(kdelay)
 
 
-def normalise_complex(x):
+def normalise_complex(x, weights=None, axis=0):
     """
-    Calculate normalisation factor for a complex array across the 0-axis to center
-    phase of data on zero and scale the average amplitude to one. If the 0-axis
-    is all NaN or all zero, the normalisation factor is given as 1+0j.
+    Calculate a (weighted) normalisation factor for a complex array across the selected
+    axis to center the (weighted) phase of data on zero and scale the (weighted) average
+    amplitude to one. If the selected axis is all NaN or all zero, the normalisation
+    factor is given as 1+0j.
 
     Parameters
     ----------
     x : :class:`np.ndarray`
         data to be normalised
+    weights : :class:`np.ndarray`
+        weights of data to be normalised, default is unweighted
+    axis : int, optional
+        axis to normalise across, default is 0
 
     Returns
     -------
     :class:`np.ndarray`
         normalisation factor, complex
     """
-    # suppress warnings related to all-NaN and all-zero values on the 0-axis
-    # by replacing columns which consist of all NaNs and/or zeros with all ones.
-    all_nan = np.all((np.isnan(x)) ^ (x == 0), axis=0)
+    # set weights to one, if none supplied
+    if weights is None:
+        weights = np.ones_like(x, dtype=np.float32)
+    # ensure all NaN'ed data has zero weight
+    valid_weights = np.where(~np.isfinite(x), 0, weights)
+
+    # suppress warnings related to all-NaN and all-zero values on the selected axis
+    # by replacing instances of all NaN and/or zero with all ones.
+    all_nan = np.all((~np.isfinite(x)) | (x == 0), axis, keepdims=True)
     all_nan = np.broadcast_to(all_nan, x.shape)
     valid_x = np.where(all_nan, 1.0, x)
+    valid_weights = np.where(all_nan, 1.0, valid_weights)
 
     angle = np.angle(valid_x)
-    base_angle = np.nanmin(angle, axis=0) - np.pi
+    base_angle = np.nanmin(angle, axis, keepdims=True) - np.pi
     # angle relative to base_angle, wrapped to range [0, 2pi], with
     # some data point sitting at pi.
     rel_angle = np.fmod(angle - base_angle, 2 * np.pi)
-    mid_angle = np.nanmean(rel_angle, axis=0) + base_angle
+
+    sum_weights = np.nansum(valid_weights, axis, keepdims=True)
+    mean_angle = np.nansum(rel_angle * valid_weights, axis, keepdims=True) / sum_weights
+    mid_angle = mean_angle + base_angle
     centre_rotation = np.exp(-1.0j * mid_angle)
-    n_valid = np.sum(~np.isnan(valid_x), axis=0, dtype=np.float32)
-    average_amplitude = np.nansum(np.absolute(valid_x), axis=0) / n_valid
+
+    amp = np.abs(valid_x)
+    average_amplitude = np.nansum(amp * valid_weights, axis, keepdims=True) / sum_weights
     norm_factor = centre_rotation / average_amplitude
 
     return norm_factor
@@ -1111,3 +1127,144 @@ def arcsec_to_rad(angle):
     Convert angle in arcseconds to angle in radians
     """
     return np.deg2rad(angle / 60. / 60.)
+
+
+# --------------------------------------------------------------------------------------------------
+# --- SNR calculations
+# --------------------------------------------------------------------------------------------------
+
+def calc_rms(x, weights, axis):
+    """
+    Calculate weighted variance over given axis
+
+    Parameters
+    ----------
+    x : :class:`np.ndarray`,
+        real
+    weights : :class:`np.ndarray`,
+        real
+    axis : int or tuple of int
+        axis or axes to sum weighted variance over
+
+    Returns
+    -------
+    rms : :class:`np.ndarray`
+    """
+    # ensure nans have weight zero
+    weights_zero = np.where(~np.isfinite(x), 0, weights)
+
+    w_square = x**2 * weights_zero
+    sum_w_square = np.nansum(w_square, axis)
+    sum_weights = np.sum(weights_zero, axis)
+    rms = np.sqrt(sum_w_square / sum_weights)
+    return rms
+
+
+def poor_antenna_flags(data, weights, bls_lookup, threshold):
+    """
+    Create an array of flags which flag antennas when >80% of their baselines
+    have a phase rms noise greater than the given threshold (in radians)
+
+    Parameters
+    ----------
+    data : :class:`np.ndarray`
+        complex (ntimes, nchans, npols, nbls)
+    weights : :class:`np.ndarray`
+        real (ntimes, nchans, npols, nbls)
+    bls_lookup : :class:`np.ndarray`
+        int (nbls, 2) , antenna pairs in each baseline
+    threshold : float
+        rms threshold in radians which results in a flag
+
+    Returns
+    -------
+    ant_flags : :class:`np.ndarray`
+        bool (ntimes, nchans, npols, nbls), True if flagged, else False
+    """
+
+    ntimes, nchans, npols, nbls = data.shape
+    nants = ants_from_bllist(bls_lookup)
+    angle = np.float32(np.angle(data))
+
+    ant_flags = np.zeros((ntimes, npols, nbls), dtype=bool)
+    for a in range(nants):
+        # change sign of phase if antenna is not first in baseline pair
+        a_bls = (bls_lookup[:, 0] == a) ^ (bls_lookup[:, 1] == a)
+        sign_flip = np.where(bls_lookup[a_bls][:, 0] == a, 1, -1)
+        ant_angle = angle[..., a_bls] * sign_flip
+        # calculate rms phase of all baselines to antenna a
+        rms = calc_rms(ant_angle, weights[..., a_bls], axis=1)
+
+        # flag if the rms of a large number of baselines to the antenna
+        # are above threshold, only consider non-NaN baselines
+        rms_valid = np.where(~np.isfinite(rms), 0, rms)
+        n_bad = np.sum(rms_valid > threshold, axis=-1, keepdims=True)
+        n_valid_bls = np.sum(np.isfinite(rms), axis=-1, keepdims=True)
+
+        # avoid divide by zero error message
+        n_valid_bls = np.where(n_valid_bls == 0, 1, n_valid_bls)
+        flag = (n_bad / n_valid_bls) > 0.8
+        ant_flags[..., a_bls] += flag
+
+    # broadcast flags to shape of data
+    ant_flags = ant_flags[:, np.newaxis]
+    ant_flags = np.broadcast_to(ant_flags, (ntimes, nchans, npols, nbls))
+    return ant_flags
+
+
+def snr_antenna(data, weights, bls_lookup, flag_ants=None):
+    """
+    Calculate snr per antenna.
+
+    SNR is estimated as the inverse of phase rms variance per antenna.
+    The variance per antenna is calculated by summing the variance over all channels and
+    all baselines to the antenna, assuming a mean phase of zero.
+    Optionally supply a baseline mask of bad antennas. These bad antennas are excluded
+    from the SNR estimate of all other antennas, but included in the calculation of their
+    own SNR.
+
+    Parameters
+    ----------
+    data : :class:`np.ndarray`
+        complex (ntimes, nchans, npols, nbls)
+    weights : :class:`np.ndarray`
+        real (ntimes, nchans, npols, nbls)
+    bls_lookup : :class:`np.ndarray`
+        int (nbls, 2) , antenna pairs in each baseline
+    flag_ants : :class:`np.ndarray`
+        bool (ntimes, nchans, npols, nbls), True if flagged, else False
+
+    Returns
+    -------
+    snr : :class:`np.ndarray`
+        real (ntimes, npol, nants)
+    """
+    nants = ants_from_bllist(bls_lookup)
+    ntimes, nchans, npols, nbls = data.shape
+    angle = np.float32(np.angle(data))
+
+    if flag_ants is None:
+        flag_ants = np.zeros((ntimes, nchans, npols, nbls), dtype=bool)
+
+    snr = np.empty((ntimes, npols, nants), np.float32)
+    for a in range(nants):
+        # change sign of phase if antenna is not first in baseline pair
+        a_bls = (bls_lookup[:, 0] == a) ^ (bls_lookup[:, 1] == a)
+        sign_flip = np.where(bls_lookup[a_bls][:, 0] == a, 1, -1)
+        angle_ant = angle[..., a_bls] * sign_flip
+        weights_ant = weights[..., a_bls]
+
+        # if antenna is flagged use all baselines to it in calculation of its own snr
+        # but exclude baselines to it when calculating snr of other antennas.
+        # This is necessary because the final SNR sums over all baselines to a given antenna.
+        # One very poor baseline can therefore dramatically reduce the overall SNR measurement.
+        # This strategy tries to protect against this while preserving a measurement of SNR
+        # on the poor antenna.
+        bad_mask = np.all(flag_ants[..., a_bls], axis=-1, keepdims=True) ^ flag_ants[..., a_bls]
+        weights_ant[bad_mask] = 0
+
+        # calc snr across chans and antenna axis
+        rms = calc_rms(angle_ant, weights_ant, axis=(1, -1))
+        snr[..., a] = 1. / rms
+
+    return snr

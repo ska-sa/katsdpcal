@@ -9,10 +9,11 @@ class CalSolution:
 
     This represents a solution for a single point in time.
     """
-    def __init__(self, soltype, solvalues, soltime):
+    def __init__(self, soltype, solvalues, soltime, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
         self.time = soltime
+        self.snr = solsnr
 
     def __str__(self):
         """String representation of calibration solution to help identify it."""
@@ -26,10 +27,11 @@ class CalSolutions:
 
     This stores multiple solutions (in time) in a single array.
     """
-    def __init__(self, soltype, solvalues, soltimes):
+    def __init__(self, soltype, solvalues, soltimes, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
         self.times = soltimes
+        self.snr = solsnr
 
     def __str__(self):
         """String representation of calibration solution to help identify it."""
