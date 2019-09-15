@@ -117,17 +117,14 @@ def model_flux(target, freqs):
 
     Returns
     -------
-    flux_density : :class:`np.ndarray`
+    flux_density : :class:`np.ndarray` or None
         flux density in Jy
     """
     model_params, model_file = pp.get_model(target, lsm_dir)
     # use only the first source in the list, assumed to be the brightest, dominant source
     if model_params is not None:
-        source = np.atleast_1d(model_params)[0]
-        source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']]
-        flux_model = katpoint.FluxDensityModel(source['min_freq'], source['max_freq'],
-                                               coefs=source_coefs)
-        flux_density = flux_model.flux_density(freqs)
+        source = katpoint.Target(model_params[0])
+        flux_density = source.flux_density(freqs)
     else:
         flux_density = None
     return flux_density

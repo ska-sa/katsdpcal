@@ -210,8 +210,8 @@ class Scan:
         Index of reference antenna in antenna description list
     array_position : :class:`katpoint.Antenna`
         Array centre position
-    model_raw_params : list
-        List of model components
+    model_raw_params : :class:`katpoint.Catalogue`
+        catalogue of model components
     model : scalar or array
         Model of the visibilities
     logger : logger
@@ -843,46 +843,50 @@ class Scan:
         # phase centre position
         ra0, dec0 = self.target.radec()
         # position of first source
-        first_source = katpoint.construct_radec_target(self.model_raw_params[0]['RA'].item(),
-                                                       self.model_raw_params[0]['DEC'].item())
-        position_offset = self.target.separation(first_source,
+        position_offset = self.target.separation(self.model_raw_params.targets[0],
                                                  antenna=self.array_position)
 
+        def valid_allfreq(model_cat, freqs):
+            """ Check all models in model_cat are valid for the given freqs (in Hz) """
+            min_valid = [m.flux_model.min_freq_MHz for m in model_cat]
+            max_valid = [m.flux_model.max_freq_MHz for m in model_cat]
+
+            freqs_MHz = freqs / 1e6
+            not_valid = (max(min_valid) > min(freqs_MHz)) or (min(max_valid) < max(freqs_MHz))
+            return ~not_valid
+
         # check supplied model components are valid for entire frequency range of the band
-        min_freq = self.model_raw_params['min_freq']
-        max_freq = self.model_raw_params['max_freq']
-        if (min(min_freq) > min(self.channel_freqs / 1e6)) \
-                & (max(max_freq) < max(self.channel_freqs / 1e6)):
-
+        if not valid_allfreq(self.model_raw_params, self.channel_freqs) \
+                and len(self.model_raw_params) > 1:
+            # If not select only the first source
+            self.model_raw_params = katpoint.Catalogue(self.model_raw_params.targets[0])
             self.logger.info(
-                '     A point source in the model has a model which '
-                'is not applicable for part of the band, setting model flux to 1')
-            self.model = np.array([1], np.float32)
+                '     A source in the sky model is not valid'
+                ', selecting only the first source '
+                 )
 
-        else:
-            # deal with easy case first - single point at the phase centre
-            if (self.model_raw_params.size == 1) \
-                    and (position_offset < calprocs.arcsec_to_rad(max_offset)):
-                if (('a1' not in self.model_raw_params.dtype.names
-                     or self.model_raw_params['a1'] == 0) and
-                    ('a2' not in self.model_raw_params.dtype.names
-                     or self.model_raw_params['a2'] == 0) and
-                    ('a3' not in self.model_raw_params.dtype.names
-                     or self.model_raw_params['a3'] == 0)):
+        # deal with easy case first - single point at the phase centre
+        if (len(self.model_raw_params) == 1) \
+                and (position_offset < calprocs.arcsec_to_rad(max_offset)):
+            I_coefs = self.model_raw_params.targets[0].flux_model.coefs[:6]
+
+            if not valid_allfreq(self.model_raw_params, self.channel_freqs):
+                self.logger.info(
+                    '     The  model is not valid '
+                    'for part of the band, setting model flux to 1')
+                self.model = np.array([1], np.complex64)
+
+            else:
+                if np.all(I_coefs[1:] == 0):
                     # CASE A - Point source as the phase centre, no spectral slope
                     # spectral index is zero
-                    self.model = np.array([10.**self.model_raw_params['a0'].item()], np.float32)
+                    self.model = np.array([10.**I_coefs[0]], np.float32)
                     self.logger.info(
                         '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
                             self.model[0],))
                 else:
                     # CASE B - Point source at the phase centre, with spectral slope
-                    source_coefs = [self.model_raw_params[a].item()
-                                    for a in ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']]
-                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-
-                    # katsdpcal flux model parameters referenced to GHz, not MHz
-                    # (so use frequencies in GHz)
+                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=I_coefs)
                     self.model = source_flux.flux_density(
                         self.channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
                     self.model = np.require(self.model, dtype=np.float32)
@@ -891,51 +895,46 @@ class Scan:
                         '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
                             self.channel_freqs[0] / 1.e9, self.channel_freqs[-1] / 1.e9,
                             np.mean(self.model)))
-            # CASE C - Complex model requiring calculation via uvw coordinates ####
-            # If not one of the simple cases above, make a proper full model
-            else:
-                self.logger.info(
-                    '     Model: {0} point sources'.format(
-                        len(np.atleast_1d(self.model_raw_params)),))
+        # CASE C - Complex model requiring calculation via uvw coordinates ####
+        # If not one of the simple cases above, make a proper full model
+        else:
+            self.logger.info(
+                '     Model: {0} point sources'.format(
+                    len(self.model_raw_params),))
 
-                # calculate uvw, if it hasn't already been calculated
-                if self.uvw is None:
-                    uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
-                    self.uvw = np.array(uvw, np.float32)
+            # calculate uvw, if it hasn't already been calculated
+            if self.uvw is None:
+                uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
+                self.uvw = np.array(uvw, np.float32)
 
-                # set up model visibility
-                ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
-                nants = len(self.antennas)
+            # set up model visibility
+            ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
+            nants = len(self.antennas)
 
-                # currently model is the same for both polarisations
-                # TODO: include polarisation in models
-                k_ant = np.zeros((ntimes, nchans, 1, nants), np.complex64)
-                k_bls = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
-                complexmodel = np.zeros((ntimes, nchans, 1, nbls), np.complex64)
+            # currently model is the same for both polarisations
+            # TODO: include polarisation in models
+            k_ant = np.zeros((ntimes, nchans, nants), np.complex64)
+            complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
 
-                wl = katpoint.lightspeed / self.channel_freqs
-                # iteratively add sources to the model
-                for source in np.atleast_1d(self.model_raw_params):
-                    # source spectral flux
-                    source_coefs = [source[a].item() for a in ['a0', 'a1', 'a2', 'a3', 'a4', 'a5']]
-                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=source_coefs)
-                    # katsdpcal flux model parameters referenced to GHz, not MHz
-                    # (so use frequencies in GHz)
-                    #   currently using the same flux model for both polarisations
-                    S = source_flux.flux_density(
-                        self.channel_freqs / 1.0e6)
-                    # source position
-                    source_position = katpoint.construct_radec_target(source['RA'].item(),
-                                                                      source['DEC'].item())
-                    l, m = self.target.sphere_to_plane(
-                        *source_position.radec(), projection_type='SIN', coord_system='radec')
+            wl = katpoint.lightspeed / self.channel_freqs
+            # iteratively add sources to the model
+            for source in self.model_raw_params:
+                # source spectral flux
+                I_coefs = source.flux_model.coefs[:6]
+                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=I_coefs)
+                #   currently using the same Stokes I flux model for both polarisations
+                S = source_flux.flux_density(
+                    self.channel_freqs / 1.0e6)
+                l, m = self.target.sphere_to_plane(
+                    *source.radec(), projection_type='SIN', coord_system='radec')
 
-                    k_ant = calprocs.K_ant(self.uvw[:, :, np.newaxis, :], l, m, wl, k_ant)
-                    k_bls = calprocs.ant_to_bls(k_ant, self.cross_ant.bls_lookup[:, 0],
-                                                self.cross_ant.bls_lookup[:, 1], k_bls)
-                    complexmodel = calprocs.add_model_vis(k_bls, S.astype(np.float32), complexmodel)
+                k_ant = calprocs.K_ant(self.uvw, l, m, wl, k_ant)
+                complexmodel = calprocs.add_model_vis(k_ant[:, :,  :],
+                                                      self.cross_ant.bls_lookup[:, 0],
+                                                      self.cross_ant.bls_lookup[:, 1],
+                                                      S.astype(np.float32), complexmodel)
 
-                self.model = complexmodel
+            self.model = complexmodel[:, :, np.newaxis, :]
         return
 
     def _init_model(self, max_offset=8.0):
@@ -962,7 +961,7 @@ class Scan:
         """
         Add raw parameters for model
         """
-        self.model_raw_params = np.atleast_1d(model_raw_params)
+        self.model_raw_params = katpoint.Catalogue(model_raw_params)
 
     def _get_solver_model(self, modvis, chan_select=None):
         """

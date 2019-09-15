@@ -186,17 +186,12 @@ class TestCreateModel(unittest.TestCase):
     """Tests for 'katsdpcal.pipelineprocs.get_model'"""
     def setUp(self):
         self.lsm_dir = tempfile.mkdtemp()
-        self.file_model = ('S0, P, 08:25:26.87, -50:10:38.49, 800, 1712,'
-                           ' 5, 6, 7, 8, 0, 0, 1, 0, 0, 0')
+        self.file_model = ('S0, radec, 08:25:26.87, -50:10:38.49, 800 1712'
+                           ' 5 6 7 8')
 
         self.target = katpoint.Target('cal | alias, radec target, '
                                       '08:25:26.87, -50:10:38.49, '
                                       '(800.0 8400.0 1 2 3)')
-
-        self.dtype = [('name', 'S16'), ('tag', 'S4'), ('RA', 'S24'), ('DEC', 'S24'),
-                      ('min_freq', 'f8'), ('max_freq', 'f8'), ('a0', 'f8'), ('a1', 'f8'),
-                      ('a2', 'f8'), ('a3', 'f8'), ('a4', 'f8'), ('a5', 'f8'),
-                      ('fi', 'f8'), ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
 
         self.addCleanup(shutil.rmtree, self.lsm_dir)
 
@@ -214,9 +209,8 @@ class TestCreateModel(unittest.TestCase):
             f.write(self.file_model)
             f.close()
 
-            expected_params = np.array([('S0', ' P', ' 08:25:26.87', ' -50:10:38.49', '800', '1712',
-                                       '5', '6', '7', '8', '0', '0', '1', '0', '0', '0')],
-                                       self.dtype)
+            expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
+                               ' 5.0 6.0 7.0 8.0)']
 
             model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
             self.assertEqual(fname, model_file)
@@ -226,10 +220,7 @@ class TestCreateModel(unittest.TestCase):
 
     def test_nofile_model(self):
         """If no matching model file exists, use the target model"""
-        expected_params = np.array([('cal', 'P',
-                                     self.target.radec()[0], self.target.radec()[1],
-                                     '800', '8400', '1', '2', '3', '0', '0', '0',
-                                     '1', '0', '0', '0')], self.dtype)
+        expected_params = [self.target.description]
 
         model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
         self.assertEqual([], model_file)
@@ -243,11 +234,15 @@ class TestCreateModel(unittest.TestCase):
         self.assertEqual(None, model_params)
 
     def test_two_files(self):
-        """If two files match target name, raise ValueError"""
+        """If two files match target name, confirm it returns model from one of them"""
+
         for name in ['cal', 'alias']:
             fname = os.path.join(self.lsm_dir, name + '.txt')
             f = open(fname, 'w')
             f.write(self.file_model)
             f.close()
-        with self.assertRaises(ValueError):
-            model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+
+        expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
+                           ' 5.0 6.0 7.0 8.0)']
+        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+        np.testing.assert_equal(model_params, expected_params)

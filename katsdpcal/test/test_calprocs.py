@@ -391,58 +391,41 @@ class TestKAnt(unittest.TestCase):
     def test(self):
         ntimes = 3
         nchans = 2
-        npols = 1
         nants = 5
 
-        uvw = np.ones((3, ntimes, npols, nants))
-        uvw[:, 1, 0, 3] = [70, 5, 1]
+        uvw = np.ones((3, ntimes, nants))
+        uvw[:, 1, 3] = [70, 5, 1]
         l = 0.1  # noqa: E741
         m = 0.2
         wl = np.array([0.1, 0.4])
-        kant = np.zeros((ntimes, nchans, npols, nants), np.complex64)
+        kant = np.zeros((ntimes, nchans, nants), np.complex64)
         kant = calprocs.K_ant(uvw, l, m, wl, kant)
 
-        expected_kant = np.zeros((ntimes, nchans, npols, nants), np.complex64)
+        expected_kant = np.zeros((ntimes, nchans, nants), np.complex64)
         expected_kant[:, 0] = np.exp(2 * np.pi * 1j * (3 + (np.sqrt(0.95) - 1) / 0.1))
         expected_kant[:, 1] = np.exp(2 * np.pi * 1j * (0.75 + (np.sqrt(0.95) - 1) / 0.4))
-        expected_kant[1, 0, 0, 3] = np.exp(2 * np.pi * 1j * (80 + (np.sqrt(0.95) - 1) / 0.1))
-        expected_kant[1, 1, 0, 3] = np.exp(2 * np.pi * 1j * (20 + (np.sqrt(0.95) - 1) / 0.4))
+        expected_kant[1, 0, 3] = np.exp(2 * np.pi * 1j * (80 + (np.sqrt(0.95) - 1) / 0.1))
+        expected_kant[1, 1, 3] = np.exp(2 * np.pi * 1j * (20 + (np.sqrt(0.95) - 1) / 0.4))
 
         np.testing.assert_equal(kant, expected_kant)
-
-
-class TestAntToBls(unittest.TestCase):
-    """Tests for :func:`katsdpcal.calprocs.ant_to_bls`"""
-    def test(self):
-        shape = (3, 5, 2, 4)
-        kant = np.ones(shape, np.complex64)
-        kant[1, 3, 0, :] = [1, 2, 1+1j, 2+2j]
-        ant_1 = np.array([0, 0, 0, 1, 1, 2])
-        ant_2 = np.array([1, 2, 3, 2, 3, 3])
-
-        out_shape = (3, 5, 2, 6)
-        kbls = np.zeros(out_shape, np.complex64)
-        kbls = calprocs.ant_to_bls(kant, ant_1, ant_2, kbls)
-
-        expected_kbls = np.ones(out_shape, np.complex64)
-        expected_kbls[1, 3, 0, :] = [2, 1-1j, 2-2j, 2-2j, 4-4j, 4]
-
-        np.testing.assert_equal(kbls, expected_kbls)
 
 
 class TestAddModelVis(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs.add_model_vis`"""
     def test(self):
-        shape = (2, 5, 2, 5)
-        model = np.ones(shape, np.complex64)
-        S = np.sqrt(2) * np.array([5, 4, 3, 2, 1])
-        kbls = 1/np.sqrt(2) * (1+1j) * model
-        kbls[0, :, 1, 1] = 1/np.sqrt(2) * np.array([1+1j, -1-1j, 3+4j, 0, 1-1j])
-        model = calprocs.add_model_vis(kbls, S, model)
+        shape = (3, 5, 4)
+        kant = np.ones(shape, np.complex64)
+        kant[1, 3, :] = [1, 2, 1+1j, 2+2j]
+        ant1 = np.array([0, 0, 0, 1, 1, 2])
+        ant2 = np.array([1, 2, 3, 2, 3, 3])
 
-        expected = np.array([6+5j, 5+4j, 4+3j, 3+2j, 2+1j])
-        expected_model = np.broadcast_to(
-            expected[np.newaxis, :, np.newaxis, np.newaxis], shape).copy()
-        expected_model[0, :, 1, 1] = [6+5j, -3-4j, 10+12j, 1, 2-1j]
+        out_shape = (3, 5, 6)
+        model = np.ones(out_shape, np.complex64)
+        S = np.array([5, 4, 3, 2, 1])
 
-        np.testing.assert_equal(model, expected_model)
+        out_model = calprocs.add_model_vis(kant, ant1, ant2, S, model)
+
+        expected_model = np.ones(out_shape, np.complex64) + S[np.newaxis, :, np.newaxis]
+        expected_model[1, 3, :] = [5, 3-2j, 5-4j, 5-4j, 9-8j, 9]
+
+        np.testing.assert_equal(out_model, expected_model)

@@ -394,15 +394,16 @@ def get_model(target, lsm_dir_list=[]):
 
     Parameters
     ----------
-    name : :class:`katpoint.Target`
+    target : :class:`katpoint.Target`
         target
     lsm_dir_list : list
         search path for the source model txt file
 
     Returns
     -------
-    model_components : :class:`numpy.recarray`
-        sky model component parameters
+    model_components : list of str
+        list of katpoint description strings of sources
+        in the sky model
     model_file : str
         name of model component file used
     """
@@ -420,35 +421,25 @@ def get_model(target, lsm_dir_list=[]):
         # iterate over all aliases
         for name in allnames:
             model_list += glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
-        # ignore tilde ~ backup files
-        model_list = [f for f in model_list if f[-1] != '~']
 
         if len(model_list) == 1:
             model_file = model_list[0]
         elif len(model_list) > 1:
             # if there are more than one model files for the source IN THE SAME
-            # DIRECTORY, raise an error
-            raise ValueError(
+            # DIRECTORY warn the user and use the first model
+            logger.warning(
                 'More than one possible sky model file for'
-                ' {0}: {1}'.format(target.name, model_list))
-
-    # if there is no model file, use the target flux model if provided,
-    # else return model components as None
-    model_dtype = [('name', 'S16'), ('tag', 'S4'), ('RA', 'S24'), ('DEC', 'S24'),
-                   ('min_freq', 'f8'), ('max_freq', 'f8'), ('a0', 'f8'), ('a1', 'f8'),
-                   ('a2', 'f8'), ('a3', 'f8'), ('a4', 'f8'), ('a5', 'f8'),
-                   ('fi', 'f8'), ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
+                ' %s: %s, using %s', target.name, model_list, model_list[0])
+            model_file = model_list[0]
 
     if model_file == []:
         if target.flux_model is not None:
-            model_components = np.array([(target.name, 'P', target.radec()[0], target.radec()[1],
-                                         target.flux_model.min_freq_MHz,
-                                         target.flux_model.max_freq_MHz,
-                                         *target.flux_model.coefs)], dtype=model_dtype)
-
+            model_components = [target.description]
         else:
             model_components = None
 
     else:
-        model_components = np.genfromtxt(model_file, delimiter=',', dtype=model_dtype)
+        with open(model_file) as file:
+            model_cat = katpoint.Catalogue(file)
+            model_components = [m.description for m in model_cat]
     return model_components, model_file
