@@ -6,5 +6,7 @@
 #    To convert to MHz scale:
 #    a0 = b0 - 3*b1 + 9*b2 - 27*b3; a1 = b1 - 6*b2 + 27*b3; a2 = b2 - 9*b3; a3 = b3
 #    ==> a0 = 0.1823, a1 = 1.4757, a2 = -0.4739, a3 = 0.0336
-
-S0, P, 13:31:08.3, 30:30:33, 400, 50e3, 0.1823, 1.4757, -0.4739, 0.0336, 0, 0, 1, 0, 0, 0
+# polarization properties: "Integrated Polarization Properties of 3C48, 3C138, 3C147,and 3C286", Perley & Butler, 2013
+# given parameters are for 1.450~GHz, % linear polarization = 9.5, polarization angle = 33 deg
+#
+3C286, radec, 13:31:08.3, 30:30:33, (400 50e3 0.1823 1.4757 -0.4739 0.0336 0 0 1 0.039 0.087 0)
