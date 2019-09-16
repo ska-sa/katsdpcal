@@ -12,6 +12,7 @@ import asyncio
 import json
 import datetime
 
+import numba
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
@@ -29,6 +30,9 @@ from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
 
 from katsdpcal import control, calprocs, pipelineprocs, param_dir, rfi_dir
+
+
+numba.config.THREADING_LAYER = 'safe'
 
 
 def get_sent_heaps(send_stream):

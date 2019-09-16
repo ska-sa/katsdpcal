@@ -25,6 +25,7 @@ import katdal.datasources
 from katdal import SpectralWindow
 
 import attr
+import numba
 import numpy as np
 import dask.array as da
 import dask.diagnostics
@@ -1110,6 +1111,10 @@ class Pipeline(Task):
 
         Note: do not call this `_run`, since that is a method of the base class.
         """
+        # ensure that parallelism in numba is thread & fork safe
+        # ensure that numba doesn't starve the accumulator
+        numba.config.NUMBA_NUM_THREADS = self.num_workers
+        numba.config.THREADING_LAYER = 'safe'
         # run until stop event received
         try:
             while True:
