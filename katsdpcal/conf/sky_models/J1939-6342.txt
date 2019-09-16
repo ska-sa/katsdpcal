@@ -1,7 +1,6 @@
 # References: 
 # position: Simbad ICRS
-# flux model for central source is 
-#    a0, a1, a2, a3: from "A revised flux scale for the AT compact array", Reynolds, 1994
+# flux model a0, a1, a2, a3: from "A revised flux scale for the AT compact array", Reynolds, 1994
 #    parameters in the model given for MHz scale:
 #    b0 = -30.7667; b1 = 26.4908; b2 = -7.0977; b3 = 0.605334
 # flux for other sources in the field from B. Hugo

@@ -781,6 +781,70 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         report.writeln()
 
 
+def write_SNR_products(report, report_path, ts, parameters,
+                       st, et, antenna_names, pol=[0, 1]):
+    """
+    Include calibration product SNR plots in the report
+
+    Parameters
+    ----------
+    report : file-like
+        report file to write to
+    report_path : str
+        path where report is written
+    ts : :class:`katsdptelstate.TelescopeState`
+        telescope state
+    parameters : dict
+        pipeline parameters
+    st : float
+        start time for reporting parameters, seconds
+    et : float
+        end time for reporting parameters, seconds
+    antenna_names : list
+        list of antenna names
+    pol : list, optional
+        description of polarisation axes
+    """
+    snr_list = ['SNR_K', 'SNR_B', 'SNR_G']
+    product_names = parameters['product_names']
+    solns_exist = any([product_names[snr] in ts for snr in snr_list])
+    if not solns_exist:
+        logger.info(' - no solution SNRs')
+
+    else:
+        all_times = []
+        all_snr = []
+        all_labels = []
+
+        for s in snr_list:
+            vals, times = get_cal(ts, s, product_names[s], st, et)
+            if len(times) > 0:
+                all_times.append(times)
+                all_snr.append(vals)
+                all_labels.append(s)
+
+        report.write_heading_1('Calibration product SNR summary')
+        report.writeln()
+        report.writeln('Median and IQR of solution SNRs across antennas')
+
+        plot = plotting.plot_snr(plotting.draw_errorplot, all_times, all_snr, all_labels,
+                                 pol=pol)
+        insert_fig(report_path, report, plot, name='SNR_v_time')
+
+        report.writeln()
+        report.writeln('Number of antennas with SNR < 10 (or NaN) solutions:')
+        nonan_snr = [np.where(np.isnan(s), 0, s) for s in all_snr]
+        low_exist = any([np.any(s < 10) for s in nonan_snr])
+        if low_exist:
+            plot = plotting.plot_snr(plotting.draw_below_thresh, all_times, all_snr,
+                                     all_labels, pol=pol, yscale=0.5)
+            insert_fig(report_path, report, plot, name='SNR_low')
+        else:
+            report.writeln()
+            report.writeln('* None')
+            report.writeln()
+
+
 def write_products(report, report_path, ts, parameters,
                    st, et, antenna_names, correlator_freq, pol=[0, 1]):
     """
@@ -1390,11 +1454,10 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             # Obtain reference antenna selected by the pipeline
             refant_index = parameters['refant_index']
             if refant_index is None:
-                refant = ts.get('refant')
-                if refant is not None:
-                    refant = katpoint.Antenna(refant)
-                    refant_index = parameters['antenna_names'].index(refant.name)
-                    parameters['refant'] = refant
+                refant_name = ts.get('refant')
+                if refant_name is not None:
+                    refant_index = parameters['antenna_names'].index(refant_name)
+                    parameters['refant'] = refant_name
                     parameters['refant_index'] = refant_index
 
             antennas = parameters['antennas']
@@ -1435,6 +1498,10 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             else:
                 logger.info(' - no calibrated data')
 
+            # write solution SNR summary
+            logger.info('Calibration solution SNR summary')
+            write_SNR_products(cal_rst, report_path, ts, parameters,
+                               st, et, antenna_names, pol)
             logger.info('Calibration solution summary')
             # add cal products to report
             write_products(cal_rst, report_path, ts, parameters,
@@ -1463,7 +1530,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
                     write_ng_freq(cal_rst, report_path, nogain, av_corr,
                                   refant_name, bls_names, correlator_freq, pol)
-
                     write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
                                  cal_bls_lookup, correlator_freq, True, pol)
                     write_g_time(cal_rst, report_path, av_corr, antenna_names,

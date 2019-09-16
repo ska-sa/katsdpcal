@@ -10,10 +10,10 @@ chardet                 # for requests
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
 cycler                  # for matplotlib
-dask
+dask==2.2.0             # pinned to a newer version because required by distributed
 decorator               # for katsdpsigproc, aiokatcp
 defusedxml              # for katdal
-distributed==1.23.3
+distributed==2.2.0
 docutils
 funcsigs                # for numba
 future                  # for katdal, katpoint
@@ -50,12 +50,12 @@ spead2
 tblib==1.3.2            # for distributed
 terminaltables          # for aiomonitor
 toolz                   # for dask
-tornado                 # for distributed, bokeh
+tornado==6.0.2          # for distributed, bokeh
 urllib3                 # for requests
 zict==0.1.3             # for distributed
 
-git+ssh://git@github.com/ska-sa/katdal
-git+ssh://git@github.com/ska-sa/katpoint
-git+ssh://git@github.com/ska-sa/katsdpservices
-git+ssh://git@github.com/ska-sa/katsdpsigproc
-git+ssh://git@github.com/ska-sa/katsdptelstate
+katdal @ git+https://github.com/ska-sa/katdal
+katpoint @ git+https://github.com/ska-sa/katpoint
+katsdpservices @ git+https://github.com/ska-sa/katsdpservices
+katsdpsigproc @ git+https://github.com/ska-sa/katsdpsigproc
+katsdptelstate @ git+https://github.com/ska-sa/katsdptelstate

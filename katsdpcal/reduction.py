@@ -6,6 +6,7 @@ import katpoint
 from numbers import Integral
 
 import numpy as np
+import katsdptelstate
 
 from collections import defaultdict
 from katdal.sensordata import TelstateSensorData, SensorCache
@@ -17,6 +18,7 @@ from . import solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
+from .calprocs import interpolate_bandpass
 
 logger = logging.getLogger(__name__)
 
@@ -167,19 +169,30 @@ def save_solution(telstate, key, solution_store, soln):
 
     The `soln` may be either a :class:`CalSolution` or a :class:`CalSolutions`.
     The `telstate` may be ``None`` to save only to the solution store.
+    The `solution_store` may be ``None`` to save only to the telstate.
     """
     def save_one(soln):
         if telstate is not None:
             telstate.add(key, soln.values, ts=soln.time)
-        solution_store.add(soln)
+            if soln.snr is not None:
+                key_list = key.split('_')
+                key_list.insert(1, 'SNR')
+                snrkey = '_'.join(key_list)
+                telstate.add(snrkey, soln.snr, ts=soln.time)
+        if solution_store is not None:
+            solution_store.add(soln)
 
     logger.info("  - Saving solution '%s' to Telescope State", soln)
     assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
     if isinstance(soln, solutions.CalSolution):
         save_one(soln)
     else:
-        for v, t in zip(soln.values, soln.times):
-            save_one(solutions.CalSolution(soln.soltype, v, t))
+        if soln.snr is not None:
+            for v, t, s in zip(soln.values, soln.times, soln.snr):
+                save_one(solutions.CalSolution(soln.soltype, v, t, s))
+        else:
+            for v, t in zip(soln.values, soln.times):
+                save_one(solutions.CalSolution(soln.soltype, v, t))
 
 
 def shared_solve(telstate, parameters, solution_store, bchan, echan,
@@ -312,6 +325,64 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                 logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                             ' and won\'t be stored in solution store')
         return soln
+
+
+def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
+    """
+    Interpolate over NaNs in the channel axis of the bandpass
+
+    If there are multiple cal nodes, retrieve all parts of the
+    bandpass from telstate prior to interpolation.
+
+    Parameters:
+    -----------
+    telstate : :class:`katsdptelstate.TelescopeState`
+        Telescope state in which the solution is stored
+    parameters : dict
+        Pipeline parameters
+    b_soln : :class:`~.CalSolution`
+        bandpass solution for this cal node
+    st : float
+        start time for retrieving solutions from telstate
+    et : float
+        end time for retrieving solutions from telstate
+
+    Returns:
+    --------
+    :class:`~.CalSolution`
+        interpolated solution for this cal node
+    """
+    # if there are multiple cal nodes
+    # retrieve parts of the bandpass computed by other cal nodes
+    if parameters['servers'] > 1:
+        parts = []
+        for n in range(parameters['servers']):
+            if n == parameters['server_id']:
+                parts.append(b_soln.values)
+
+            else:
+                key = 'product_B{0}'.format(n)
+                try:
+                    telstate.wait_key(key, lambda value, ts: ts > st, 30)
+                    valid_part = telstate.get_range('product_B{0}'.format(n), st, et)
+                    parts.append(valid_part[0][0])
+
+                except (KeyError, katsdptelstate.TimeoutError):
+                    logger.info("Unable to retrieve %s from telstate,"
+                                " filling with NaNs while interpolating", key)
+                    parts.append(np.full_like(b_soln.values, np.nan))
+
+        b_values = np.concatenate(parts)
+    else:
+        # else use the values computed by this (the only) node
+        b_values = b_soln.values
+
+    # interpolate over NaNs along the channel axis
+    b_interp = interpolate_bandpass(b_values)
+
+    # select channels processed by this cal node
+    b_interp = b_interp[parameters['channel_slice']]
+    return solutions.CalSolution('B', b_interp, b_soln.time)
 
 
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
@@ -453,11 +524,13 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                                  parameters['k_bchan'], parameters['k_echan'],
                                                  s.refant_find)
                 parameters['refant_index'] = best_refant_index
-                parameters['refant'] = parameters['antennas'][best_refant_index]
-                logger.info('Reference antenna set to %s', parameters['refant'].name)
-                ts['refant'] = parameters['refant'].description
+                parameters['refant'] = parameters['antenna_names'][best_refant_index]
+                logger.info('Reference antenna set to %s', parameters['refant'])
                 s.refant = best_refant_index
 
+            # Add the reference antenna to telstate for each new cbid
+            if 'refant' not in ts:
+                ts['refant'] = parameters['refant']
         # run_t0 = time.time()
 
         # perform calibration as appropriate, from scan intent tags:
@@ -482,7 +555,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
+            b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
+                                                 s.timestamps[0], s.timestamps[-1])
+
+            # interpolated bandpasses (without NaNs) are stored in solution store
+            # so they can be applied to target/calibrator data without propagating NaNs
+            solution_stores['B'].add(b_soln_nonans)
 
             # ---------------------------------------
             # G solution
@@ -544,7 +624,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['k_bchan'], parameters['k_echan'],
-                                      s.g_sol, k_solint, g0_h)
+                                      s.g_sol, k_solint, g0_h, calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -572,7 +652,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # solve (pre-applying given solutions)
                 pre_g_soln = shared_solve(ts, parameters, None,
                                           parameters['k_bchan'], parameters['k_echan'],
-                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply)
+                                          s.g_sol, k_solint, g0_h, pre_apply=solns_to_apply,
+                                          calc_snr=False)
                 # interpolate to scan timestamps
                 g_to_apply = s.interpolate(pre_g_soln)
                 solns_to_apply.append(g_to_apply)
@@ -597,7 +678,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['g_bchan'], parameters['g_echan'],
-                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply)
+                                      s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply,
+                                      calc_snr=False)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -609,7 +691,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                          parameters['g_bchan'], parameters['g_echan'],
                                          s.b_norm, b_soln)
             b_soln.values *= b_norm_factor
-            save_solution(ts, parameters['product_names']['B'], solution_stores['B'], b_soln)
+            # flagged bandpasses (with NaNs) are stored only in telstate
+            save_solution(ts, parameters['product_names']['B'], None, b_soln)
+            b_soln_nonans = shared_B_interp_nans(ts, parameters, b_soln,
+                                                 s.timestamps[0], s.timestamps[-1])
+
+            # interpolated solutions (without NaNs) are stored in the solution store
+            # so they can be applied to target/calibrator data without propagating NaNs
+            solution_stores['B'].add(b_soln_nonans)
 
         # GAIN
         if any('gaincal' in k for k in taglist):

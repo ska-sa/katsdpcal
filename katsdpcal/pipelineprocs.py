@@ -306,10 +306,13 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
     parameters['product_names'] = {
         'G': 'product_G',
+        'SNR_G': 'product_SNR_G',
         'K': 'product_K',
+        'SNR_K': 'product_SNR_K',
         'KCROSS': 'product_KCROSS',
         'KCROSS_DIODE': 'product_KCROSS_DIODE',
         'B': 'product_B{}'.format(server_id),
+        'SNR_B': 'product_SNR_B{}'.format(server_id),
         'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id)
     }
     parameters['product_B_parts'] = servers

@@ -182,6 +182,9 @@ def parse_opts():
         help='Provide a web server with dask diagnostics (PORT binds to localhost, '
              'but :PORT binds to all interfaces). [default: none]')
     parser.add_argument(
+        '--dask-prefix', default='', metavar='PATH',
+        help='Web server path prefix for dask diagnostics [default: %(default)r]')
+    parser.add_argument(
         '--pipeline-profile', type=str, metavar='FILENAME',
         help='Write a file with a profile of the pipeline process. [default: none]')
     parser.add_aiomonitor_arguments()
@@ -365,12 +368,13 @@ def main():
     # all, which could be fixed in Python 3 with signal.pthread_sigmask.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
+    bokeh_kwargs = {'prefix': opts.dask_prefix}
     server = create_server(not opts.threading, opts.host, opts.port, buffers,
                            opts.l0_name, opts.l0_spead, l0_interface_address,
                            opts.flags_streams, opts.clock_ratio,
                            telstate_cal, parameters, opts.report_path, log_path, log_name,
-                           opts.dask_diagnostics, opts.pipeline_profile, opts.workers,
-                           opts.max_scans)
+                           opts.dask_diagnostics, bokeh_kwargs, opts.pipeline_profile,
+                           opts.workers, opts.max_scans)
 
     with server:
         # Now install the signal handlers (which won't be inherited).

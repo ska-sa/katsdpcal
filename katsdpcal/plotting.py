@@ -687,3 +687,126 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
 
     fig.subplots_adjust(hspace=0.1)
     return fig
+
+
+def plot_snr(drawfunc, times, snr, labels=None, title=None, pol=[0, 1], yscale=1, **kwargs):
+    """
+    Plot properties of a list of solution SNRs as function of time
+
+    Parameters
+    ----------
+    drawfunc : func
+        function which plots to the figure axes
+    times : list of lists
+        times for each solution SNR
+    snr : list of :class:`np.ndarray`
+        SNRs for each solution, real (ntimes, npols, nants)
+    labels : list of str, optional
+        labels for each solution
+    title : str
+        title of plot
+    pol : list, optional
+        list of polarisation descriptions
+    yscale : float
+        scale the default ysize of the plot by yscale
+    **kwargs : additional keyword arguments passed to `drawfunc`
+    """
+    npols = snr[0].shape[-2]
+    nrows, ncols = 2, 1
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2 * FIG_X, nrows * yscale * FIG_Y),
+                             squeeze=False, sharey='col', sharex='col')
+    if title is not None:
+        fig.suptitle(title, y=0.95)
+
+    # get matplotlib dates and format time axis
+    # pad the end of the time axis slightly to allow
+    # us to separate the solutions in time
+    max_time = max([max(t) for t in times]) + 16
+    min_time = min([min(t) for t in times])
+    min_datetime = datetime.datetime.utcfromtimestamp(min_time)
+    max_datetime = datetime.datetime.utcfromtimestamp(max_time)
+    time_xtick_fmt(axes, [min_datetime, max_datetime])
+
+    # use labels if provided
+    if labels is not None:
+        labellist = labels
+    else:
+        labellist = [''] * len(times)
+
+    for p in range(npols):
+        # need distinct colors and symbols to easily distinguish different solutions
+        axes[p, 0].set_prop_cycle(color=['blue', 'purple', 'coral'],
+                                  marker=['*', 'x', '.'])
+
+        inc_time = 0
+        for t, s, l in zip(times, snr, labellist):
+            datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp + inc_time)
+                         for unix_timestamp in t]
+            # separate the different solutions times by a few seconds to improve overplotting
+            inc_time += 8
+            dates = md.date2num(datetimes)
+            drawfunc(dates, s[:, p, :], axes[p, 0], pol_label=pol[p], label=l, **kwargs)
+            plt.setp(axes[p, 0].get_xticklabels(), visible=False)
+        axes[p, 0].yaxis.grid(True, linestyle='-', which='major',
+                              color='lightgrey', alpha=0.5)
+
+    # for the final row add in the time labels
+    l_p = npols - 1
+    plt.setp(axes[l_p, 0].get_xticklabels(), visible=True)
+    time_label(axes[l_p, 0], [min_datetime, max_datetime])
+    # include legend
+    if labels is not None:
+        axes[0, 0].legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+
+    return fig
+
+
+def draw_errorplot(times, data, ax, pol_label=0, **kwargs):
+    """
+    Calculate and plot the median and IQR of data vs time
+
+    Parameters
+    ----------
+    times : list
+        times
+    data : :class:`np.ndarray`
+        real, shape (num_times, num_pols, num_ants)
+    ax : : class: `matplotlib.axes.Axes`
+        axes on which to plot
+    pol_label : label for the pol axis
+    **kwargs : additional keyword arguments passed to 'ax.errorbar'
+    """
+    p25, median, p75 = np.nanpercentile(data, (25, 50, 75), axis=-1)
+    low_error = median - p25
+    up_error = p75 - median
+
+    error = np.array([low_error, up_error])
+    ax.errorbar(times, median, yerr=error, linestyle='None', **kwargs)
+    ax.set_ylabel('SNR Pol {0}'.format(pol_label))
+
+
+def draw_below_thresh(times, snr, ax, pol_label=0, snrthresh=10, **kwargs):
+    """
+    Plots number of antennas with snr = NaN or < snrthresh
+    as a function of time
+
+    Parameters
+    ----------
+    times : list
+        timestamps
+    snr : :class: `np.ndarray`
+        real, shape (num_times, num_pols, num_ants)
+    ax : :class: `matplotlib.axes.Axes`
+        axes on which to plot
+    pol_label : str/float, optional
+        polarisation label
+    snrthresh : float
+        threshold below which to count antennas
+    **kwargs : additional keyword arguments passed to `ax.plot`
+    """
+
+    snr_nonans = np.where(np.isnan(snr), 0, snr)
+    n_low = np.sum(snr_nonans < snrthresh, axis=-1)
+    ax.plot(times, n_low, linestyle='', **kwargs)
+    ax.set_ylabel('No of ants, Pol {0}'.format(pol_label))

@@ -523,7 +523,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             assert_equal((self.n_channels // self.n_servers, 2, self.n_antennas), Bn.shape)
             B.append(Bn)
         assert_not_in(bp_key+'{}'.format(self.n_servers), telstate_cb_cal)
-        return np.concatenate(B)
+        return np.concatenate(B), Bn_ts
 
     def make_vis(self, K, G, target, noise=np.array([])):
         """
@@ -709,7 +709,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
         assert_equal(self.n_servers, cal_product_B_parts)
-        ret_B = self.assemble_bandpass(telstate_cb_cal, 'product_B')
+        ret_B, ret_B_ts = self.assemble_bandpass(telstate_cb_cal, 'product_B')
 
         cal_product_G = telstate_cb_cal.get_range('product_G', st=0)
         assert_equal(expected_g, len(cal_product_G))
@@ -732,6 +732,26 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert_equal(np.float32, ret_K.dtype)
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
 
+        # check SNR products are in telstate
+        cal_product_SNR_K = telstate_cb_cal.get_range('product_SNR_K', st=0)
+        assert_equal(1, len(cal_product_SNR_K))
+        ret_SNR_K, ret_SNR_K_ts = cal_product_SNR_K[0]
+        assert_equal(np.float32, ret_SNR_K.dtype)
+        assert_equal(ret_SNR_K_ts, ret_K_ts)
+
+        for i in range(self.n_servers):
+            cal_product_SNR_B = telstate_cb_cal.get_range('product_SNR_B{0}'.format(i))
+            assert_equal(1, len(cal_product_SNR_B))
+            ret_SNR_B, ret_SNR_B_ts = cal_product_SNR_B[0]
+            assert_equal(np.float32, ret_SNR_K.dtype)
+            assert_equal(ret_SNR_B_ts, ret_B_ts)
+
+        cal_product_SNR_G = telstate_cb_cal.get_range('product_SNR_G', st=0)
+        assert_equal(expected_g, len(cal_product_SNR_G))
+        ret_SNR_G, ret_SNR_G_ts = cal_product_SNR_G[0]
+        assert_equal(np.float32, ret_SNR_G.dtype)
+        assert_equal(ret_SNR_G_ts, ret_G_ts)
+
         if 'bfcal' in target.tags:
             cal_product_KCROSS_DIODE = telstate_cb_cal.get_range('product_KCROSS_DIODE', st=0)
             assert_equal(1, len(cal_product_KCROSS_DIODE))
@@ -740,7 +760,8 @@ class TestCalDeviceServer(asynctest.TestCase):
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
                                        ret_KCROSS_DIODE, rtol=1e-3)
 
-            ret_BCROSS_DIODE = self.assemble_bandpass(telstate_cb_cal, 'product_BCROSS_DIODE')
+            ret_BCROSS_DIODE, ret_BCROSS_DIODE_ts = self.assemble_bandpass(telstate_cb_cal,
+                                                                           'product_BCROSS_DIODE')
             ret_BCROSS_DIODE_interp = self.interp_B(ret_BCROSS_DIODE)
             np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
                                        np.abs(ret_BCROSS_DIODE_interp))
@@ -859,7 +880,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.shutdown_servers(180)
         await self.assert_sensor_value('accumulator-capture-active', 0)
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
-        refant_name = katpoint.Antenna(telstate_cb_cal['refant']).name
+        refant_name = telstate_cb_cal['refant']
         assert_not_equal(self.antennas[worst_index], refant_name)
 
     def prepare_heaps(self, rs, n_times,
