@@ -1,4 +1,6 @@
-FROM sdp-docker-registry.kat.ac.za:5000/docker-base-build as build
+ARG KATSDPDOCKERBASE_REGISTRY=quay.io/ska-sa
+
+FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build as build
 
 # Enable Python 3 venv
 ENV PATH="$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
@@ -18,7 +20,8 @@ WORKDIR /tmp
 
 #######################################################################
 
-FROM sdp-docker-registry.kat.ac.za:5000/docker-base-runtime
+FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-runtime
+LABEL maintainer="sdpdev+katsdpcal@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve3 /home/kat/ve3
 ENV PATH="$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
