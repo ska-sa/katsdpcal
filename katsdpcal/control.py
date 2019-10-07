@@ -483,6 +483,10 @@ class Accumulator:
             bool
                 True if successful, False if we were interrupted by a force stop
             """
+            if self._first_timestamp is None:
+                telstate_cb_l0 = make_telstate_cb(self.owner.telstate_l0, self.capture_block_id) 
+                self._first_timestamp = telstate_cb_l0['first_timestamp']
+
             for idx in range(self._last_idx + 1, cur_idx + 1):
                 data_ts = self._first_timestamp + idx * self.owner.int_time + self.owner.sync_time
                 if self._obs_start is None:
@@ -599,7 +603,6 @@ class Accumulator:
 
             ig = spead2.ItemGroup()
             n_stop = 0                   # Number of stop heaps received
-            telstate_cb_l0 = make_telstate_cb(self.owner.telstate_l0, self.capture_block_id)
 
             # receive SPEAD stream
             self._logger.info('waiting to start accumulating data')
@@ -615,8 +618,6 @@ class Accumulator:
                     else:
                         continue
 
-                if self._first_timestamp is None:
-                    self._first_timestamp = telstate_cb_l0['first_timestamp']
                 # Convert from np.uint64, which behaves oddly
                 data_idx = int(ig['dump_index'].value)
                 if data_idx < self._last_idx:
