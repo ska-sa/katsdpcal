@@ -221,8 +221,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         bls_ordering = []
         # target model must match the model used by the pipeline in order to produce
         # meaningful calibration solutions. The pipeline model is supplied in
-        # conf/sky_models/3C286.txt
-        target = ('3C286, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
+        # conf/sky_models/J1331+3030.txt
+        target = ('J1331+3030, radec bfcal single_accumulation, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         ant_bls = []     # Antenna pairs, later expanded to pol pairs
         for a in self.antennas:
@@ -814,7 +814,7 @@ class TestCalDeviceServer(asynctest.TestCase):
 
     async def test_capture_separate_tags(self):
         # Change the target to one with different tags
-        target = ('3C286, radec delaycal gaincal bpcal polcal single_accumulation, '
+        target = ('J1331+3030, radec delaycal gaincal bpcal polcal single_accumulation, '
                   '13:31:08.29, +30:30:33.0, (0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.001)
         await self.test_capture(expected_g=2)
