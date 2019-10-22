@@ -1007,8 +1007,7 @@ class Scan:
         # If not the simple case above, make a proper full model
         else:
             self.logger.info(
-                '     Model: {0} point sources'.format(
-                    len(self.model_raw_params),))
+                '     Model: %d point sources', len(self.model_raw_params))
 
             # calculate uvw, if it hasn't already been calculated
             if self.uvw is None:
