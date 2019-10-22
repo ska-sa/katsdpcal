@@ -135,17 +135,12 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
         # antenna in the antenna list
         array_centre = katpoint.Antenna('array_position', *antennas[0].ref_position_wgs84)
 
-    # use the array reference position for the basis
-    basis = phase_centre.uvw_basis(timestamp=timestamps, antenna=array_centre)
-    antenna_uvw = np.empty([len(antennas), 3, len(timestamps)])
-
-    for i, ant in enumerate(antennas):
-        enu = np.array(ant.baseline_toward(array_centre))
-        antenna_uvw[i, ...] = np.tensordot(basis, enu, ([1], [0]))
+    # use the array reference position of antenna_uvw
+    antenna_uvw = np.array(phase_centre.uvw(antennas, timestamps, array_centre))
 
     baseline_uvw = np.empty([3, len(timestamps), len(corrprod_lookup)])
     for i, [a1, a2] in enumerate(corrprod_lookup):
-        baseline_uvw[..., i] = antenna_uvw[a2] - antenna_uvw[a1]
+        baseline_uvw[..., i] = antenna_uvw[..., a1] - antenna_uvw[..., a2]
 
     return baseline_uvw
 
@@ -573,7 +568,7 @@ def normalise_complex(x, weights=None, axis=0):
     if weights is None:
         weights = np.ones_like(x, dtype=np.float32)
     # ensure all NaN'ed data has zero weight
-    valid_weights = np.where(~np.isfinite(x), 0, weights)
+    valid_weights = np.where(np.isfinite(x), weights, 0)
 
     # suppress warnings related to all-NaN and all-zero values on the selected axis
     # by replacing instances of all NaN and/or zero with all ones.
@@ -598,6 +593,95 @@ def normalise_complex(x, weights=None, axis=0):
     norm_factor = centre_rotation / average_amplitude
 
     return norm_factor
+
+
+@numba.jit(nopython=True, parallel=True)
+def K_ant(uvw, l, m, wl, k_ant):
+    """
+    Calculate K-Jones term per antenna
+
+    Calculate the K-Jones term for a point source with the
+    given position (l, m) at the given wavelengths.
+    The K-Jones term is the geometrical delay in the approximate
+    2D Fourier transform relationship between the complex
+    visibility and the sky brightness distribution
+
+    Parameters
+    ----------
+    uvw : :class:`np.ndarray`, real, shape (3, ntimes, nants)
+        uvw co-ordinates of antennas
+    l : float
+        direction cosine, right ascension
+    m : float
+        direction cosine, declination
+    wl : :class:`np.ndarray`, real, shape (nchans)
+        wavelengths
+    k_ant : :class:`np.ndarray`, complex, shape (ntimes, nchans, nants)
+        array to update with K-Jones term
+
+    Returns
+    -------
+    :class: `np.ndarray`, complex, shape (ntimes, nchans, nants)
+        K-Jones term per antenna
+    """
+    n = np.sqrt(1 - l*l - m*m)
+    _, ntimes, nants = uvw.shape
+    nchans = wl.shape[0]
+
+    for t in range(ntimes):
+        cstep = 128
+        cblocks = (nchans + cstep - 1) // cstep
+        for cblock in numba.prange(cblocks):
+            cstart = cblock * cstep
+            cstop = min(nchans, cstart + cstep)
+            for c in range(cstart, cstop):
+                for a in range(nants):
+                    phase = (l * uvw[0, t, a] + m * uvw[1, t, a] + (n-1) * uvw[2, t, a]) / wl[c]
+                    k_ant[t, c, a] = np.exp(2j * np.pi * phase)
+    return k_ant
+
+
+@numba.jit(nopython=True, parallel=True)
+def add_model_vis(k_ant, ant1, ant2, I, model):
+    """
+    Add model visibilities to model
+
+    Calculate model visibilities from the per-antenna
+    K-Jones term and source Stokes I flux densities and add them
+    to the model array
+
+    Parameters
+    ----------
+    k_ant : :class:`np.ndarray`, complex, shape (ntimes, nchans, nants)
+        per-antenna K-Jones term
+    ant1 : :class:`np.ndarray`, int, shape (nbls)
+        index of first antenna of each baseline pair
+    ant2 : :class:`np.ndarray`, int, shape (nbls)
+        index of second antenna of each baseline pair
+    I : :class:`np.ndarray`, real, shape (nchans)
+        Stokes I source flux densities per channel
+    model : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbls)
+        array to add model visibilities to
+
+    Returns
+    -------
+    :class: `np.ndarray`, complex, shape (ntimes, nchans, nbls)
+        array with model visibilities added to it
+    """
+    ntimes, nchans, nants = k_ant.shape
+    nbls = ant1.shape[0]
+    for t in range(ntimes):
+        cstep = 128
+        cblocks = (nchans + cstep - 1) // cstep
+        for cblock in numba.prange(cblocks):
+            cstart = cblock * cstep
+            cstop = min(nchans, cstart + cstep)
+            for c in range(cstart, cstop):
+                for b in range(nbls):
+                    model[t, c, b] += (k_ant[t, c, ant1[b]]
+                                       * np.conj(k_ant[t, c, ant2[b]])
+                                       * I[c])
+    return model
 
 
 def interpolate_bandpass(x):

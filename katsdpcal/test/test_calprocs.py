@@ -415,6 +415,52 @@ class TestNormaliseComplex(unittest.TestCase):
             np.testing.assert_allclose(expected_i, norm_factor, rtol=1e-6)
 
 
+class TestKAnt(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.K_ant'"""
+    def test(self):
+        ntimes = 3
+        nchans = 2
+        nants = 5
+
+        uvw = np.ones((3, ntimes, nants))
+        uvw[:, 1, 3] = [70, 5, 1]
+        l = 0.1  # noqa: E741
+        m = 0.2
+        n = np.sqrt(1 - l * l - m * m)
+        wl = np.array([0.1, 0.4])
+        kant = np.zeros((ntimes, nchans, nants), np.complex64)
+        kant = calprocs.K_ant(uvw, l, m, wl, kant)
+
+        expected_kant = np.zeros((ntimes, nchans, nants), np.complex64)
+        expected_kant[:, 0] = np.exp(2j * np.pi * (3 + (n - 1) / 0.1))
+        expected_kant[:, 1] = np.exp(2j * np.pi * (0.75 + (n - 1) / 0.4))
+        expected_kant[1, 0, 3] = np.exp(2j * np.pi * (80 + (n - 1) / 0.1))
+        expected_kant[1, 1, 3] = np.exp(2j * np.pi * (20 + (n - 1) / 0.4))
+
+        np.testing.assert_equal(kant, expected_kant)
+
+
+class TestAddModelVis(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.add_model_vis`"""
+    def test(self):
+        shape = (3, 5, 4)
+        kant = np.ones(shape, np.complex64)
+        kant[1, 3, :] = [1, 2, 1+1j, 2+2j]
+        ant1 = np.array([0, 0, 0, 1, 1, 2])
+        ant2 = np.array([1, 2, 3, 2, 3, 3])
+
+        out_shape = (3, 5, 6)
+        model = np.ones(out_shape, np.complex64)
+        S = np.array([5, 4, 3, 2, 1])
+
+        out_model = calprocs.add_model_vis(kant, ant1, ant2, S, model)
+
+        expected_model = np.ones(out_shape, np.complex64) + S[np.newaxis, :, np.newaxis]
+        expected_model[1, 3, :] = [5, 3-2j, 5-4j, 5-4j, 9-8j, 9]
+
+        np.testing.assert_equal(out_model, expected_model)
+
+
 class TestCalcSnr(unittest.TestCase):
     """Tests for :func:`katsdpcal.calprocs.calc_snr`"""
     def setUp(self):

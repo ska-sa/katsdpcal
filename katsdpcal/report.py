@@ -6,6 +6,8 @@ import threading
 from . import plotting
 from . import calprocs
 from . import docutils_dir
+from . import lsm_dir
+from . import pipelineprocs as pp
 
 import numpy as np
 
@@ -99,6 +101,34 @@ def utc_tstr(timestamp, day=False):
         time_format = "%d %H:%M:%S"
     time_string = time.strftime(time_format)
     return time_string
+
+
+def model_flux(target, freqs):
+    """
+    Flux density of the first source in the target model
+
+    If there is no model, returns None
+
+    Parameters
+    ----------
+    target : :class:`katpoint.Target`
+        target to obtain model for
+    freqs : :class:`np.ndarray`
+        frequencies in MHz to obtain flux density for
+
+    Returns
+    -------
+    flux_density : :class:`np.ndarray` or None
+        flux density in Jy
+    """
+    model_params, model_file = pp.get_model(target, lsm_dir)
+    # use only the first source in the list, assumed to be the brightest, dominant source
+    if model_params is not None:
+        source = katpoint.Target(model_params[0])
+        flux_density = source.flux_density(freqs)
+    else:
+        flux_density = None
+    return flux_density
 
 
 def insert_fig(report_path, report, fig, name=None):
@@ -594,6 +624,11 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
+        # Get model flux, in order to plot model spectrum
+        # the following only obtains the flux of the first source in the model,
+        # which is assumed to be the brightest/dominant source in the field.
+        flux_density = model_flux(kat_target, freq_chan)
+
         # Set the plot label
         if is_calibrator:
             plot_title = 'Calibrator: {0} , tags are {1}'.format(target_name, ', '.join(tags))
@@ -609,7 +644,7 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
             data = av_data[..., idx : idx + ANT_CHUNKS]
             plot = plotting.plot_spec(
                 data, idx_chan, antenna_names[idx : idx + ANT_CHUNKS],
-                freq_range, plot_title, amp=amp, pol=pol)
+                freq_range, plot_title, amp=amp, pol=pol, amp_model=flux_density)
 
             insert_fig(report_path, report, plot,
                        name='Corr_v_Freq_{0}_{1}'.format(target_name.replace(" ", "_"), idx))

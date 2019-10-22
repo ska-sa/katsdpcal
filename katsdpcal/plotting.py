@@ -487,7 +487,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
 
 def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False,
-              pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
+              pol=[0, 1], phase_range=[-180, 180], amp_model=None, **plot_kwargs):
     """ Plots spectrum of corrected data
 
     Parameters
@@ -508,6 +508,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    amp_model : :class:`np.ndarray`, optional
+        real, (num_chans) amplitude model to plot
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -534,6 +536,14 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
                             **plot_kwargs)
             axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
+
+    # plot model if provided
+    if amp_model is not None:
+        for p in range(npols):
+            p1 += axes[p, 0].plot(chan, amp_model, '--', color='k', alpha=0.6,  **plot_kwargs)
+            if amp:
+                axes[p, 1].plot(chan, amp_model, '--', color='k', alpha=0.6, **plot_kwargs)
+        antenna_names += ['model']
 
     # set range limit
     if amp:

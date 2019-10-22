@@ -388,22 +388,25 @@ def get_baseline_mask(bls_lookup, ants, limits):
     return baseline_mask
 
 
-def get_model(name, lsm_dir_list=[]):
+def get_model(target, lsm_dir_list=[]):
     """
-    Get a sky model from a text file.
+    Get a sky model from a text file if one exists.
+
     The name of the text file must incorporate the name of the source.
+    If no text file is found, return the target sky model.
 
     Parameters
     ----------
-    name : str
-        name of source
+    target : :class:`katpoint.Target`
+        target
     lsm_dir_list : list
         search path for the source model txt file
 
     Returns
     -------
-    model_components : :class:`numpy.recarray`
-        sky model component parameters
+    model_components : list of str
+        list of katpoint description strings of sources
+        in the sky model
     model_file : str
         name of model component file used
     """
@@ -412,29 +415,34 @@ def get_model(name, lsm_dir_list=[]):
     # default to check the current directory first
     lsm_dir_list.append('.')
 
+    allnames = [target.name] + target.aliases
+    model_file = []
     # iterate through the list from the end so the model from the earliest
     # directory in the list is used
-    model_file = []
     for lsm_dir in reversed(lsm_dir_list):
-        model_file_list = glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
-        # ignore tilde ~ backup files
-        model_file_list = [f for f in model_file_list if f[-1] != '~']
+        model_list = []
+        # iterate over all aliases
+        for name in allnames:
+            model_list += glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
 
-        if len(model_file_list) == 1:
-            model_file = model_file_list[0]
-        elif len(model_file_list) > 1:
+        if len(model_list) == 1:
+            model_file = model_list[0]
+        elif len(model_list) > 1:
             # if there are more than one model files for the source IN THE SAME
-            # DIRECTORY, raise an error
-            raise ValueError(
-                'More than one possible sky model file for {0}: {1}'.format(name, model_file_list))
+            # DIRECTORY warn the user and use the first model
+            logger.warning(
+                'More than one possible sky model file for'
+                ' %s: %s, using %s', target.name, model_list, model_list[0])
+            model_file = model_list[0]
 
-    # if there is not model file, return model components as None
     if model_file == []:
-        model_components = None
+        if target.flux_model is not None:
+            model_components = [target.description]
+        else:
+            model_components = None
+
     else:
-        model_dtype = [('tag', 'S4'), ('name', 'S16'),
-                       ('RA', 'S24'), ('dRA', 'S8'), ('DEC', 'S24'), ('dDEC', 'S8'),
-                       ('a0', 'f8'), ('a1', 'f8'), ('a2', 'f8'), ('a3', 'f8'),
-                       ('fq', 'f8'), ('fu', 'f8'), ('fv', 'f8')]
-        model_components = np.genfromtxt(model_file, delimiter=',', dtype=model_dtype)
+        with open(model_file) as file:
+            model_cat = katpoint.Catalogue(file)
+            model_components = [m.description for m in model_cat]
     return model_components, model_file
