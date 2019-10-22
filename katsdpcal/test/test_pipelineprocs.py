@@ -186,8 +186,7 @@ class TestCreateModel(unittest.TestCase):
     """Tests for 'katsdpcal.pipelineprocs.get_model'"""
     def setUp(self):
         self.lsm_dir = tempfile.mkdtemp()
-        self.file_model = ('S0, radec, 08:25:26.87, -50:10:38.49, 800 1712'
-                           ' 5 6 7 8')
+        self.file_model = ('S0, radec, 08:25:26.87, -50:10:38.49, (800 1712 5 6 7 8)')
 
         self.target = katpoint.Target('cal | alias, radec target, '
                                       '08:25:26.87, -50:10:38.49, '
@@ -205,9 +204,8 @@ class TestCreateModel(unittest.TestCase):
         # create model file with name that matches target name
         for name in ['cal', 'alias']:
             fname = os.path.join(self.lsm_dir, name + '.txt')
-            f = open(fname, 'w')
-            f.write(self.file_model)
-            f.close()
+            with open(fname, 'w') as f:
+                print(self.file_model, file=f)
 
             expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
                                ' 5.0 6.0 7.0 8.0)']
@@ -235,12 +233,10 @@ class TestCreateModel(unittest.TestCase):
 
     def test_two_files(self):
         """If two files match target name, confirm it returns model from one of them"""
-
         for name in ['cal', 'alias']:
             fname = os.path.join(self.lsm_dir, name + '.txt')
-            f = open(fname, 'w')
-            f.write(self.file_model)
-            f.close()
+            with open(fname, 'w') as f:
+                print(self.file_model, file=f)
 
         expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
                            ' 5.0 6.0 7.0 8.0)']

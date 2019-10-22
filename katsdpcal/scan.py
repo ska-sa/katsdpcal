@@ -966,20 +966,19 @@ class Scan:
                                                  antenna=self.array_position)
 
         def valid_allfreq(model_cat, freqs):
-            """ Check all models in model_cat are valid for the given freqs (in Hz) """
+            """Check all models in model_cat are valid for the given freqs (in Hz)"""
             min_valid = [m.flux_model.min_freq_MHz for m in model_cat]
             max_valid = [m.flux_model.max_freq_MHz for m in model_cat]
 
             freqs_MHz = freqs / 1e6
-            not_valid = (max(min_valid) > min(freqs_MHz)) or (min(max_valid) < max(freqs_MHz))
-            return ~not_valid
+            return max(min_valid) <= min(freqs_MHz) and min(max_valid) >= max(freqs_MHz)
 
         # check supplied model components are valid for entire frequency range of the band
         if not valid_allfreq(self.model_raw_params, self.channel_freqs) \
                 and len(self.model_raw_params) > 1:
             # If not select only the first source
             self.model_raw_params = katpoint.Catalogue(self.model_raw_params.targets[0])
-            self.logger.info(
+            self.logger.warning(
                 '     A source in the sky model is not valid'
                 ', selecting only the first source '
                  )
@@ -987,35 +986,25 @@ class Scan:
         # deal with easy case first - single point at the phase centre
         if (len(self.model_raw_params) == 1) \
                 and (position_offset < calprocs.arcsec_to_rad(max_offset)):
-            I_coefs = self.model_raw_params.targets[0].flux_model.coefs[:6]
 
             if not valid_allfreq(self.model_raw_params, self.channel_freqs):
-                self.logger.info(
+                self.logger.warning(
                     '     The  model is not valid '
                     'for part of the band, setting model flux to 1')
                 self.model = np.array([1], np.complex64)
 
             else:
-                if np.all(I_coefs[1:] == 0):
-                    # CASE A - Point source as the phase centre, no spectral slope
-                    # spectral index is zero
-                    self.model = np.array([10.**I_coefs[0]], np.float32)
-                    self.logger.info(
-                        '     Model: single point source, flat spectrum, flux: {0:03.4f} Jy'.format(
-                            self.model[0],))
-                else:
-                    # CASE B - Point source at the phase centre, with spectral slope
-                    source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=I_coefs)
-                    self.model = source_flux.flux_density(
-                        self.channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
-                    self.model = np.require(self.model, dtype=np.float32)
-                    self.logger.info(
-                        '     Model: single point source, spectral model, average flux over '
-                        '{0:03.3f}-{1:03.3f} GHz: {2:03.4f} Jy'.format(
-                            self.channel_freqs[0] / 1.e9, self.channel_freqs[-1] / 1.e9,
-                            np.mean(self.model)))
-        # CASE C - Complex model requiring calculation via uvw coordinates ####
-        # If not one of the simple cases above, make a proper full model
+                # CASE A - Point source at the phase centre, with spectral slope
+                source = self.model_raw_params.targets[0]
+                self.model = source.flux_density(
+                    self.channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
+                self.model = np.require(self.model, dtype=np.float32)
+                self.logger.info(
+                    '     Model: single point source, spectral model, average flux over '
+                    '%d-%d MHz: %03.4f Jy', self.channel_freqs[0] / 1.e6,
+                    self.channel_freqs[-1] / 1.e6, np.mean(self.model))
+        # CASE B - Complex model requiring calculation via uvw coordinates ####
+        # If not the simple case above, make a proper full model
         else:
             self.logger.info(
                 '     Model: {0} point sources'.format(
@@ -1038,21 +1027,17 @@ class Scan:
             wl = katpoint.lightspeed / self.channel_freqs
             # iteratively add sources to the model
             for source in self.model_raw_params:
-                # source spectral flux
-                I_coefs = source.flux_model.coefs[:6]
-                source_flux = katpoint.FluxDensityModel(0, 100.0e3, coefs=I_coefs)
-                #   currently using the same Stokes I flux model for both polarisations
-                S = source_flux.flux_density(
-                    self.channel_freqs / 1.0e6)
+                # currently using the same Stokes I flux model for both polarisations
+                S = source.flux_density(self.channel_freqs / 1.0e6)
                 l, m = self.target.sphere_to_plane(
                     *source.radec(), projection_type='SIN', coord_system='radec')
 
                 k_ant = calprocs.K_ant(self.uvw, l, m, wl, k_ant)
-                complexmodel = calprocs.add_model_vis(k_ant[:, :,  :],
+                complexmodel = calprocs.add_model_vis(k_ant,
                                                       self.cross_ant.bls_lookup[:, 0],
                                                       self.cross_ant.bls_lookup[:, 1],
                                                       S.astype(np.float32), complexmodel)
-
+            # add an axis for polarisation
             self.model = complexmodel[:, :, np.newaxis, :]
         return
 

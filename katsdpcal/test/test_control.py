@@ -558,7 +558,6 @@ class TestCalDeviceServer(asynctest.TestCase):
         vis = flux_density * np.exp(2j * np.pi * (K[pol1, ant1] - K[pol2, ant2]) * freqs) \
             * (G[pol1, ant1] * G[pol2, ant2].conj())
 
-        print(np.average(flux_density))
         if noise.size > 0:
             noiseboth = noise[:, pol1, ant1] + noise[:, pol2, ant2]
             vis += noiseboth

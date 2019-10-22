@@ -426,15 +426,16 @@ class TestKAnt(unittest.TestCase):
         uvw[:, 1, 3] = [70, 5, 1]
         l = 0.1  # noqa: E741
         m = 0.2
+        n = np.sqrt(1 - l * l - m * m)
         wl = np.array([0.1, 0.4])
         kant = np.zeros((ntimes, nchans, nants), np.complex64)
         kant = calprocs.K_ant(uvw, l, m, wl, kant)
 
         expected_kant = np.zeros((ntimes, nchans, nants), np.complex64)
-        expected_kant[:, 0] = np.exp(2 * np.pi * 1j * (3 + (np.sqrt(0.95) - 1) / 0.1))
-        expected_kant[:, 1] = np.exp(2 * np.pi * 1j * (0.75 + (np.sqrt(0.95) - 1) / 0.4))
-        expected_kant[1, 0, 3] = np.exp(2 * np.pi * 1j * (80 + (np.sqrt(0.95) - 1) / 0.1))
-        expected_kant[1, 1, 3] = np.exp(2 * np.pi * 1j * (20 + (np.sqrt(0.95) - 1) / 0.4))
+        expected_kant[:, 0] = np.exp(2j * np.pi * (3 + (n - 1) / 0.1))
+        expected_kant[:, 1] = np.exp(2j * np.pi * (0.75 + (n - 1) / 0.4))
+        expected_kant[1, 0, 3] = np.exp(2j * np.pi * (80 + (n - 1) / 0.1))
+        expected_kant[1, 1, 3] = np.exp(2j * np.pi * (20 + (n - 1) / 0.4))
 
         np.testing.assert_equal(kant, expected_kant)
 

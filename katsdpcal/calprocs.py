@@ -568,7 +568,7 @@ def normalise_complex(x, weights=None, axis=0):
     if weights is None:
         weights = np.ones_like(x, dtype=np.float32)
     # ensure all NaN'ed data has zero weight
-    valid_weights = np.where(~np.isfinite(x), 0, weights)
+    valid_weights = np.where(np.isfinite(x), weights, 0)
 
     # suppress warnings related to all-NaN and all-zero values on the selected axis
     # by replacing instances of all NaN and/or zero with all ones.
@@ -602,7 +602,7 @@ def K_ant(uvw, l, m, wl, k_ant):
 
     Calculate the K-Jones term for a point source with the
     given position (l, m) at the given wavelengths.
-    The K-Jones term is the phase term in the approximate
+    The K-Jones term is the geometrical delay in the approximate
     2D Fourier transform relationship between the complex
     visibility and the sky brightness distribution
 
@@ -624,7 +624,7 @@ def K_ant(uvw, l, m, wl, k_ant):
     :class: `np.ndarray`, complex, shape (ntimes, nchans, nants)
         K-Jones term per antenna
     """
-    n = np.sqrt(1 - l**2 - m**2)
+    n = np.sqrt(1 - l*l - m*m)
     _, ntimes, nants = uvw.shape
     nchans = wl.shape[0]
 

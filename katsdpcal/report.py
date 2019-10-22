@@ -108,6 +108,7 @@ def model_flux(target, freqs):
     Flux density of the first source in the target model
 
     If there is no model, returns None
+
     Parameters
     ----------
     target : :class:`katpoint.Target`
