@@ -13,5 +13,6 @@ katsdp.setDependencies([
 katsdp.standardBuild(
     python3: true,
     python2: false,
-    docker_venv: true)
+    docker_venv: true,
+    push_external: true)
 katsdp.mail('sdpdev+katsdpcal@ska.ac.za')
