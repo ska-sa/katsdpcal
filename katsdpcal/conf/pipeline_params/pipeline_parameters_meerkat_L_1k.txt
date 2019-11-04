@@ -25,3 +25,8 @@ rfi_calib_spike_width_freq : 3.0   # 1sigma frequency width of smoothing Gaussia
 rfi_spike_width_time : 100.0        # 1sigma time width of smoothing Gaussian (in seconds)
 rfi_extend_freq : 3                 # Convolution width in frequency to extend flags (in channels)
 rfi_freq_chunks : 8                 # Fraction of band on which to do noise estimation
+
+# HV phase 'to sky' spline
+bcross_sky_knots : 856, 856, 856, 856, 963, 1070, 1284, 1525, 1608, 1658, 1711, 1711, 1711, 1711                     # knots in MHz
+bcross_sky_coefs : 1.507, 15.957, 13.683, 21.0169, 21.793, 26.879, 32.611, 32.973, 66.216, 16.998, 0,  0,  0,  0     # coefs of fit (in degrees)
+bcross_sky_k : 3                                                                                                     # degree of spline

@@ -121,7 +121,12 @@ USER_PARAMETERS = [
     Parameter('rfi_freq_chunks', 'fraction of band on which to do noise estimation', int,
               converter=FreqChunksConverter),
     Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
-              converter=AttrConverter('description'))
+              converter=AttrConverter('description')),
+    Parameter('bcross_sky_knots', 'knots for bcross_sky spline, in MHz', comma_list(float),
+              telstate=False),
+    Parameter('bcross_sky_coefs', 'coefs for bcross_sky spline fit across frequency',
+              comma_list(float), telstate=False),
+    Parameter('bcross_sky_k', 'degree of spline fit for bcross_sky', int, telstate=False)
 ]
 
 # Parameters that the user cannot set directly (the type is not used)
@@ -141,7 +146,9 @@ COMPUTED_PARAMETERS = [
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
     Parameter('servers', 'number of parallel servers', int),
-    Parameter('server_id', 'identity of this server (zero-based)', int)
+    Parameter('server_id', 'identity of this server (zero-based)', int),
+    Parameter('bcross_sky_spline', 'spline fit to bcross_sky across frequency (in MHz)', tuple,
+              telstate=True)
 ]
 
 
@@ -313,9 +320,15 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         'KCROSS_DIODE': 'product_KCROSS_DIODE',
         'B': 'product_B{}'.format(server_id),
         'SNR_B': 'product_SNR_B{}'.format(server_id),
-        'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id)
+        'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id),
+        'BCROSS_DIODETOSKY': 'product_BCROSS_DIODETOSKY{}'.format(server_id)
     }
     parameters['product_B_parts'] = servers
+
+    # Convert spline knots, coefs and degrees into spline tuple to store in telstate
+    parameters['bcross_sky_spline'] = (np.array(parameters['bcross_sky_knots']),
+                                       np.array(parameters['bcross_sky_coefs']),
+                                       parameters['bcross_sky_k'])
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
