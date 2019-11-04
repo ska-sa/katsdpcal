@@ -18,6 +18,7 @@ from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
     assert_almost_equal, assert_not_equal, assert_raises_regex)
 import asynctest
+import scipy.interpolate
 
 import spead2
 import aiokatcp
@@ -752,13 +753,14 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert_equal(ret_SNR_G_ts, ret_G_ts)
 
         if 'bfcal' in target.tags:
+            # Check KCROSS_DIODE
             cal_product_KCROSS_DIODE = telstate_cb_cal.get_range('product_KCROSS_DIODE', st=0)
             assert_equal(1, len(cal_product_KCROSS_DIODE))
             ret_KCROSS_DIODE, ret_KCROSS_DIODE_ts = cal_product_KCROSS_DIODE[0]
             assert_equal(np.float32, ret_KCROSS_DIODE.dtype)
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
                                        ret_KCROSS_DIODE, rtol=1e-3)
-
+            # Check BCROSS_DIODE
             ret_BCROSS_DIODE, ret_BCROSS_DIODE_ts = self.assemble_bandpass(telstate_cb_cal,
                                                                            'product_BCROSS_DIODE')
             ret_BCROSS_DIODE_interp = self.interp_B(ret_BCROSS_DIODE)
@@ -770,6 +772,27 @@ class TestCalDeviceServer(asynctest.TestCase):
                                        - (ret_BG_interp_angle - ret_BG_interp_angle[:, [1], :]),
                                        np.angle(ret_BCROSS_DIODE_interp),
                                        rtol=expected_BCROSS_DIODE_rtol)
+
+            # Check BCROSS_DIODETOSKY
+            ret_DIODETOSKY, ret_DIODETOSKY_ts = self.assemble_bandpass(telstate_cb_cal,
+                                                                       'product_BCROSS_DIODETOSKY')
+            ret_DIODETOSKY_interp = self.interp_B(ret_DIODETOSKY)
+            np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
+                                       np.abs(ret_DIODETOSKY_interp), rtol=1e-3)
+
+            bcross_sky_spline = self.telstate_cal.get('bcross_sky_spline')
+            bandwidth = self.telstate.sdp_l0test_bandwidth
+            freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
+            spline_angle = np.float32(scipy.interpolate.splev(freqs/1e6, bcross_sky_spline))
+
+            DIODETOSKY = np.nanmedian(ret_BCROSS_DIODE, axis=-1, keepdims=True)
+            DIODETOSKY_angle = np.angle(DIODETOSKY, deg=True)
+            # Spline is 'hv' gain, vis pol axes ordering is 'hv, vh'
+            # Correction therefore divides first pol by 'hv' spline
+            DIODETOSKY_angle[:, 0, :] -= spline_angle[:, np.newaxis]
+            DIODETOSKY_angle = np.broadcast_to(DIODETOSKY_angle, ret_BCROSS_DIODE.shape)
+            np.testing.assert_allclose(DIODETOSKY_angle,
+                                       np.angle(ret_DIODETOSKY, deg=True), rtol=1e-3)
 
         if 'polcal' in target.tags:
             cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)
