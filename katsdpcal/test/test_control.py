@@ -773,26 +773,26 @@ class TestCalDeviceServer(asynctest.TestCase):
                                        np.angle(ret_BCROSS_DIODE_interp),
                                        rtol=expected_BCROSS_DIODE_rtol)
 
-            # Check BCROSS_DIODETOSKY
-            ret_DIODETOSKY, ret_DIODETOSKY_ts = self.assemble_bandpass(telstate_cb_cal,
-                                                                       'product_BCROSS_DIODETOSKY')
-            ret_DIODETOSKY_interp = self.interp_B(ret_DIODETOSKY)
+            # Check BCROSS_DIODE_SKY
+            ret_DIODE_SKY, ret_DIODE_SKY_ts = self.assemble_bandpass(telstate_cb_cal,
+                                                                     'product_BCROSS_DIODE_SKY')
+            ret_DIODE_SKY_interp = self.interp_B(ret_DIODE_SKY)
             np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
-                                       np.abs(ret_DIODETOSKY_interp), rtol=1e-3)
+                                       np.abs(ret_DIODE_SKY_interp), rtol=1e-3)
 
             bcross_sky_spline = self.telstate_cal.get('bcross_sky_spline')
             bandwidth = self.telstate.sdp_l0test_bandwidth
             freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
             spline_angle = np.float32(scipy.interpolate.splev(freqs/1e6, bcross_sky_spline))
 
-            DIODETOSKY = np.nanmedian(ret_BCROSS_DIODE, axis=-1, keepdims=True)
-            DIODETOSKY_angle = np.angle(DIODETOSKY, deg=True)
+            DIODE_SKY = np.nanmedian(ret_BCROSS_DIODE, axis=-1, keepdims=True)
+            DIODE_SKY_angle = np.angle(DIODE_SKY, deg=True)
             # Spline is 'hv' gain, vis pol axes ordering is 'hv, vh'
             # Correction therefore divides first pol by 'hv' spline
-            DIODETOSKY_angle[:, 0, :] -= spline_angle[:, np.newaxis]
-            DIODETOSKY_angle = np.broadcast_to(DIODETOSKY_angle, ret_BCROSS_DIODE.shape)
-            np.testing.assert_allclose(DIODETOSKY_angle,
-                                       np.angle(ret_DIODETOSKY, deg=True), rtol=1e-3)
+            DIODE_SKY_angle[:, 0, :] -= spline_angle[:, np.newaxis]
+            DIODE_SKY_angle = np.broadcast_to(DIODE_SKY_angle, ret_BCROSS_DIODE.shape)
+            np.testing.assert_allclose(DIODE_SKY_angle,
+                                       np.angle(ret_DIODE_SKY, deg=True), rtol=1e-3)
 
         if 'polcal' in target.tags:
             cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)

@@ -678,7 +678,7 @@ class Scan:
 
     def bcross_to_sky(self, bcross_soln, spline, pol):
         """
-        Converts BCROSS_DIODE solution to BCROSS_DIODETOSKY
+        Converts BCROSS_DIODE solution to BCROSS_DIODE_SKY
 
         Parameters
         ----------
@@ -692,12 +692,12 @@ class Scan:
         Returns
         -------
         :class: `~.CalSolution'
-            'BCROSS_DIODETOSKY' solution, complex (nchans, npols, nants),
+            'BCROSS_DIODE_SKY' solution, complex (nchans, npols, nants),
         """
 
         # convert phase spline to complex gain
         phase_chan = np.float32(scipy.interpolate.splev(self.channel_freqs/1e6, spline))
-        sky_gain = np.exp(1j * np.pi / 180 * phase_chan)
+        sky_gain = np.exp(1j * np.pi / 180 * phase_chan, dtype=np.complex64)
 
         # spline gain in parameters is for 'hv' phase,
         # conjugate if necessary
@@ -710,7 +710,7 @@ class Scan:
         median[:, 0, :] *= sky_gain[:, np.newaxis]
         bcross_sky = np.broadcast_to(median, values.shape)
 
-        return CalSolution('BCROSS_DIODETOSKY', bcross_sky, bcross_soln.time)
+        return CalSolution('BCROSS_DIODE_SKY', bcross_sky, bcross_soln.time)
 
     def _resid(self, soln, data, weights, **kwargs):
         """
@@ -845,7 +845,7 @@ class Scan:
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
-            # select HV delay at refant
+            # select median HV delay to apply
             soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
 
@@ -854,12 +854,12 @@ class Scan:
             return self._apply(g_from_k, vis, cross_pol)
 
         elif soln.soltype in ['BCROSS_DIODE']:
-            # select HV phase at refant
+            # select median HV phase to apply
             soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
             return self._apply(soln, vis, cross_pol)
 
-        elif soln.soltype in ['B', 'BCROSS_DIODETOSKY']:
+        elif soln.soltype in ['B', 'BCROSS_DIODE_SKY']:
             return self._apply(soln_values, vis, cross_pol)
         else:
             raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
