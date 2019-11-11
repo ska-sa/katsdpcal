@@ -696,7 +696,7 @@ class Scan:
         """
 
         # convert phase spline to complex gain
-        phase_chan = np.float32(scipy.interpolate.splev(self.channel_freqs/1e6, spline))
+        phase_chan = scipy.interpolate.splev(self.channel_freqs/1e6, spline)
         sky_gain = np.exp(1j * np.pi / 180 * phase_chan, dtype=np.complex64)
 
         # spline gain in parameters is for 'hv' phase,
