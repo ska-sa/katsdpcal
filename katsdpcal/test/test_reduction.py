@@ -63,7 +63,7 @@ class TestSharedSolve(unittest.TestCase):
             values = np.arange(123)
             values[0] = bchan
             values[1] = echan
-            return CalSolution(name or 'K', values, 12345.5)
+            return CalSolution(name or 'K', values, 12345.5, 'Test')
 
         results = self.call(name, self.bchan, self.echan, solver)
         expected = np.arange(123)

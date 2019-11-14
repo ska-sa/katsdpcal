@@ -187,12 +187,13 @@ def save_solution(telstate, key, solution_store, soln):
     if isinstance(soln, solutions.CalSolution):
         save_one(soln)
     else:
+        n = soln.target
         if soln.snr is not None:
             for v, t, s in zip(soln.values, soln.times, soln.snr):
-                save_one(solutions.CalSolution(soln.soltype, v, t, s))
+                save_one(solutions.CalSolution(soln.soltype, v, t, n, s))
         else:
             for v, t in zip(soln.values, soln.times):
-                save_one(solutions.CalSolution(soln.soltype, v, t))
+                save_one(solutions.CalSolution(soln.soltype, v, t, n))
 
 
 def shared_solve(telstate, parameters, solution_store, bchan, echan,
@@ -263,9 +264,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     save_solution(telstate, telstate_key, solution_store, soln)
                     values = None
                 if isinstance(soln, solutions.CalSolution):
-                    info = ('CalSolution', soln.soltype, values, soln.time)
+                    info = ('CalSolution', soln.soltype, values, soln.time, soln.target)
                 else:
-                    info = ('CalSolutions', soln.soltype, values, soln.times)
+                    info = ('CalSolutions', soln.soltype, values, soln.times, soln.target)
             elif isinstance(soln, (Integral, np.ndarray)):
                 info = ('soln', soln)
                 if solution_store is not None:
@@ -288,7 +289,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         if info[0] == 'Exception':
             raise pickle.loads(info[1])
         elif info[0] == 'CalSolution':
-            soltype, values, time = info[1:]
+            soltype, values, time, target = info[1:]
             if values is None:
                 saved = telstate.get_range(telstate_key, st=time, et=time, include_end=True)
                 if len(saved) != 1:
@@ -296,9 +297,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     raise ValueError('Expected exactly one solution with timestamp {}, found {}'
                                      .format(time, len(saved)))
                 values = saved[0][0]
-            soln = solutions.CalSolution(soltype, values, time)
+            soln = solutions.CalSolution(soltype, values, time, target)
         elif info[0] == 'CalSolutions':
-            soltype, values, times = info[1:]
+            soltype, values, times, target = info[1:]
             if values is None:
                 # Reassemble from telstate
                 saved = telstate.get_range(telstate_key, st=times[0], et=times[-1],
@@ -312,7 +313,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     raise ValueError('Timestamps for {} did not match expected values'
                                      .format(telstate_key))
                 values = np.stack(values)
-            soln = solutions.CalSolutions(soltype, values, times)
+            soln = solutions.CalSolutions(soltype, values, times, soltarget=target)
         elif info[0] == 'soln':
             soln = info[1]
         else:
@@ -382,7 +383,8 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
 
     # select channels processed by this cal node
     b_interp = b_interp[parameters['channel_slice']]
-    return solutions.CalSolution('B', b_interp, b_soln.time)
+
+    return solutions.CalSolution('B', b_interp, b_soln.time, b_soln.target)
 
 
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):

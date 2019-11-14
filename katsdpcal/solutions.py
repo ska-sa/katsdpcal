@@ -7,19 +7,21 @@ import numpy as np
 class CalSolution:
     """Calibration solution.
 
-    This represents a solution for a single point in time.
+    This represents a solution for a target for a single point in time.
     """
-    def __init__(self, soltype, solvalues, soltime, solsnr=None):
+    def __init__(self, soltype, solvalues, soltime, soltarget, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
         self.time = soltime
+        self.target = soltarget
         self.snr = solsnr
+
 
     def __str__(self):
         """String representation of calibration solution to help identify it."""
         # Obtain human-friendly timestamp representing the centre of solutions
         timestamp = time.strftime("%H:%M:%S", time.gmtime(self.time))
-        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
+        return "{} {} {} {}".format(self.soltype, self.target, self.values.shape, timestamp)
 
 
 class CalSolutions:
@@ -27,17 +29,21 @@ class CalSolutions:
 
     This stores multiple solutions (in time) in a single array.
     """
-    def __init__(self, soltype, solvalues, soltimes, solsnr=None):
+    def __init__(self, soltype, solvalues, soltimes, soltarget=None, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
         self.times = soltimes
+        self.target = soltarget
         self.snr = solsnr
 
     def __str__(self):
         """String representation of calibration solution to help identify it."""
         # Obtain human-friendly timestamp representing the centre of solutions
         timestamp = time.strftime("%H:%M:%S", time.gmtime(np.mean(self.times)))
-        return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
+        if self.target:
+            return "{} {} {} {}".format(self.soltype, self.target, self.values.shape, timestamp)
+        else:
+            return "{} {} {}".format(self.soltype, self.values.shape, timestamp)
 
 
 class CalSolutionStore:
@@ -78,6 +84,19 @@ class CalSolutionStore:
             values = np.array([])
         times = np.array([part.time for part in parts])
         return CalSolutions(self.soltype, values, times)
+
+    def get_target(self, target_name):
+        """Get all solutions with a given target_name.
+
+        Return them in a :class:`CalSolutions`.
+        """
+        parts = [part for part in self._values if part.target == target_name]
+        if len(parts) > 0:
+            values = np.stack([part.values for part in parts])
+        else:
+            values = np.array([])
+        times = np.array([part.time for part in parts])
+        return CalSolutions(self.soltype, values, times, soltarget=target_name)
 
 
 class CalSolutionStoreLatest:

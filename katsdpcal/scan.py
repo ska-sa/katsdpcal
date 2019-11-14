@@ -369,7 +369,7 @@ class Scan:
                                 self.cross_ant.bls_lookup, g0,
                                 self.refant, **kwargs)
 
-        cal_soln = CalSolutions('G', g_soln, ave_times)
+        cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name)
         if calc_snr:
             ave_vis_t, ave_weights_t = da.compute(ave_vis_t, ave_weights_t)
             # use non channel-averaged data to calculate poor antennas,
@@ -381,7 +381,7 @@ class Scan:
             # use channel averaged data to calculate snr
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
-            cal_soln = CalSolutions('G', g_soln, ave_times, snr)
+            cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
 
         return cal_soln
 
@@ -428,7 +428,7 @@ class Scan:
         # Set soln to NaN for antennas where the noise diode didn't fire
         if nd is not None:
             bcross_soln = np.where(~nd, np.nan, bcross_soln)
-        return CalSolution('BCROSS_DIODE', bcross_soln, np.average(self.timestamps))
+        return CalSolution('BCROSS_DIODE', bcross_soln, np.average(self.timestamps), self.target.name)
 
     @logsolutiontime
     def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, auto_ant=False):
@@ -514,7 +514,7 @@ class Scan:
         # if auto_ant is True set soln to NaN for antennas where the noise diode didn't fire
         if nd is not None and auto_ant:
             kcross_soln = np.where(~nd, np.nan, kcross_soln)
-        return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
+        return CalSolution(soln_type, kcross_soln, np.average(self.timestamps), self.target.name)
 
     @logsolutiontime
     def k_sol(self, bchan=1, echan=None, chan_sample=1, pre_apply=[], calc_snr=True):
@@ -569,14 +569,14 @@ class Scan:
                                 self.cross_ant.bls_lookup,
                                 k_freqs, self.refant, True, chan_sample)
 
-        cal_soln = CalSolution('K', k_soln, ave_time)
+        cal_soln = CalSolution('K', k_soln, ave_time, self.target.name)
         if calc_snr:
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=k_freqs)
             ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = snr[0]
-            cal_soln = CalSolution('K', k_soln, ave_time, snr)
+            cal_soln = CalSolution('K', k_soln, ave_time, self.target.name, snr)
 
         return cal_soln
 
@@ -637,7 +637,7 @@ class Scan:
             b_soln = b_soln[0]
 
         b_soln, ave_vis, ave_weights = da.compute(b_soln, ave_vis, ave_weights)
-        cal_soln = CalSolution('B', b_soln, ave_time)
+        cal_soln = CalSolution('B', b_soln, ave_time, self.target.name)
 
         if calc_snr:
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights)
@@ -645,7 +645,7 @@ class Scan:
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = snr[0]
-            cal_soln = CalSolution('B', b_soln, ave_time, snr)
+            cal_soln = CalSolution('B', b_soln, ave_time, self.target.name, snr)
 
         return cal_soln
 
