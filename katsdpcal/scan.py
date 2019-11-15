@@ -314,7 +314,7 @@ class Scan:
     # Calibration solution functions
 
     @logsolutiontime
-    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], calc_snr=True, **kwargs):
+    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], calc_snr=True, use_model=True, **kwargs):
         """
         Solve for gain
 
@@ -332,6 +332,8 @@ class Scan:
             calibration solutions to apply
         calc_snr : bool, optional
             if True calculate SNR for G solution
+        use_model : bool, optional
+            if True correct visibilities by available model
 
         Returns
         -------
@@ -351,9 +353,13 @@ class Scan:
         chan_slice = np.s_[:, bchan:echan, :, :]
 
         g_freqs = self.channel_freqs[bchan:echan]
-        # initialise and apply model, for if this scan target has an associated model
-        self._init_model()
-        fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+
+        if use_model:
+            # initialise and apply model, if this scan target has an associated model
+            self._init_model()
+            fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+        else:
+            fitvis = modvis[chan_slice]
 
         # first averge in time over solution interval, for specified channel
         # range (no averaging over channel)
