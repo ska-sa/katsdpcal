@@ -51,6 +51,7 @@ tblib==1.3.2            # for distributed
 terminaltables          # for aiomonitor
 toolz                   # for dask
 tornado==6.0.2          # for distributed, bokeh
+typing_extensions       # for katsdpsigproc
 urllib3                 # for requests
 zict==0.1.3             # for distributed
 
