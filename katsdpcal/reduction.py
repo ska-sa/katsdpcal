@@ -709,18 +709,19 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # interpolated solutions (without NaNs) are stored in the solution store
             # so they can be applied to target/calibrator data without propagating NaNs
             solution_stores['B'].add(b_soln_nonans)
-            # ---------------------------------------
-            # G solution with flux model for BPCals
-            logger.info('Solving for G on bandpass calibrator %s', target_name)
-            # Only K and B for bandpass G
-            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
-            dumps_per_solint = scan_slice.stop - scan_slice.start
-            g_solint = dumps_per_solint * dump_period
-            g_soln = shared_solve(ts, parameters, None,
-                                  parameters['g_bchan'], parameters['g_echan'],
-                                  s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
-            # Save solution to solution store
-            save_solution(None, None, solution_stores['G_FLUX'], g_soln)
+            # --------------------------------------------------------------
+            # G solution with flux model for BPCals only if there is a model
+            if s.model is not None:
+                logger.info('Solving for G on bandpass calibrator %s', target_name)
+                # Only K and B for bandpass G
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
+                dumps_per_solint = scan_slice.stop - scan_slice.start
+                g_solint = dumps_per_solint * dump_period
+                g_soln = shared_solve(ts, parameters, None,
+                                      parameters['g_bchan'], parameters['g_echan'],
+                                      s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
+                # Save solution to solution store
+                save_solution(None, None, solution_stores['G_FLUX'], g_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
