@@ -79,23 +79,63 @@ class TestWavg(unittest.TestCase):
         self.weights = np.ones(shape, np.float32)
         self.flags = np.zeros(shape, np.uint8)
 
-    def test_basic(self):
-        """Hand-coded test"""
         # Put in some NaNs and flags to check that they're handled correctly
-        self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
-        self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
+        # Put in some zero visibilities and high weights
+        self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 0j, 6, 7, 8, 9]
+        self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 1e19, 5, 1e20]
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => Zeros in output
         self.data[:, 3, 2, 2] = np.nan
         self.flags[:, 4, 0, 3] = 4
 
-        expected = np.ones((5, 3, 10), np.complex64)
-        expected[0, 1, 1] = 5.6 + 0.2j
-        expected[3, 2, 2] = 0j
-        expected[4, 0, 3] = 0j
-        actual = calprocs_dask.wavg(as_dask(self.data), as_dask(self.flags), as_dask(self.weights))
-        self.assertEqual(np.complex64, actual.dtype)
-        np.testing.assert_allclose(expected, actual, rtol=1e-6)
+        # A completely zero column and a column with very high weights => Zeros in output
+        self.data[:, 1, 0, 0] = 0j
+        self.weights[:, 1, 1, 0] = 1e19
+
+        self.expected = np.ones((5, 3, 10), np.complex64)
+        self.expected[0, 1, 1] = 4.5 + 0.5j
+        self.expected[3, 2, 2] = 0j
+        self.expected[4, 0, 3] = 0j
+        self.expected[1, 0, 0] = 0j
+        self.expected[1, 1, 0] = 0j
+
+    def test_basic(self):
+        # Check for all axes
+        for i in [0, 1, 2, 3, -1, -2, -3, -4]:
+            data_i = np.moveaxis(self.data, 0, i)
+            flags_i = np.moveaxis(self.flags, 0, i)
+            weights_i = np.moveaxis(self.weights, 0, i)
+
+            actual = calprocs_dask.wavg(as_dask(data_i), as_dask(flags_i), as_dask(weights_i),
+                                        axis=i)
+            self.assertEqual(np.complex64, actual.dtype)
+            np.testing.assert_allclose(self.expected, actual, rtol=1e-6)
+
+    def test_full(self):
+        expected_weights = 10 * np.ones((5, 3, 10), np.float32)
+        expected_flags = np.zeros((5, 3, 10), np.bool_)
+
+        expected_weights[0, 1, 1] = 4
+        expected_weights[3, 2, 2] = 0
+        expected_weights[4, 0, 3] = 0
+        expected_weights[1, 0, 0] = 0
+        expected_weights[1, 1, 0] = 0
+
+        expected_flags[0, 1, 1] = True
+        expected_flags[3, 2, 2] = True
+        expected_flags[4, 0, 3] = True
+        expected_flags[1, 0, 0] = True
+        expected_flags[1, 1, 0] = True
+
+        for i in [0, 1, 2, 3, -1, -2, -3, -4]:
+            data_i = np.moveaxis(self.data, 0, i)
+            flags_i = np.moveaxis(self.flags, 0, i)
+            weights_i = np.moveaxis(self.weights, 0, i)
+
+            actual_data, actual_flags, actual_weights = calprocs_dask.wavg_full(
+                 as_dask(data_i), as_dask(flags_i), as_dask(weights_i), axis=i)
+            np.testing.assert_allclose(expected_weights, actual_weights, rtol=1e-6)
+            np.testing.assert_allclose(expected_flags, actual_flags)
 
 
 class TestWavgFullT(unittest.TestCase):
@@ -109,9 +149,16 @@ class TestWavgFullT(unittest.TestCase):
         self.data[:, 0, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
         self.weights[:, 0, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
         self.flags[:, 0, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
+        # Put in some zeros and high weights and check they're handled correctly
+        self.data[:, 3, 1, 1] = [1 + 1j, 2j, np.nan, 4j, 2, 5, 0, 7, 8, 9]
+        self.weights[:, 3, 1, 1] = [np.nan, 1, 0, 1, 2e19, 2, 3, 4, 5, 6]
+        self.flags[:, 3, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
         # A completely NaN column and a completely flagged column => Zeros in output
         self.data[:, 1, 2, 2] = np.nan
         self.flags[:, 2, 0, 3] = 4
+        # A completely zero column and column with all high weights => Zeros in output
+        self.data[:, 1, 2, 3] = 0j
+        self.weights[:, 2, 0, 4] = 2e19
 
     def test_basic(self):
         out_shape = (3, 5, 3, 10)
@@ -121,14 +168,27 @@ class TestWavgFullT(unittest.TestCase):
         expected_flags = np.zeros(out_shape, np.bool_)
         expected_data[:, 0, 1, 1] = [2j, 56.0 / 9.0, 0j]
         expected_weights[:, 0, 1, 1] = [1, 9, 0]
-        expected_flags[:, 0, 1, 1] = [True, False, True]
+        expected_flags[:, 0, 1, 1] = [False, False, True]
+
+        expected_data[:, 3, 1, 1] = [2j, 38 / 6, 0j]
+        expected_weights[:, 3, 1, 1] = [1, 6, 0]
+        expected_flags[:, 3, 1, 1] = [False, False, True]
 
         expected_data[:, 1, 2, 2] = [0j, 0j, 0j]
         expected_weights[:, 1, 2, 2] = [0, 0, 0]
+        expected_flags[:, 1, 2, 2] = [True, True, True]
 
         expected_data[:, 2, 0, 3] = [0j, 0j, 0j]
         expected_weights[:, 2, 0, 3] = [0, 0, 0]
         expected_flags[:, 2, 0, 3] = [True, True, True]
+
+        expected_data[:, 1, 2, 3] = [0j, 0j, 0j]
+        expected_weights[:, 1, 2, 3] = [0, 0, 0]
+        expected_flags[:, 1, 2, 3] = [True, True, True]
+
+        expected_data[:, 2, 0, 4] = [0j, 0j, 0j]
+        expected_weights[:, 2, 0, 4] = [0, 0, 0]
+        expected_flags[:, 2, 0, 4] = [True, True, True]
 
         out_data, out_flags, out_weights = calprocs_dask.wavg_full_t(
             self.data, self.flags, self.weights, 4)
@@ -143,7 +203,7 @@ class TestWavgFullT(unittest.TestCase):
         self.flags[:2, 0, 0, 0] = 4
         self.flags[:4, 0, 0, 1] = 4
         out_data, out_flags, out_weights = calprocs_dask.wavg_full_t(
-            self.data, self.flags, self.weights, 10)
+            self.data, self.flags, self.weights, 10, threshold=0.3)
         self.assertEqual(False, out_flags[0, 0, 0, 0])
         self.assertEqual(True, out_flags[0, 0, 0, 1])
 
@@ -191,3 +251,59 @@ class TestWavgFullF(unittest.TestCase):
     def test_unaligned(self):
         """Test where the chunk boundaries are not aligned at all"""
         self._test((40, 22, 2, 6), (4, (3, 6, 5, 8), 1, 6), 4)
+
+
+class TestWavgAnt(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs_dask.wavg_ant`"""
+    def setUp(self):
+        shape = (10, 5, 3, 10)
+        self.data = np.ones(shape, np.complex64)
+        self.weights = np.ones(shape, np.float32)
+        self.flags = np.zeros(shape, np.uint8)
+        self.bls_lookup = np.array([(0, 1), (0, 2), (0, 3), (0, 4), (1, 2),
+                                    (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)])
+
+    def test_basic(self):
+        # Put in some NaNs and flags to check that they're handled correctly
+        # Put in some zero visibilities and high weights
+        self.data[1, 0, 1, :] = [1 + 1j, 2j, np.nan, 4j, 0, 5, 6, 7j, 8, 9]
+        self.weights[1, 0, 1, :] = [np.nan, 1, 2, 0, 3, 4, 2e15, 1, np.nan, 2]
+        self.flags[1, 0, 1, :] = [4, 0, 0, 0, 0, 4, 0, 0, 0, 0]
+        # A completely NaN column and a completely flagged column => Zeros in output
+        self.data[3, 2, 2, :] = np.nan
+        self.flags[4, 0, 2, :] = 4
+
+        # A completely zero column and a column with very high weights => Zeros in output
+        self.data[1, 0, 0, :] = 0j
+        self.weights[1, 1, 0, :] = 1e19
+
+        out_shape = (10, 5, 3, 5)
+        expected_vis = np.ones(out_shape, np.complex64)
+        expected_flags = np.zeros(out_shape, np.bool_)
+        expected_weights = 4 * np.ones(out_shape, np.float32)
+
+        expected_vis[1, 0, 1, :] = [2j, 0, 2.5j, (18-7j)/3, 9]
+        expected_flags[1, 0, 1, :] = [False, True, False, False, False]
+        expected_weights[1, 0, 1, :] = [1, 0, 2, 3, 2]
+
+        expected_vis[3, 2, 2, :] = 0j
+        expected_weights[3, 2, 2, :] = 0
+        expected_flags[3, 2, 2, :] = True
+
+        expected_vis[4, 0, 2, :] = 0j
+        expected_weights[4, 0, 2, :] = 0
+        expected_flags[4, 0, 2, :] = True
+
+        expected_vis[1, 0, 0, :] = 0j
+        expected_weights[1, 0, 0, :] = 0
+        expected_flags[1, 0, 0, :] = True
+
+        expected_vis[1, 1, 0, :] = 0j
+        expected_weights[1, 1, 0, :] = 0
+        expected_flags[1, 1, 0, :] = True
+
+        out_vis, out_flags, out_weights = calprocs_dask.wavg_ant(
+            as_dask(self.data), as_dask(self.flags), as_dask(self.weights),
+            np.arange(5), self.bls_lookup)
+        self.assertEqual(np.complex64, out_vis.dtype)
+        np.testing.assert_allclose(expected_vis, out_vis, rtol=1e-6)
