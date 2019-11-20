@@ -82,18 +82,28 @@ def weight_data(data, flags, weights):
     """
     Return flagged, weighted data and flagged weights
 
+    Data that are zero, weights that are zero or unfeasibly high
+    are all set to zero in the output arrays
+
     Parameters
     ----------
     data    : array of complex
     flags   : array of uint8 or boolean
     weights : array of floats
+
+    Returns
+    -------
+    weighted_data : array of complex
+    flagged_weights : array of floats
     """
-    flagged_weights = where(flags, weights.dtype.type(0), weights)
+    # Suppress comparison with nan warnings by replacing nans with zeros
+    flagged_weights = where(calprocs.asbool(flags) | da.isnan(weights),
+                            weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    # Clear all invalid elements, ie. nans, zeros and weights > 1e15
+    invalid = da.isnan(weighted_data) | (weighted_data == 0) | (flagged_weights > 1e15)
+    weighted_data = where(invalid, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = where(invalid, flagged_weights.dtype.type(0), flagged_weights)
     return weighted_data, flagged_weights
 
 
@@ -115,14 +125,16 @@ def wavg(data, flags, weights, times=False, axis=0):
     vis, times : weighted average of data and, optionally, times
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
-    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
-    # Zero nans caused by flagged_weights all being zero along axis
-    isnan = da.isnan(vis)
-    vis = where(isnan, vis.dtype.type(0), vis)
+    av_weights = da.sum(flagged_weights, axis)
+    # Suppress divide by zero warnings by replacing zeros with ones
+    # all zero weight data is already set to zero in weighted_data
+    av_weights_nozero = where(av_weights == 0 , 1, av_weights)
+    vis = da.sum(weighted_data, axis=axis) / av_weights_nozero
+
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
-def wavg_full(data, flags, weights, axis=0, threshold=0.3):
+def wavg_full(data, flags, weights, axis=0, threshold=0.8):
     """
     Perform weighted average of data, flags and weights,
     applying flags, over axis
@@ -143,16 +155,20 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
     av_weights = da.sum(flagged_weights, axis)
-    av_data = da.sum(weighted_data, axis) / av_weights
-    # Zero nans caused by flagged_weights all being zero along axis
-    isnan = da.isnan(av_data)
-    av_data = where(isnan, av_data.dtype.type(0), av_data)
-    n_flags = da.sum(calprocs.asbool(flags), axis)
+    av_weights_nozero = where(av_weights == 0, 1, av_weights)
+    # Suppress divide by zero warnings by replacing zeros with ones
+    # all zero weight data is already set to zero in weighted_data
+    av_data = da.sum(weighted_data, axis) / av_weights_nozero
+
+    # Update flags to include all invalid data, ie vis = 0j and weights > 1e15
+    updated_flags = ~flagged_weights.astype(bool)
+    n_flags = da.sum(updated_flags, axis)
+
     av_flags = n_flags >= flags.shape[axis] * threshold
     return av_data, av_flags, av_weights
 
 
-def wavg_full_t(data, flags, weights, solint, times=None):
+def wavg_full_t(data, flags, weights, solint, times=None, threshold=0.8):
     """
     Perform weighted average of data, flags and weights,
     applying flags, over axis 0, for specified
@@ -165,6 +181,7 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     weights    : array of floats
     solint     : index interval over which to average, integer
     times      : optional array of times to average, array of floats
+    threshold  : optional float
 
     Returns
     -------
@@ -182,7 +199,8 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     av_weights = []
     # TODO: might be more efficient to use reduceat?
     for ti in inc_array:
-        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint])
+        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint],
+                          threshold=threshold)
         av_data.append(w_out[0])
         av_flags.append(w_out[1])
         av_weights.append(w_out[2])
@@ -284,7 +302,8 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     chunks = _align_chunks(data.chunks, {1: chanav})
     out_chunks = list(chunks)
     # Divide by chanav, rounding up
-    out_chunks[1] = tuple((x + chanav - 1) // chanav for x in chunks[1])
+    # use axis -3 for freq, to support cases where time axis has been averaged away
+    out_chunks[-3] = tuple((x + chanav - 1) // chanav for x in chunks[-3])
     out_chunks = tuple(out_chunks)
 
     data = data.rechunk(chunks)
@@ -363,11 +382,23 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
                            ^ (bls_lookup[:, 1] == ant))[0]
 
         ant_weights = da.sum(flagged_weights[..., ant_idx], axis=-1)
-        ant_data = da.sum(weighted_data[..., ant_idx], axis=-1) / ant_weights
-        n_flags = da.sum(calprocs.asbool(flags[..., ant_idx]), axis=-1)
+        # suppress divide by zero warnings, by replacing zeros with ones
+        # all zero weight data is set to zero in weighted_data
+        ant_weights_no_zeros = where(ant_weights == 0, 1, ant_weights)
+
+        # conjugate visibilities if antenna is 2nd on the baseline
+        ant_data = weighted_data[..., ant_idx]
+        ant1 = bls_lookup[ant_idx][:, 0] == ant
+        ant1 = np.broadcast_to(ant1, ant_data.shape)
+        ant_conj_data = where(ant1, ant_data, da.conj(ant_data))
+        ant_ave_data = da.sum(ant_conj_data, axis=-1) / ant_weights_no_zeros
+
+        # update flags to include all invalid data
+        updated_flags = ~flagged_weights[..., ant_idx].astype(bool)
+        n_flags = da.sum(updated_flags, axis=-1)
         ant_flags = n_flags > ant_idx.shape[0] * threshold
 
-        av_data.append(ant_data)
+        av_data.append(ant_ave_data)
         av_flags.append(ant_flags)
         av_weights.append(ant_weights)
 

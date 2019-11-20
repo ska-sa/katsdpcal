@@ -1074,17 +1074,23 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     chanav = np.int(chanav)
     inc_array = list(range(0, data.shape[-3], chanav))
 
-    flagged_weights = np.where(flags, weights.dtype.type(0), weights)
+    # suppress any comparison with nan errors by replacing them with zeros
+    flagged_weights = np.where(asbool(flags) | np.isnan(weights), weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
 
-    # Clear the elements that have a nan anywhere
-    isnan = np.isnan(weighted_data)
-    weighted_data = np.where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = np.where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    # Clear all invalid elements, ie. nans, zeros and weights > 1e15
+    invalid = np.isnan(weighted_data) | (weighted_data == 0) | (flagged_weights > 1e15)
+    weighted_data = np.where(invalid, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = np.where(invalid, flagged_weights.dtype.type(0), flagged_weights)
+
     av_weights = np.add.reduceat(flagged_weights, inc_array, axis=-3)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        av_data = np.add.reduceat(weighted_data, inc_array, axis=-3) / av_weights
-    n_flags = np.add.reduceat(asbool(flags), inc_array, axis=-3)
+    # suppress divide by zero errors by replacing them with ones
+    # all elements with zero weight have been set to zero in weighted_data
+    av_weights_no_zeros = np.where(av_weights == 0, av_weights.dtype.type(1), av_weights)
+    av_data = np.add.reduceat(weighted_data, inc_array, axis=-3) / av_weights_no_zeros
+
+    # Update flags to include invalid elements
+    n_flags = np.add.reduceat(~asbool(flagged_weights), inc_array, axis=-3)
     n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=-3)
     av_flags = n_flags >= n_samples * threshold
 
@@ -1240,7 +1246,8 @@ def calc_rms(x, weights, axis):
     w_square = x**2 * weights_zero
     sum_w_square = np.nansum(w_square, axis)
     sum_weights = np.sum(weights_zero, axis)
-    rms = np.sqrt(sum_w_square / sum_weights)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rms = np.sqrt(sum_w_square / sum_weights)
     return rms
 
 
@@ -1349,6 +1356,7 @@ def snr_antenna(data, weights, bls_lookup, flag_ants=None):
 
         # calc snr across chans and antenna axis
         rms = calc_rms(angle_ant, weights_ant, axis=(1, -1))
-        snr[..., a] = 1. / rms
+        with np.errstate(divide='ignore', invalid='ignore'):
+            snr[..., a] = 1. / rms
 
     return snr
