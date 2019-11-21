@@ -18,7 +18,7 @@ from . import solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
-from .calprocs import interpolate_bandpass
+from .calprocs import interpolate_bandpass, F_cal
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +397,33 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
     return solutions.CalSolution('B', b_interp, b_soln.time, b_soln.target)
 
 
+def scale_solution(soln_stores, g_soln):
+    """
+    Scales the gains stored in g_soln by square root of a measured
+    scaling factor derived from calprocs.F_cal.
+
+    Parameters:
+    -----------
+    scaled_solutions : :class:`CalSolutionStore`
+        Dictionary of :class:`CalSolutionStore` containing G_FLUX, G_SCALE keys
+    g_soln : :class:`CalSolutions`
+        G solutions to be scaled (hopefully from a single target).
+    """
+
+    # Create a temporary solution store with the g_soln
+    temp_store = solutions.CalSolutionStore('G')
+    save_solution(None, None, temp_store, g_soln)
+    product_F, _ = F_cal(soln_stores['G_FLUX'], temp_store)
+    scale_factor = product_F.get(g_soln.target)
+    # Only save to G_SCALE if we got an F
+    if scale_factor is not None:
+        scale_factor = np.sqrt(scale_factor)
+        scaled_soln = g_soln.values / scale_factor
+        g_soln_scaled = solutions.CalSolutions('G', scaled_soln,
+                                               g_soln.times, g_soln.target)
+        save_solution(None, None, soln_stores['G_SCALE'], g_soln_scaled)
+
+
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     """
     Pipeline calibration
@@ -710,18 +737,24 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # so they can be applied to target/calibrator data without propagating NaNs
             solution_stores['B'].add(b_soln_nonans)
             # --------------------------------------------------------------
-            # G solution with flux model for BPCals only if there is a model
+            # G solution with flux model for BPCals
+            logger.info('Solving for G on bandpass calibrator %s', target_name)
+            # Only K and B for bandpass G
+            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
+            dumps_per_solint = scan_slice.stop - scan_slice.start
+            g_solint = dumps_per_solint * dump_period
+            g_soln = shared_solve(ts, parameters, None,
+                                  parameters['g_bchan'], parameters['g_echan'],
+                                  s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
+
             if s.model is not None:
-                logger.info('Solving for G on bandpass calibrator %s', target_name)
-                # Only K and B for bandpass G
-                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
-                dumps_per_solint = scan_slice.stop - scan_slice.start
-                g_solint = dumps_per_solint * dump_period
-                g_soln = shared_solve(ts, parameters, None,
-                                      parameters['g_bchan'], parameters['g_echan'],
-                                      s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
-                # Save solution to solution store
+                # Save solution to solution stores G_FLUX & G_SCALE (for the report)
+                # only if there is a model.
                 save_solution(None, None, solution_stores['G_FLUX'], g_soln)
+            elif 'gaincal' not in taglist:
+                # If there is no model and the target isn't a gaincal as well
+                # scale the gain and save to G_SCALE
+                scale_solution(solution_stores, g_solns)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
@@ -736,9 +769,12 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # (ignore ts g_solint for now)
             dumps_per_solint = np.ceil((scan_slice.stop - scan_slice.start - 1) / 2.0)
             g_solint = dumps_per_solint * dump_period
-            shared_solve(ts, parameters, solution_stores['G'],
-                         parameters['g_bchan'], parameters['g_echan'],
-                         s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply, use_model=False)
+            g_solns = shared_solve(ts, parameters, solution_stores['G'],
+                                   parameters['g_bchan'], parameters['g_echan'],
+                                   s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply,
+                                   use_model=False)
+            # Scale the gains for flux density and store in G_SCALE solution store
+            scale_solution(solution_stores, g_solns)
 
         # Apply calibration
         cal_tags = ['gaincal', 'target', 'bfcal', 'bpcal', 'delaycal']
@@ -748,16 +784,18 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            # Only apply G solutions from target for 'bpcal' and 'gaincal'
-            if 'bpcal' in taglist:
-                # 'bpcal' G gains are in G_FLUX
+            if 'bfcal' in taglist:
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+                                                    time_range=[t0, t1])
+            elif 'bpcal' in taglist and solution_stores['G_FLUX'].has_target(target_name):
                 solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G_FLUX'],
                                                     time_range=[t0, t1], G_target=target_name)
-            elif 'gaincal' in taglist:
-                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+            elif solution_stores['G_SCALE'].has_target(target_name):
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G_SCALE'],
                                                     time_range=[t0, t1], G_target=target_name)
             else:
-                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+                # Interpolate to the target across all the available G_SCALE solutions
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G_SCALE'],
                                                     time_range=[t0, t1])
 
             s.apply_inplace(solns_to_apply)

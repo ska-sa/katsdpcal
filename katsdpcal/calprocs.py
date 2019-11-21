@@ -768,6 +768,73 @@ def solint_from_nominal(solint, dump_period, num_times):
     return dumps_per_solint * dump_period, dumps_per_solint
 
 
+def F_cal(scaled_solns, unscaled_solns):
+    """
+    Take the ratio between the median over time of solutions scaled
+    to 1.0 Jy (unscaled_solns) per target and the median over time of
+    solutions that were scaled by a flux density model (scaled_solns).
+    The median of this ratio across all antennas and polarisations
+    for each target is the factor which scales the unscaled solutions
+    from 1.0 Jy to the estimated flux density of the target. The square
+    of the ratio is the measured flux density of the target which is
+    logged and returned.
+
+    This method of flux calibration closely follows that used by
+    the 'fluxscale' task in CASA and described at:
+    https://casa.nrao.edu/docs/TaskRef/fluxscale-task.html
+
+    Parameters
+    ----------
+    scaled_solns    : :class:`CalSolutionStore`
+        A solution store containing gains that have been scaled using
+        a prior flux density model.
+    unscaled_solns  : :class:`CalSolutionStore`
+        A solution store containing gains that have been scaled to 1.0 Jy.
+
+    Returns
+    -------
+    (dict, dict)
+        keys: (str) Target name in unscaled solutions
+        values: (float) Its measured flux density and error
+    """
+
+    scaled_amp = [np.abs(soln.values) for soln in scaled_solns._values]
+    targets = set([soln.target for soln in unscaled_solns._values])
+
+    # If we don't have solutions from a model we can't do any scaling.
+    if len(scaled_amp) == 0:
+        return {}, {}
+
+    # Get the median of all of the scaled amplitudes over time
+    median_scaled_amp = np.nanmedian(scaled_amp, axis=0)
+    product_F = {}
+    product_F_SNR = {}
+    for targ in targets:
+        targ_solns = unscaled_solns.get_target(targ)
+        median_targ_amp = np.nanmedian(np.abs(targ_solns.values), axis=0)
+        # Ensure the time median of the scaled amplitudes and
+        # target amplitudes are the same shape so they can be divided safely
+        if median_scaled_amp.shape != median_targ_amp.shape:
+            logger.warn('Gains for flux calibrators and {} have different shape. '
+                        '{} != {}. Skipping flux calibration on {}.'
+                        .format(targ, median_scaled_amp.shape, median_targ_amp.shape, targ))
+        else:
+            soln_ratio = median_targ_amp / median_scaled_amp
+            flux_scale = np.nanmedian(soln_ratio)
+            SJy = flux_scale ** 2.0
+
+            sigma_ratio = np.nanstd(soln_ratio)
+
+            # Standard error of the median
+            error_ratio = 1.253 * sigma_ratio / np.sqrt(np.count_nonzero(~np.isnan(soln_ratio)))
+            error_SJy = 2. * SJy * error_ratio
+
+            logger.info('Measured flux density of {}: {:.3f} +/- {:.3f} Janskys'
+                        .format(targ, SJy, error_SJy))
+            product_F[targ] = SJy
+            product_F_SNR[targ] = error_SJy
+    return product_F, product_F_SNR
+
 # --------------------------------------------------------------------------------------------------
 # --- Baseline ordering
 # --------------------------------------------------------------------------------------------------
@@ -1352,3 +1419,4 @@ def snr_antenna(data, weights, bls_lookup, flag_ants=None):
         snr[..., a] = 1. / rms
 
     return snr
+

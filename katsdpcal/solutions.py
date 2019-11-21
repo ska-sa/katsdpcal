@@ -51,7 +51,7 @@ class CalSolutionStore:
 
     This stores multiple solutions (in time), but unlike
     :class:`CalSolutions`, each solution is stored separately, and one can query
-    all solutions from a time range.
+    all solutions from a time range or all solutions by target.
     """
     def __init__(self, soltype):
         self.soltype = soltype
@@ -97,6 +97,13 @@ class CalSolutionStore:
             values = np.array([])
         times = np.array([part.time for part in parts])
         return CalSolutions(self.soltype, values, times, soltarget=target_name)
+
+    def has_target(self, target_name):
+        """Return True if solutions with target_name are
+        in the store.
+        """
+        targets = set([value.target for value in self._values])
+        return target_name in targets
 
 
 class CalSolutionStoreLatest:

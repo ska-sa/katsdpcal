@@ -1062,7 +1062,8 @@ class Pipeline(Task):
             'B': solutions.CalSolutionStoreLatest('B'),
             'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
             'G': solutions.CalSolutionStore('G'),
-            'G_FLUX': solutions.CalSolutionStore('G')
+            'G_FLUX': solutions.CalSolutionStore('G'),
+            'G_SCALE': solutions.CalSolutionStore('G')
         }
 
     def get_sensors(self):
@@ -1163,6 +1164,7 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
+                    self.get_measured_flux(event.capture_block_id)
                     self.master_queue.put(
                         ObservationStateEvent(event.capture_block_id, State.REPORTING))
                     self.pipeline_sender_queue.put(event)
@@ -1183,6 +1185,16 @@ class Pipeline(Task):
                                            self.solution_stores, self.l0_name, self.sensors)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
+
+    def get_measured_flux(self, capture_block_id):
+        # Get the flux densities of the gain calibrators
+        measured_flux, measured_flux_STD = calprocs.F_cal(self.solution_stores['G_FLUX'],
+                                                          self.solution_stores['G'])
+        # Save it to telstate
+        ts_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
+        ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
+        ts_cb_cal.add('measured_flux_STD', measured_flux_STD, immutable=True)
+        logger.info('Saved flux densities of gain calibrators to telstate.')
 
 
 @attr.s
