@@ -314,7 +314,8 @@ class Scan:
     # Calibration solution functions
 
     @logsolutiontime
-    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], calc_snr=True, use_model=True, **kwargs):
+    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[],
+              calc_snr=True, use_model=True, **kwargs):
         """
         Solve for gain
 
@@ -434,7 +435,8 @@ class Scan:
         # Set soln to NaN for antennas where the noise diode didn't fire
         if nd is not None:
             bcross_soln = np.where(~nd, np.nan, bcross_soln)
-        return CalSolution('BCROSS_DIODE', bcross_soln, np.average(self.timestamps), self.target.name)
+        return CalSolution('BCROSS_DIODE', bcross_soln,
+                           np.average(self.timestamps), self.target.name)
 
     @logsolutiontime
     def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, auto_ant=False):
