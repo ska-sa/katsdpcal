@@ -66,5 +66,3 @@ class TestCalSolutionStore(TestCalSolutionStoreLatest):
         self.assertEqual(len(solns.values), 0)
         self.assertEqual(len(solns.times), 0)
         self.assertEqual(solns.target, self.sol2.target)
-
-        

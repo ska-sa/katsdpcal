@@ -754,7 +754,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             elif 'gaincal' not in taglist:
                 # If there is no model and the target isn't a gaincal as well
                 # scale the gain and save to G_SCALE
-                scale_solution(solution_stores, g_solns)
+                scale_solution(solution_stores, g_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):

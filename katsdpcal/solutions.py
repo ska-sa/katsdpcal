@@ -16,7 +16,6 @@ class CalSolution:
         self.target = soltarget
         self.snr = solsnr
 
-
     def __str__(self):
         """String representation of calibration solution to help identify it."""
         # Obtain human-friendly timestamp representing the centre of solutions

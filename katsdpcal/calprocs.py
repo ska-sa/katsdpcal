@@ -835,6 +835,7 @@ def F_cal(scaled_solns, unscaled_solns):
             product_F_SNR[targ] = error_SJy
     return product_F, product_F_SNR
 
+
 # --------------------------------------------------------------------------------------------------
 # --- Baseline ordering
 # --------------------------------------------------------------------------------------------------
@@ -1419,4 +1420,3 @@ def snr_antenna(data, weights, bls_lookup, flag_ants=None):
         snr[..., a] = 1. / rms
 
     return snr
-
