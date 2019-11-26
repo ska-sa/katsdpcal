@@ -7,6 +7,8 @@ import numpy as np
 
 from katsdpcal import calprocs
 
+from katsdpcal.solutions import CalSolution, CalSolutionStore
+
 
 def unit(value):
     return value / np.abs(value)
@@ -438,6 +440,57 @@ class TestKAnt(unittest.TestCase):
         expected_kant[1, 1, 3] = np.exp(2j * np.pi * (20 + (n - 1) / 0.4))
 
         np.testing.assert_equal(kant, expected_kant)
+
+
+class TestF_cal(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.F_cal'"""
+    def Gsolution_store(self, targs, times, gains):
+        store = CalSolutionStore('G')
+        for targ, tm, gain in zip(targs, times, gains):
+            soln = CalSolution('G', gain, tm, targ)
+            store.add(soln)
+        return store
+
+    def test(self):
+        f_gains = np.random.normal(10.0, 0.001, (4, 2, 1000)) + 0j
+        g_gains = np.random.normal(10.0, 1.0, (8, 2, 1000)) + 0j
+        expect_f = 1.0
+        # 0.0410 is empirical
+        expect_f_std = 0.04101 * 2 * 1.253 / np.sqrt((2 * 1000))
+        times = np.linspace(0.1, 0.2, 4)
+        f_store = self.Gsolution_store(['flux'] * 4, times, f_gains)
+        times = np.linspace(0.3, 0.8, 8)
+        g_store = self.Gsolution_store(['gains'] * 8, times, g_gains)
+        prod_f, prod_f_std = calprocs.F_cal(f_store, g_store)
+        self.assertTrue('gains' in prod_f)
+        self.assertTrue('gains' in prod_f_std)
+        np.testing.assert_almost_equal(prod_f['gains'], expect_f, decimal=2)
+        np.testing.assert_almost_equal(prod_f_std['gains'], expect_f_std, decimal=2)
+
+        # Multiple targets
+        g_gains2 = np.random.normal(8.0, 0.001, (4, 2, 1000)) + \
+            1j * np.random.normal(0.01, 0.001, (4, 2, 1000))
+        expect_f2 = (8.0**2 + 0.1**2) / (10.**2)
+        times = np.linspace(0.3, 0.8, 12)
+        g_store = self.Gsolution_store(['gains'] * 8 + ['gains2'] * 4, times,
+                                       np.vstack([g_gains, g_gains2]))
+        prod_f, _ = calprocs.F_cal(f_store, g_store)
+        self.assertTrue('gains' in prod_f)
+        self.assertTrue('gains2' in prod_f)
+        np.testing.assert_almost_equal(prod_f['gains'], expect_f, decimal=2)
+        np.testing.assert_almost_equal(prod_f['gains2'], expect_f2, decimal=2)
+
+        # Mismatched shapes
+        single_g = np.ones((2, 10)) + 1j * np.ones((2, 10))
+        g_store.add(CalSolution('G', single_g, 1.0, 'single_g'))
+        self.assertTrue('gains' in prod_f)
+        self.assertTrue('gains2' in prod_f)
+        self.assertFalse('single_g' in prod_f)
+
+        # No F Gains means no solutions
+        f_store = self.Gsolution_store('flux', [], [])
+        prod_f, _ = calprocs.F_cal(f_store, g_store)
+        self.assertFalse(prod_f)
 
 
 class TestAddModelVis(unittest.TestCase):
