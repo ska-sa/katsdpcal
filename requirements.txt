@@ -37,6 +37,7 @@ pillow                  # for bokeh
 psutil==5.4.3           # for distributed
 pyephem                 # for katpoint
 pygelf                  # for katsdpservices
+pyjwt                   # for katdal
 python-dateutil         # for pandas, matplotlib, bokeh
 python-lzf              # for katdal
 pytz                    # for pandas, matplotlib
