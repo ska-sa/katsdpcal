@@ -17,6 +17,8 @@ from katdal.applycal import complex_interp
 
 logger = logging.getLogger(__name__)
 
+# threshold for bad/low weights
+HIGH_WEIGHT = 1e15
 # --------------------------------------------------------------------------------------------------
 # --- Modelling procedures
 # --------------------------------------------------------------------------------------------------
@@ -1042,6 +1044,14 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
 # --------------------------------------------------------------------------------------------------
 
 
+def divide_weights(weighted_data, weights):
+    """Divide weighted_data by weights, suppress divide by zero errors """
+    # Suppress divide by zero warnings by replacing zeros with ones
+    # all zero weight data is assumed to be set to zero in weighted_data
+    weights_nozero = np.where(weights == 0, weights.dtype.type(1), weights)
+    return weighted_data / weights_nozero
+
+
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     """
     Perform weighted average of data, flags and weights,
@@ -1074,23 +1084,20 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     chanav = np.int(chanav)
     inc_array = list(range(0, data.shape[-3], chanav))
 
-    # suppress any comparison with nan errors by replacing them with zeros
+    # suppress any comparison-with-nan errors by replacing them with zeros
     flagged_weights = np.where(asbool(flags) | np.isnan(weights), weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
 
-    # Clear all invalid elements, ie. nans, zeros and weights > 1e15
-    invalid = np.isnan(weighted_data) | (weighted_data == 0) | (flagged_weights > 1e15)
+    # Clear all invalid elements, ie. nans, zeros and high weights
+    invalid = np.isnan(weighted_data) | (weighted_data == 0) | (flagged_weights > HIGH_WEIGHT)
     weighted_data = np.where(invalid, weighted_data.dtype.type(0), weighted_data)
     flagged_weights = np.where(invalid, flagged_weights.dtype.type(0), flagged_weights)
 
     av_weights = np.add.reduceat(flagged_weights, inc_array, axis=-3)
-    # suppress divide by zero errors by replacing them with ones
-    # all elements with zero weight have been set to zero in weighted_data
-    av_weights_no_zeros = np.where(av_weights == 0, av_weights.dtype.type(1), av_weights)
-    av_data = np.add.reduceat(weighted_data, inc_array, axis=-3) / av_weights_no_zeros
+    av_data = divide_weights(np.add.reduceat(weighted_data, inc_array, axis=-3), av_weights)
 
     # Update flags to include invalid elements
-    n_flags = np.add.reduceat(~asbool(flagged_weights), inc_array, axis=-3)
+    n_flags = np.add.reduceat(flagged_weights == 0, inc_array, axis=-3)
     n_samples = np.add.reduceat(np.ones(flagged_weights.shape), inc_array, axis=-3)
     av_flags = n_flags >= n_samples * threshold
 
@@ -1291,10 +1298,7 @@ def poor_antenna_flags(data, weights, bls_lookup, threshold):
         rms_valid = np.where(~np.isfinite(rms), 0, rms)
         n_bad = np.sum(rms_valid > threshold, axis=-1, keepdims=True)
         n_valid_bls = np.sum(np.isfinite(rms), axis=-1, keepdims=True)
-
-        # avoid divide by zero error message
-        n_valid_bls = np.where(n_valid_bls == 0, 1, n_valid_bls)
-        flag = (n_bad / n_valid_bls) > 0.8
+        flag = divide_weights(n_bad, n_valid_bls) > 0.8
         ant_flags[..., a_bls] += flag
 
     # broadcast flags to shape of data

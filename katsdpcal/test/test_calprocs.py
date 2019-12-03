@@ -250,14 +250,11 @@ class TestWavgFullF(unittest.TestCase):
         self.data = np.ones(shape, np.complex64)
         self.weights = np.ones(shape, np.float32)
         self.flags = np.zeros(shape, np.uint8)
-        # Put in some NaNs and flags to check that they're handled correctly
-        self.data[0, :, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 6, 7, 8, 9]
-        self.weights[0, :, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 4, 5, 6]
+        # Put in some NaNs, zeros, high weights and flags to check that they're handled correctly
+        self.data[0, :, 1, 1] = [1 + 1j, 2j, np.nan, 4j, np.nan, 5, 0, 7, 8, 9]
+        self.weights[0, :, 1, 1] = [np.nan, 1, 0, 1, 0, 2, 3, 2e19, 5, 6]
         self.flags[0, :, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
-        # Put in some zeros and high weights and check they're handled correctly
-        self.data[3, :, 1, 1] = [1 + 1j, 2j, np.nan, 4j, 2, 5, 0, 7, 8, 9]
-        self.weights[3, :, 1, 1] = [np.nan, 1, 0, 1, 2e19, 2, 3, 4, 5, 6]
-        self.flags[3, :, 1, 1] = [4, 0, 0, 4, 0, 0, 0, 0, 4, 4]
+
         # A completely NaN column and a completely flagged column => zeros in output
         self.data[1, :, 2, 2] = np.nan
         self.flags[2, :, 0, 3] = 4
@@ -271,29 +268,25 @@ class TestWavgFullF(unittest.TestCase):
         expected_weights = np.ones(out_shape, np.float32) * 4
         expected_weights[:, 2, ...] = 2    # Only two samples added together
         expected_flags = np.zeros(out_shape, np.bool_)
-        expected_data[0, :, 1, 1] = [2j, 56.0 / 9.0, 0j]
-        expected_weights[0, :, 1, 1] = [1, 9, 0]
+        expected_data[0, :, 1, 1] = [2j, 5, 0j]
+        expected_weights[0, :, 1, 1] = [1, 2, 0]
         expected_flags[0, :, 1, 1] = [False, False, True]
 
-        expected_data[3, :, 1, 1] = [2j, 38 / 6, 0j]
-        expected_weights[3, :, 1, 1] = [1, 6, 0]
-        expected_flags[3, :, 1, 1] = [False, False, True]
+        expected_data[1, :, 2, 2] = 0j
+        expected_weights[1, :, 2, 2] = 0
+        expected_flags[1, :, 2, 2] = True
 
-        expected_data[1, :, 2, 2] = [0j, 0j, 0j]
-        expected_weights[1, :, 2, 2] = [0, 0, 0]
-        expected_flags[1, :, 2, 2] = [True, True, True]
-
-        expected_data[2, :, 0, 3] = 0
+        expected_data[2, :, 0, 3] = 0j
         expected_weights[2, :, 0, 3] = 0
         expected_flags[2, :, 0, 3] = True
 
-        expected_data[1, :, 2, 3] = 0
+        expected_data[1, :, 2, 3] = 0j
         expected_weights[1, :, 2, 3] = 0
         expected_flags[1, :, 2, 3] = True
 
-        expected_data[2, :, 0, 4] = [0j, 0j, 0j]
-        expected_weights[2, :, 0, 4] = [0, 0, 0]
-        expected_flags[2, :, 0, 4] = [True, True, True]
+        expected_data[2, :, 0, 4] = 0j
+        expected_weights[2, :, 0, 4] = 0
+        expected_flags[2, :, 0, 4] = True
 
         out_data, out_flags, out_weights = calprocs.wavg_full_f(
             self.data, self.flags, self.weights, 4)

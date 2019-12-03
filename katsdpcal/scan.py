@@ -414,15 +414,12 @@ class Scan:
         # Average the HV and complex conjugate of VH together per antenna
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
         av_weights = da.sum(flagged_weights, axis=-2)
-        # supress divide by zero errors by replacing zeros with ones
-        # visibilities with zero weight have already been set to zero
-        av_weights_no_zeros = da.where(av_weights == 0, av_weights.dtype.type(1), av_weights)
-        av_vis = (weighted_data[:, 0, :] +
-                  np.conjugate(weighted_data[:, 1, :]) /
-                  av_weights_no_zeros)
+        av_vis = calprocs_dask.divide_weights(weighted_data[:, 0, :]
+                                              + np.conjugate(weighted_data[:, 1, :]),
+                                              av_weights)
 
         # Set invalid solutions to nan, the phase-up script expects this
-        av_vis = da.where(av_vis == 0j, av_weights.dtype.type(np.nan), av_vis)
+        av_vis = da.where(av_vis == 0j, av_vis.dtype.type(np.nan), av_vis)
         # Set phase in the second polarisation axis to zero
         bcross_phase = da.angle(av_vis)
         bcross_phase = da.stack([bcross_phase, np.zeros_like(bcross_phase)], axis=1)
@@ -491,12 +488,9 @@ class Scan:
         # average across all baselines and solve for a single KCROSS
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
         av_weights = da.sum(flagged_weights, axis=-2)
-        # supress divide by zero errors by replacing zeros with ones
-        # visibilities with zero weight have already been set to zero
-        av_weights_no_zeros = da.where(av_weights == 0, av_weights.dtype.type(1), av_weights)
-        av_vis = (weighted_data[:, 0, :] +
-                  np.conjugate(weighted_data[:, 1, :]) /
-                  av_weights_no_zeros)
+        av_vis = calprocs_dask.divide_weights(weighted_data[:, 0, :] +
+                                              np.conjugate(weighted_data[:, 1, :]),
+                                              av_weights)
 
         if not auto_ant:
             av_flags = da.any(av_flags, axis=-2)
