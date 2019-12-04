@@ -17,7 +17,7 @@ from katdal.applycal import complex_interp
 
 logger = logging.getLogger(__name__)
 
-# threshold for bad/low weights
+# threshold for bad/high weights
 HIGH_WEIGHT = 1e15
 # --------------------------------------------------------------------------------------------------
 # --- Modelling procedures
