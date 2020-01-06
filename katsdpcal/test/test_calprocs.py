@@ -415,9 +415,9 @@ class TestNormaliseComplex(unittest.TestCase):
         # Data with NaN weights should be ignored in normalisation factor calculation
         weights[:, 0, 0] = [1, 0, 2, np.nan, 1, 5]
         expected = self.expected
-        expected_angle = -1j * np.pi / 4 * (2 / 5)
+        expected_angle = -1j * np.pi / 8
         expected_amp = 4 / (5 * np.sqrt(2))
-        weights[:, 0, 0] = expected_amp * np.exp(expected_angle)
+        expected[:, 0, 0] = expected_amp * np.exp(expected_angle)
 
         # check for all axes
         for i in [0, 1, 2, -1, -2, -3]:
