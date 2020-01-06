@@ -10,6 +10,7 @@ from . import lsm_dir
 from . import pipelineprocs as pp
 
 import numpy as np
+import dask.array as da
 
 from docutils.core import publish_file
 
@@ -615,7 +616,7 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Get averaged spectrum for gain calibrated targets
-        av_data, av_flags, av_weights = av_corr['{0}_g_spec'.format(target_name)][0]
+        av_data, av_flags, av_weights = da.compute(*av_corr['{0}_g_spec'.format(target_name)][0])
         av_data[av_flags] = np.nan
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
