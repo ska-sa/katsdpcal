@@ -526,6 +526,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 parameters['refant_index'] = best_refant_index
                 parameters['refant'] = parameters['antenna_names'][best_refant_index]
                 logger.info('Reference antenna set to %s', parameters['refant'])
+                sensors['pipeline-reference-antenna'].set_value(
+                    parameters['refant'], timestamp=s.timestamps[0])
                 s.refant = best_refant_index
 
             # Add the reference antenna to telstate for each new cbid

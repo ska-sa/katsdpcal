@@ -1082,6 +1082,9 @@ class Pipeline(Task):
                 'number of times the pipeline threw an exception (prometheus: counter)',
                 default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
             aiokatcp.Sensor(
+                str, 'pipeline-reference-antenna',
+                'Reference antenna selected by the pipeline'),
+            aiokatcp.Sensor(
                 float, 'pipeline-start-flag-fraction-auto-pol',
                 'Starting flag fraction prior to RFI detection: auto-pol (prometheus: Gauge)'),
             aiokatcp.Sensor(
