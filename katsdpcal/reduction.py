@@ -147,7 +147,8 @@ def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=Non
         if X.startswith('G'):
             # get G values for a two hour range on either side of target scan
             t0, t1 = time_range
-            soln = solution_stores[X].get_range(t0 - 2. * 60. * 60., t1 + 2. * 60. * 60, target=G_target)
+            soln = solution_stores[X].get_range(t0 - 2. * 60. * 60.,
+                                                t1 + 2. * 60. * 60, target=G_target)
         else:
             # get most recent solution value
             soln = solution_stores[X].latest
