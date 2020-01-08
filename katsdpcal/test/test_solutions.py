@@ -51,17 +51,18 @@ class TestCalSolutionStore(TestCalSolutionStoreLatest):
         np.testing.assert_array_equal(soln.times, [1234.0, 2345.0])
         self.assertIsNone(soln.target)
 
-    def test_get_target(self):
+    def test_get_range_with_target(self):
         self.store.add(self.sol1)
+        self.store.add(self.sol3)
         self.store.add(self.sol4)
-        solns = self.store.get_target(self.sol1.target)
+        solns = self.store.get_range(1234.0, 4567.0, target=self.sol1.target)
         self.assertEqual(solns.soltype, 'G')
         expect_sol1 = np.repeat(np.arange(10)[np.newaxis], 2, axis=0)
         np.testing.assert_array_equal(solns.values, expect_sol1)
         np.testing.assert_array_equal(solns.times, [1234.0, 4567.0])
         self.assertEqual(solns.target, self.sol1.target)
         # Get a nonexistent target
-        solns = self.store.get_target(self.sol2.target)
+        solns = self.store.get_range(1234.0, 2345.0, target=self.sol2.target)
         self.assertEqual(solns.soltype, 'G')
         self.assertEqual(len(solns.values), 0)
         self.assertEqual(len(solns.times), 0)

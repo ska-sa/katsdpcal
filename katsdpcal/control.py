@@ -23,6 +23,7 @@ from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
 import katdal.datasources
 from katdal import SpectralWindow
+from katsdptelstate import ImmutableKeyError
 
 import attr
 import numba
@@ -1164,7 +1165,7 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
-                    self.get_measured_flux(event.capture_block_id)
+                    self.get_measured_flux(event)
                     self.master_queue.put(
                         ObservationStateEvent(event.capture_block_id, State.REPORTING))
                     self.pipeline_sender_queue.put(event)
@@ -1186,14 +1187,19 @@ class Pipeline(Task):
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
-    def get_measured_flux(self, capture_block_id):
+    def get_measured_flux(self, event):
         # Get the flux densities of the gain calibrators
         measured_flux, measured_flux_STD = calprocs.F_cal(self.solution_stores['G_FLUX'],
-                                                          self.solution_stores['G'])
+                                                          self.solution_stores['G'],
+                                                          event.start_time, event.end_time)
         # Save it to telstate
-        ts_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
-        ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
-        ts_cb_cal.add('measured_flux_STD', measured_flux_STD, immutable=True)
+        ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+        # Only save the key if another process hasn't done it already
+        try:
+            ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
+            ts_cb_cal.add('measured_flux_STD', measured_flux_STD, immutable=True)
+        except ImmutableKeyError:
+            pass
         logger.info('Saved flux densities of gain calibrators to telstate.')
 
 

@@ -71,31 +71,21 @@ class CalSolutionStore:
         else:
             return None
 
-    def get_range(self, start_time, end_time):
+    def get_range(self, start_time, end_time, target=None):
         """Get the solutions in the interval [start_time, end_time].
+        Optionally only return solutions for a given target.
 
         The returned values are combined into a :class:`CalSolutions`.
         """
         parts = list(self._values.irange_key(start_time, end_time))
+        if target is not None:
+            parts = [part for part in parts if part.target == target]
         if len(parts) > 0:
             values = np.stack([part.values for part in parts])
         else:
             values = np.array([])
         times = np.array([part.time for part in parts])
-        return CalSolutions(self.soltype, values, times)
-
-    def get_target(self, target_name):
-        """Get all solutions with a given target_name.
-
-        Return them in a :class:`CalSolutions`.
-        """
-        parts = [part for part in self._values if part.target == target_name]
-        if len(parts) > 0:
-            values = np.stack([part.values for part in parts])
-        else:
-            values = np.array([])
-        times = np.array([part.time for part in parts])
-        return CalSolutions(self.soltype, values, times, soltarget=target_name)
+        return CalSolutions(self.soltype, values, times, soltarget=target)
 
     def has_target(self, target_name):
         """Return True if solutions with target_name are

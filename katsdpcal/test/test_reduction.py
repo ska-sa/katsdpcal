@@ -74,6 +74,7 @@ class TestSharedSolve(unittest.TestCase):
             self.assertEqual(results[i].soltype, 'K')
             np.testing.assert_array_equal(results[i].values, expected)
             self.assertEqual(results[i].time, 12345.5)
+            self.assertEqual(results[i].target, 'Test')
 
     def test_cal_solution_named(self):
         self._test_cal_solution('K')

@@ -768,7 +768,7 @@ def solint_from_nominal(solint, dump_period, num_times):
     return dumps_per_solint * dump_period, dumps_per_solint
 
 
-def F_cal(scaled_solns, unscaled_solns):
+def F_cal(scaled_solns, unscaled_solns, start_time, end_time):
     """
     Take the ratio between the median over time of solutions scaled
     to 1.0 Jy (unscaled_solns) per target and the median over time of
@@ -790,6 +790,10 @@ def F_cal(scaled_solns, unscaled_solns):
         a prior flux density model.
     unscaled_solns  : :class:`CalSolutionStore`
         A solution store containing gains that have been scaled to 1.0 Jy.
+    start_time      : float
+        Start time of solutions to use.
+    end_time        : float
+        End time of solutions to use.
 
     Returns
     -------
@@ -798,7 +802,7 @@ def F_cal(scaled_solns, unscaled_solns):
         values: (float) Its measured flux density and error
     """
 
-    scaled_amp = [np.abs(soln.values) for soln in scaled_solns._values]
+    scaled_amp = np.abs(scaled_solns.get_range(start_time, end_time).values)
     targets = set([soln.target for soln in unscaled_solns._values])
 
     # If we don't have solutions from a model we can't do any scaling.
@@ -810,27 +814,26 @@ def F_cal(scaled_solns, unscaled_solns):
     product_F = {}
     product_F_SNR = {}
     for targ in targets:
-        targ_solns = unscaled_solns.get_target(targ)
+        targ_solns = unscaled_solns.get_range(start_time, end_time, target=targ)
         median_targ_amp = np.nanmedian(np.abs(targ_solns.values), axis=0)
         # Ensure the time median of the scaled amplitudes and
         # target amplitudes are the same shape so they can be divided safely
         if median_scaled_amp.shape != median_targ_amp.shape:
-            logger.warn('Gains for flux calibrators and {} have different shape. '
-                        '{} != {}. Skipping flux calibration on {}.'
-                        .format(targ, median_scaled_amp.shape, median_targ_amp.shape, targ))
+            logger.warn('Gains for flux calibrators and %s have different shape. '
+                        '%s != %s. Skipping flux calibration on %s.'
+                        % (targ, str(median_scaled_amp.shape), str(median_targ_amp.shape), targ))
         else:
             soln_ratio = median_targ_amp / median_scaled_amp
             flux_scale = np.nanmedian(soln_ratio)
             SJy = flux_scale ** 2.0
 
             sigma_ratio = np.nanstd(soln_ratio)
-
             # Standard error of the median
             error_ratio = 1.253 * sigma_ratio / np.sqrt(np.count_nonzero(~np.isnan(soln_ratio)))
             error_SJy = 2. * SJy * error_ratio
 
-            logger.info('Measured flux density of {}: {:.3f} +/- {:.3f} Janskys'
-                        .format(targ, SJy, error_SJy))
+            logger.info('Measured flux density of %s: %.3f +/- %.3f Janskys'
+                        % (targ, SJy, error_SJy))
             product_F[targ] = SJy
             product_F_SNR[targ] = error_SJy
     return product_F, product_F_SNR
