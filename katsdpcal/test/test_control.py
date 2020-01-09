@@ -881,6 +881,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         refant_name = telstate_cb_cal['refant']
         assert_not_equal(self.antennas[worst_index], refant_name)
+        await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
 
     def prepare_heaps(self, rs, n_times,
                       vis=None, weights=None, weights_channel=None, flags=None):
