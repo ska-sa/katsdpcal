@@ -715,7 +715,10 @@ class TestCalDeviceServer(asynctest.TestCase):
         ret_G, ret_G_ts = cal_product_G[0]
         assert_equal(np.complex64, ret_G.dtype)
         assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
-        ret_BG = ret_B * ret_G[np.newaxis, :, :]
+        # Scale the returned G by the sqrt of the measured flux density of the model
+        ret_F = telstate_cb_cal['measured_flux']
+        ret_F_scale = np.sqrt(ret_F.get(target.name, 1.0))
+        ret_BG = ret_B * ret_G[np.newaxis, :, :] / ret_F_scale
         BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
         # cal puts NaNs in B in the channels for which it applies the static
         # RFI mask, interpolate across these

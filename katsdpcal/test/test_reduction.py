@@ -63,7 +63,7 @@ class TestSharedSolve(unittest.TestCase):
             values = np.arange(123)
             values[0] = bchan
             values[1] = echan
-            return CalSolution(name or 'K', values, 12345.5)
+            return CalSolution(name or 'K', values, 12345.5, 'Test')
 
         results = self.call(name, self.bchan, self.echan, solver)
         expected = np.arange(123)
@@ -74,6 +74,7 @@ class TestSharedSolve(unittest.TestCase):
             self.assertEqual(results[i].soltype, 'K')
             np.testing.assert_array_equal(results[i].values, expected)
             self.assertEqual(results[i].time, 12345.5)
+            self.assertEqual(results[i].target, 'Test')
 
     def test_cal_solution_named(self):
         self._test_cal_solution('K')

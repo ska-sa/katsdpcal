@@ -23,6 +23,7 @@ from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
 import katdal.datasources
 from katdal import SpectralWindow
+from katsdptelstate import ImmutableKeyError
 
 import attr
 import numba
@@ -1061,7 +1062,9 @@ class Pipeline(Task):
             'KCROSS_DIODE': solutions.CalSolutionStoreLatest('KCROSS_DIODE'),
             'B': solutions.CalSolutionStoreLatest('B'),
             'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
-            'G': solutions.CalSolutionStore('G')
+            'G': solutions.CalSolutionStore('G'),
+            'G_FLUX': solutions.CalSolutionStore('G'),
+            'G_SCALE': solutions.CalSolutionStore('G')
         }
 
     def get_sensors(self):
@@ -1165,6 +1168,7 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
+                    self.get_measured_flux(event)
                     self.master_queue.put(
                         ObservationStateEvent(event.capture_block_id, State.REPORTING))
                     self.pipeline_sender_queue.put(event)
@@ -1185,6 +1189,21 @@ class Pipeline(Task):
                                            self.solution_stores, self.l0_name, self.sensors)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
+
+    def get_measured_flux(self, event):
+        # Get the flux densities of the gain calibrators
+        measured_flux, measured_flux_STD = calprocs.F_cal(self.solution_stores['G_FLUX'],
+                                                          self.solution_stores['G'],
+                                                          event.start_time, event.end_time)
+        # Save it to telstate
+        ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+        # Only save the key if another process hasn't done it already
+        try:
+            ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
+            ts_cb_cal.add('measured_flux_STD', measured_flux_STD, immutable=True)
+        except ImmutableKeyError:
+            pass
+        logger.info('Saved flux densities of gain calibrators to telstate.')
 
 
 @attr.s

@@ -7,6 +7,8 @@ import numpy as np
 
 from katsdpcal import calprocs
 
+from katsdpcal.solutions import CalSolution, CalSolutionStore
+
 
 def unit(value):
     return value / np.abs(value)
@@ -452,6 +454,91 @@ class TestKAnt(unittest.TestCase):
         expected_kant[1, 1, 3] = np.exp(2j * np.pi * (20 + (n - 1) / 0.4))
 
         np.testing.assert_equal(kant, expected_kant)
+
+
+class TestF_cal(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.F_cal'"""
+    def setUp(self):
+        ntimes = 4
+        self.gains1 = np.ones((ntimes, 5), dtype=np.complex64)
+        self.times1 = np.linspace(0.2, 0.3, ntimes)
+        self.targ1 = ['targ1'] * ntimes
+
+        self.gains2 = np.ones((ntimes, 5), dtype=np.float32) * 10. + \
+            1j * np.ones((ntimes, 5), dtype=np.float32) * 10.
+        self.times2 = np.linspace(0.3, 0.4, ntimes)
+        self.targ2 = ['targ2'] * ntimes
+
+        # All gains NaN
+        self.gains3 = np.full((1, 5), np.nan, dtype=np.complex64)
+        self.times3 = [0.5]
+        self.targ3 = ['targ3']
+
+        # Gains with mismatched shape
+        self.gains4 = np.ones((2, 6), dtype=np.complex64)
+        self.times4 = 0.6
+        self.targ4 = 'targ4'
+
+        self.gains1[0, :] = np.nan
+        self.gains1[:, 2] = np.nan
+        self.gains1[2, 3] = np.nan
+        self.gains1[3, 2] = 10.0
+
+        flux = np.ones((ntimes, 5), dtype=np.float32) * 1. / np.sqrt(2) + \
+            1. / np.sqrt(2) * 1j * np.ones((ntimes, 5), dtype=np.float32)
+        timesflux = np.linspace(0.1, 0.2, ntimes)
+        targflux = ['flux'] * ntimes
+        flux[0, 2] = np.nan + 1j*np.nan
+        flux[1, :] = np.nan + 1j*np.nan
+        self.f_store = self.Gsolution_store(targflux, timesflux, flux)
+
+        self.expect_f1 = 1.0
+        expect_ratio1 = [1., 1., 10., 1., 1.]
+        self.expect_std1 = 2. * 1.253 * np.std(expect_ratio1) / np.sqrt(5)
+        self.expect_f2 = (np.abs(10 + 10j) / 1.) ** 2.
+
+    def Gsolution_store(self, targs, times, gains):
+        store = CalSolutionStore('G')
+        for targ, tm, gain in zip(targs, times, gains):
+            soln = CalSolution('G', gain, tm, targ)
+            store.add(soln)
+        return store
+
+    def test_basic(self):
+        # Check that F_cal function produces expected result
+        g_store = self.Gsolution_store(self.targ1, self.times1, self.gains1)
+        prod_f, prod_f_std = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        self.assertTrue('targ1' in prod_f)
+        self.assertTrue('targ1' in prod_f_std)
+        np.testing.assert_almost_equal(prod_f['targ1'], self.expect_f1)
+        np.testing.assert_almost_equal(prod_f_std['targ1'], self.expect_std1)
+
+    def test_multiple_targets(self):
+        # Test the F_cal function with gains produced from multiple targets
+        g_store = self.Gsolution_store(self.targ1 + self.targ2 + self.targ3,
+                                       np.hstack([self.times1, self.times2, self.times3]),
+                                       np.vstack([self.gains1, self.gains2, self.gains3]))
+        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        self.assertTrue('targ1' in prod_f)
+        self.assertTrue('targ2' in prod_f)
+        self.assertTrue('targ3' in prod_f)
+        np.testing.assert_almost_equal(prod_f['targ1'], self.expect_f1)
+        np.testing.assert_almost_equal(prod_f['targ2'], self.expect_f2)
+        np.testing.assert_equal(prod_f['targ3'], np.nan)
+
+    def test_mismatched_shapes(self):
+        # Test a set of gains with mismatched shapes don't produce an F product
+        g_store = self.Gsolution_store(self.targ1, self.times1, self.gains1)
+        g_store.add(CalSolution('G', self.gains4, self.times4, self.targ4))
+        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        self.assertTrue('targ1' in prod_f)
+        self.assertFalse('targ4' in prod_f)
+
+    def test_no_scaled_gains(self):
+        # Test that without scaled gains there is no F product.
+        g_store = self.Gsolution_store(self.targ2, self.times2, self.gains2)
+        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0.3, 1.)
+        self.assertFalse(prod_f)
 
 
 class TestAddModelVis(unittest.TestCase):

@@ -120,7 +120,7 @@ def check_noise_diode(telstate, ant_names, time_range):
     return nd_on
 
 
-def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
+def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=None):
     """
     For a given scan, extract and interpolate specified calibration solutions
     from the solution stores.
@@ -133,6 +133,8 @@ def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
         stored solutions
     sol_list : list of str
         calibration solutions to extract and interpolate
+    G_target : str
+        Only extract G solutions for given target. Use any target if None.
 
     Returns
     -------
@@ -142,13 +144,14 @@ def get_solns_to_apply(s, solution_stores, sol_list, time_range=[]):
     solns_to_apply = []
 
     for X in sol_list:
-        if X != 'G':
-            # get most recent solution value
-            soln = solution_stores[X].latest
-        else:
+        if X.startswith('G'):
             # get G values for a two hour range on either side of target scan
             t0, t1 = time_range
-            soln = solution_stores[X].get_range(t0 - 2. * 60. * 60., t1 + 2. * 60. * 60)
+            soln = solution_stores[X].get_range(t0 - 2. * 60. * 60.,
+                                                t1 + 2. * 60. * 60, target=G_target)
+        else:
+            # get most recent solution value
+            soln = solution_stores[X].latest
 
         if soln is not None and len(soln.values) > 0:
             solns_to_apply.append(s.interpolate(soln))
@@ -181,18 +184,19 @@ def save_solution(telstate, key, solution_store, soln):
                 telstate.add(snrkey, soln.snr, ts=soln.time)
         if solution_store is not None:
             solution_store.add(soln)
-
-    logger.info("  - Saving solution '%s' to Telescope State", soln)
+    if telstate is not None:
+        logger.info("  - Saving solution '%s' to Telescope State", soln)
     assert isinstance(soln, (solutions.CalSolution, solutions.CalSolutions))
     if isinstance(soln, solutions.CalSolution):
         save_one(soln)
     else:
+        n = soln.target
         if soln.snr is not None:
             for v, t, s in zip(soln.values, soln.times, soln.snr):
-                save_one(solutions.CalSolution(soln.soltype, v, t, s))
+                save_one(solutions.CalSolution(soln.soltype, v, t, n, s))
         else:
             for v, t in zip(soln.values, soln.times):
-                save_one(solutions.CalSolution(soln.soltype, v, t))
+                save_one(solutions.CalSolution(soln.soltype, v, t, n))
 
 
 def shared_solve(telstate, parameters, solution_store, bchan, echan,
@@ -263,9 +267,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     save_solution(telstate, telstate_key, solution_store, soln)
                     values = None
                 if isinstance(soln, solutions.CalSolution):
-                    info = ('CalSolution', soln.soltype, values, soln.time)
+                    info = ('CalSolution', soln.soltype, values, soln.time, soln.target)
                 else:
-                    info = ('CalSolutions', soln.soltype, values, soln.times)
+                    info = ('CalSolutions', soln.soltype, values, soln.times, soln.target)
             elif isinstance(soln, (Integral, np.ndarray)):
                 info = ('soln', soln)
                 if solution_store is not None:
@@ -288,7 +292,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         if info[0] == 'Exception':
             raise pickle.loads(info[1])
         elif info[0] == 'CalSolution':
-            soltype, values, time = info[1:]
+            soltype, values, time, target = info[1:]
             if values is None:
                 saved = telstate.get_range(telstate_key, st=time, et=time, include_end=True)
                 if len(saved) != 1:
@@ -296,9 +300,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     raise ValueError('Expected exactly one solution with timestamp {}, found {}'
                                      .format(time, len(saved)))
                 values = saved[0][0]
-            soln = solutions.CalSolution(soltype, values, time)
+            soln = solutions.CalSolution(soltype, values, time, target)
         elif info[0] == 'CalSolutions':
-            soltype, values, times = info[1:]
+            soltype, values, times, target = info[1:]
             if values is None:
                 # Reassemble from telstate
                 saved = telstate.get_range(telstate_key, st=times[0], et=times[-1],
@@ -312,7 +316,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                     raise ValueError('Timestamps for {} did not match expected values'
                                      .format(telstate_key))
                 values = np.stack(values)
-            soln = solutions.CalSolutions(soltype, values, times)
+            soln = solutions.CalSolutions(soltype, values, times, soltarget=target)
         elif info[0] == 'soln':
             soln = info[1]
         else:
@@ -382,7 +386,8 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
 
     # select channels processed by this cal node
     b_interp = b_interp[parameters['channel_slice']]
-    return solutions.CalSolution('B', b_interp, b_soln.time)
+
+    return solutions.CalSolution('B', b_interp, b_soln.time, b_soln.target)
 
 
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
@@ -442,7 +447,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     n_pols = len(parameters['bls_pol_ordering'])
     # refant index number in the antenna list
     refant_ind = parameters['refant_index']
-
     # Set up flaggers
     calib_flagger, targ_flagger = init_flagger(parameters, dump_period)
 
@@ -534,7 +538,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             if 'refant' not in ts:
                 ts['refant'] = parameters['refant']
         # run_t0 = time.time()
-
         # perform calibration as appropriate, from scan intent tags:
 
         # BEAMFORMER
@@ -701,6 +704,25 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # interpolated solutions (without NaNs) are stored in the solution store
             # so they can be applied to target/calibrator data without propagating NaNs
             solution_stores['B'].add(b_soln_nonans)
+            # --------------------------------------------------------------
+            # G solution with flux model for BPCals
+            logger.info('Solving for G on bandpass calibrator %s', target_name)
+            # Only K and B for bandpass G
+            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B'])
+            dumps_per_solint = scan_slice.stop - scan_slice.start
+            g_solint = dumps_per_solint * dump_period
+            g_soln = shared_solve(ts, parameters, None,
+                                  parameters['g_bchan'], parameters['g_echan'],
+                                  s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
+
+            if s.model is not None:
+                # Save solution to solution stores G_FLUX
+                # only if there is a model.
+                save_solution(None, None, solution_stores['G_FLUX'], g_soln)
+            elif 'gaincal' not in taglist:
+                # If there is no model and the target isn't a gaincal as well
+                # save to G
+                save_solution(None, None, solution_stores['G'], g_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
@@ -717,7 +739,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             g_solint = dumps_per_solint * dump_period
             shared_solve(ts, parameters, solution_stores['G'],
                          parameters['g_bchan'], parameters['g_echan'],
-                         s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
+                         s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply,
+                         use_model=False)
 
         # Apply calibration
         cal_tags = ['gaincal', 'target', 'bfcal', 'bpcal', 'delaycal']
@@ -727,8 +750,20 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
             # ---------------------------------------
             # get K, B and G solutions to apply and interpolate it to scan timestamps
-            solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
-                                                time_range=[t0, t1])
+            if 'bfcal' in taglist:
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+                                                    time_range=[t0, t1])
+            elif 'bpcal' in taglist and solution_stores['G_FLUX'].has_target(target_name):
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G_FLUX'],
+                                                    time_range=[t0, t1], G_target=target_name)
+            elif solution_stores['G'].has_target(target_name):
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+                                                    time_range=[t0, t1], G_target=target_name)
+            else:
+                # Interpolate to the target across all the available G solutions
+                solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
+                                                    time_range=[t0, t1])
+
             s.apply_inplace(solns_to_apply)
 
             # TARGET
