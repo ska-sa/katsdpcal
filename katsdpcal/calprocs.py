@@ -822,22 +822,22 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
         # target amplitudes are the same shape so they can be divided safely
         if median_scaled_amp.shape != median_targ_amp.shape:
             logger.warn('Gains for flux calibrators and %s have different shape. '
-                        '%s != %s. Skipping flux calibration on %s.'
-                        % (targ, str(median_scaled_amp.shape), str(median_targ_amp.shape), targ))
-        else:
-            soln_ratio = median_targ_amp / median_scaled_amp
-            flux_scale = np.nanmedian(soln_ratio)
-            flux_Jy = flux_scale ** 2.0
+                        '%s != %s. Skipping flux calibration on %s.',
+                        targ, median_scaled_amp.shape, median_targ_amp.shape, targ)
+            continue
+        soln_ratio = median_targ_amp / median_scaled_amp
+        flux_scale = np.nanmedian(soln_ratio)
+        flux_Jy = flux_scale ** 2.0
 
-            sigma_ratio = np.nanstd(soln_ratio)
-            # Standard error of the median
-            error_ratio = 1.253 * sigma_ratio / np.sqrt(np.count_nonzero(~np.isnan(soln_ratio)))
-            error_flux_Jy = 2. * flux_Jy * error_ratio
+        sigma_ratio = np.nanstd(soln_ratio)
+        # Standard error of the median
+        error_ratio = 1.253 * sigma_ratio / np.sqrt(np.count_nonzero(~np.isnan(soln_ratio)))
+        error_flux_Jy = 2. * flux_Jy * error_ratio
 
-            logger.info('Measured flux density of %s: %.3f +/- %.3f Janskys'
-                        % (targ, flux_Jy, error_flux_Jy))
-            measured_flux[targ] = flux_Jy
-            measured_flux_std[targ] = error_flux_Jy
+        logger.info('Measured flux density of %s: %.3f +/- %.3f Janskys'
+                    % (targ, flux_Jy, error_flux_Jy))
+        measured_flux[targ] = flux_Jy
+        measured_flux_std[targ] = error_flux_Jy
     return measured_flux, measured_flux_std
 
 
