@@ -1192,15 +1192,15 @@ class Pipeline(Task):
 
     def get_measured_flux(self, event):
         # Get the flux densities of the gain calibrators
-        measured_flux, measured_flux_STD = calprocs.F_cal(self.solution_stores['G_FLUX'],
-                                                          self.solution_stores['G'],
-                                                          event.start_time, event.end_time)
+        measured_flux, measured_flux_std = calprocs.measure_flux(
+            self.solution_stores['G_FLUX'], self.solution_stores['G'],
+            event.start_time, event.end_time)
         # Save it to telstate
         ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
         # Only save the key if another process hasn't done it already
         try:
             ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
-            ts_cb_cal.add('measured_flux_STD', measured_flux_STD, immutable=True)
+            ts_cb_cal.add('measured_flux_std', measured_flux_std, immutable=True)
         except ImmutableKeyError:
             pass
         logger.info('Saved flux densities of gain calibrators to telstate.')

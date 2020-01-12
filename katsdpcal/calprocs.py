@@ -770,7 +770,7 @@ def solint_from_nominal(solint, dump_period, num_times):
     return dumps_per_solint * dump_period, dumps_per_solint
 
 
-def F_cal(scaled_solns, unscaled_solns, start_time, end_time):
+def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
     """
     Take the ratio between the median over time of solutions scaled
     to 1.0 Jy (unscaled_solns) per target and the median over time of
@@ -813,8 +813,8 @@ def F_cal(scaled_solns, unscaled_solns, start_time, end_time):
 
     # Get the median of all of the scaled amplitudes over time
     median_scaled_amp = np.nanmedian(scaled_amp, axis=0)
-    product_F = {}
-    product_F_SNR = {}
+    measured_flux = {}
+    measured_flux_std = {}
     for targ in targets:
         targ_solns = unscaled_solns.get_range(start_time, end_time, target=targ)
         median_targ_amp = np.nanmedian(np.abs(targ_solns.values), axis=0)
@@ -827,18 +827,18 @@ def F_cal(scaled_solns, unscaled_solns, start_time, end_time):
         else:
             soln_ratio = median_targ_amp / median_scaled_amp
             flux_scale = np.nanmedian(soln_ratio)
-            SJy = flux_scale ** 2.0
+            flux_Jy = flux_scale ** 2.0
 
             sigma_ratio = np.nanstd(soln_ratio)
             # Standard error of the median
             error_ratio = 1.253 * sigma_ratio / np.sqrt(np.count_nonzero(~np.isnan(soln_ratio)))
-            error_SJy = 2. * SJy * error_ratio
+            error_flux_Jy = 2. * flux_Jy * error_ratio
 
             logger.info('Measured flux density of %s: %.3f +/- %.3f Janskys'
-                        % (targ, SJy, error_SJy))
-            product_F[targ] = SJy
-            product_F_SNR[targ] = error_SJy
-    return product_F, product_F_SNR
+                        % (targ, flux_Jy, error_flux_Jy))
+            measured_flux[targ] = flux_Jy
+            measured_flux_std[targ] = error_flux_Jy
+    return measured_flux, measured_flux_std
 
 
 # --------------------------------------------------------------------------------------------------
