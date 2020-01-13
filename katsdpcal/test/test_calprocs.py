@@ -456,8 +456,8 @@ class TestKAnt(unittest.TestCase):
         np.testing.assert_equal(kant, expected_kant)
 
 
-class TestF_cal(unittest.TestCase):
-    """Tests for :func:`katsdpcal.calprocs.F_cal'"""
+class TestMeasureFlux(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.measure_flux'"""
     def setUp(self):
         ntimes = 4
         self.gains1 = np.ones((ntimes, 5), dtype=np.complex64)
@@ -505,20 +505,20 @@ class TestF_cal(unittest.TestCase):
         return store
 
     def test_basic(self):
-        # Check that F_cal function produces expected result
+        # Check that measure_flux function produces expected result
         g_store = self.Gsolution_store(self.targ1, self.times1, self.gains1)
-        prod_f, prod_f_std = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        prod_f, prod_f_std = calprocs.measure_flux(self.f_store, g_store, 0., 1.)
         self.assertTrue('targ1' in prod_f)
         self.assertTrue('targ1' in prod_f_std)
         np.testing.assert_almost_equal(prod_f['targ1'], self.expect_f1)
         np.testing.assert_almost_equal(prod_f_std['targ1'], self.expect_std1)
 
     def test_multiple_targets(self):
-        # Test the F_cal function with gains produced from multiple targets
+        # Test the measure_flux function with gains produced from multiple targets
         g_store = self.Gsolution_store(self.targ1 + self.targ2 + self.targ3,
                                        np.hstack([self.times1, self.times2, self.times3]),
                                        np.vstack([self.gains1, self.gains2, self.gains3]))
-        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        prod_f, _ = calprocs.measure_flux(self.f_store, g_store, 0., 1.)
         self.assertTrue('targ1' in prod_f)
         self.assertTrue('targ2' in prod_f)
         self.assertTrue('targ3' in prod_f)
@@ -530,14 +530,14 @@ class TestF_cal(unittest.TestCase):
         # Test a set of gains with mismatched shapes don't produce an F product
         g_store = self.Gsolution_store(self.targ1, self.times1, self.gains1)
         g_store.add(CalSolution('G', self.gains4, self.times4, self.targ4))
-        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0., 1.)
+        prod_f, _ = calprocs.measure_flux(self.f_store, g_store, 0., 1.)
         self.assertTrue('targ1' in prod_f)
         self.assertFalse('targ4' in prod_f)
 
     def test_no_scaled_gains(self):
         # Test that without scaled gains there is no F product.
         g_store = self.Gsolution_store(self.targ2, self.times2, self.gains2)
-        prod_f, _ = calprocs.F_cal(self.f_store, g_store, 0.3, 1.)
+        prod_f, _ = calprocs.measure_flux(self.f_store, g_store, 0.3, 1.)
         self.assertFalse(prod_f)
 
 
