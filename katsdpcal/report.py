@@ -457,32 +457,52 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
     report.writeln()
 
 
-def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[0, 1]):
+def write_hv(report, report_path, targets, av_corr,
+             refant_name, antenna_names, correlator_freq,
+             auto=True, pol=[0, 1]):
     """
-    Include plots of the delay-corrected phases of the auto-correlated data
+    Include plots of the delay-corrected phases of the cross pol data
     report : file-like
         report file to write to
     report_path : str
         path where report is written
+    targets: list of :class:`katpoint.Target`
+        list of targets with cross pol data
     av_corr : dict
         dictionary of averaged corrected data from which to
         select target data
+    refant_name : str
+        reference antenna name
     antenna_names : list
         list of antenna names
     correlator_freq : :class:`np.ndarray`
         real (nchan) correlator channel frequencies
+    auto : bool, optional
+        if True plot phases of auto-corrs else cross-corrs
     pol : list
         description of polarisation axes, optional
     """
-    if 'auto_cross' in av_corr:
-        report.write_heading_1(
-            'Calibrated Cross Hand Phase')
-        report.write_heading_2(
-            'Corrected Phase vs Frequency')
-        report.write_heading_3(
-            'Cross Hand Auto-correlations, all antennas')
+    if auto:
+        heading3 = 'Cross Hand Auto-correlations, all antennas'
+        key = 'auto_cross'
+    else:
+        heading3 = 'Cross Hand Cross-correlations,\
+                    Baselines to the reference antenna : {0}'.format(refant_name)
+        key = 'cross'
+
+    report.write_heading_1(
+        'Calibrated Cross Hand Phase')
+    report.write_heading_2(
+        'Corrected Phase vs Frequency')
+
+    for cal in targets:
+        kat_target = katpoint.Target(cal)
+        target_name = kat_target.name
+        tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
+
+        report.write_heading_3(heading3)
         # Get cross hand auto-correlation data
-        av_data, av_times = zip(*av_corr['auto_cross'])
+        av_data, av_times = zip(*av_corr['{}_{}'.format(target_name, key)])
         av_data = np.stack(av_data)
 
         # Get channel index in correlator channels
@@ -495,14 +515,22 @@ def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[
             t = utc_tstr(av_times[ti])
             report.writeln('Time : {0}'.format(t))
             for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
+                if auto:
+                    plot_title = 'Cross Hand Phase vs Frequency'
+                    plot_name = 'HV_v_Freq_{0}_{1}'.format(ti, idx)
+                else:
+                    plot_title = 'Calibrator: {0}, tags are: {1}'.format(
+                        target_name, ', '.join(tags))
+                    plot_name = 'HV_v_Freq_{0}_ti_{1}_{2}'.format(
+                        target_name.replace(' ', '_'), ti, idx)
+
                 data = av_data[ti, ..., idx : idx + ANT_CHUNKS]
-                plot_title = 'Cross Hand Phase vs Frequency'
                 plot = plotting.plot_phaseonly_spec(
                     data, idx_chan, antenna_names[idx : idx + ANT_CHUNKS],
                     freq_range, plot_title, pol=pol)
 
                 insert_fig(report_path, report, plot,
-                           name='HV_v_Freq_{0}_{1}'.format(ti, idx))
+                           name=plot_name)
             report.writeln()
 
 
@@ -1258,10 +1286,12 @@ def split_targets(targets):
         list of calibrators without gains applied by the pipeline
     gain : list
         list of calibrators with gains applied by the pipeline
+    pol : list
+        list of calibrators with 'polcal' tag
     target : list
         list of targets
     """
-    nogain, gain, target = [], [], []
+    nogain, gain, pol, target = [], [], [], []
     for cal in targets:
         kat_target = katpoint.Target(cal)
         tags = kat_target.tags
@@ -1273,7 +1303,9 @@ def split_targets(targets):
             target.append(cal)
         else:
             gain.append(cal)
-    return nogain, gain, target
+        if 'polcal' in tags:
+            pol.append(cal)
+    return nogain, gain, pol, target
 
 
 def calc_elevation(refant, times, target):
@@ -1512,22 +1544,29 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             if av_corr:
                 # Split observed targets into different types of sources,
                 # according to their pipeline tags
-                nogain, gain, target = split_targets(unique_targets)
+                nogain, gain, polcal, target = split_targets(unique_targets)
                 cal_array_position = parameters['array_position']
 
                 # Calibrator data requires a reference antenna
                 if refant_index is not None:
                     # Corrected data : HV delay Noise Diode
-                    write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
-                             pol=[pol[0] + pol[1], pol[1] + pol[0]])
+                    if any(katpoint.Target(target).name + '_auto_cross'
+                           in av_corr for target in gain):
+                        write_hv(cal_rst, report_path, gain, av_corr, refant_name, antenna_names,
+                                 correlator_freq, pol=[pol[0] + pol[1], pol[1] + pol[0]])
                     # --------------------------------------------------------------------
-                    # Corrected data : Calibrators
-                    cal_rst.write_heading_1('Calibrator Summary Plots')
-
                     # For calibrators which do not have gains applied by the pipeline
                     # plot the baselines to the reference antenna for each timestamp
                     # get idx of baselines to refant
                     bls_names = refant_antlabels(cal_bls_lookup, refant_index, antenna_names)
+                    # Corrected data : HV delay on `polcal`
+                    if any(katpoint.Target(target).name + '_cross' in av_corr for target in polcal):
+                        write_hv(cal_rst, report_path, polcal, av_corr, refant_name, bls_names,
+                                 correlator_freq, auto=False,
+                                 pol=[pol[0] + pol[1], pol[1] + pol[0]])
+
+                    # Corrected data : Calibrators
+                    cal_rst.write_heading_1('Calibrator Summary Plots')
 
                     write_ng_freq(cal_rst, report_path, nogain, av_corr,
                                   refant_name, bls_names, correlator_freq, pol)
