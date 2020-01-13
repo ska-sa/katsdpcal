@@ -816,8 +816,11 @@ class Scan:
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
-            # select HV delay at refant
-            soln = soln.values[..., self.refant][..., np.newaxis]
+            if soln.soltype == 'KCROSS_DIODE':
+                # select HV delay at refant
+                soln = soln.values[..., self.refant][..., np.newaxis]
+            else:
+                soln = soln.values
             soln = np.repeat(soln, self.nant, axis=-1)
 
             g_from_k = da.exp(2j * np.pi * soln[:, np.newaxis, :, :]

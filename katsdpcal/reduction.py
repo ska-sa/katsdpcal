@@ -617,7 +617,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                         vis = s.apply(soln, vis, cross_pol=True)
                     logger.info('Averaging corrected auto-corr data for %s:', target_name)
                     data = (vis, s.auto_ant.tf.cross_pol.flags, s.auto_ant.tf.cross_pol.weights)
-                    s.summarize(av_corr, 'auto_cross', data, nchans=1024)
+                    s.summarize(av_corr, target_name + '_auto_cross', data, nchans=1024)
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
 
@@ -666,10 +666,17 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # ---------------------------------------
                 # KCROSS solution
                 logger.info('Solving for KCROSS on cross-hand delay calibrator %s', target_name)
-                shared_solve(ts, parameters, solution_stores['KCROSS'],
-                             parameters['k_bchan'], parameters['k_echan'],
-                             s.kcross_sol, chan_ave=parameters['kcross_chanave'],
-                             pre_apply=solns_to_apply)
+                kcross_soln = shared_solve(ts, parameters, solution_stores['KCROSS'],
+                                           parameters['k_bchan'], parameters['k_echan'],
+                                           s.kcross_sol, chan_ave=parameters['kcross_chanave'],
+                                           pre_apply=solns_to_apply)
+                solns_to_apply.append(s.interpolate(kcross_soln))
+                vis = s.cross_ant.tf.cross_pol.vis
+                for soln in solns_to_apply:
+                    vis = s.apply(soln, vis, cross_pol=True)
+                logger.info('Averaging corrected cross-pol data for %s:', target_name)
+                data = (vis, s.cross_ant.tf.cross_pol.flags, s.cross_ant.tf.cross_pol.weights)
+                s.summarize(av_corr, target_name + '_cross', data, nchans=1024, refant_only=True)
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):
