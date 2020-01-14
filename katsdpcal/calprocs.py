@@ -346,7 +346,7 @@ def best_refant(data, corrprod_lookup, chans):
     Returns
     -------
     best_refant : int
-        Index of antenna with the maximum sum of PNR over all baselines
+        Index of antenna with the maximum median of PNR over all baselines
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
