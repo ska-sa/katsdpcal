@@ -25,9 +25,10 @@ HIGH_WEIGHT = 1e15
 
 
 def radec_to_lm(ra, dec, ra0, dec0):
-    """
-    Parameteters
-    ------------
+    """Obtain direction cosines of (ra, dec) relative to (ra0, dec0).
+
+    Parameters
+    ----------
     ra : float
         Right Ascension, radians
     dec : float
@@ -60,8 +61,7 @@ def list_to_model(model_list, centre_position):
 
 
 def to_ut(t):
-    """
-    Converts MJD seconds into Unix time in seconds
+    """Converts MJD seconds into Unix time in seconds.
 
     Parameters
     ----------
@@ -78,8 +78,7 @@ def to_ut(t):
 
 def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, antennas,
                   wavelengths=None, array_centre=None):
-    """
-    Calculate uvw coordinates
+    """Calculate uvw coordinates per baseline, in wavelengths / lambda.
 
     Parameters
     ----------
@@ -111,8 +110,7 @@ def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, antennas,
 
 
 def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=None):
-    """
-    Calculate uvw coordinates
+    """Calculate uvw coordinates per baseline, in metres.
 
     Parameters
     ----------
@@ -129,7 +127,7 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
 
     Returns
     -------
-    uvw_wave
+    baseline_uvw
         uvw coordinates
     """
     if array_centre is None:
@@ -152,8 +150,7 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
 
 
 def get_bl_ant_pairs(corrprod_lookup):
-    """
-    Get antenna lists in solver format, from `corrprod_lookup`
+    """Get antenna lists in solver format, from `corrprod_lookup`.
 
     Inputs:
     -------
@@ -166,7 +163,6 @@ def get_bl_ant_pairs(corrprod_lookup):
         lists of antennas matching the correlation_product lookup table,
         appended with their conjugates (format required by stefcal)
     """
-
     # NOTE: no longer need hh and vv masks as we re-ordered the data to be
     # ntime x nchan x nbl x npol
 
@@ -333,21 +329,24 @@ def ants_from_bllist(bllist):
 
 
 def best_refant(data, corrprod_lookup, chans):
-    """
-    Determine antenna whose FFT has the maximum peak to noise ratio (pnr) by taking the median
-    pnr of the FFT over all baselines to each antenna
+    """Identify antenna that is most suited to be the reference antenna.
 
-    Parameters:
-    -----------
-    data : :class:`np.ndarray`, complex, shape(n_chans, n_pols, n_bls)
-        visibility data
-    corrprod_lookup : :class:`np.ndarray`, int,  shape (2, n_bls)
-        antenna pairs for selected baselines
+    Determine antenna whose FFT has the maximum peak to noise ratio (PNR) by
+    taking the median PNR of the FFT over all baselines to each antenna.
+
+    Parameters
+    ----------
+    data : :class:`np.ndarray`, complex, shape (n_chans, n_pols, n_bls)
+        Visibility data
+    corrprod_lookup : :class:`np.ndarray`, int, shape (2, n_bls)
+        Antenna pairs for selected baselines
     chans : :class:`np.ndarray`
-        channel frequencies in Hz
-    Returns:
-    --------
-    int : index of antenna with the maximum sum of PNR over all baselines
+        Channel frequencies in Hz
+
+    Returns
+    -------
+    best_refant : int
+        Index of antenna with the maximum median of PNR over all baselines
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
@@ -378,8 +377,7 @@ def best_refant(data, corrprod_lookup, chans):
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
-    """
-    Fit complex gains to visibility data.
+    """Fit complex gains to visibility data.
 
     Parameters
     ----------
@@ -399,8 +397,8 @@ def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
 
 
 def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_sample=1):
-    """
-    Fit delay (phase slope across frequency) to visibility data.
+    """Fit delay (phase slope across frequency) to visibility data.
+
     If corrprod_lookup is xc, i.e. all baselines have two different antenna indices,
     it will decompose the delays into solutions per antenna.
     Else it solves for a delay per element in final axis.
@@ -546,7 +544,8 @@ def k_fit(data, weights, corrprod_lookup, chans, refant=0, cross=True, chan_samp
 
 
 def normalise_complex(x, weights=None, axis=0):
-    """
+    """Normalisation factor that centers phase on 0 and scales amplitude to 1.
+
     Calculate a (weighted) normalisation factor for a complex array across the selected
     axis to center the (weighted) phase of data on zero and scale the (weighted) average
     amplitude to one. If the selected axis is all NaN or all zero, the normalisation
@@ -599,8 +598,7 @@ def normalise_complex(x, weights=None, axis=0):
 
 @numba.jit(nopython=True, parallel=True)
 def K_ant(uvw, l, m, wl, k_ant):
-    """
-    Calculate K-Jones term per antenna
+    """Calculate K-Jones term per antenna.
 
     Calculate the K-Jones term for a point source with the
     given position (l, m) at the given wavelengths.
@@ -645,12 +643,10 @@ def K_ant(uvw, l, m, wl, k_ant):
 
 @numba.jit(nopython=True, parallel=True)
 def add_model_vis(k_ant, ant1, ant2, I, model):
-    """
-    Add model visibilities to model
+    """Add model visibilities to model.
 
-    Calculate model visibilities from the per-antenna
-    K-Jones term and source Stokes I flux densities and add them
-    to the model array
+    Calculate model visibilities from the per-antenna K-Jones term and source
+    Stokes I flux densities and add them to the model array.
 
     Parameters
     ----------
@@ -687,8 +683,7 @@ def add_model_vis(k_ant, ant1, ant2, I, model):
 
 
 def interpolate_bandpass(x):
-    """
-    Interpolate over NaNs in the channel axis of a bandpass
+    """Interpolate over NaNs in the channel axis of a bandpass.
 
     Parameters
     ----------
@@ -727,8 +722,9 @@ def asbool(arr):
 
 
 def solint_from_nominal(solint, dump_period, num_times):
-    """
-    Given nominal solint, modify it by up to 20percent to optimally fit the scan length
+    """Adjust solution interval to be commensurate with dump period and scan length.
+
+    Given nominal solint, modify it by up to 20% to optimally fit the scan length
     and dump period. Times are assumed to be contiguous.
 
     Parameters
@@ -742,7 +738,6 @@ def solint_from_nominal(solint, dump_period, num_times):
     nsolint     : new optimal solint
     dumps_per_solint : number of dump periods in a solution interval
     """
-
     if dump_period > solint:
         # case of solution interval that is shorter than dump time
         dumps_per_solint = 1
@@ -771,7 +766,8 @@ def solint_from_nominal(solint, dump_period, num_times):
 
 
 def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
-    """
+    """Derive flux of gain calibrators based on ones with known flux models.
+
     Take the ratio between the median over time of solutions scaled
     to 1.0 Jy (unscaled_solns) per target and the median over time of
     solutions that were scaled by a flux density model (scaled_solns).
@@ -787,23 +783,19 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
 
     Parameters
     ----------
-    scaled_solns    : :class:`CalSolutionStore`
+    scaled_solns : :class:`CalSolutionStore`
         A solution store containing gains that have been scaled using
         a prior flux density model.
-    unscaled_solns  : :class:`CalSolutionStore`
+    unscaled_solns : :class:`CalSolutionStore`
         A solution store containing gains that have been scaled to 1.0 Jy.
-    start_time      : float
-        Start time of solutions to use.
-    end_time        : float
-        End time of solutions to use.
+    start_time, end_time : float
+        Use gain solutions found between start and end time.
 
     Returns
     -------
-    (dict, dict)
-        keys: (str) Target name in unscaled solutions
-        values: (float) Its measured flux density and error
+    measured_flux, measured_flux_std : dict mapping string to float
+        Measured flux density and standard error, per target name in unscaled_solns
     """
-
     scaled_amp = np.abs(scaled_solns.get_range(start_time, end_time).values)
     targets = set([soln.target for soln in unscaled_solns._values])
 
@@ -846,13 +838,14 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
 # --------------------------------------------------------------------------------------------------
 
 def get_ant_bls(pol_bls_ordering):
-    """
-    Given baseline list with polarisation information, return pure antenna list
-    e.g. from
-    [['ant0h','ant0h'],['ant0v','ant0v'],['ant0h','ant0v'],['ant0v','ant0h'],['ant1h','ant1h']...]
-    to [['ant0,ant0'],['ant1','ant1']...]
-    """
+    """Pure antenna list given baseline list with polarisation information.
 
+    E.g. go from
+      [['ant0h','ant0h'], ['ant0v','ant0v'], ['ant0h','ant0v'],
+       ['ant0v','ant0h'], ['ant1h','ant1h'], ...]
+    to
+      [['ant0,ant0'], ['ant1','ant1'], ...]
+    """
     # get antenna only names from pol-included bls orderding
     ant_bls = np.array([[a1[:-1], a2[:-1]] for a1, a2 in pol_bls_ordering])
     ant_dtype = ant_bls[0, 0].dtype
@@ -873,18 +866,17 @@ def get_ant_bls(pol_bls_ordering):
 
 
 def get_pol_bls(bls_ordering, pol):
-    """
-    Given baseline ordering and polarisation ordering, return full baseline-pol ordering array
+    """Full baseline-pol ordering given baseline ordering and pol ordering.
 
-    Inputs:
-    -------
+    Parameters
+    ----------
     bls_ordering
         list of correlation products without polarisation information, string shape(nbl,2)
     pol
         list of polarisation pairs, string shape (npol_pair, 2)
 
-    Returns:
-    --------
+    Returns
+    -------
     pol_bls_ordering : :class:`np.ndarray`
         correlation products without polarisation information, shape(nbl*4, 2)
     """
@@ -898,18 +890,17 @@ def get_pol_bls(bls_ordering, pol):
 
 
 def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_pol=None):
-    """
-    Determine reordering necessary to change given bls_ordering into desired ordering
+    """Reordering necessary to change given bls_ordering into desired ordering.
 
-    Inputs:
-    -------
+    Parameters
+    ----------
     antlist : list of antennas, string shape(nants), or string of csv antenna names
     bls_ordering : list of correlation products, string shape(nbl,2)
     output_order_bls : desired baseline output order, string shape(nbl,2), optional
     output_order_pol : desired polarisation output order, string shape(npolcorr,2), optional
 
-    Returns:
-    --------
+    Returns
+    -------
     ordering
         ordering array necessary to change given bls_ordering into desired
         ordering, numpy array shape(nbl*4, 2)
@@ -917,7 +908,6 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
         ordering of baselines, without polarisation, list shape(nbl, 2)
     pol_order
         ordering of polarisations, list shape (4, 2)
-
     """
     # convert antlist to list, if it is a csv string
     if isinstance(antlist, str):
@@ -986,23 +976,21 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
 
 
 def get_reordering_nopol(antlist, bls_ordering, output_order_bls=None):
-    """
-    Determine reordering necessary to change given bls_ordering into desired ordering
+    """Reordering necessary to change given bls_ordering into desired ordering.
 
-    Inputs:
-    -------
+    Parameters
+    ----------
     antlist : list of antennas, string shape(nants), or string of csv antenna names
     bls_ordering : list of correlation products, string shape(nbl,2)
     output_order_bls : desired baseline output order, string shape(nbl,2), optional
 
-    Returns:
-    --------
+    Returns
+    -------
     ordering
         ordering array necessary to change given bls_ordering into desired
         ordering, numpy array, shape(nbl*4, 2)
     bls_wanted
         ordering of baselines, without polarisation, numpy array, shape(nbl, 2)
-
     """
     # convert antlist to list, if it is a csv string
     if isinstance(antlist, str):
@@ -1040,19 +1028,17 @@ def get_reordering_nopol(antlist, bls_ordering, output_order_bls=None):
 
 
 def get_bls_lookup(antlist, bls_ordering):
-    """
-    Get correlation product antenna mapping
+    """Correlation product antenna mapping.
 
-    Inputs:
-    -------
+    Parameters
+    ----------
     antlist : list of antenna names, string shape (nant)
     bls_ordering : list of correlation products, string shape(nbl,2)
 
-    Returns:
-    --------
+    Returns
+    -------
     corrprod_lookup : lookup table of antenna indices for each baseline, shape(nbl,2)
     """
-
     # make polarisation and corr_prod lookup tables (assume this doesn't change
     # over the course of an observaton)
     antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
@@ -1064,8 +1050,9 @@ def get_bls_lookup(antlist, bls_ordering):
 # --------------------------------------------------------------------------------------------------
 
 def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
-    """Create fake point source visibilities, corrupted by given or random gains. The
-    final dimension of `shape` corresponds to the number of antennas.
+    """Create fake point source visibilities, corrupted by given or random gains.
+
+    The final dimension of `shape` corresponds to the number of antennas.
     """
     # create antenna lists
     if isinstance(shape, int):
@@ -1116,7 +1103,7 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
 
 
 def divide_weights(weighted_data, weights):
-    """Divide weighted_data by weights, suppress divide by zero errors """
+    """Divide weighted_data by weights, suppressing divide-by-zero errors."""
     # Suppress divide by zero warnings by replacing zeros with ones
     # all zero weight data is assumed to be set to zero in weighted_data
     weights_nozero = np.where(weights == 0, weights.dtype.type(1), weights)
@@ -1124,9 +1111,10 @@ def divide_weights(weighted_data, weights):
 
 
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis -3, for specified number of channels
+    """Perform weighted average over channels of data, flags and weights.
+
+    This applies flags and averages over axis -3, for the specified number of
+    channels.
 
     Parameters
     ----------
@@ -1291,9 +1279,7 @@ def wavg_flags_f(flags, chanav, excise, axis):
 # --------------------------------------------------------------------------------------------------
 
 def arcsec_to_rad(angle):
-    """
-    Convert angle in arcseconds to angle in radians
-    """
+    """Convert angle in arcseconds to angle in radians."""
     return np.deg2rad(angle / 60. / 60.)
 
 
@@ -1302,8 +1288,7 @@ def arcsec_to_rad(angle):
 # --------------------------------------------------------------------------------------------------
 
 def calc_rms(x, weights, axis):
-    """
-    Calculate weighted variance over given axis
+    """Calculate weighted root-mean-square (RMS) over given axis.
 
     Parameters
     ----------
@@ -1312,7 +1297,7 @@ def calc_rms(x, weights, axis):
     weights : :class:`np.ndarray`,
         real
     axis : int or tuple of int
-        axis or axes to sum weighted variance over
+        axis or axes to sum weighted RMS over
 
     Returns
     -------
@@ -1330,9 +1315,10 @@ def calc_rms(x, weights, axis):
 
 
 def poor_antenna_flags(data, weights, bls_lookup, threshold):
-    """
+    """Flags indicating antennas with noisy phases on a majority of baselines.
+
     Create an array of flags which flag antennas when >80% of their baselines
-    have a phase rms noise greater than the given threshold (in radians)
+    have a phase RMS noise greater than the given threshold (in radians).
 
     Parameters
     ----------
@@ -1350,7 +1336,6 @@ def poor_antenna_flags(data, weights, bls_lookup, threshold):
     ant_flags : :class:`np.ndarray`
         bool (ntimes, nchans, npols, nbls), True if flagged, else False
     """
-
     ntimes, nchans, npols, nbls = data.shape
     nants = ants_from_bllist(bls_lookup)
     angle = np.float32(np.angle(data))
@@ -1379,15 +1364,14 @@ def poor_antenna_flags(data, weights, bls_lookup, threshold):
 
 
 def snr_antenna(data, weights, bls_lookup, flag_ants=None):
-    """
-    Calculate snr per antenna.
+    """Signal-to-noise ratio (SNR) estimate per antenna.
 
-    SNR is estimated as the inverse of phase rms variance per antenna.
-    The variance per antenna is calculated by summing the variance over all channels and
-    all baselines to the antenna, assuming a mean phase of zero.
-    Optionally supply a baseline mask of bad antennas. These bad antennas are excluded
-    from the SNR estimate of all other antennas, but included in the calculation of their
-    own SNR.
+    SNR is estimated as the inverse of phase RMS variance per antenna.
+    The variance per antenna is calculated by summing the variance over all
+    channels and all baselines to the antenna, assuming a mean phase of zero.
+    Optionally supply a baseline mask of bad antennas. These bad antennas are
+    excluded from the SNR estimate of all other antennas, but included in the
+    calculation of their own SNR.
 
     Parameters
     ----------
