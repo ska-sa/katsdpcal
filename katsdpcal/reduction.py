@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def init_flagger(parameters, dump_period):
-    """Set up SumThresholdFlagger objects for targets
-    and calibrators.
+    """Set up SumThresholdFlagger objects for targets and calibrators.
 
     Parameters
     ----------
@@ -41,7 +40,6 @@ def init_flagger(parameters, dump_period):
     targ_flagger : :class:`SumThresholdFlagger`
         A SumThresholdFlagger object for use with targets
     """
-
     # Make windows a integer array
     rfi_windows_freq = np.array(parameters['rfi_windows_freq'], dtype=np.int)
     spike_width_time = parameters['rfi_spike_width_time'] / dump_period
@@ -121,9 +119,7 @@ def check_noise_diode(telstate, ant_names, time_range):
 
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=None):
-    """
-    For a given scan, extract and interpolate specified calibration solutions
-    from the solution stores.
+    """Extract and interpolate specified cal solutions for a given scan.
 
     Inputs
     ------
@@ -332,14 +328,13 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
 
 
 def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
-    """
-    Interpolate over NaNs in the channel axis of the bandpass
+    """Interpolate over NaNs in the channel axis of the bandpass.
 
     If there are multiple cal nodes, retrieve all parts of the
     bandpass from telstate prior to interpolation.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     telstate : :class:`katsdptelstate.TelescopeState`
         Telescope state in which the solution is stored
     parameters : dict
@@ -351,8 +346,8 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
     et : float
         end time for retrieving solutions from telstate
 
-    Returns:
-    --------
+    Returns
+    -------
     :class:`~.CalSolution`
         interpolated solution for this cal node
     """
@@ -391,11 +386,10 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
 
 
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
-    """
-    Pipeline calibration
+    """Pipeline calibration.
 
-    Inputs
-    ------
+    Parameters
+    ----------
     data : dict
         Dictionary of data buffers. Keys `vis`, `flags` and `weights` reference
         :class:`dask.Arrays`, while `times` references a numpy array.
@@ -419,7 +413,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         Keys `targets`, `vis`, `flags`, `weights`, `times`, `n_flags`,
         `timestamps` all reference numpy arrays.
     """
-
     # ----------------------------------------------------------
     # set up timing file
     # at the moment this is re-made every scan! fix later!
@@ -430,7 +423,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
     # ----------------------------------------------------------
     # extract some some commonly used constants from the TS
-
     telstate_l0 = ts.view(stream_name)
     # solution intervals
     bp_solint = parameters['bp_solint']  # seconds

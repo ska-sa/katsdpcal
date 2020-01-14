@@ -95,8 +95,7 @@ def _wavg_axis(weighted_data, weights, axis=0):
 
 
 def weight_data(data, flags, weights):
-    """
-    Return flagged, weighted data and flagged weights
+    """Return flagged, weighted data and flagged weights.
 
     Data that are zero, weights that are zero or unfeasibly high
     are all set to zero in the output arrays
@@ -128,9 +127,7 @@ def weight_data(data, flags, weights):
 
 
 def wavg(data, flags, weights, times=False, axis=0):
-    """
-    Perform weighted average of data, applying flags,
-    over specified axis
+    """Perform weighted average of data, applying flags, over specified axis.
 
     Parameters
     ----------
@@ -150,9 +147,7 @@ def wavg(data, flags, weights, times=False, axis=0):
 
 
 def wavg_full(data, flags, weights, axis=0, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis
+    """Perform weighted average of data, flags and weights, applying flags, over axis.
 
     Parameters
     ----------
@@ -180,10 +175,9 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.8):
 
 
 def wavg_full_t(data, flags, weights, solint, times=None, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 0, for specified
-    solution interval increments
+    """Perform weighted average of data, flags and weights, over axis 0.
+
+    This applies flags and uses specified solution interval increments.
 
     Parameters
     ----------
@@ -227,8 +221,7 @@ def wavg_full_t(data, flags, weights, solint, times=None, threshold=0.8):
 
 
 def av_blocks(data, blocksize):
-    """
-    Calculate the mean in blocks of a fixed size over axis 0
+    """Calculate the mean in blocks of a fixed size over axis 0.
 
     Parameters
     ----------
@@ -263,7 +256,6 @@ def _align_chunks(chunks, alignment):
     chunk, the first and last alignment boundaries are split along (which may
     be a no-op where the start/end of the chunk is already aligned).
     """
-
     out = list(chunks)
     for axis, align in alignment.items():
         sizes = []
@@ -288,9 +280,9 @@ def _align_chunks(chunks, alignment):
 
 
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 1, for specified number of channels
+    """Perform weighted average of data, flags and weights, over axis 1.
+
+    This applies flags and uses the specified number of channels.
 
     Parameters
     ----------
@@ -353,9 +345,9 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
 
 
 def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis -1 per antenna.
+    """Perform weighted average of data, flags and weights, over axis -1.
+
+    This applies flags and is done per antenna.
 
     Parameters
     ----------
@@ -418,10 +410,11 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
 
 
 def wavg_t_f(data, flags, weights, nchans):
-    """
-    Perform weighted average of data, flags and weights,
-    over all times and in frequency blocks to form a product with nchans channels.
-    If nchans is less than the number of channels in the data, don't average in frequency
+    """Perform weighted average, over all times and in frequency blocks.
+
+    This averages data, flags and weights, forming a product with nchans
+    channels. If nchans is less than the number of channels in the data,
+    don't average in frequency.
 
     Parameters:
     -----------
@@ -455,8 +448,7 @@ def wavg_t_f(data, flags, weights, nchans):
 
 
 def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, **kwargs):
-    """
-    Fit bandpass to visibility data.
+    """Fit bandpass to visibility data.
 
     Parameters
     ----------
@@ -470,7 +462,6 @@ def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, **kwargs):
     -------
     bpass : Bandpass, shape(num_chans, num_pols, num_ants)
     """
-
     n_ants = calprocs.ants_from_bllist(corrprod_lookup)
 
     # -----------------------------------------------------

@@ -9,6 +9,7 @@ class CalSolution:
 
     This represents a solution for a target for a single point in time.
     """
+
     def __init__(self, soltype, solvalues, soltime, soltarget, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
@@ -28,6 +29,7 @@ class CalSolutions:
 
     This stores multiple solutions (in time) in a single array.
     """
+
     def __init__(self, soltype, solvalues, soltimes, soltarget=None, solsnr=None):
         self.soltype = soltype
         self.values = solvalues
@@ -52,6 +54,7 @@ class CalSolutionStore:
     :class:`CalSolutions`, each solution is stored separately, and one can query
     all solutions from a time range or all solutions by target.
     """
+
     def __init__(self, soltype):
         self.soltype = soltype
         self._values = SortedListWithKey(key=lambda val: val.time)
@@ -73,6 +76,7 @@ class CalSolutionStore:
 
     def get_range(self, start_time, end_time, target=None):
         """Get the solutions in the interval [start_time, end_time].
+
         Optionally only return solutions for a given target.
 
         The returned values are combined into a :class:`CalSolutions`.
@@ -88,9 +92,7 @@ class CalSolutionStore:
         return CalSolutions(self.soltype, values, times, soltarget=target)
 
     def has_target(self, target_name):
-        """Return True if solutions with target_name are
-        in the store.
-        """
+        """Return True if solutions with target_name are in the store."""
         targets = set([value.target for value in self._values])
         return target_name in targets
 
@@ -102,6 +104,7 @@ class CalSolutionStoreLatest:
     support :meth:`~CalSolutionStore.get_range`, and only keeps the latest
     solution rather than a full history.
     """
+
     def __init__(self, soltype):
         self.soltype = soltype
         self._latest = None
