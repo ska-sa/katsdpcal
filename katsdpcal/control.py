@@ -1063,8 +1063,7 @@ class Pipeline(Task):
             'B': solutions.CalSolutionStoreLatest('B'),
             'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
             'G': solutions.CalSolutionStore('G'),
-            'G_FLUX': solutions.CalSolutionStore('G'),
-            'G_SCALE': solutions.CalSolutionStore('G')
+            'G_FLUX': solutions.CalSolutionStore('G')
         }
 
     def get_sensors(self):
@@ -1201,9 +1200,9 @@ class Pipeline(Task):
         try:
             ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
             ts_cb_cal.add('measured_flux_std', measured_flux_std, immutable=True)
+            logger.info('Saved flux densities of gain calibrators to telstate.')
         except ImmutableKeyError:
             pass
-        logger.info('Saved flux densities of gain calibrators to telstate.')
 
 
 @attr.s
