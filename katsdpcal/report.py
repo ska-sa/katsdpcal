@@ -1425,7 +1425,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                     st=None, et=None):
     """Create calibration report.
 
-    Creates pdf calibration pipeline report (from RST source), using data from
+    Creates HTML calibration pipeline report (from RST source), using data from
     the Telescope State.
 
     Parameters

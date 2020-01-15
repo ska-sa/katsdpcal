@@ -280,7 +280,7 @@ def _align_chunks(chunks, alignment):
 
 
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
-    """Perform weighted average of data, flags and weights, over axis 1.
+    """Perform weighted average of data, flags and weights, over axis -3.
 
     This applies flags and uses the specified number of channels.
 
