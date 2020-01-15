@@ -110,8 +110,7 @@ ActivityState = namedtuple('ActivityState',
 
 
 def shared_empty(shape, dtype):
-    """
-    Allocate a numpy array from shared memory. The contents are undefined.
+    """Allocate a numpy array from shared memory. The contents are undefined.
 
     .. note:: This only works on UNIX-like systems, not Windows.
     """
@@ -153,7 +152,8 @@ def _slots_slices(slots):
 
 
 def _sum_corr(sum_corr, new_corr, limit=None):
-    """
+    """Aggregate corrected visibility data.
+
     Combines a dictionary of corrected data produced by the pipeline into a dictionary
     which aggregates the corrected data produced throughout the observation.
 
@@ -321,8 +321,9 @@ class Task:
 
 
 def _run_task(task):
-    """Free function wrapping the Task runner. It needs to be free because
-    bound instancemethods can't be pickled for multiprocessing.
+    """Free function wrapping the Task runner.
+
+    It needs to be free because bound instancemethods can't be pickled for multiprocessing.
     """
     task._run()
 
@@ -429,7 +430,8 @@ class Accumulator:
             return ActivityState(activity, activity_time, target_name, target_tags)
 
         def _is_break(self, old, new, slots):
-            """Determine whether to break batches between `old` and `new`:
+            """Determine whether to break batches between `old` and `new`.
+
              * case 1 -- activity change (unless gain cal following target)
              * case 2 -- beamformer phase up ended
              * case 3 -- buffer capacity limit reached
@@ -589,8 +591,7 @@ class Accumulator:
             self._drained_rx_event.set()
 
         async def _accumulate(self):
-            """
-            Accumulate SPEAD heaps into arrays and send batches to the pipeline.
+            """Accumulate SPEAD heaps into arrays and send batches to the pipeline.
 
             This does the main work of :meth:`run`, which just wraps
             it to handle startup and cleanup.
@@ -602,7 +603,6 @@ class Accumulator:
                weights_channel
                dump_index
             """
-
             ig = spead2.ItemGroup()
             n_stop = 0                   # Number of stop heaps received
 
@@ -1031,9 +1031,7 @@ class Accumulator:
 
 
 class Pipeline(Task):
-    """
-    Task (Process or Thread) which runs pipeline
-    """
+    """Task (Process or Thread) which runs pipeline."""
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
@@ -1101,7 +1099,7 @@ class Pipeline(Task):
         ]
 
     def run(self):
-        """Task (Process or Thread) run method. Runs pipeline
+        """Task (Process or Thread) run method, which runs pipeline.
 
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
@@ -1117,8 +1115,7 @@ class Pipeline(Task):
             self._run_impl()
 
     def _run_impl(self):
-        """
-        Real implementation of :meth:`_run`.
+        """Real implementation of :meth:`_run`.
 
         Note: do not call this `_run`, since that is a method of the base class.
         """
@@ -1731,9 +1728,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
 
 
 def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
-    """
-    Create empty buffer record using specified dimensions
-    """
+    """Create empty buffer record using specified dimensions."""
     if use_multiprocessing:
         factory = shared_empty
     else:

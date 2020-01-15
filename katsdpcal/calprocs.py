@@ -1168,7 +1168,7 @@ def _wavg_flags_f(flags, chanav, excise):
     """Implementation of wavg_flags_f.
 
     This numba-accelerated version handles only the case where there are
-    4 dimensions and we're averaging along axis 1.
+    4 dimensions and we're averaging along axis -3 (which will also be axis 1).
     """
     n_time, n_channels, n_pol, n_baselines = flags.shape
     good = np.empty((n_pol, n_baselines), np.bool_)

@@ -37,8 +37,9 @@ class WrongFileType(IOError):
 
 
 def get_antdesc_relative(names, diameters, positions):
-    """
-    Determine antenna description dictionary, using offsets from a lat-long-alt reference position.
+    """Determine antenna description dictionary.
+
+    This uses offsets from a lat-lon-alt reference position.
 
     Returns
     -------
@@ -133,10 +134,10 @@ class SimData:
         await self.close()
 
     def setup_telstate(self, telstate):
-        """
-        Add key-value pairs from file to the Telescope State. This only sets
-        up the immutables needed to get run_cal.py going. Sensors are added
-        during transmission.
+        """Add key-value pairs from file to the Telescope State.
+
+        This only sets up the immutables needed to get run_cal.py going.
+        Sensors are added during transmission.
 
         Parameters
         ----------
@@ -193,8 +194,7 @@ class SimData:
                 telstate.add(key, v, ts=t)
 
     def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
-        """
-        Iterates through file and transmits data as a SPEAD stream.
+        """Iterates through file and transmits data as a SPEAD stream.
 
         Parameters
         ----------
@@ -221,8 +221,7 @@ class SimData:
         self.tx_data(telstate, tx, max_scans)
 
     def setup_ig(self, ig, correlator_data, flags, weights):
-        """
-        Initialises data transmit ItemGroup for SPEAD transmit
+        """Initialises data transmit ItemGroup for SPEAD transmit.
 
         Parameters
         ----------
@@ -260,8 +259,7 @@ class SimData:
         telstate[key] = first_timestamp
 
     def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
-        """
-        Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
+        """Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
 
         Parameters
         ----------
@@ -298,8 +296,8 @@ class SimData:
 
 
 class SimDataMS(SimData):
-    """
-    Simulated data class.
+    """Simulated data class.
+
     Uses MS file to simulate MeerKAT pipeline data SPEAD stream and Telescope State,
     subclassing casacore table.
 
@@ -372,8 +370,7 @@ class SimDataMS(SimData):
         return table(self.file.getkeyword(name), *args, **kwargs)
 
     def to_ut(self, t):
-        """
-        Converts MJD seconds into Unix time in seconds
+        """Converts MJD seconds into Unix time in seconds.
 
         Parameters
         ----------
@@ -387,9 +384,9 @@ class SimDataMS(SimData):
         return (t/86400. - 2440587.5 + 2400000.5)*86400.
 
     def get_antdesc(self):
-        """
-        Determine antenna description dictionary, using offsets from a
-        lat-long-alt reference position.
+        """Determine antenna description dictionary.
+
+        This uses offsets from a lat-lon-alt reference position.
 
         Returns
         -------
@@ -405,19 +402,12 @@ class SimDataMS(SimData):
         return get_antdesc_relative(names, diameters, positions)
 
     def field_ids(self):
-        """
-        Field IDs in the data set
-
-        Returns
-        -------
-        List of field IDs
-        """
+        """Field IDs in the data set."""
         with self.subtable('FIELD') as t:
             return list(range(t.nrows()))
 
     def get_params(self):
-        """
-        Add key value pairs from MS file to to parameter dictionary.
+        """Add key-value pairs from MS file to parameter dictionary.
 
         Returns
         -------
@@ -459,8 +449,7 @@ class SimDataMS(SimData):
         return param_dict
 
     def get_corrprods(self, antlist):
-        """
-        Gets correlation product list from MS
+        """Correlation product list from MS.
 
         Parameters
         ----------
@@ -501,7 +490,8 @@ class SimDataMS(SimData):
         return corrprods, corrprods_nopol
 
     def tx_data(self, telstate, tx, max_scans):
-        """
+        """Transmit MS data as a SPEAD stream.
+
         Iterates through MS file and transmits data as a SPEAD stream,
         also updating the telescope state accordingly.
 
@@ -607,8 +597,7 @@ class SimDataMS(SimData):
 
     def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
                    bchan=0, echan=None):
-        """
-        Writes data into MS file.
+        """Writes data into MS file.
 
         Parameters
         ----------
@@ -702,8 +691,9 @@ class SimDataKatdal(SimData):
         return param_dict
 
     def tx_data(self, telstate, tx, max_scans):
-        """
-        Iterates through katdal file and transmits data as a spead stream,
+        """Transmits katdal dataset as a SPEAD stream.
+
+        Iterates through katdal file and transmits data as a SPEAD stream,
         also updating the telescope state accordingly.
 
         Parameters
@@ -781,8 +771,7 @@ class SimDataKatdal(SimData):
 
     def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
                    bchan=0, echan=None):
-        """
-        Writes data into katdal file.
+        """Writes data into katdal file.
 
         Parameters
         ----------

@@ -64,7 +64,7 @@ class FreqChunksConverter(Converter):
 
 
 class AttrConverter(Converter):
-    """Converts to telstate by taking an attribute of the value"""
+    """Converts to telstate by taking an attribute of the value."""
     def __init__(self, field):
         self._field = field
 
@@ -364,10 +364,11 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
 
 
 def get_baseline_mask(bls_lookup, ants, limits):
-    """
+    """Mask indicating baselines with a length within `limits`.
+
     Compute a mask of the same length as bls_lookup that indicates
     whether the baseline length of the given correlation product is within
-    the given limits (in meters)
+    the given limits (in meters).
 
     Parameters
     ----------
@@ -389,8 +390,7 @@ def get_baseline_mask(bls_lookup, ants, limits):
 
 
 def get_model(target, lsm_dir_list=[]):
-    """
-    Get a sky model from a text file if one exists.
+    """Get a sky model from a text file if one exists.
 
     The name of the text file must incorporate the name of the source.
     If no text file is found, return the target sky model.

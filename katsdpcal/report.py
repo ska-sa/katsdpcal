@@ -33,9 +33,7 @@ TAG_WHITELIST = ['gaincal', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 
 
 class rstReport:
-    """
-    RST style report
-    """
+    """RST style report."""
 
     def __init__(self, filename):
         self._file = open(filename, 'w')
@@ -82,8 +80,7 @@ class rstReport:
 # --- FUNCTION :  Report writing functions
 # --------------------------------------------------------------------------------------------------
 def utc_tstr(timestamp, day=False):
-    """
-    Returns a formatted UTC time string
+    """Returns a formatted UTC time string.
 
     Parameters
     ----------
@@ -92,6 +89,7 @@ def utc_tstr(timestamp, day=False):
     day : bool, optional
          if true don't include the year and
          month in the time string
+
     Returns
     -------
     str : formatted time string
@@ -105,10 +103,9 @@ def utc_tstr(timestamp, day=False):
 
 
 def model_flux(target, freqs):
-    """
-    Flux density of the first source in the target model
+    """Flux density of the first source in the target model.
 
-    If there is no model, returns None
+    If there is no model, returns None.
 
     Parameters
     ----------
@@ -133,8 +130,7 @@ def model_flux(target, freqs):
 
 
 def insert_fig(report_path, report, fig, name=None):
-    """
-    Insert matplotlib figure into report
+    """Insert matplotlib figure into report.
 
     Parameters
     ----------
@@ -160,8 +156,7 @@ def insert_fig(report_path, report, fig, name=None):
 
 
 def write_bullet_if_present(report, table, var_text, var_name, transform=None):
-    """
-    Write bullet point, if `var_name` is present in `table`
+    """Write bullet point, if `var_name` is present in `table`.
 
     Parameters
     ----------
@@ -183,8 +178,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
 
 
 def metadata(ts, capture_block_id, report_path, run, st=None):
-    """
-    Create a dictionary with required metadata
+    """Create a dictionary with required metadata.
 
     Parameters
     ----------
@@ -224,8 +218,7 @@ def metadata(ts, capture_block_id, report_path, run, st=None):
 
 
 def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None):
-    """
-    Write observation summary information to report
+    """Write observation summary information to report.
 
     Parameters
     ----------
@@ -269,8 +262,7 @@ def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None
 
 
 def write_table_timerow(report, colnames, times, data):
-    """
-    Write RST style table to report, rows: time, columns: antenna
+    """Write RST style table to report, rows: time, columns: antenna.
 
     Parameters
     ----------
@@ -312,8 +304,7 @@ def write_table_timerow(report, colnames, times, data):
 
 
 def write_table_timecol(report, antenna_names, times, data, ave=False):
-    """
-    Write RST style table to report, rows: antenna, columns: time
+    """Write RST style table to report, rows: antenna, columns: time.
 
     Parameters
     ----------
@@ -372,8 +363,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
 
 
 def write_elevation(report, report_path, targets, antennas, refant_index, av_corr):
-    """
-    Put the elevation vs time plot in the report
+    """Put the elevation vs time plot in the report.
 
     Parameters
     ----------
@@ -411,8 +401,7 @@ def write_elevation(report, report_path, targets, antennas, refant_index, av_cor
 
 
 def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=[0, 1]):
-    """
-    Write the RFI summary
+    """Write the RFI summary.
 
     Parameters
     ----------
@@ -461,8 +450,10 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
 def write_hv(report, report_path, targets, av_corr,
              refant_name, antenna_names, correlator_freq,
              auto=True, pol=[0, 1]):
-    """
-    Include plots of the delay-corrected phases of the cross pol data
+    """Include plots of the delay-corrected phases of the cross-pol data.
+
+    Parameters
+    ----------
     report : file-like
         report file to write to
     report_path : str
@@ -537,10 +528,10 @@ def write_hv(report, report_path, targets, av_corr,
 
 def write_ng_freq(report, report_path, targets, av_corr,
                   refant_name, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include plots of spectra of calibrators which do
-    not have gains applied by the pipeline. Make one plot per calibrator scan.
-    The plots will only show baselines to reference antenna.
+    """Include plots of spectra of calibrators without applied gains.
+
+    These calibrators do not have gains applied by the pipeline. Make one plot
+    per calibrator scan. The plots will only show baselines to reference antenna.
 
     Parameters
     ----------
@@ -602,7 +593,8 @@ def write_ng_freq(report, report_path, targets, av_corr,
 
 def write_g_freq(report, report_path, targets, av_corr, antenna_names,
                  cal_bls_lookup, correlator_freq, is_calibrator=True, pol=[0, 1]):
-    """
+    """Include plots of spectra of calibrators with applied gains.
+
     Include plots of spectra of calibrators which have gains applied
     by the pipeline. Average all scans on each target into a single plot.
 
@@ -681,8 +673,8 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
 
 
 def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, pol):
-    """
-    Include plots of amp and phase versus time of all scans of the given targets in report.
+    """Plots of amp and phase versus time of all scans of the given targets.
+
     The plots show data averaged per antenna.
 
     Parameters
@@ -739,10 +731,10 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
 def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
                antennas, cal_array_position, correlator_freq,
                is_calibrator=True, pol=[0, 1]):
-    """
-    Include plots of amp and phase/amp versus uvdist in report.
-    The data is averaged in frequency to to the number
-    of channels given by PLOT_CHANNELS
+    """Include plots of amp and phase/amp versus uvdist in report.
+
+    The data is averaged in frequency to the number of channels given by
+    PLOT_CHANNELS.
 
     Parameters
     ----------
@@ -813,8 +805,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
 
 def write_SNR_products(report, report_path, ts, parameters,
                        st, et, antenna_names, pol=[0, 1]):
-    """
-    Include calibration product SNR plots in the report
+    """Include calibration product SNR plots in the report.
 
     Parameters
     ----------
@@ -877,8 +868,7 @@ def write_SNR_products(report, report_path, ts, parameters,
 
 def write_products(report, report_path, ts, parameters,
                    st, et, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include calibration product plots in the report
+    """Include calibration product plots in the report.
 
     Parameters
     ----------
@@ -898,7 +888,6 @@ def write_products(report, report_path, ts, parameters,
         list of antenna names
     correlator_freq : :class:`np.ndarray`
         real (nchans), correlator channel frequencies
-
     """
     cal_list = ['K', 'KCROSS', 'KCROSS_DIODE', 'B', 'G']
     product_names = parameters['product_names']
@@ -990,8 +979,7 @@ def write_products(report, report_path, ts, parameters,
 
 
 def get_cal(ts, cal, ts_name, st, et):
-    """
-    Fetch a calibration product from telstate
+    """Fetch a calibration product from telstate.
 
     Parameters
     ----------
@@ -1025,8 +1013,7 @@ def get_cal(ts, cal, ts_name, st, et):
 
 
 def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
-    """
-    Include table of delays and delay plots in cal report
+    """Include table of delays and delay plots in cal report.
 
     Parameters
     ----------
@@ -1069,19 +1056,22 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
 
 
 def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
-    """Write a bulleted list of completely NaN'ed antennas per polarization.
-     Return a list with bad-p appended to the antenna-names for NaN'ed antennas
+    """Write list of bad antennas to the report.
 
-     Parameters
-     ----------
-     report : file-like
+    Write a bulleted list of completely NaN'ed antennas per polarization.
+    Return a list with bad-p appended to the antenna-names for NaN'ed antennas
+
+    Parameters
+    ----------
+    report : file-like
         report file to write to
-     vals : array
+    vals : array
         solutions
-     antenna_names : list
+    antenna_names : list
         list of antenna names
-     list :
+    list :
         description of polarisation axes, optional
+
     Returns
     -------
     list :
@@ -1112,8 +1102,7 @@ def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
 
 
 def write_B(report, report_path, times, vals, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include plots of bandpass solutions at all given times in report
+    """Include plots of bandpass solutions at all given times in report.
 
     Parameters
     ----------
@@ -1167,8 +1156,7 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
 
 
 def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlator_freq, pol):
-    """
-    Include plots of bcross_diode solutions at all given times in report
+    """Include plots of bcross_diode solutions at all given times in report.
 
     Parameters
     ----------
@@ -1219,8 +1207,7 @@ def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlat
 
 
 def cal_heading(report, cal, prefix, suffix=''):
-    """
-    Write cal pipeline product headings
+    """Write cal pipeline product headings.
 
     Parameters
     ----------
@@ -1239,9 +1226,10 @@ def cal_heading(report, cal, prefix, suffix=''):
 
 
 def get_freq_info(correlator_freq, nchan):
-    """
-    Given nchan averaged channels calculate the channel index (in correlator channels)
-    and the frequencies of the averaged channels.
+    """Channel indices and frequencies of averaged frequency channels.
+
+    Given nchan averaged channels calculate the channel index (in correlator
+    channels) and the frequencies of the averaged channels.
 
     Parameters
     -----------
@@ -1249,6 +1237,7 @@ def get_freq_info(correlator_freq, nchan):
         array of correlator channel frequencies
     nchan : int
         no of averaged channels
+
     Returns
     -------
     avchan : :class:`np.ndarray`
@@ -1256,7 +1245,6 @@ def get_freq_info(correlator_freq, nchan):
     avfreq : :class:`np.ndarray`
         real (nchan) of mean frequencies of averaged channels
     """
-
     nc_chan = correlator_freq.shape[0]
     chanav = nc_chan // nchan
 
@@ -1272,15 +1260,16 @@ def get_freq_info(correlator_freq, nchan):
 
 
 def split_targets(targets):
-    """
-    Separate targets into three lists containing
-    calibrators without gains applied, calibrators
-    with gains applied and targets
+    """Split list of targets into groups depending on calibration properties.
+
+    Separate targets into four lists containing calibrators without gains
+    applied, calibrators with gains applied, polarisation calibrators and targets.
 
     Parameters
     -----------
     targets : list
         list of unique targets
+
     Returns
     -------
     nogain : list
@@ -1310,27 +1299,27 @@ def split_targets(targets):
 
 
 def calc_elevation(refant, times, target):
+    """Calculates elevation versus timestamps for observation targets.
+
+    It calculates the elevation from the target and antenna
+    position and it does not reflect the actual pointing of the dish.
+
+    Parameters
+    ----------
+    refant : str
+        the reference antenna
+    times : array
+        timestamps of scan
+    target : str
+        target string
+
+    Returns
+    -------
+    times : :class:`np.ndarray`
+        real, (ntimes) timestamps
+    elevation : :class:`np.ndarray`
+        real, (ntimes) of elevations
     """
-      Calculates elevation versus timestamps for observation targets.
-      It calculates the elevation from the target and antenna
-      position and it does not reflect the actual pointing of the dish.
-
-      Parameters
-      ----------
-      refant : str
-          the reference antenna
-      times : array
-          timestamps of scan
-      target : str
-          target string
-
-      Returns
-      -------
-      times : :class:`np.ndarray`
-          real, (ntimes) timestamps
-      elevation : :class:`np.ndarray`
-          real, (ntimes) of elevations
-      """
     kat_target = katpoint.Target(target)
     elevations = kat_target.azel(times, refant)[1]
 
@@ -1338,8 +1327,7 @@ def calc_elevation(refant, times, target):
 
 
 def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_position):
-    """
-    Calculate uvdistance in wavelengths
+    """Calculate uvdistance in wavelengths.
 
     Parameters
     ----------
@@ -1368,9 +1356,7 @@ def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_positio
 
 
 def calc_enu_sep(antennas, bls_lookup):
-    """
-    Calculate baseline separation in meters
-    for cross correlations only.
+    """Calculate baseline separation in meters for cross correlations only.
 
     Parameters
     ----------
@@ -1384,7 +1370,6 @@ def calc_enu_sep(antennas, bls_lookup):
     sep: :class:`np.ndarray`
         real (nbls), separations for baselines in bls_lookup
     """
-
     cross_idx = np.where(bls_lookup[:, 0] != bls_lookup[:, 1])[0]
     bls_lookup = bls_lookup[cross_idx]
     ant1 = [antennas[bls_lookup[i][0]] for i in range(len(bls_lookup))]
@@ -1401,11 +1386,10 @@ def calc_enu_sep(antennas, bls_lookup):
 
 
 def refant_antlabels(bls_lookup, refant_index, antenna_names):
-    """
-    Return a list of the antenna_names in the baselines to the reference antenna
+    """Antenna names in the baselines to the reference antenna.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bls_lookup : :class:`np.ndarray`
         array of indices of antennas in each baseline
     refant_index : int
@@ -1413,8 +1397,8 @@ def refant_antlabels(bls_lookup, refant_index, antenna_names):
     antenna_names : list of str
         list of antenna names
 
-    Returns:
-    --------
+    Returns
+    -------
     list of str:
         list of antenna names
     """
@@ -1439,9 +1423,10 @@ _lock = threading.Lock()
 
 def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, av_corr,
                     st=None, et=None):
-    """
-    Creates pdf calibration pipeline report (from RST source),
-    using data from the Telescope State
+    """Create calibration report.
+
+    Creates HTML calibration pipeline report (from RST source), using data from
+    the Telescope State.
 
     Parameters
     ----------
@@ -1462,7 +1447,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
     et : float, optional
         end time for reporting parameters, seconds
     """
-
     logger.info('Report compiling in directory {0}'.format(report_path))
 
     # --------------------------------------------------------------------
