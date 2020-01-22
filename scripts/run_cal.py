@@ -16,7 +16,7 @@ import katsdpservices
 from katsdpcal.control import create_server, create_buffer_arrays, FlagsStream
 from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
-    finalise_parameters, parameters_to_telstate)
+    finalise_parameters, parameters_to_telstate, get_band)
 
 from katsdpcal import param_dir, rfi_dir
 
@@ -282,27 +282,14 @@ def main():
 
     # determine parameter file to use
     if opts.parameter_file == '':
-        if n_chans_all == 1024:
-            param_filename = 'pipeline_parameters_meerkat_L_1k.txt'
-            param_file = os.path.join(param_dir, param_filename)
-            logger.info('Parameter file for 1k mode: %s', param_file)
-            rfi_filename = 'rfi_mask1K.pickle'
-            rfi_file = os.path.join(rfi_dir, rfi_filename)
-            logger.info('RFI mask file for 1k mode: %s', rfi_file)
-        elif n_chans_all == 4096:
-            param_filename = 'pipeline_parameters_meerkat_L_4k.txt'
-            param_file = os.path.join(param_dir, param_filename)
-            logger.info('Parameter file for 4k mode: %s', param_file)
-            rfi_filename = 'rfi_mask.pickle'
-            rfi_file = os.path.join(rfi_dir, rfi_filename)
-            logger.info('RFI mask file for 4k mode: %s', rfi_file)
-        else:
-            param_filename = 'pipeline_parameters_meerkat_L_32k.txt'
-            param_file = os.path.join(param_dir, param_filename)
-            logger.info('Parameter file for 32k mode: %s', param_file)
-            rfi_filename = 'rfi_mask32K.pickle'
-            rfi_file = os.path.join(rfi_dir, rfi_filename)
-            logger.info('RFI mask file for 32k mode: %s', rfi_file)
+        band = get_band(telstate_l0)
+        param_filename = 'pipeline_parameters_meerkat_{}.txt'.format(band)
+        param_file = os.path.join(param_dir, param_filename)
+        logger.info('Parameter file for %s-band: %s', band, param_file)
+        rfi_filename = 'rfi_mask.txt'
+        rfi_file = os.path.join(rfi_dir, rfi_filename)
+        logger.info('RFI mask file for %s-band: %s', band, rfi_file)
+
     else:
         param_file = opts.parameter_file
         logger.info('Parameter file: %s', param_file)
