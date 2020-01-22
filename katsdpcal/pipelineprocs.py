@@ -4,7 +4,6 @@ Pipeline procedures for MeerKAT calibration pipeline
 """
 
 import glob    # for model files
-import pickle
 import logging
 import argparse
 import math
@@ -97,27 +96,33 @@ USER_PARAMETERS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'first channel for K fit', int, converter=ChannelConverter),
-    Parameter('k_echan', 'last channel for K fit', int, converter=ChannelConverter),
+    Parameter('k_bchan', 'frequency of first channel for K fit, (MHz)', float,
+              converter=ChannelConverter),
+    Parameter('k_echan', 'frequency of last frequency for K fit, (MHz)', float,
+              converter=ChannelConverter),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit', int, converter=ChannelConverter),
-    Parameter('g_echan', 'last channel for g fit', int, converter=ChannelConverter),
+    Parameter('g_bchan', 'frequency of first channel for g fit, (MHz)', float,
+              converter=ChannelConverter),
+    Parameter('g_echan', 'frequency of last channel for g fit, (MHz)', float,
+              converter=ChannelConverter),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
-    Parameter('rfi_windows_freq', 'size of windows for SumThreshold', comma_list(int)),
-    Parameter('rfi_average_freq', 'amount to average in frequency before flagging', int),
+    Parameter('rfi_windows_freq',
+              'size of windows for SumThreshold after averaging in frequency, (channels)',
+              comma_list(int)),
+    Parameter('rfi_average_freq', 'amount to average in frequency before flagging, (hz)', float),
     Parameter('rfi_targ_spike_width_freq',
-              '1sigma frequency width of smoothing Gaussian on final target (in channels)', float),
+              '1sigma frequency width of smoothing Gaussian on final target, (hz)', float),
     Parameter('rfi_calib_spike_width_freq',
-              '1sigma frequency width of smoothing Gaussian on calibrators (in channels)', float),
+              '1sigma frequency width of smoothing Gaussian on calibrators, (hz)', float),
     Parameter('rfi_spike_width_time',
               '1sigma time width of smoothing Gaussian (in seconds)', float),
-    Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags', int),
+    Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags, (hz)', float),
     Parameter('rfi_freq_chunks', 'fraction of band on which to do noise estimation', int,
               converter=FreqChunksConverter),
     Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
@@ -193,8 +198,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     may be missing if there is a default. On return, those in
     :const:`COMPUTED_PARAMETERS` are filled in too.
 
-    It chooses the first antenna in `preferred_refants` that is in the antenna
-    list, or the first antenna if there are no matches.
+    Parameters specified in units of Hz or MHz are converted to channels
 
     Parameters
     ----------
@@ -216,7 +220,6 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         - if `servers` doesn't divide into the number of channels
         - if any unknown parameters are set in `parameters`
         - if `server_id` is out of range
-        - if the RFI file has the wrong number of channels
         - if a channel range for a solver crosses server boundaries
     """
     n_chans = telstate_l0['n_chans']
@@ -270,6 +273,10 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
                 parameters[name] = parameter.default.factory()
             else:
                 parameters[name] = parameter.default
+
+    # Convert frequency parameters from Hz/MHz to channels
+    parameters_to_channels(parameters, channel_freqs)
+
     # Convert all parameters to server-local values
     global_parameters = parameters.copy()
     for parameter in USER_PARAMETERS:
@@ -278,11 +285,12 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
     parameters['refant_index'] = None
     if rfi_filename is not None:
-        with open(rfi_filename, 'rb') as rfi_file:
-            parameters['rfi_mask'] = pickle.load(rfi_file)
-        if parameters['rfi_mask'].shape != (n_chans,):
-            raise ValueError('Incorrect shape in RFI mask ({}, expected {})'
-                             .format(parameters['rfi_mask'].shape, (n_chans,)))
+        mask_ranges = np.loadtxt(rfi_filename, comments='#', delimiter=',')
+        rfi_mask = np.zeros((n_chans,), np.bool_)
+        for r in mask_ranges:
+            idx = np.where((channel_freqs < r[1] * 1e6) & (channel_freqs >= r[0] * 1e6))[0]
+            rfi_mask[idx] = 1
+        parameters['rfi_mask'] = rfi_mask
     else:
         parameters['rfi_mask'] = np.zeros((n_chans,), np.bool_)
     # Only use static channel mask on baselines greater than 1 and less than 1000 meters
@@ -328,6 +336,37 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
             raise ValueError('Unexpected parameter {}'.format(key))
 
     return parameters
+
+
+def parameters_to_channels(parameters, channel_freqs):
+    """Convert certain parameters from units of Hz/MHz to channels
+
+    Parameters
+    ----------
+    parameters : dict
+        Dictionary mapping parameter names from :const:`USER_PARAMETERS`
+    channel_freqs : np.ndarray,
+        frequency of channels
+    """
+    for prefix in ['k', 'g']:
+        parameters[prefix + '_bchan'] = np.where(
+            channel_freqs >= parameters[prefix + '_bchan']*1e6)[0][0]
+        parameters[prefix + '_echan'] = np.where(
+            channel_freqs < parameters[prefix + '_echan']*1e6)[0][-1]
+
+    chan_width = channel_freqs[1] - channel_freqs[0]
+    for key in ['rfi_average_freq',
+                'rfi_targ_spike_width_freq',
+                'rfi_calib_spike_width_freq']:
+        parameters[key] = int(np.ceil(parameters[key] / chan_width))
+    # 'rfi_extend_freq' must be odd no of channels
+    odd_no_chans = np.ceil(parameters['rfi_extend_freq'] / chan_width) // 2 * 2 + 1
+    parameters['rfi_extend_freq'] = int(max(3, odd_no_chans))
+    # flagger expects threshold window sizes unaveraged channel widths
+    pre_avg_windows = [int(w / parameters['rfi_average_freq'])
+                       for w in parameters['rfi_windows_freq']]
+    pre_avg_windows[0] = 1
+    parameters['rfi_windows_freq'] = pre_avg_windows
 
 
 def parameters_to_telstate(parameters, telstate_cal, l0_name):
@@ -449,3 +488,18 @@ def get_model(target, lsm_dir_list=[]):
             model_cat = katpoint.Catalogue(file)
             model_components = [m.description for m in model_cat]
     return model_components, model_file
+
+
+def get_band(telstate_l0):
+    center_freq = telstate_l0['center_freq']
+    bandwidth = telstate_l0['bandwidth']
+    n_chans = telstate_l0['n_chans']
+    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans // 2)
+
+    if channel_freqs[0] < 855e6:
+        band = 'UHF'
+    elif channel_freqs[0] < 2186e6:
+        band = 'L'
+    else:
+        band = 'S'
+    return band
