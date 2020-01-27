@@ -485,18 +485,3 @@ def get_model(target, lsm_dir_list=[]):
             model_cat = katpoint.Catalogue(file)
             model_components = [m.description for m in model_cat]
     return model_components, model_file
-
-
-def get_band(telstate_l0):
-    center_freq = telstate_l0['center_freq']
-    bandwidth = telstate_l0['bandwidth']
-    n_chans = telstate_l0['n_chans']
-    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans // 2)
-
-    if channel_freqs[0] < 855e6:
-        band = 'UHF'
-    elif channel_freqs[0] < 2186e6:
-        band = 'L'
-    else:
-        band = 'S'
-    return band

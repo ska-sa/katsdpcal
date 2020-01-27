@@ -16,7 +16,7 @@ import katsdpservices
 from katsdpcal.control import create_server, create_buffer_arrays, FlagsStream
 from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
-    finalise_parameters, parameters_to_telstate, get_band)
+    finalise_parameters, parameters_to_telstate)
 
 from katsdpcal import param_dir, rfi_dir
 
@@ -282,7 +282,8 @@ def main():
 
     # determine parameter file to use
     if opts.parameter_file == '':
-        band = get_band(telstate_l0)
+        band_map = {'u': 'UHF', 'l': 'L', 's': 'S', 'x': 'X'}
+        band = band_map[telstate_l0['sub_band']]
         param_filename = 'pipeline_parameters_meerkat_{}.txt'.format(band)
         param_file = os.path.join(param_dir, param_filename)
         logger.info('Parameter file for %s-band: %s', band, param_file)
