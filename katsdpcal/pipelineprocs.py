@@ -13,6 +13,7 @@ import numpy as np
 
 import katpoint
 
+from collections import OrderedDict
 from . import calprocs
 
 logger = logging.getLogger(__name__)
@@ -91,43 +92,61 @@ def comma_list(type_):
 
     return convert
 
-
-USER_PARAMETERS = [
+# Parameters that the user can set directly, in units of channels
+USER_PARAMS_CHANS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
-    Parameter('k_bchan', 'frequency of first channel for K fit, (MHz)', float,
-              converter=ChannelConverter),
-    Parameter('k_echan', 'frequency of last frequency for K fit, (MHz)', float,
-              converter=ChannelConverter),
+    Parameter('k_bchan', 'first channel for K fit, (channel no)', int, converter=ChannelConverter),
+    Parameter('k_echan', 'last channel for K fit, (channel no)', int, converter=ChannelConverter),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
     # bandpass calibration
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'frequency of first channel for g fit, (MHz)', float,
+    Parameter('g_bchan', 'first channel for g fit, (channels)', int,
               converter=ChannelConverter),
-    Parameter('g_echan', 'frequency of last channel for g fit, (MHz)', float,
+    Parameter('g_echan', 'last channel for g fit, (channels)', int,
               converter=ChannelConverter),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
     Parameter('rfi_targ_nsigma', 'number of sigma to reject outliers for targets', float),
+    Parameter('rfi_average_freq',
+              'amount to average in frequency before flagging, (channels)', int),
     Parameter('rfi_windows_freq',
-              'size of windows for SumThreshold after averaging in frequency, (channels)',
+              'size of windows for SumThreshold on original, unaveraged data, (channels)',
               comma_list(int)),
-    Parameter('rfi_average_freq', 'amount to average in frequency before flagging, (hz)', float),
     Parameter('rfi_targ_spike_width_freq',
-              '1sigma frequency width of smoothing Gaussian on final target, (hz)', float),
+              '1sigma frequency width of smoothing Gaussian on final target, (channels)', int),
     Parameter('rfi_calib_spike_width_freq',
-              '1sigma frequency width of smoothing Gaussian on calibrators, (hz)', float),
+              '1sigma frequency width of smoothing Gaussian on calibrators, (channels)', int),
     Parameter('rfi_spike_width_time',
               '1sigma time width of smoothing Gaussian (in seconds)', float),
-    Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags, (hz)', float),
+    Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags, (channels)', int),
     Parameter('rfi_freq_chunks', 'fraction of band on which to do noise estimation', int,
               converter=FreqChunksConverter),
     Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
               converter=AttrConverter('description'))
 ]
+
+
+# Parameters that the user can set directly, in units of Hz/MHz
+USER_PARAMS_FREQS = [
+    Parameter('k_bfreq', 'start frequency for k fit ', float),
+    Parameter('k_efreq', 'stop frequency for k fit', float),
+    Parameter('g_bfreq', 'start frequency for g fit', float),
+    Parameter('g_efreq', 'stop frequency for g fit', float),
+    Parameter('rfi_average_hz', 'amount to average in frequency before flagging, (Hz)', float),
+    Parameter('rfi_windows_post_average',
+              'size of windows for SumThreshold on frequency averaged data, (channels)',
+              comma_list(int)),
+    Parameter('rfi_targ_spike_width_hz',
+              '1sigma frequency width of smoothing Gaussian on final target, (Hz)', float),
+    Parameter('rfi_calib_spike_width_hz',
+              '1sigma frequency width of smoothing Gaussian on calibrators, (Hz)', float),
+    Parameter('rfi_extend_hz', 'convolution width in frequency to extend flags, (Hz)', float)
+]
+
 
 # Parameters that the user cannot set directly (the type is not used)
 COMPUTED_PARAMETERS = [
@@ -161,7 +180,7 @@ def parameters_from_file(filename):
     rows = np.loadtxt(filename, delimiter=':', dtype=np.str, comments='#')
     raw_params = {key.strip(): value.strip() for (key, value) in rows}
     param_dict = {}
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_FREQS + USER_PARAMS_CHANS:
         if parameter.name in raw_params:
             param_dict[parameter.name] = parameter.type(raw_params[parameter.name])
             del raw_params[parameter.name]
@@ -173,7 +192,7 @@ def parameters_from_file(filename):
 def parameters_from_argparse(namespace):
     """Extracts those parameters that are present in an argparse namespace"""
     param_dict = {}
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_CHANS + USER_PARAMS_FREQS:
         if parameter.name in vars(namespace):
             param_dict[parameter.name] = getattr(namespace, parameter.name)
     return param_dict
@@ -181,7 +200,7 @@ def parameters_from_argparse(namespace):
 
 def register_argparse_parameters(parser):
     """Add command-line arguments corresponding to parameters"""
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_CHANS + USER_PARAMS_FREQS:
         # Note: does NOT set default=. Defaults are resolved only after
         # processing both command-line arguments and config files.
         parser.add_argument('--' + parameter.name.replace('_', '-'),
@@ -194,16 +213,18 @@ def register_argparse_parameters(parser):
 def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filename=None):
     """Set the defaults and computed parameters in `parameters`.
 
-    On input, `parameters` contains the keys in :const:`USER_PARAMETERS`. Keys
-    may be missing if there is a default. On return, those in
-    :const:`COMPUTED_PARAMETERS` are filled in too.
-
-    Parameters specified in units of Hz or MHz are converted to channels
+    On input, `parameters` contains keys from :const:`USER_PARAMS_CHANS` or
+    :const:`USER_PARAMS_FREQS`. Keys from `USER_PARAMS_CHANS` be missing if there
+    is a default or there is an equivalent frequency based parameter in `USER_PARAMS_FREQS`.
+    On return, parameters in :const:`COMPUTED_PARAMETERS` are filled in and
+    parameters given in :const:`USER_PARAMS_FREQS` are converted to channel based parameters
+    in :const:`USER_PARAMS_CHANS`
 
     Parameters
     ----------
     parameters : dict
-        Dictionary mapping parameter names from :const:`USER_PARAMETERS`
+        Dictionary mapping parameter names from :const:`USER_PARAMS_CHANS` or
+        :cont:`USER_PARAMS_CHANS`
     telstate_l0 : :class:`katsdptelstate.TelescopeState`
         Telescope state with a view of the L0 attributes
     servers : int
@@ -258,13 +279,16 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.
-    if 'array_position' not in USER_PARAMETERS:
+    if 'array_position' not in USER_PARAMS_CHANS:
         parameters['array_position'] = katpoint.Antenna(
             'array_position', *antennas[0].ref_position_wgs84)
 
+    # Convert frequency parameters from Hz/MHz to channels
+    parameters_to_channels(parameters, channel_freqs)
+
     # Set the defaults. Needs to be done after dealing with array_position
     # but before interpreting preferred_refants.
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_CHANS:
         name = parameter.name
         if name not in parameters:
             if parameter.default is None:
@@ -274,12 +298,9 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
             else:
                 parameters[name] = parameter.default
 
-    # Convert frequency parameters from Hz/MHz to channels
-    parameters_to_channels(parameters, channel_freqs)
-
     # Convert all parameters to server-local values
     global_parameters = parameters.copy()
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_CHANS:
         name = parameter.name
         parameters[name] = parameter.converter.to_local(parameters[name], global_parameters)
 
@@ -330,43 +351,77 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
-    valid_parameters = set(parameter.name for parameter in USER_PARAMETERS + COMPUTED_PARAMETERS)
+    valid_parameters = set(parameter.name for parameter in
+                           USER_PARAMS_CHANS + COMPUTED_PARAMETERS)
     for key in parameters:
         if key not in valid_parameters:
             raise ValueError('Unexpected parameter {}'.format(key))
-
     return parameters
 
 
 def parameters_to_channels(parameters, channel_freqs):
     """Convert certain parameters from units of Hz/MHz to channels
 
+    If a channel based parameter has already been supplied use it, else
+    calculate it from the frequency based parameter.
+
     Parameters
     ----------
     parameters : dict
-        Dictionary mapping parameter names from :const:`USER_PARAMETERS`
+        Dictionary mapping parameter names from :const:`USER_PARAMS_CHANS` +
+        :const:`USER_PARAMS_FREQS`
     channel_freqs : np.ndarray,
         frequency of channels
-    """
-    for prefix in ['k', 'g']:
-        parameters[prefix + '_bchan'] = np.where(
-            channel_freqs >= parameters[prefix + '_bchan']*1e6)[0][0]
-        parameters[prefix + '_echan'] = np.where(
-            channel_freqs < parameters[prefix + '_echan']*1e6)[0][-1]
 
+    Raises
+    ------
+    ValueError
+        - if a parameter is not set using either the channel or frequency
+          convention
+    """
+    # dict to convert channel based parameter names to freq based names
+    # order is NB because converting some keys to channels requires other
+    # parameters to already be available in channels.
+    chans_to_freq = OrderedDict()
+    for param in USER_PARAMS_CHANS:
+        if param.name.endswith('chan'):
+            chans_to_freq.update({param.name : param.name.replace('chan', 'freq')})
+        elif param.name.endswith('freq'):
+            chans_to_freq.update({param.name : param.name.replace('freq', 'hz')})
+    chans_to_freq.update({'rfi_windows_freq' : 'rfi_windows_post_average'})
+    # check all parameters are provided as either Hz/MHz or chans, remove duplicate params
+    for chan, freq in chans_to_freq.items():
+        if chan in parameters:
+            if freq in parameters:
+                del parameters[freq]
+                logger.info('Parameters %s and %s both set, using %s', chan, freq, chan)
+        else:
+            if freq not in parameters:
+                raise ValueError('Parameters {} and {} both not set'.format(chan, freq))
+
+    # convert frequency params to channel params
     chan_width = channel_freqs[1] - channel_freqs[0]
-    for key in ['rfi_average_freq',
-                'rfi_targ_spike_width_freq',
-                'rfi_calib_spike_width_freq']:
-        parameters[key] = int(np.ceil(parameters[key] / chan_width))
-    # 'rfi_extend_freq' must be odd no of channels
-    odd_no_chans = np.ceil(parameters['rfi_extend_freq'] / chan_width) // 2 * 2 + 1
-    parameters['rfi_extend_freq'] = int(max(3, odd_no_chans))
-    # flagger expects threshold window sizes unaveraged channel widths
-    pre_avg_windows = [int(w / parameters['rfi_average_freq'])
-                       for w in parameters['rfi_windows_freq']]
-    pre_avg_windows[0] = 1
-    parameters['rfi_windows_freq'] = pre_avg_windows
+    for chan, freq in chans_to_freq.items():
+        if freq in parameters:
+            if freq.endswith('bfreq'):
+                parameters[chan] = np.where(channel_freqs >= parameters[freq]*1e6)[0].item(0)
+            elif freq.endswith('efreq'):
+                parameters[chan] = np.where(channel_freqs < parameters[freq]*1e6)[0].item(-1)
+            elif freq in ['rfi_average_hz',
+                          'rfi_targ_spike_width_hz',
+                          'rfi_calib_spike_width_hz']:
+                parameters[chan] = int(np.ceil(parameters[freq] / chan_width))
+            elif freq == 'rfi_extend_hz':
+                # 'rfi_extend_freq' must be odd no of channels
+                odd_no_chans = np.ceil(parameters[freq] / chan_width) // 2 * 2 + 1
+                parameters[chan] = int(max(3, odd_no_chans))
+            elif freq == 'rfi_windows_post_average':
+                # flagger expects threshold window sizes unaveraged channel widths
+                pre_avg_windows = [int(w * parameters['rfi_average_freq'])
+                                   for w in parameters[freq]]
+                pre_avg_windows[0] = 1
+                parameters[chan] = pre_avg_windows
+            del parameters[freq]
 
 
 def parameters_to_telstate(parameters, telstate_cal, l0_name):
@@ -376,7 +431,7 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
 
     The `telstate_cal` should be a view in the cal_name namespace.
     """
-    for parameter in USER_PARAMETERS:
+    for parameter in USER_PARAMS_CHANS:
         # Put them in unless explicitly set to False
         if parameter.telstate is None or parameter.telstate:
             if isinstance(parameter.telstate, str):
