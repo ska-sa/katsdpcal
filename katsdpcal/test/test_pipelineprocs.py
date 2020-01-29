@@ -36,27 +36,76 @@ class TestArgparseParameters(unittest.TestCase):
         self.assertEqual([], parameters['rfi_windows_freq'])
 
 
+class TestParametersToChannels(unittest.TestCase):
+    def setUp(self):
+        self.parameters = {
+            'k_bfreq': 1326.200,
+            'k_efreq': 1368.012,
+            'g_bfreq': 1326.200,
+            'g_efreq': 1326.012,
+            'rfi_targ_spike_width_hz': 104491,
+            'rfi_calib_spike_width_hz': 2089843,
+            'rfi_average_hz': 104491,
+            'rfi_extend_hz': 391845,
+            'rfi_windows_post_average': [1, 2, 4, 8]
+        }
+        self.freqs = np.arange(32768) / 32768 * 856000000.0 + 856000000.0
+
+    def test_freq_params(self):
+        parameters = self.parameters.copy()
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        # params given in Hz/MHz should be converted to channels
+        self.assertEqual(18000, parameters['g_bchan'])
+        self.assertEqual(4, parameters['rfi_average_freq'])
+        self.assertEqual(15, parameters['rfi_extend_freq'])
+        self.assertEqual([1, 8, 16, 32], parameters['rfi_windows_freq'])
+
+    def test_chan_params(self):
+        parameters = self.parameters.copy()
+        del parameters['k_bfreq']
+        del parameters['rfi_extend_hz']
+        parameters.update({'k_bchan' : 4500})
+        parameters.update({'rfi_extend_freq' : 7})
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        # params given in channels should remain the same
+        self.assertEqual(4500, parameters['k_bchan'])
+        self.assertEqual(7, parameters['rfi_extend_freq'])
+
+    def test_both(self):
+        parameters = self.parameters.copy()
+        parameters.update({'g_bchan' : 5500})
+        # if param given in channels and freqs, use channel value
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        self.assertEqual(5500, parameters['g_bchan'])
+
+    def test_neither(self):
+        parameters = self.parameters.copy()
+        del parameters['k_bfreq']
+        with self.assertRaises(ValueError):
+            pipelineprocs.parameters_to_channels(parameters, self.freqs)
+
+
 class TestFinaliseParameters(unittest.TestCase):
     def setUp(self):
         # These parameters are based on pipeline_parameters_meerkat_L.txt
         self.parameters = {
             'k_solint': 5.0,
             'k_chan_sample': 1,
-            'k_bchan': 1326.200,
-            'k_echan': 1368.012,
+            'k_bfreq': 1326.200,
+            'k_efreq': 1368.012,
             'kcross_chanave': 1,
             'bp_solint': 5.0,
             'g_solint': 5.0,
-            'g_bchan': 1326.200,
-            'g_echan': 1368.012,
+            'g_bfreq': 1326.200,
+            'g_efreq': 1368.012,
             'rfi_calib_nsigma': 4.5,
             'rfi_targ_nsigma': 7.0,
-            'rfi_windows_freq': [1, 2, 4, 8],
-            'rfi_average_freq': 104491,
-            'rfi_targ_spike_width_freq': 4179687,
-            'rfi_calib_spike_width_freq': 2089843,
+            'rfi_windows_post_average': [1, 2, 4, 8],
+            'rfi_average_hz': 104491,
+            'rfi_targ_spike_width_hz': 4179687,
+            'rfi_calib_spike_width_hz': 2089843,
             'rfi_spike_width_time': 100.0,
-            'rfi_extend_freq': 391845,
+            'rfi_extend_hz': 391845,
             'rfi_freq_chunks': 8
         }
 
@@ -161,17 +210,17 @@ class TestFinaliseParameters(unittest.TestCase):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 3, 0, None)
 
     def test_missing_parameter(self):
-        del self.parameters['k_bchan']
+        del self.parameters['k_bfreq']
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 
     def test_bad_channel_range(self):
-        self.parameters['k_echan'] = 1315765625  # chan 2200 in L-band 4K
+        self.parameters['k_efreq'] = 1315765625  # chan 2200 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 
     def test_channel_range_spans_servers(self):
-        self.parameters['k_echan'] = 1498208985  # chan 3073 in L-band 4K
+        self.parameters['k_efreq'] = 1498208985  # chan 3073 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 

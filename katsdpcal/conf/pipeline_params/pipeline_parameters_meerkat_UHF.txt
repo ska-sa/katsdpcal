@@ -3,8 +3,8 @@
 # delay calibration
 k_solint : 5.0                       # nominal pre-k g solution interval, seconds
 k_chan_sample : 1                    # sample every 10th channel for pre-K BP soln
-k_bchan : 842.825                    # start frequency of first channel for K fit, MHz
-k_echan : 869.391                    # end frequency of last channel for K fit, MHz
+k_bfreq : 842.825                    # start frequency of first channel for K fit, MHz
+k_efreq : 869.391                    # end frequency of last channel for K fit, MHz
 kcross_chanave : 1                   # number of channels to average together to kcross solution
 
 # bandpass calibration
@@ -12,16 +12,16 @@ bp_solint : 5.0                      # nominal pre-bp g solution interval, secon
 
 # gain calibration
 g_solint: 5.0                        # nominal g solution interval, seconds
-g_bchan : 842.825                    # start frequency of first channel for g fit, MHz
-g_echan : 869.391                    # end frequency of last channel for g fit, MHz
+g_bfreq : 842.825                    # start frequency of first channel for g fit, MHz
+g_efreq : 869.391                    # end frequency of last channel for g fit, MHz
 
 # Flagging
 rfi_calib_nsigma : 4.5               # Number of sigma to reject outliers for calibrators
 rfi_targ_nsigma : 7.0                # Number of sigma to reject outliers for targets
-rfi_windows_freq : 1,2,4,8           # Size of windows for SumThreshold, post-avg channels
-rfi_average_freq : 66406             # Amount to average in frequency before flagging, Hz
-rfi_targ_spike_width_freq : 2656250  # 1sigma frequency width of smoothing Gaussian on final target, Hz
-rfi_calib_spike_width_freq : 1328125 # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
+rfi_windows_post_average : 1,2,4,8   # Size of windows for SumThreshold, post-avg channels
+rfi_average_hz : 66406               # Amount to average in frequency before flagging, Hz
+rfi_targ_spike_width_hz : 2656250    # 1sigma frequency width of smoothing Gaussian on final target, Hz
+rfi_calib_spike_width_hz : 1328125   # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
 rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
-rfi_extend_freq : 249023             # Convolution width in frequency to extend flags, Hz
+rfi_extend_hz : 249023               # Convolution width in frequency to extend flags, Hz
 rfi_freq_chunks : 8                  # Fraction of band on which to do noise estimation
