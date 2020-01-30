@@ -1079,6 +1079,40 @@ class TestCalDeviceServer(asynctest.TestCase):
         np.testing.assert_allclose(expected[1, 100], actual[1, 100], rtol=1e-4)
         np.testing.assert_allclose(expected, actual, rtol=1e-4)
 
+    async def test_reset_solution_stores(self):
+        """Test that the solution stores are reset between calls to capture_init"""
+        n_times = 5
+        int_time = self.telstate_l0['int_time']
+        target = ('FluxC, radec delaycal bpcal gaincal, 13:31:08.29, +30:30:33.0, '
+                  '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
+        self.telstate.add('cbf_target', target, ts=0.01)
+        heaps = self.prepare_heaps(None, n_times)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb')
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        await self.make_request('capture-done')
+        # Wait for pipeline to finish which is after
+        # the reports have been written.
+        for i in range(240):
+            await asyncio.sleep(1)
+            rw = await self.get_sensor('reports-written')
+            if rw == [b'1'] * self.n_servers:
+                break
+        # The print is just to check that I have solution stores at this point
+        # Later I'll add tests here.
+        print(self.servers[0].server.pipeline.solution_stores)
+        await asyncio.sleep(1)
+        # Restart with a new set of heaps
+        heaps = self.prepare_heaps(None, n_times)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb2')
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        await self.shutdown_servers(180)
+
     async def test_pipeline_exception(self):
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             await self.assert_sensor_value('pipeline-exceptions', 0)
