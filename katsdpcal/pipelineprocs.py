@@ -92,6 +92,7 @@ def comma_list(type_):
 
     return convert
 
+
 # Parameters that the user can set directly, in units of channels
 USER_PARAMS_CHANS = [
     # delay calibration
