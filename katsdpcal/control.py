@@ -726,7 +726,10 @@ class Accumulator:
                 if self._previous is not None:
                     self._logger.info('waiting for %s to finish', self._previous.capture_block_id)
                     await self._previous.done_event.wait()
-
+                # Tell pipeline that a new observation has begun
+                # Only pipeline uses the ObservationStartEvent so there is
+                # no need to send it to any other queue.
+                self.owner.accum_pipeline_queue.put(ObservationStartEvent())
                 await self._accumulate()
                 # Tell the pipeline that the observation ended, but only if there
                 # was something to work on.
@@ -981,8 +984,6 @@ class Accumulator:
         assert not self.capturing, "observation already running"
         logger.info('===========================')
         logger.info('   Starting new observation')
-        # Tell pipeline that a new observation has begun
-        self.accum_pipeline_queue.put(ObservationStartEvent())
         rx = self._make_rx()
         cb = Accumulator._CaptureBlock(self, capture_block_id, rx, self._last_capture_block)
         self._last_capture_block = cb
