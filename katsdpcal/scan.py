@@ -3,7 +3,6 @@
 import time
 import functools
 import logging
-import operator
 
 import numpy as np
 import dask.array as da
