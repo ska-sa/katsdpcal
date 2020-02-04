@@ -1136,8 +1136,9 @@ class Pipeline(Task):
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
                 if isinstance(event, ObservationStartEvent):
-                    logger.info('Resetting solution stores')
-                    self._reset_solution_stores()
+                    if self.parameters['reset_solution_stores']:
+                        logger.info('Resetting solution stores')
+                        self._reset_solution_stores()
                 elif isinstance(event, BufferReadyEvent):
                     logger.info('buffer with %d slots acquired by %s',
                                 len(event.slots), self.name)

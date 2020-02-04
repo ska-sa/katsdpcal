@@ -1103,6 +1103,9 @@ class TestCalDeviceServer(asynctest.TestCase):
 
     async def test_reset_solution_stores(self):
         """Test that the solution stores are reset between calls to capture_init"""
+        # Force pipeline to reset the solution stores
+        for serv in self.servers:
+            serv.server.pipeline.parameters['reset_solution_stores'] = True
         n_times = 5
         start_time = self.telstate.sdp_l0test_sync_time + 100.
         end_time = start_time + n_times * self.telstate.sdp_l0test_int_time
