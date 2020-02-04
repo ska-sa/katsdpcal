@@ -302,7 +302,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.output_streams[key] = stream
         return stream
 
-    def init_itemgroup(self):
+    def init_item_group(self):
         """Initalise a :class:`spead2.send.ItemGroup` and send it to servers."""
         self.ig = spead2.send.ItemGroup()
         self.add_items(self.ig)
@@ -352,7 +352,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             stream = spead2.send.InprocStream(sender_thread_pool, queue)
             stream.set_cnt_sequence(i, self.n_endpoints)
             self.l0_streams[endpoint] = stream
-        self.init_itemgroup()
+        self.init_item_group()
 
         # Need a real function to use in the mock, otherwise it doesn't become
         # a bound method.
@@ -1092,7 +1092,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         np.testing.assert_allclose(expected, actual, rtol=1e-4)
 
     async def wait_for_sensor(self, sensor, value, timeout):
-        """Wait `timeout` seconds for for `sensor` to have `value`."""
+        """Wait `timeout` seconds for `sensor` to have `value`."""
         for i in range(timeout):
             await asyncio.sleep(1)
             rw = await self.get_sensor(sensor)
@@ -1129,7 +1129,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             assert_true(serv_store['G_FLUX'].has_target('J1331+3030'))
 
         # Refresh ItemGroup and send it to servers.
-        self.init_itemgroup()
+        self.init_item_group()
 
         # Set up a new capture block in telstate
         self.populate_telstate_cb(self.telstate, 'cb2')
