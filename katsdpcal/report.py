@@ -362,6 +362,66 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
     report.writeln()
 
 
+def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
+    """ Write Flux calibration info in a table
+
+    Info only gets written if the 'measured_flux' dict in telstate
+    isn't empty
+
+    Parameters
+    ----------
+    report : file-like
+        report file to write to
+    flux_cal : dict
+        target names and their measured flux
+    flux_std : dict
+        target names and their measured flux errors
+    parameters : dict
+        pipeline parameters
+    targets : list of :class:`katpoint.Target`
+        targets in the observation
+    """
+
+    if flux_cal:
+        g_bchan = parameters['g_bchan']
+        g_echan = parameters['g_echan']
+        freqs = parameters['channel_freqs_all'][g_bchan:g_echan + 1] / 1e6
+
+        report.write_heading_2('Flux Calibration')
+        flux_desc = '{:.2f} - {:.2f} MHz'.format(freqs[0], freqs[-1])
+        report.writeln('Frequency range of quoted flux: **{}**'.format(flux_desc))
+
+        # create table header
+        header = ['Calibrator', 'Measured Flux', 'Model Flux']
+        n_entries = len(header)
+        col_width = 30
+        col_header = '=' * col_width + ' '
+        header = ' '.join(['{:<{}}'.format(h, col_width) for h in header])
+
+        # write table header
+        report.writeln()
+        report.writeln(col_header * n_entries)
+        report.writeln(header)
+        report.writeln(col_header * n_entries)
+
+        for cal in targets:
+            name = cal.name
+            if name in flux_cal.keys():
+                flux_desc = '{:.3f} +/- {:.3f} Jy'.format(flux_cal[name], flux_std[name])
+                # if model flux is available, report it
+                model = model_flux(cal, freqs)
+                if model is not None:
+                    model_desc = '{:.3f} Jy'.format(np.average(model))
+                else:
+                    model_desc = ''
+                for entry in [name, flux_desc, model_desc]:
+                    report.write('{:<{}}'.format(entry, col_width + 1))
+                report.writeln()
+        # write table footer
+        report.writeln(col_header * n_entries)
+        report.writeln()
+
+
 def write_elevation(report, report_path, targets, antennas, refant_index, av_corr):
     """Put the elevation vs time plot in the report.
 
@@ -574,6 +634,7 @@ def write_ng_freq(report, report_path, targets, av_corr,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
+        flux_density = model_flux(kat_target, freq_chan)
         for ti in range(len(av_times)):
             report.writeln()
             t = utc_tstr(av_times[ti])
@@ -585,13 +646,13 @@ def write_ng_freq(report, report_path, targets, av_corr,
                 plot = plotting.plot_spec(
                     ant_data[ti, ..., idx : idx + ANT_CHUNKS], idx_chan,
                     antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
-                    freq_range=freq_range, title=plot_title, pol=pol)
+                    freq_range=freq_range, title=plot_title, pol=pol, amp_model=flux_density)
                 insert_fig(report_path, report, plot, name='Corr_v_Freq_{0}_ti_{1}_{2}'.format(
                     target_name.replace(' ', '_'), ti, idx))
                 report.writeln()
 
 
-def write_g_freq(report, report_path, targets, av_corr, antenna_names,
+def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
                  cal_bls_lookup, correlator_freq, is_calibrator=True, pol=[0, 1]):
     """Include plots of spectra of calibrators with applied gains.
 
@@ -604,8 +665,10 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
     targets : list of str
-        list of target strings for targets to plot
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data
     antenna_names : list
@@ -638,6 +701,10 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         # Get averaged spectrum for gain calibrated targets
         av_data, av_flags, av_weights = da.compute(*av_corr['{0}_g_spec'.format(target_name)][0])
         av_data[av_flags] = np.nan
+        # flux calibrate gain calibrators
+        if target_name in flux_cal.keys():
+            flux = flux_cal[target_name]
+            av_data *= flux
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
         # Get channel index in correlator channels
@@ -672,7 +739,8 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
             report.writeln()
 
 
-def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, pol):
+def write_g_time(report, report_path, flux_cal, targets, av_corr,
+                 antenna_names, cal_bls_lookup, pol):
     """Plots of amp and phase versus time of all scans of the given targets.
 
     The plots show data averaged per antenna.
@@ -683,6 +751,10 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
+    targets : list of :class: `katpoint.Target`
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data
     antenna_names : list
@@ -693,9 +765,7 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
         description of polarisation axes, optional
     """
     # Get all scans of calibrators which have gains applied by the pipeline.
-    if 'g_phase' in av_corr:
-        av_data, av_times = zip(*av_corr['g_phase'])
-        av_data = np.stack(av_data, axis=0)
+    if len(targets) > 0:
 
         report.write_heading_2(
             'Corrected Phase vs Time, all gain-calibrated calibrators')
@@ -703,10 +773,23 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
         report.write_heading_3('All baselines, averaged per antenna')
         report.writeln()
 
+        data, times = [], []
+        for cal in targets:
+            kat_target = katpoint.Target(cal)
+            target_name = kat_target.name
+            av_data, av_times = zip(*av_corr[target_name + '_g_phase'])
+
+            # flux calibrate if possible
+            if target_name in flux_cal.keys():
+                av_data = [d * flux_cal[target_name] for d in av_data]
+            data += av_data
+            times += av_times
+
+        av_data = np.stack(data, axis=0)
         # insert plots of phase v time
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
             plot = plotting.plot_corr_v_time(
-                av_times, av_data[..., idx : idx + ANT_CHUNKS],
+                times, av_data[..., idx : idx + ANT_CHUNKS],
                 antenna_names=antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
             insert_fig(report_path, report, plot, name='Phase_v_Time_{0}'.format(idx))
             report.writeln()
@@ -719,7 +802,7 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
 
         # insert plots of amp v time
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
-            plot = plotting.plot_corr_v_time(av_times,
+            plot = plotting.plot_corr_v_time(times,
                                              av_data[..., idx : idx + ANT_CHUNKS], plottype='a',
                                              antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
                                              pol=pol)
@@ -728,7 +811,7 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
             report.writeln()
 
 
-def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
+def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
                antennas, cal_array_position, correlator_freq,
                is_calibrator=True, pol=[0, 1]):
     """Include plots of amp and phase/amp versus uvdist in report.
@@ -742,8 +825,10 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
     targets : list of str
-        list of target strings for targets to plot
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data from which to
         select target data
@@ -780,6 +865,10 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         # Get averaged data on all baselines
         av_data, av_times = zip(*av_corr['{}_g_bls'.format(target_name)])
         av_data = np.stack(av_data)
+        # flux calibrate gain calibrators
+        if target_name in flux_cal.keys():
+            flux = flux_cal[target_name]
+            av_data *= flux
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
         # Get channel index in correlator channels
@@ -1522,9 +1611,12 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                                st, et, antenna_names, pol)
             logger.info('Calibration solution summary')
             # add cal products to report
+            flux_cal = ts.get('measured_flux')
+            flux_std = ts.get('measured_flux_std')
+
+            write_flux_cal(cal_rst, flux_cal, flux_std, parameters, unique_targets)
             write_products(cal_rst, report_path, ts, parameters,
                            st, et, antenna_names, correlator_freq, pol)
-
             # Corrected data
             if av_corr:
                 # Split observed targets into different types of sources,
@@ -1555,20 +1647,20 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
 
                     write_ng_freq(cal_rst, report_path, nogain, av_corr,
                                   refant_name, bls_names, correlator_freq, pol)
-                    write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
+                    write_g_freq(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
                                  cal_bls_lookup, correlator_freq, True, pol)
-                    write_g_time(cal_rst, report_path, av_corr, antenna_names,
+                    write_g_time(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
                                  cal_bls_lookup, pol)
 
-                    write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
+                    write_g_uv(cal_rst, report_path, flux_cal, gain, av_corr, cal_bls_lookup,
                                antennas, cal_array_position, correlator_freq, True, pol=pol)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets
                 cal_rst.write_heading_1('Calibrated Target Fields')
-                write_g_freq(cal_rst, report_path, target, av_corr, antenna_names,
+                write_g_freq(cal_rst, report_path, flux_cal, target, av_corr, antenna_names,
                              cal_bls_lookup, correlator_freq, False, pol=pol)
-                write_g_uv(cal_rst, report_path, target, av_corr, cal_bls_lookup,
+                write_g_uv(cal_rst, report_path, flux_cal, target, av_corr, cal_bls_lookup,
                            antennas, cal_array_position, correlator_freq, False, pol=pol)
 
             cal_rst.writeln()
