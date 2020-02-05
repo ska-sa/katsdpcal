@@ -141,7 +141,9 @@ COMPUTED_PARAMETERS = [
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
     Parameter('servers', 'number of parallel servers', int),
-    Parameter('server_id', 'identity of this server (zero-based)', int)
+    Parameter('server_id', 'identity of this server (zero-based)', int),
+    Parameter('reset_solution_stores', 'reset the solution stores between capture blocks',
+              bool, telstate=True)
 ]
 
 
@@ -233,6 +235,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     parameters['channel_slice'] = channel_slice
     parameters['servers'] = servers
     parameters['server_id'] = server_id
+    parameters['reset_solution_stores'] = True
 
     baselines = telstate_l0['bls_ordering']
     ants = set()
