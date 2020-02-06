@@ -42,7 +42,7 @@ class TestParametersToChannels(unittest.TestCase):
             'k_bfreq': 1326.200,
             'k_efreq': 1368.012,
             'g_bfreq': 1326.200,
-            'g_efreq': 1326.012,
+            'g_efreq': 1368.012,
             'rfi_targ_spike_width_hz': 104491,
             'rfi_calib_spike_width_hz': 2089843,
             'rfi_average_hz': 104491,
@@ -56,6 +56,7 @@ class TestParametersToChannels(unittest.TestCase):
         pipelineprocs.parameters_to_channels(parameters, self.freqs)
         # params given in Hz/MHz should be converted to channels
         self.assertEqual(18000, parameters['g_bchan'])
+        self.assertEqual(19600, parameters['g_echan'])
         self.assertEqual(4, parameters['rfi_average_freq'])
         self.assertEqual(15, parameters['rfi_extend_freq'])
         self.assertEqual([1, 8, 16, 32], parameters['rfi_windows_freq'])

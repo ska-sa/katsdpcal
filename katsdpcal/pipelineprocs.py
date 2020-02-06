@@ -105,9 +105,9 @@ USER_PARAMS_CHANS = [
     Parameter('bp_solint', 'nominal pre-bp g solution interval, seconds', float),
     # gain calibration
     Parameter('g_solint', 'nominal g solution interval, seconds', float),
-    Parameter('g_bchan', 'first channel for g fit, (channels)', int,
+    Parameter('g_bchan', 'first channel for g fit, (channel no)', int,
               converter=ChannelConverter),
-    Parameter('g_echan', 'last channel for g fit, (channels)', int,
+    Parameter('g_echan', 'last channel for g fit, (channel no)', int,
               converter=ChannelConverter),
     # Flagging
     Parameter('rfi_calib_nsigma', 'number of sigma to reject outliers for calibrators', float),
@@ -124,7 +124,7 @@ USER_PARAMS_CHANS = [
     Parameter('rfi_spike_width_time',
               '1sigma time width of smoothing Gaussian (in seconds)', float),
     Parameter('rfi_extend_freq', 'convolution width in frequency to extend flags, (channels)', int),
-    Parameter('rfi_freq_chunks', 'fraction of band on which to do noise estimation', int,
+    Parameter('rfi_freq_chunks', 'no of chunks to divide band into when estimating noise', int,
               converter=FreqChunksConverter),
     Parameter('array_position', 'antenna object for the array centre', katpoint.Antenna,
               converter=AttrConverter('description'))
@@ -133,10 +133,10 @@ USER_PARAMS_CHANS = [
 
 # Parameters that the user can set directly, in units of Hz/MHz
 USER_PARAMS_FREQS = [
-    Parameter('k_bfreq', 'start frequency for k fit ', float),
-    Parameter('k_efreq', 'stop frequency for k fit', float),
-    Parameter('g_bfreq', 'start frequency for g fit', float),
-    Parameter('g_efreq', 'stop frequency for g fit', float),
+    Parameter('k_bfreq', 'start frequency for k fit, (MHz)', float),
+    Parameter('k_efreq', 'stop frequency for k fit, (MHz)', float),
+    Parameter('g_bfreq', 'start frequency for g fit, (MHz)', float),
+    Parameter('g_efreq', 'stop frequency for g fit, (MHz)', float),
     Parameter('rfi_average_hz', 'amount to average in frequency before flagging, (Hz)', float),
     Parameter('rfi_windows_post_average',
               'size of windows for SumThreshold on frequency averaged data, (channels)',
@@ -215,7 +215,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     """Set the defaults and computed parameters in `parameters`.
 
     On input, `parameters` contains keys from :const:`USER_PARAMS_CHANS` or
-    :const:`USER_PARAMS_FREQS`. Keys from `USER_PARAMS_CHANS` be missing if there
+    :const:`USER_PARAMS_FREQS`. Keys from `USER_PARAMS_CHANS` can be missing if there
     is a default or there is an equivalent frequency based parameter in `USER_PARAMS_FREQS`.
     On return, parameters in :const:`COMPUTED_PARAMETERS` are filled in and
     parameters given in :const:`USER_PARAMS_FREQS` are converted to channel based parameters
@@ -225,7 +225,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
     ----------
     parameters : dict
         Dictionary mapping parameter names from :const:`USER_PARAMS_CHANS` or
-        :cont:`USER_PARAMS_CHANS`
+        :const:`USER_PARAMS_FREQS`
     telstate_l0 : :class:`katsdptelstate.TelescopeState`
         Telescope state with a view of the L0 attributes
     servers : int
@@ -405,9 +405,11 @@ def parameters_to_channels(parameters, channel_freqs):
     for chan, freq in chans_to_freq.items():
         if freq in parameters:
             if freq.endswith('bfreq'):
-                parameters[chan] = np.where(channel_freqs >= parameters[freq]*1e6)[0].item(0)
+                bfreq_hz = parameters[freq] * 1e6
+                parameters[chan] = channel_freqs.searchsorted(bfreq_hz)
             elif freq.endswith('efreq'):
-                parameters[chan] = np.where(channel_freqs < parameters[freq]*1e6)[0].item(-1)
+                efreq_hz = parameters[freq] * 1e6
+                parameters[chan] = channel_freqs.searchsorted(efreq_hz) - 1
             elif freq in ['rfi_average_hz',
                           'rfi_targ_spike_width_hz',
                           'rfi_calib_spike_width_hz']:

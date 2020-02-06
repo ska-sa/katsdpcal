@@ -2,8 +2,8 @@
 
 # delay calibration
 k_solint : 5.0                       # nominal pre-k g solution interval, seconds
-k_chan_sample : 1                    # sample every 10th channel for pre-K BP soln
-k_bfreq : 3150.65                    # start frequency of first channel for K fit, MHz
+k_chan_sample : 1                    # channel sampling for pre-K BP soln
+k_bfreq : 3105.65                    # start frequency of first channel for K fit, MHz
 k_efreq : 3148.38                    # end frequency of last channel for K fit, MHz
 kcross_chanave : 1                   # number of channels to average together to kcross solution
 
@@ -12,7 +12,7 @@ bp_solint : 5.0                      # nominal pre-bp g solution interval, secon
 
 # gain calibration
 g_solint: 5.0                        # nominal g solution interval, seconds
-g_bfreq : 3150.65                    # start frequency of first channel for g fit, MHz
+g_bfreq : 3105.65                    # start frequency of first channel for g fit, MHz
 g_efreq : 3148.38                    # end frequency of last channel for g fit, MHz
 
 # Flagging
@@ -24,4 +24,4 @@ rfi_targ_spike_width_hz : 4272460    # 1sigma frequency width of smoothing Gauss
 rfi_calib_spike_width_hz : 2136230   # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
 rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
 rfi_extend_hz : 400543               # Convolution width in frequency to extend flags, Hz
-rfi_freq_chunks : 8                  # Fraction of band on which to do noise estimation
+rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
