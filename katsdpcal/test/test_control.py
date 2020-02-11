@@ -145,8 +145,8 @@ class ServerData:
     """Test data associated with a single simulated cal server"""
 
     def make_parameters(self, telstate_l0):
-        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_4k.txt')
-        rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
+        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L.txt')
+        rfi_file = os.path.join(rfi_dir, 'rfi_mask.txt')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0,
                                           self.testcase.n_servers, self.server_id, rfi_file)

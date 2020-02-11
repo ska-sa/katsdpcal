@@ -1,0 +1,6 @@
+# Range of frequencies to flag in MHz
+# start_freq, stop_freq
+#
+935.40, 960.05
+1145.85, 1300.90
+1519.35, 1608.30
