@@ -788,7 +788,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
                 if not any('target' in k for k in taglist):
-                    s.summarize(av_corr, 'g_phase', avg_ant=True)
+                    s.summarize(av_corr, target_name + '_g_phase', avg_ant=True)
             # summarize non-gain calibrated targets
             else:
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
