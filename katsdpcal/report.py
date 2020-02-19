@@ -178,7 +178,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
 
 
 def _get_units(target, freqs, flux_cal={}):
-    """ Determine the amplitude units of a target
+    """Determine the amplitude units of a target.
 
     Parameters
     ----------
@@ -394,7 +394,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
 
 
 def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
-    """ Write Flux calibration info in a table
+    """Write Flux calibration info in a table.
 
     Info only gets written if the 'measured_flux' dict in telstate
     isn't empty
