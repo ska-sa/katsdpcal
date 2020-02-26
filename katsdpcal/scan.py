@@ -706,7 +706,8 @@ class Scan:
         median[:, 0, :] *= sky_gain[:, np.newaxis]
         bcross_sky = np.broadcast_to(median, values.shape)
 
-        return CalSolution('BCROSS_DIODE_SKY', bcross_sky, bcross_soln.time)
+        return CalSolution('BCROSS_DIODE_SKY', bcross_sky, bcross_soln.time,
+                           soltarget=self.target.name)
 
     def _resid(self, soln, data, weights, **kwargs):
         """Calculate residuals and weights for a given solution, data and weights.
