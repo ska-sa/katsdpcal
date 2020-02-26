@@ -10,6 +10,7 @@ from . import lsm_dir
 from . import pipelineprocs as pp
 
 import numpy as np
+import dask.array as da
 
 from docutils.core import publish_file
 
@@ -32,9 +33,7 @@ TAG_WHITELIST = ['gaincal', 'bfcal', 'delaycal', 'polcal', 'bpcal', 'target']
 
 
 class rstReport:
-    """
-    RST style report
-    """
+    """RST style report."""
 
     def __init__(self, filename):
         self._file = open(filename, 'w')
@@ -81,8 +80,7 @@ class rstReport:
 # --- FUNCTION :  Report writing functions
 # --------------------------------------------------------------------------------------------------
 def utc_tstr(timestamp, day=False):
-    """
-    Returns a formatted UTC time string
+    """Returns a formatted UTC time string.
 
     Parameters
     ----------
@@ -91,6 +89,7 @@ def utc_tstr(timestamp, day=False):
     day : bool, optional
          if true don't include the year and
          month in the time string
+
     Returns
     -------
     str : formatted time string
@@ -104,10 +103,9 @@ def utc_tstr(timestamp, day=False):
 
 
 def model_flux(target, freqs):
-    """
-    Flux density of the first source in the target model
+    """Flux density of the first source in the target model.
 
-    If there is no model, returns None
+    If there is no model, returns None.
 
     Parameters
     ----------
@@ -132,8 +130,7 @@ def model_flux(target, freqs):
 
 
 def insert_fig(report_path, report, fig, name=None):
-    """
-    Insert matplotlib figure into report
+    """Insert matplotlib figure into report.
 
     Parameters
     ----------
@@ -159,8 +156,7 @@ def insert_fig(report_path, report, fig, name=None):
 
 
 def write_bullet_if_present(report, table, var_text, var_name, transform=None):
-    """
-    Write bullet point, if `var_name` is present in `table`
+    """Write bullet point, if `var_name` is present in `table`.
 
     Parameters
     ----------
@@ -181,9 +177,39 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     report.writeln('* {0}:  {1}'.format(var_text, value))
 
 
-def metadata(ts, capture_block_id, report_path, run, st=None):
+def _get_units(target, freqs, flux_cal={}):
+    """Determine the amplitude units of a target.
+
+    Parameters
+    ----------
+    target : :class:`katpoint.Target`
+        target whose amplitude units are to be obtained
+    freqs : :class:`np.ndarray`
+        frequencies in MHz to obtain flux density for
+    flux_cal : dict
+        dict of flux calibrated targets
+
+    Returns
+    -------
+    str : units
     """
-    Create a dictionary with required metadata
+    # targets with these tags are implicitly flux-calibrated
+    # by the pipeline if a flux model is provided
+    implicit_tags = ['bpcal', 'bfcal']
+
+    implicit_gain = any([t in target.tags for t in implicit_tags])
+    is_model = model_flux(target, freqs) is not None
+    is_flux = target.name in flux_cal.keys()
+
+    if (implicit_gain and is_model) or is_flux:
+        units = 'Jy'
+    else:
+        units = 'Counts'
+    return units
+
+
+def metadata(ts, capture_block_id, report_path, run, st=None):
+    """Create a dictionary with required metadata.
 
     Parameters
     ----------
@@ -223,8 +249,7 @@ def metadata(ts, capture_block_id, report_path, run, st=None):
 
 
 def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None):
-    """
-    Write observation summary information to report
+    """Write observation summary information to report.
 
     Parameters
     ----------
@@ -268,8 +293,7 @@ def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None
 
 
 def write_table_timerow(report, colnames, times, data):
-    """
-    Write RST style table to report, rows: time, columns: antenna
+    """Write RST style table to report, rows: time, columns: antenna.
 
     Parameters
     ----------
@@ -311,8 +335,7 @@ def write_table_timerow(report, colnames, times, data):
 
 
 def write_table_timecol(report, antenna_names, times, data, ave=False):
-    """
-    Write RST style table to report, rows: antenna, columns: time
+    """Write RST style table to report, rows: antenna, columns: time.
 
     Parameters
     ----------
@@ -370,9 +393,77 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
     report.writeln()
 
 
-def write_elevation(report, report_path, targets, antennas, refant_index, av_corr):
+def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
+    """Write Flux calibration info in a table.
+
+    Info only gets written if the 'measured_flux' dict in telstate
+    isn't empty
+
+    Parameters
+    ----------
+    report : file-like
+        report file to write to
+    flux_cal : dict
+        target names and their measured flux
+    flux_std : dict
+        target names and their measured flux errors
+    parameters : dict
+        pipeline parameters
+    targets : list of :class:`katpoint.Target`
+        targets in the observation
     """
-    Put the elevation vs time plot in the report
+
+    if flux_cal:
+        g_bchan = parameters['g_bchan']
+        g_echan = parameters['g_echan']
+        freqs = parameters['channel_freqs_all'][g_bchan:g_echan + 1] / 1e6
+
+        report.write_heading_2('Flux Calibration')
+        flux_desc = '{:.2f} - {:.2f} MHz'.format(freqs[0], freqs[-1])
+        report.writeln('Frequency range of quoted flux: **{}**'.format(flux_desc))
+
+        # create table header
+        header = ['Calibrator', 'Measured Flux', 'Model Flux']
+        n_entries = len(header)
+        col_width = 30
+        col_header = '=' * col_width + ' '
+        header = ' '.join(['{:<{}}'.format(h, col_width) for h in header])
+
+        # write table header
+        report.writeln()
+        report.writeln(col_header * n_entries)
+        report.writeln(header)
+        report.writeln(col_header * n_entries)
+
+        for cal in targets:
+            name = cal.name
+            tags = cal.tags
+
+            # if model flux is available report it
+            model = model_flux(cal, freqs)
+            if model is not None:
+                model_desc = '{:.3f} Jy'.format(np.average(model))
+            else:
+                model_desc = ''
+
+            if name in flux_cal.keys():
+                flux_desc = '{:.3f} +/- {:.3f} Jy'.format(flux_cal[name], flux_std[name])
+                for entry in [name, flux_desc, model_desc]:
+                    report.write('{:<{}}'.format(entry, col_width + 1))
+                report.writeln()
+            elif 'bpcal' in tags:
+                flux_desc = ''
+                for entry in [name, flux_desc, model_desc]:
+                    report.write('{:<{}}'.format(entry, col_width + 1))
+                report.writeln()
+
+        # write table footer
+        report.writeln(col_header * n_entries)
+        report.writeln()
+
+
+def write_elevation(report, report_path, targets, antennas, refant_index, av_corr):
+    """Put the elevation vs time plot in the report.
 
     Parameters
     ----------
@@ -410,8 +501,7 @@ def write_elevation(report, report_path, targets, antennas, refant_index, av_cor
 
 
 def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=[0, 1]):
-    """
-    Write the RFI summary
+    """Write the RFI summary.
 
     Parameters
     ----------
@@ -457,32 +547,54 @@ def write_flag_summary(report, report_path, av_corr, dist, correlator_freq, pol=
     report.writeln()
 
 
-def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include plots of the delay-corrected phases of the auto-correlated data
+def write_hv(report, report_path, targets, av_corr,
+             refant_name, antenna_names, correlator_freq,
+             auto=True, pol=[0, 1]):
+    """Include plots of the delay-corrected phases of the cross-pol data.
+
+    Parameters
+    ----------
     report : file-like
         report file to write to
     report_path : str
         path where report is written
+    targets: list of :class:`katpoint.Target`
+        list of targets with cross pol data
     av_corr : dict
         dictionary of averaged corrected data from which to
         select target data
+    refant_name : str
+        reference antenna name
     antenna_names : list
         list of antenna names
     correlator_freq : :class:`np.ndarray`
         real (nchan) correlator channel frequencies
+    auto : bool, optional
+        if True plot phases of auto-corrs else cross-corrs
     pol : list
         description of polarisation axes, optional
     """
-    if 'auto_cross' in av_corr:
-        report.write_heading_1(
-            'Calibrated Cross Hand Phase')
-        report.write_heading_2(
-            'Corrected Phase vs Frequency')
-        report.write_heading_3(
-            'Cross Hand Auto-correlations, all antennas')
+    if auto:
+        heading3 = 'Cross Hand Auto-correlations, all antennas'
+        key = 'auto_cross'
+    else:
+        heading3 = 'Cross Hand Cross-correlations,\
+                    Baselines to the reference antenna : {0}'.format(refant_name)
+        key = 'cross'
+
+    report.write_heading_1(
+        'Calibrated Cross Hand Phase')
+    report.write_heading_2(
+        'Corrected Phase vs Frequency')
+
+    for cal in targets:
+        kat_target = katpoint.Target(cal)
+        target_name = kat_target.name
+        tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
+
+        report.write_heading_3(heading3)
         # Get cross hand auto-correlation data
-        av_data, av_times = zip(*av_corr['auto_cross'])
+        av_data, av_times = zip(*av_corr['{}_{}'.format(target_name, key)])
         av_data = np.stack(av_data)
 
         # Get channel index in correlator channels
@@ -495,23 +607,31 @@ def write_hv(report, report_path, av_corr, antenna_names, correlator_freq, pol=[
             t = utc_tstr(av_times[ti])
             report.writeln('Time : {0}'.format(t))
             for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
+                if auto:
+                    plot_title = 'Cross Hand Phase vs Frequency'
+                    plot_name = 'HV_v_Freq_{0}_{1}'.format(ti, idx)
+                else:
+                    plot_title = 'Calibrator: {0}, tags are: {1}'.format(
+                        target_name, ', '.join(tags))
+                    plot_name = 'HV_v_Freq_{0}_ti_{1}_{2}'.format(
+                        target_name.replace(' ', '_'), ti, idx)
+
                 data = av_data[ti, ..., idx : idx + ANT_CHUNKS]
-                plot_title = 'Cross Hand Phase vs Frequency'
                 plot = plotting.plot_phaseonly_spec(
                     data, idx_chan, antenna_names[idx : idx + ANT_CHUNKS],
                     freq_range, plot_title, pol=pol)
 
                 insert_fig(report_path, report, plot,
-                           name='HV_v_Freq_{0}_{1}'.format(ti, idx))
+                           name=plot_name)
             report.writeln()
 
 
 def write_ng_freq(report, report_path, targets, av_corr,
                   refant_name, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include plots of spectra of calibrators which do
-    not have gains applied by the pipeline. Make one plot per calibrator scan.
-    The plots will only show baselines to reference antenna.
+    """Include plots of spectra of calibrators without applied gains.
+
+    These calibrators do not have gains applied by the pipeline. Make one plot
+    per calibrator scan. The plots will only show baselines to reference antenna.
 
     Parameters
     ----------
@@ -554,6 +674,9 @@ def write_ng_freq(report, report_path, targets, av_corr,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
+        units = _get_units(kat_target, freq_chan)
+
+        flux_density = model_flux(kat_target, freq_chan)
         for ti in range(len(av_times)):
             report.writeln()
             t = utc_tstr(av_times[ti])
@@ -565,15 +688,17 @@ def write_ng_freq(report, report_path, targets, av_corr,
                 plot = plotting.plot_spec(
                     ant_data[ti, ..., idx : idx + ANT_CHUNKS], idx_chan,
                     antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
-                    freq_range=freq_range, title=plot_title, pol=pol)
+                    freq_range=freq_range, title=plot_title, pol=pol, amp_model=flux_density,
+                    units=units)
                 insert_fig(report_path, report, plot, name='Corr_v_Freq_{0}_ti_{1}_{2}'.format(
                     target_name.replace(' ', '_'), ti, idx))
                 report.writeln()
 
 
-def write_g_freq(report, report_path, targets, av_corr, antenna_names,
+def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
                  cal_bls_lookup, correlator_freq, is_calibrator=True, pol=[0, 1]):
-    """
+    """Include plots of spectra of calibrators with applied gains.
+
     Include plots of spectra of calibrators which have gains applied
     by the pipeline. Average all scans on each target into a single plot.
 
@@ -583,8 +708,10 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
     targets : list of str
-        list of target strings for targets to plot
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data
     antenna_names : list
@@ -615,8 +742,12 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Get averaged spectrum for gain calibrated targets
-        av_data, av_flags, av_weights = av_corr['{0}_g_spec'.format(target_name)][0]
+        av_data, av_flags, av_weights = da.compute(*av_corr['{0}_g_spec'.format(target_name)][0])
         av_data[av_flags] = np.nan
+        # flux calibrate gain calibrators
+        if target_name in flux_cal.keys():
+            flux = flux_cal[target_name]
+            av_data *= flux
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
         # Get channel index in correlator channels
@@ -624,6 +755,7 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
+        units = _get_units(kat_target, freq_chan, flux_cal)
         # Get model flux, in order to plot model spectrum
         # the following only obtains the flux of the first source in the model,
         # which is assumed to be the brightest/dominant source in the field.
@@ -644,16 +776,17 @@ def write_g_freq(report, report_path, targets, av_corr, antenna_names,
             data = av_data[..., idx : idx + ANT_CHUNKS]
             plot = plotting.plot_spec(
                 data, idx_chan, antenna_names[idx : idx + ANT_CHUNKS],
-                freq_range, plot_title, amp=amp, pol=pol, amp_model=flux_density)
+                freq_range, plot_title, amp=amp, pol=pol, amp_model=flux_density, units=units)
 
             insert_fig(report_path, report, plot,
                        name='Corr_v_Freq_{0}_{1}'.format(target_name.replace(" ", "_"), idx))
             report.writeln()
 
 
-def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, pol):
-    """
-    Include plots of amp and phase versus time of all scans of the given targets in report.
+def write_g_time(report, report_path, flux_cal, targets, av_corr,
+                 antenna_names, cal_bls_lookup, correlator_freq, pol):
+    """Plots of amp and phase versus time of all scans of the given targets.
+
     The plots show data averaged per antenna.
 
     Parameters
@@ -662,19 +795,23 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
+    targets : list of :class: `katpoint.Target`
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data
     antenna_names : list
         list of antenna names
     cal_bls_lookup : :class:`np.ndarray`
         array of antenna indices in each baseline
+    correlator_freq : :class:`np.ndarray`
+        real (nchan), correlator channel frequencies
     pol : list
         description of polarisation axes, optional
     """
     # Get all scans of calibrators which have gains applied by the pipeline.
-    if 'g_phase' in av_corr:
-        av_data, av_times = zip(*av_corr['g_phase'])
-        av_data = np.stack(av_data, axis=0)
+    if len(targets) > 0:
 
         report.write_heading_2(
             'Corrected Phase vs Time, all gain-calibrated calibrators')
@@ -682,10 +819,29 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
         report.write_heading_3('All baselines, averaged per antenna')
         report.writeln()
 
+        data, times, units = [], [], []
+        for cal in targets:
+            kat_target = katpoint.Target(cal)
+            target_name = kat_target.name
+            av_data, av_times = zip(*av_corr[target_name + '_g_phase'])
+
+            # flux calibrate if possible
+            if target_name in flux_cal.keys():
+                av_data = [d * flux_cal[target_name] for d in av_data]
+            data += av_data
+            times += av_times
+            units.append(_get_units(kat_target, correlator_freq, flux_cal))
+
+        if all([u == 'Jy' for u in units]):
+            units = 'Jy'
+        else:
+            units = 'arb'
+
+        av_data = np.stack(data, axis=0)
         # insert plots of phase v time
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
             plot = plotting.plot_corr_v_time(
-                av_times, av_data[..., idx : idx + ANT_CHUNKS],
+                times, av_data[..., idx : idx + ANT_CHUNKS],
                 antenna_names=antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
             insert_fig(report_path, report, plot, name='Phase_v_Time_{0}'.format(idx))
             report.writeln()
@@ -698,22 +854,22 @@ def write_g_time(report, report_path, av_corr, antenna_names, cal_bls_lookup, po
 
         # insert plots of amp v time
         for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
-            plot = plotting.plot_corr_v_time(av_times,
+            plot = plotting.plot_corr_v_time(times,
                                              av_data[..., idx : idx + ANT_CHUNKS], plottype='a',
                                              antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
-                                             pol=pol)
+                                             pol=pol, units=units)
 
             insert_fig(report_path, report, plot, name='Amp_v_Time_{0}'.format(idx))
             report.writeln()
 
 
-def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
+def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
                antennas, cal_array_position, correlator_freq,
                is_calibrator=True, pol=[0, 1]):
-    """
-    Include plots of amp and phase/amp versus uvdist in report.
-    The data is averaged in frequency to to the number
-    of channels given by PLOT_CHANNELS
+    """Include plots of amp and phase/amp versus uvdist in report.
+
+    The data is averaged in frequency to the number of channels given by
+    PLOT_CHANNELS.
 
     Parameters
     ----------
@@ -721,8 +877,10 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         report file to write to
     report_path : str
         path where report is written
+    flux_cal : dict
+        target names and their measured flux
     targets : list of str
-        list of target strings for targets to plot
+        targets to plot
     av_corr : dict
         dictionary of averaged corrected data from which to
         select target data
@@ -759,6 +917,10 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         # Get averaged data on all baselines
         av_data, av_times = zip(*av_corr['{}_g_bls'.format(target_name)])
         av_data = np.stack(av_data)
+        # flux calibrate gain calibrators
+        if target_name in flux_cal.keys():
+            flux = flux_cal[target_name]
+            av_data *= flux
         logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
 
         # Get channel index in correlator channels
@@ -768,6 +930,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
         uvdist = calc_uvdist(cal, freq_chan, av_times,
                              cal_bls_lookup, antennas, cal_array_position)
 
+        units = _get_units(kat_target, freq_chan, flux_cal)
         if is_calibrator:
             plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
             amp = False
@@ -776,7 +939,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
             amp = True
 
         plot = plotting.plot_corr_uvdist(uvdist, av_data, freq_chan,
-                                         plot_title, amp=amp, pol=pol)
+                                         plot_title, amp=amp, pol=pol, units=units)
         insert_fig(report_path, report, plot,
                    name='Corr_v_UVdist_{0}'.format(target_name.replace(" ", "_")))
         report.writeln()
@@ -784,8 +947,7 @@ def write_g_uv(report, report_path, targets, av_corr, cal_bls_lookup,
 
 def write_SNR_products(report, report_path, ts, parameters,
                        st, et, antenna_names, pol=[0, 1]):
-    """
-    Include calibration product SNR plots in the report
+    """Include calibration product SNR plots in the report.
 
     Parameters
     ----------
@@ -848,8 +1010,7 @@ def write_SNR_products(report, report_path, ts, parameters,
 
 def write_products(report, report_path, ts, parameters,
                    st, et, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include calibration product plots in the report
+    """Include calibration product plots in the report.
 
     Parameters
     ----------
@@ -869,7 +1030,6 @@ def write_products(report, report_path, ts, parameters,
         list of antenna names
     correlator_freq : :class:`np.ndarray`
         real (nchans), correlator channel frequencies
-
     """
     cal_list = ['K', 'KCROSS', 'KCROSS_DIODE', 'B', 'G']
     product_names = parameters['product_names']
@@ -961,8 +1121,7 @@ def write_products(report, report_path, ts, parameters,
 
 
 def get_cal(ts, cal, ts_name, st, et):
-    """
-    Fetch a calibration product from telstate
+    """Fetch a calibration product from telstate.
 
     Parameters
     ----------
@@ -996,8 +1155,7 @@ def get_cal(ts, cal, ts_name, st, et):
 
 
 def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
-    """
-    Include table of delays and delay plots in cal report
+    """Include table of delays and delay plots in cal report.
 
     Parameters
     ----------
@@ -1040,19 +1198,22 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
 
 
 def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
-    """Write a bulleted list of completely NaN'ed antennas per polarization.
-     Return a list with bad-p appended to the antenna-names for NaN'ed antennas
+    """Write list of bad antennas to the report.
 
-     Parameters
-     ----------
-     report : file-like
+    Write a bulleted list of completely NaN'ed antennas per polarization.
+    Return a list with bad-p appended to the antenna-names for NaN'ed antennas
+
+    Parameters
+    ----------
+    report : file-like
         report file to write to
-     vals : array
+    vals : array
         solutions
-     antenna_names : list
+    antenna_names : list
         list of antenna names
-     list :
+    list :
         description of polarisation axes, optional
+
     Returns
     -------
     list :
@@ -1083,8 +1244,7 @@ def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
 
 
 def write_B(report, report_path, times, vals, antenna_names, correlator_freq, pol=[0, 1]):
-    """
-    Include plots of bandpass solutions at all given times in report
+    """Include plots of bandpass solutions at all given times in report.
 
     Parameters
     ----------
@@ -1138,8 +1298,7 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
 
 
 def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlator_freq, pol):
-    """
-    Include plots of bcross_diode solutions at all given times in report
+    """Include plots of bcross_diode solutions at all given times in report.
 
     Parameters
     ----------
@@ -1190,8 +1349,7 @@ def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlat
 
 
 def cal_heading(report, cal, prefix, suffix=''):
-    """
-    Write cal pipeline product headings
+    """Write cal pipeline product headings.
 
     Parameters
     ----------
@@ -1210,9 +1368,10 @@ def cal_heading(report, cal, prefix, suffix=''):
 
 
 def get_freq_info(correlator_freq, nchan):
-    """
-    Given nchan averaged channels calculate the channel index (in correlator channels)
-    and the frequencies of the averaged channels.
+    """Channel indices and frequencies of averaged frequency channels.
+
+    Given nchan averaged channels calculate the channel index (in correlator
+    channels) and the frequencies of the averaged channels.
 
     Parameters
     -----------
@@ -1220,6 +1379,7 @@ def get_freq_info(correlator_freq, nchan):
         array of correlator channel frequencies
     nchan : int
         no of averaged channels
+
     Returns
     -------
     avchan : :class:`np.ndarray`
@@ -1227,7 +1387,6 @@ def get_freq_info(correlator_freq, nchan):
     avfreq : :class:`np.ndarray`
         real (nchan) of mean frequencies of averaged channels
     """
-
     nc_chan = correlator_freq.shape[0]
     chanav = nc_chan // nchan
 
@@ -1243,25 +1402,28 @@ def get_freq_info(correlator_freq, nchan):
 
 
 def split_targets(targets):
-    """
-    Separate targets into three lists containing
-    calibrators without gains applied, calibrators
-    with gains applied and targets
+    """Split list of targets into groups depending on calibration properties.
+
+    Separate targets into four lists containing calibrators without gains
+    applied, calibrators with gains applied, polarisation calibrators and targets.
 
     Parameters
     -----------
     targets : list
         list of unique targets
+
     Returns
     -------
     nogain : list
         list of calibrators without gains applied by the pipeline
     gain : list
         list of calibrators with gains applied by the pipeline
+    pol : list
+        list of calibrators with 'polcal' tag
     target : list
         list of targets
     """
-    nogain, gain, target = [], [], []
+    nogain, gain, pol, target = [], [], [], []
     for cal in targets:
         kat_target = katpoint.Target(cal)
         tags = kat_target.tags
@@ -1273,31 +1435,33 @@ def split_targets(targets):
             target.append(cal)
         else:
             gain.append(cal)
-    return nogain, gain, target
+        if 'polcal' in tags:
+            pol.append(cal)
+    return nogain, gain, pol, target
 
 
 def calc_elevation(refant, times, target):
+    """Calculates elevation versus timestamps for observation targets.
+
+    It calculates the elevation from the target and antenna
+    position and it does not reflect the actual pointing of the dish.
+
+    Parameters
+    ----------
+    refant : str
+        the reference antenna
+    times : array
+        timestamps of scan
+    target : str
+        target string
+
+    Returns
+    -------
+    times : :class:`np.ndarray`
+        real, (ntimes) timestamps
+    elevation : :class:`np.ndarray`
+        real, (ntimes) of elevations
     """
-      Calculates elevation versus timestamps for observation targets.
-      It calculates the elevation from the target and antenna
-      position and it does not reflect the actual pointing of the dish.
-
-      Parameters
-      ----------
-      refant : str
-          the reference antenna
-      times : array
-          timestamps of scan
-      target : str
-          target string
-
-      Returns
-      -------
-      times : :class:`np.ndarray`
-          real, (ntimes) timestamps
-      elevation : :class:`np.ndarray`
-          real, (ntimes) of elevations
-      """
     kat_target = katpoint.Target(target)
     elevations = kat_target.azel(times, refant)[1]
 
@@ -1305,8 +1469,7 @@ def calc_elevation(refant, times, target):
 
 
 def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_position):
-    """
-    Calculate uvdistance in wavelengths
+    """Calculate uvdistance in wavelengths.
 
     Parameters
     ----------
@@ -1335,9 +1498,7 @@ def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_positio
 
 
 def calc_enu_sep(antennas, bls_lookup):
-    """
-    Calculate baseline separation in meters
-    for cross correlations only.
+    """Calculate baseline separation in meters for cross correlations only.
 
     Parameters
     ----------
@@ -1351,7 +1512,6 @@ def calc_enu_sep(antennas, bls_lookup):
     sep: :class:`np.ndarray`
         real (nbls), separations for baselines in bls_lookup
     """
-
     cross_idx = np.where(bls_lookup[:, 0] != bls_lookup[:, 1])[0]
     bls_lookup = bls_lookup[cross_idx]
     ant1 = [antennas[bls_lookup[i][0]] for i in range(len(bls_lookup))]
@@ -1368,11 +1528,10 @@ def calc_enu_sep(antennas, bls_lookup):
 
 
 def refant_antlabels(bls_lookup, refant_index, antenna_names):
-    """
-    Return a list of the antenna_names in the baselines to the reference antenna
+    """Antenna names in the baselines to the reference antenna.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bls_lookup : :class:`np.ndarray`
         array of indices of antennas in each baseline
     refant_index : int
@@ -1380,8 +1539,8 @@ def refant_antlabels(bls_lookup, refant_index, antenna_names):
     antenna_names : list of str
         list of antenna names
 
-    Returns:
-    --------
+    Returns
+    -------
     list of str:
         list of antenna names
     """
@@ -1406,9 +1565,10 @@ _lock = threading.Lock()
 
 def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, av_corr,
                     st=None, et=None):
-    """
-    Creates pdf calibration pipeline report (from RST source),
-    using data from the Telescope State
+    """Create calibration report.
+
+    Creates HTML calibration pipeline report (from RST source), using data from
+    the Telescope State.
 
     Parameters
     ----------
@@ -1429,7 +1589,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
     et : float, optional
         end time for reporting parameters, seconds
     """
-
     logger.info('Report compiling in directory {0}'.format(report_path))
 
     # --------------------------------------------------------------------
@@ -1505,46 +1664,56 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                                st, et, antenna_names, pol)
             logger.info('Calibration solution summary')
             # add cal products to report
+            flux_cal = ts.get('measured_flux')
+            flux_std = ts.get('measured_flux_std')
+
+            write_flux_cal(cal_rst, flux_cal, flux_std, parameters, unique_targets)
             write_products(cal_rst, report_path, ts, parameters,
                            st, et, antenna_names, correlator_freq, pol)
-
             # Corrected data
             if av_corr:
                 # Split observed targets into different types of sources,
                 # according to their pipeline tags
-                nogain, gain, target = split_targets(unique_targets)
+                nogain, gain, polcal, target = split_targets(unique_targets)
                 cal_array_position = parameters['array_position']
 
                 # Calibrator data requires a reference antenna
                 if refant_index is not None:
                     # Corrected data : HV delay Noise Diode
-                    write_hv(cal_rst, report_path, av_corr, antenna_names, correlator_freq,
-                             pol=[pol[0] + pol[1], pol[1] + pol[0]])
+                    if any(katpoint.Target(target).name + '_auto_cross'
+                           in av_corr for target in gain):
+                        write_hv(cal_rst, report_path, gain, av_corr, refant_name, antenna_names,
+                                 correlator_freq, pol=[pol[0] + pol[1], pol[1] + pol[0]])
                     # --------------------------------------------------------------------
-                    # Corrected data : Calibrators
-                    cal_rst.write_heading_1('Calibrator Summary Plots')
-
                     # For calibrators which do not have gains applied by the pipeline
                     # plot the baselines to the reference antenna for each timestamp
                     # get idx of baselines to refant
                     bls_names = refant_antlabels(cal_bls_lookup, refant_index, antenna_names)
+                    # Corrected data : HV delay on `polcal`
+                    if any(katpoint.Target(target).name + '_cross' in av_corr for target in polcal):
+                        write_hv(cal_rst, report_path, polcal, av_corr, refant_name, bls_names,
+                                 correlator_freq, auto=False,
+                                 pol=[pol[0] + pol[1], pol[1] + pol[0]])
+
+                    # Corrected data : Calibrators
+                    cal_rst.write_heading_1('Calibrator Summary Plots')
 
                     write_ng_freq(cal_rst, report_path, nogain, av_corr,
                                   refant_name, bls_names, correlator_freq, pol)
-                    write_g_freq(cal_rst, report_path, gain, av_corr, antenna_names,
+                    write_g_freq(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
                                  cal_bls_lookup, correlator_freq, True, pol)
-                    write_g_time(cal_rst, report_path, av_corr, antenna_names,
-                                 cal_bls_lookup, pol)
+                    write_g_time(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
+                                 cal_bls_lookup, correlator_freq, pol)
 
-                    write_g_uv(cal_rst, report_path, gain, av_corr, cal_bls_lookup,
+                    write_g_uv(cal_rst, report_path, flux_cal, gain, av_corr, cal_bls_lookup,
                                antennas, cal_array_position, correlator_freq, True, pol=pol)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets
                 cal_rst.write_heading_1('Calibrated Target Fields')
-                write_g_freq(cal_rst, report_path, target, av_corr, antenna_names,
+                write_g_freq(cal_rst, report_path, flux_cal, target, av_corr, antenna_names,
                              cal_bls_lookup, correlator_freq, False, pol=pol)
-                write_g_uv(cal_rst, report_path, target, av_corr, cal_bls_lookup,
+                write_g_uv(cal_rst, report_path, flux_cal, target, av_corr, cal_bls_lookup,
                            antennas, cal_array_position, correlator_freq, False, pol=pol)
 
             cal_rst.writeln()

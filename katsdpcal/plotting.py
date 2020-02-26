@@ -21,8 +21,7 @@ plt.rc('axes', prop_cycle=(cycler('color', colors)))
 
 def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1],
                    **plot_kwargs):
-    """
-    Plots a value vs antenna
+    """Plots a value vs antenna.
 
     Parameters
     ----------
@@ -61,8 +60,7 @@ def plot_v_antenna(data, ylabel='', title=None, antenna_names=None, pol=[0, 1],
 
 
 def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
-    """
-    Plots gain solutions
+    """Plots gain solutions.
 
     Parameters
     ----------
@@ -111,8 +109,7 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1], **plot_kwar
 
 
 def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1], **plot_kwargs):
-    """
-    Make a waterfall plot of flagged data in Channels vs Baselines
+    """Waterfall plot of flagged data in Channels vs Baselines.
 
     Parameters
     ----------
@@ -159,8 +156,7 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1], **plot_kwar
 
 
 def bl_labels(ax, seplist):
-    """
-    Creates ticklabels for the baseline axis of a plot
+    """Creates ticklabels for the baseline axis of a plot.
 
     Parameters
     ----------
@@ -179,8 +175,7 @@ def bl_labels(ax, seplist):
 
 
 def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1], **plot_kwargs):
-    """
-    Make a waterfall plot of flagged data in channels vs time
+    """Waterfall plot of flagged data in channels vs time.
 
     Parameters
     ----------
@@ -232,8 +227,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1], **plot_kwar
 
 
 def time_xtick_fmt(ax, timerange):
-    """
-    Format the ticklabels for time axis of a plot
+    """Format the ticklabels for time axis of a plot.
 
     Parameters
     ----------
@@ -259,8 +253,7 @@ def time_xtick_fmt(ax, timerange):
 
 
 def time_label(ax, timerange):
-    """
-    Format the x-axis labels for time axis of a plot
+    """Format the x-axis labels for time axis of a plot.
 
     Parameters
     ----------
@@ -279,8 +272,7 @@ def time_label(ax, timerange):
 
 
 def plot_el_v_time(targets, times, elevations, title=None, **plot_kwargs):
-    """
-    Make a plot of elevation vs time for a number of targets
+    """Plot of elevation vs time for a number of targets.
 
     Parameters
     ----------
@@ -320,9 +312,8 @@ def plot_el_v_time(targets, times, elevations, title=None, **plot_kwargs):
 
 
 def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
-                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
-    """
-    Plots Amplitude and Phase vs UVdist
+                     pol=[0, 1], phase_range=[-180, 180], units=None, **plot_kwargs):
+    """Plots Amplitude and Phase vs UVdist.
 
     Parameters
     ----------
@@ -338,6 +329,8 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -348,6 +341,11 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
+
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
 
     for p in range(npols):
         for i in range(times):
@@ -369,9 +367,9 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
 
-        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         if amp:
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
             lim = amp_range(data)
             if not np.isnan(lim).any():
                 axes[p, 1].set_ylim(*lim)
@@ -397,8 +395,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
 
 
 def plot_delays(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
-    """
-    Plots delay vs time
+    """Plots delay vs time.
 
     Parameters
     ----------
@@ -435,7 +432,7 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
 
 def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=None,
                         pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
-    """ Plots spectrum of corrected data
+    """Plots phase-only spectrum of corrected data.
 
     Parameters
     ----------
@@ -487,8 +484,8 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
 
 def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False,
-              pol=[0, 1], phase_range=[-180, 180], amp_model=None, **plot_kwargs):
-    """ Plots spectrum of corrected data
+              pol=[0, 1], phase_range=[-180, 180], amp_model=None, units=None, **plot_kwargs):
+    """Plots spectrum of corrected data.
 
     Parameters
     ----------
@@ -510,6 +507,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         start and stop phase ranges to plot, optional
     amp_model : :class:`np.ndarray`, optional
         real, (num_chans) amplitude model to plot
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -520,15 +519,20 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
     if title is not None:
         fig.suptitle(title, y=0.95)
 
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
+
     for p in range(npols):
         # plot full range amplitude plots
         p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
             axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         else:
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
@@ -572,7 +576,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
 
 
 def add_freq_axis(ax, chan_range, freq_range):
-    """ Adds a frequency axis to the top of a given matplotlib Axes
+    """Adds a frequency axis to the top of a given matplotlib Axes.
+
     Parameters
     ----------
     ax : : class: `matplotlib.axes.Axes`
@@ -581,7 +586,7 @@ def add_freq_axis(ax, chan_range, freq_range):
         start and stop channel numbers
     freq_range : list
         start and stop frequencies corresponding to the start and stop channel numbers
-     """
+    """
     ax_freq = ax.twiny()
     delta_freq = freq_range[1] - freq_range[0]
     delta_chan = chan_range[1] - chan_range[0]
@@ -592,8 +597,7 @@ def add_freq_axis(ax, chan_range, freq_range):
 
 
 def amp_range(data):
-    """
-    Calculate a limited amplitude range based on the NMAD of the data
+    """Calculate a limited amplitude range based on the NMAD of the data.
 
     Parameters
     ----------
@@ -627,9 +631,8 @@ def amp_range(data):
 
 
 def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
-                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
-    """
-    Plots amp/phase versus time
+                     pol=[0, 1], phase_range=[-180, 180], units=None, **plot_kwargs):
+    """Plots amp/phase versus time.
 
     Parameters
     ----------
@@ -647,6 +650,8 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -657,6 +662,11 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
     if title is not None:
         fig.suptitle(title, y=0.95)
 
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
+
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
     dates = md.date2num(datetimes)
     time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
@@ -666,7 +676,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
                 p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.', **plot_kwargs)
-                axes[p, 0].set_ylabel('Amp Pol_{0}'.format(pol[p]))
+                axes[p, 0].set_ylabel('Amp Pol_{0} {1}'.format(pol[p], unit_str))
             else:
                 p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.',
                                      **plot_kwargs)
@@ -690,8 +700,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
 
 
 def plot_snr(drawfunc, times, snr, labels=None, title=None, pol=[0, 1], yscale=1, **kwargs):
-    """
-    Plot properties of a list of solution SNRs as function of time
+    """Plot properties of a list of solution SNRs as function of time.
 
     Parameters
     ----------
@@ -763,8 +772,7 @@ def plot_snr(drawfunc, times, snr, labels=None, title=None, pol=[0, 1], yscale=1
 
 
 def draw_errorplot(times, data, ax, pol_label=0, **kwargs):
-    """
-    Calculate and plot the median and IQR of data vs time
+    """Calculate and plot the median and IQR of data vs time.
 
     Parameters
     ----------
@@ -787,9 +795,7 @@ def draw_errorplot(times, data, ax, pol_label=0, **kwargs):
 
 
 def draw_below_thresh(times, snr, ax, pol_label=0, snrthresh=10, **kwargs):
-    """
-    Plots number of antennas with snr = NaN or < snrthresh
-    as a function of time
+    """Plots number of antennas with snr = NaN or < snrthresh as function of time.
 
     Parameters
     ----------
@@ -805,7 +811,6 @@ def draw_below_thresh(times, snr, ax, pol_label=0, snrthresh=10, **kwargs):
         threshold below which to count antennas
     **kwargs : additional keyword arguments passed to `ax.plot`
     """
-
     snr_nonans = np.where(np.isnan(snr), 0, snr)
     n_low = np.sum(snr_nonans < snrthresh, axis=-1)
     ax.plot(times, n_low, linestyle='', **kwargs)

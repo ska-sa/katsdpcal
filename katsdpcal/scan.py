@@ -109,8 +109,7 @@ class ScanDataPair:
 
 
 class ScanDataGroupBl:
-    """
-    Selects a subset of baselines from a :class: `ScanData` object
+    """Selects a subset of baselines from a :class: `ScanData` object.
 
     Parameters
     ----------
@@ -152,8 +151,7 @@ class ScanDataGroupBl:
 
 
 class Scan:
-    """
-    Single scan of data with auxillary information.
+    """Single scan of data with auxillary information.
 
     Parameters
     ----------
@@ -251,9 +249,7 @@ class Scan:
         self.logger = logger
 
     def logsolutiontime(f):
-        """
-        Decorator to log time duration of solver functions
-        """
+        """Decorator to log time duration of solver functions."""
         @functools.wraps(f)
         def timed(*args, **kw):
             ts = time.time()
@@ -268,8 +264,7 @@ class Scan:
     # ---------------------------------------------------------------------------------------------
     @logsolutiontime
     def refant_find(self, bchan=1, echan=None, chan_sample=1):
-        """
-        Find a good reference antenna candidate
+        """Find a good reference antenna candidate.
 
         Parameters
         ----------
@@ -282,7 +277,6 @@ class Scan:
         refant_index : int
             index of preferred refant
         """
-
         modvis = self.cross_ant.tf.auto_pol.vis
 
         # determine channel range for fit
@@ -314,9 +308,9 @@ class Scan:
     # Calibration solution functions
 
     @logsolutiontime
-    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[], calc_snr=True, **kwargs):
-        """
-        Solve for gain
+    def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[],
+              calc_snr=True, use_model=True, **kwargs):
+        """Solve for gain.
 
         Parameters
         ----------
@@ -332,6 +326,8 @@ class Scan:
             calibration solutions to apply
         calc_snr : bool, optional
             if True calculate SNR for G solution
+        use_model : bool, optional
+            if True correct visibilities by available model
 
         Returns
         -------
@@ -351,9 +347,13 @@ class Scan:
         chan_slice = np.s_[:, bchan:echan, :, :]
 
         g_freqs = self.channel_freqs[bchan:echan]
-        # initialise and apply model, for if this scan target has an associated model
-        self._init_model()
-        fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+
+        if use_model:
+            # initialise and apply model, if this scan target has an associated model
+            self._init_model()
+            fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+        else:
+            fitvis = modvis[chan_slice]
 
         # first averge in time over solution interval, for specified channel
         # range (no averaging over channel)
@@ -369,7 +369,7 @@ class Scan:
                                 self.cross_ant.bls_lookup, g0,
                                 self.refant, **kwargs)
 
-        cal_soln = CalSolutions('G', g_soln, ave_times)
+        cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name)
         if calc_snr:
             ave_vis_t, ave_weights_t = da.compute(ave_vis_t, ave_weights_t)
             # use non channel-averaged data to calculate poor antennas,
@@ -381,14 +381,13 @@ class Scan:
             # use channel averaged data to calculate snr
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
-            cal_soln = CalSolutions('G', g_soln, ave_times, snr)
+            cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
 
         return cal_soln
 
     @logsolutiontime
     def bcross_sol(self, pre_apply=[], nd=None):
-        """
-        Solve for cross hand bandpass phase
+        """Solve for cross-hand bandpass phase.
 
         Parameters
         ----------
@@ -414,10 +413,12 @@ class Scan:
         # Average the HV and complex conjugate of VH together per antenna
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
         av_weights = da.sum(flagged_weights, axis=-2)
-        av_vis = (weighted_data[:, 0, :] +
-                  np.conjugate(weighted_data[:, 1, :]) /
-                  av_weights)
+        av_vis = calprocs_dask.divide_weights(weighted_data[:, 0, :]
+                                              + np.conjugate(weighted_data[:, 1, :]),
+                                              av_weights)
 
+        # Set invalid solutions to nan, the phase-up script expects this
+        av_vis = da.where(av_vis == 0j, av_vis.dtype.type(np.nan), av_vis)
         # Set phase in the second polarisation axis to zero
         bcross_phase = da.angle(av_vis)
         bcross_phase = da.stack([bcross_phase, np.zeros_like(bcross_phase)], axis=1)
@@ -428,12 +429,15 @@ class Scan:
         # Set soln to NaN for antennas where the noise diode didn't fire
         if nd is not None:
             bcross_soln = np.where(~nd, np.nan, bcross_soln)
-        return CalSolution('BCROSS_DIODE', bcross_soln, np.average(self.timestamps))
+        return CalSolution('BCROSS_DIODE', bcross_soln,
+                           np.average(self.timestamps), self.target.name)
 
     @logsolutiontime
     def kcross_sol(self, bchan=1, echan=None, chan_ave=1, pre_apply=[], nd=None, auto_ant=False):
-        """
-        Solve for cross hand delay offset, for full pol data sets (four polarisation products)
+        """Solve for cross-hand delay offset, for full pol data sets.
+
+        Full pol data sets have four polarisation products.
+
         *** doesn't currently use models ***
 
         Parameters
@@ -486,12 +490,9 @@ class Scan:
         # average across all baselines and solve for a single KCROSS
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
         av_weights = da.sum(flagged_weights, axis=-2)
-        av_vis = (weighted_data[:, 0, :] +
-                  np.conjugate(weighted_data[:, 1, :]) /
-                  av_weights)
-        # replace NaN'ed data caused by dividing by zero weights with a zero.
-        isnan = da.isnan(av_vis)
-        av_vis = calprocs_dask.where(isnan, av_vis.dtype.type(0), av_vis)
+        av_vis = calprocs_dask.divide_weights(weighted_data[:, 0, :] +
+                                              np.conjugate(weighted_data[:, 1, :]),
+                                              av_weights)
 
         if not auto_ant:
             av_flags = da.any(av_flags, axis=-2)
@@ -514,12 +515,11 @@ class Scan:
         # if auto_ant is True set soln to NaN for antennas where the noise diode didn't fire
         if nd is not None and auto_ant:
             kcross_soln = np.where(~nd, np.nan, kcross_soln)
-        return CalSolution(soln_type, kcross_soln, np.average(self.timestamps))
+        return CalSolution(soln_type, kcross_soln, np.average(self.timestamps), self.target.name)
 
     @logsolutiontime
     def k_sol(self, bchan=1, echan=None, chan_sample=1, pre_apply=[], calc_snr=True):
-        """
-        Solve for delay
+        """Solve for delay.
 
         Parameters
         ----------
@@ -539,7 +539,6 @@ class Scan:
         :class:`~.CalSolution`
             Delay solution with soltype 'K', shape (2, nant)
         """
-
         modvis = self.pre_apply(pre_apply)
 
         # determine channel range for fit
@@ -569,21 +568,20 @@ class Scan:
                                 self.cross_ant.bls_lookup,
                                 k_freqs, self.refant, True, chan_sample)
 
-        cal_soln = CalSolution('K', k_soln, ave_time)
+        cal_soln = CalSolution('K', k_soln, ave_time, self.target.name)
         if calc_snr:
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=k_freqs)
             ant_flags = calprocs.poor_antenna_flags(resid, weights, self.cross_ant.bls_lookup, 0.2)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = snr[0]
-            cal_soln = CalSolution('K', k_soln, ave_time, snr)
+            cal_soln = CalSolution('K', k_soln, ave_time, self.target.name, snr)
 
         return cal_soln
 
     @logsolutiontime
     def b_sol(self, bp0, pre_apply=[], bp_flagger=None, calc_snr=True):
-        """
-        Solve for bandpass
+        """Solve for bandpass.
 
         Parameters
         ----------
@@ -637,7 +635,7 @@ class Scan:
             b_soln = b_soln[0]
 
         b_soln, ave_vis, ave_weights = da.compute(b_soln, ave_vis, ave_weights)
-        cal_soln = CalSolution('B', b_soln, ave_time)
+        cal_soln = CalSolution('B', b_soln, ave_time, self.target.name)
 
         if calc_snr:
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights)
@@ -645,15 +643,13 @@ class Scan:
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, ant_flags)
             # remove time axis to match solution shape
             snr = snr[0]
-            cal_soln = CalSolution('B', b_soln, ave_time, snr)
+            cal_soln = CalSolution('B', b_soln, ave_time, self.target.name, snr)
 
         return cal_soln
 
     @logsolutiontime
     def b_norm(self, b_soln, bchan=1, echan=None):
-        """
-        Calculates an array of complex numbers which normalises
-        b_soln in the specified channel range
+        """An array of complex numbers which normalises `b_soln` in channel range.
 
         Parameters
         ----------
@@ -713,8 +709,8 @@ class Scan:
         return CalSolution('BCROSS_DIODE_SKY', bcross_sky, bcross_soln.time)
 
     def _resid(self, soln, data, weights, **kwargs):
-        """
-        Calculate residuals and weights for a given solution, data and weights.
+        """Calculate residuals and weights for a given solution, data and weights.
+
         If solution is of :class:`CalSolutions` the solution must already be interpolated
         to the timestamps of data and data may omit the channel axis.
         If soln is of :class:`CalSolution` then data may omit the time axis.
@@ -737,7 +733,6 @@ class Scan:
         weights : :class: `np.ndarray`, real (ntimes, nchans, npols, nbls)
             weights expanded to 4 dimensions
         """
-
         if isinstance(soln, CalSolution):
             solns_to_apply = self.interpolate(soln)
             expand_axis = 0
@@ -768,8 +763,8 @@ class Scan:
     # solution application
 
     def _apply(self, solval, vis, cross_pol=False):
-        """
-        Applies calibration solutions.
+        """Applies calibration solutions.
+
         Must already be interpolated to either full time or full frequency.
 
         Parameters
@@ -782,7 +777,6 @@ class Scan:
             Apply corrections appropriate for cross hand data if True, else apply
             parallel hand corrections.
         """
-
         # check solution and vis shapes are compatible
         if solval.shape[-2] != vis.shape[-2]:
             raise Exception('Polarisation axes do not match!')
@@ -809,8 +803,7 @@ class Scan:
         return vis * correction
 
     def apply(self, soln, vis, cross_pol=False, channel_freqs=None):
-        """
-        Applies calibration solutions.
+        """Applies calibration solutions.
 
         Parameters
         ----------
@@ -865,8 +858,9 @@ class Scan:
             raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
 
     def pre_apply(self, pre_apply_solns, data=None, cross_pol=False):
-        """Apply a set of solutions to the visibilities. It always uses
-        tf chunking of the data.
+        """Apply a set of solutions to the visibilities.
+
+        It always uses time-frequency chunking of the data.
 
         Parameters
         ----------
@@ -942,7 +936,6 @@ class Scan:
         broadcasting), while a :class:`CalSolutions` undergoes linear
         interpolation.
         """
-
         # set up more complex interpolation methods later
         if isinstance(solns, CalSolutions):
             return self.linear_interpolate(solns)
@@ -976,8 +969,9 @@ class Scan:
     # model related functions
     @logsolutiontime
     def _create_model(self, max_offset=8., timestamps=None):
-        """
-        Creates models from raw model parameters. *** models are currently unpolarised ***
+        """Creates models from raw model parameters.
+
+        *** models are currently unpolarised ***
 
         Models are currently implemented for three cases:
         * A - Point source at the phase centre, no spectral slope -- model is a scalar
@@ -1077,14 +1071,14 @@ class Scan:
         return
 
     def _init_model(self, max_offset=8.0):
-        """
-        Initialises models for use in the solver.
-        Checks for existing models and creates them if they are not yet present
+        """Initialises models for use in the solver.
 
-        Inputs
-        ======
+        Checks for existing models and creates them if they are not yet present.
+
+        Parameters
+        ----------
         max_offset : float
-            The difference in positon away from the phase centre for a point to
+            The difference in position away from the phase centre for a point to
             be considered at the phase centre [arcseconds]
             Default: 8 (= meerkat beam)
         """
@@ -1097,14 +1091,11 @@ class Scan:
             self._create_model(max_offset)
 
     def add_model(self, model_raw_params):
-        """
-        Add raw parameters for model
-        """
+        """Add raw parameters for model."""
         self.model_raw_params = katpoint.Catalogue(model_raw_params)
 
     def _get_solver_model(self, modvis, chan_select=None):
-        """
-        Get model to supply to solver
+        """Get model to supply to solver.
 
         Parameters
         ----------
@@ -1119,7 +1110,6 @@ class Scan:
             Model for solver. This is either:
                * `modvis` if there is no model; or
                * `modvis` divided by the model, over the selected channel range
-
         """
         if chan_select is None:
             chan_select = np.s_[:]
@@ -1137,7 +1127,8 @@ class Scan:
     # ----------------------------------------------------------------------
     # Summarize Functions
     def summarize_flags(self, av_corr, nchans=1024):
-        """
+        """Average flags over time, frequency and baselines as a summary.
+
         Average flags to nchans channels. Sum these averaged flags across time
         and average them across baselines. Add the summed and averaged quantities
         to a dictionary
@@ -1167,10 +1158,11 @@ class Scan:
         av_corr['bl_flags'].insert(0, (bl_sum_flags, np.average(self.timestamps)))
 
     def summarize_full(self, av_corr, key, data=None, nchans=8):
-        """
-        Average visibilities per scan, per antenna and into nchans frequency blocks. Add these
-        averaged visibilities, flags and weights to a dictionary with given key.
-        Prefix the target_name to the dictionary key.
+        """Average visibilities over time, frequency and baselines as a summary.
+
+        Average visibilities per scan, per antenna and into nchans frequency
+        blocks. Add these averaged visibilities, flags and weights to a
+        dictionary with given key. Prefix the target_name to the dictionary key.
 
         Parameters
         ----------
@@ -1202,10 +1194,12 @@ class Scan:
 
     def summarize(self, av_corr, key, data=None, nchans=8, avg_ant=False,
                   refant_only=False):
-        """
-        Average visibilites per scan and into nchans frequency blocks.
-        Optionally average per antenna. Optionally select only baselines to the reference antenna.
-        Add these averaged visibilities to a defaultdict with the given key.
+        """Average visibilities per scan, channel block and antenna.
+
+        Average visibilities per scan and into nchans frequency blocks.
+        Optionally average per antenna. Optionally select only baselines to the
+        reference antenna. Add these averaged visibilities to a defaultdict
+        with the given key.
 
         Parameters:
         -----------
@@ -1253,12 +1247,12 @@ class Scan:
     # RFI Functions
     @logsolutiontime
     def rfi(self, flagger, mask=None, auto_ant=False, sensors=None):
-        """Detect flags in the visibilities. Detected flags
-        are added to the cal_rfi bit of the flag array. Flags
-        are detected using cross-pol data but added to both
-        the cross_pol and auto_pol flags.
-        Optionally provide a channel mask, which is added to
-        the static bit of the flag array.
+        """Produce L1 `cal_rfi` flags based on cross-pol data and include mask.
+
+        Detect flags in the visibilities. Detected flags are added to the
+        `cal_rfi` bit of the flag array. Flags are detected using cross-pol data
+        but added to both the cross_pol and auto_pol flags. Optionally provide
+        a channel mask, which is added to the static bit of the flag array.
 
         Parameters
         ----------

@@ -78,29 +78,56 @@ def where(condition, x, y):
     return da.core.elemwise(np.where, condition, x, y)
 
 
+def divide_weights(weighted_data, weights):
+    """Divide weighted_data by weights, suppress divide by zero errors"""
+    # Suppress divide by zero warnings by replacing zeros with ones
+    # all zero weight data will already be set to zero in weighted_data
+    weights_nozero = where(weights == 0, weights.dtype.type(1), weights)
+    return weighted_data / weights_nozero
+
+
+def _wavg_axis(weighted_data, weights, axis=0):
+    """Weighted average and weights along an axis"""
+    av_weights = da.sum(weights, axis)
+    sum_data = da.sum(weighted_data, axis)
+    av_data = divide_weights(sum_data, av_weights)
+    return av_data, av_weights
+
+
 def weight_data(data, flags, weights):
-    """
-    Return flagged, weighted data and flagged weights
+    """Return flagged, weighted data and flagged weights.
+
+    Data that are zero, weights that are zero or unfeasibly high
+    are all set to zero in the output arrays
 
     Parameters
     ----------
     data    : array of complex
     flags   : array of uint8 or boolean
     weights : array of floats
+
+    Returns
+    -------
+    weighted_data : array of complex
+    flagged_weights : array of floats
     """
-    flagged_weights = where(flags, weights.dtype.type(0), weights)
+    # Suppress comparison with nan warnings by replacing nans with zeros
+    flagged_weights = where(calprocs.asbool(flags) | da.isnan(weights),
+                            weights.dtype.type(0), weights)
     weighted_data = data * flagged_weights
-    # Clear the elements that have a nan anywhere
-    isnan = da.isnan(weighted_data)
-    weighted_data = where(isnan, weighted_data.dtype.type(0), weighted_data)
-    flagged_weights = where(isnan, flagged_weights.dtype.type(0), flagged_weights)
+    # Clear all invalid elements, ie. nans, zeros and high weights
+    # High weights may occur due to certain corner cases when performing excision in ingest.
+    # https://skaafrica.atlassian.net/browse/SPR1-291 should ensure these no longer occur, but
+    # retain this check to be cautious.
+    invalid = (da.isnan(weighted_data) | (weighted_data == 0) |
+               (flagged_weights > calprocs.HIGH_WEIGHT))
+    weighted_data = where(invalid, weighted_data.dtype.type(0), weighted_data)
+    flagged_weights = where(invalid, flagged_weights.dtype.type(0), flagged_weights)
     return weighted_data, flagged_weights
 
 
 def wavg(data, flags, weights, times=False, axis=0):
-    """
-    Perform weighted average of data, applying flags,
-    over specified axis
+    """Perform weighted average of data, applying flags, over specified axis.
 
     Parameters
     ----------
@@ -115,17 +142,12 @@ def wavg(data, flags, weights, times=False, axis=0):
     vis, times : weighted average of data and, optionally, times
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
-    vis = da.sum(weighted_data, axis=axis) / da.sum(flagged_weights, axis=axis)
-    # Zero nans caused by flagged_weights all being zero along axis
-    isnan = da.isnan(vis)
-    vis = where(isnan, vis.dtype.type(0), vis)
+    vis, av_weights = _wavg_axis(weighted_data, flagged_weights, axis)
     return vis if times is False else (vis, np.average(times, axis=axis))
 
 
-def wavg_full(data, flags, weights, axis=0, threshold=0.3):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis
+def wavg_full(data, flags, weights, axis=0, threshold=0.8):
+    """Perform weighted average of data, flags and weights, applying flags, over axis.
 
     Parameters
     ----------
@@ -142,21 +164,20 @@ def wavg_full(data, flags, weights, axis=0, threshold=0.3):
     av_weights : weighted average of weights
     """
     weighted_data, flagged_weights = weight_data(data, flags, weights)
-    av_weights = da.sum(flagged_weights, axis)
-    av_data = da.sum(weighted_data, axis) / av_weights
-    # Zero nans caused by flagged_weights all being zero along axis
-    isnan = da.isnan(av_data)
-    av_data = where(isnan, av_data.dtype.type(0), av_data)
-    n_flags = da.sum(calprocs.asbool(flags), axis)
+
+    av_data, av_weights = _wavg_axis(weighted_data, flagged_weights, axis)
+    # Update flags to include all invalid data, ie vis = 0j and weights > 1e15
+    updated_flags = flagged_weights == 0
+    n_flags = da.sum(updated_flags, axis)
+
     av_flags = n_flags >= flags.shape[axis] * threshold
     return av_data, av_flags, av_weights
 
 
-def wavg_full_t(data, flags, weights, solint, times=None):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 0, for specified
-    solution interval increments
+def wavg_full_t(data, flags, weights, solint, times=None, threshold=0.8):
+    """Perform weighted average of data, flags and weights, over axis 0.
+
+    This applies flags and uses specified solution interval increments.
 
     Parameters
     ----------
@@ -165,6 +186,7 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     weights    : array of floats
     solint     : index interval over which to average, integer
     times      : optional array of times to average, array of floats
+    threshold  : optional float
 
     Returns
     -------
@@ -182,7 +204,8 @@ def wavg_full_t(data, flags, weights, solint, times=None):
     av_weights = []
     # TODO: might be more efficient to use reduceat?
     for ti in inc_array:
-        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint])
+        w_out = wavg_full(data[ti:ti+solint], flags[ti:ti+solint], weights[ti:ti+solint],
+                          threshold=threshold)
         av_data.append(w_out[0])
         av_flags.append(w_out[1])
         av_weights.append(w_out[2])
@@ -198,8 +221,7 @@ def wavg_full_t(data, flags, weights, solint, times=None):
 
 
 def av_blocks(data, blocksize):
-    """
-    Calculate the mean in blocks of a fixed size over axis 0
+    """Calculate the mean in blocks of a fixed size over axis 0.
 
     Parameters
     ----------
@@ -234,7 +256,6 @@ def _align_chunks(chunks, alignment):
     chunk, the first and last alignment boundaries are split along (which may
     be a no-op where the start/end of the chunk is already aligned).
     """
-
     out = list(chunks)
     for axis, align in alignment.items():
         sizes = []
@@ -259,9 +280,9 @@ def _align_chunks(chunks, alignment):
 
 
 def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis 1, for specified number of channels
+    """Perform weighted average of data, flags and weights, over axis -3.
+
+    This applies flags and uses the specified number of channels.
 
     Parameters
     ----------
@@ -284,7 +305,8 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
     chunks = _align_chunks(data.chunks, {1: chanav})
     out_chunks = list(chunks)
     # Divide by chanav, rounding up
-    out_chunks[1] = tuple((x + chanav - 1) // chanav for x in chunks[1])
+    # use axis -3 for freq, to support cases where time axis has been averaged away
+    out_chunks[-3] = tuple((x + chanav - 1) // chanav for x in chunks[-3])
     out_chunks = tuple(out_chunks)
 
     data = data.rechunk(chunks)
@@ -323,9 +345,9 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
 
 
 def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
-    """
-    Perform weighted average of data, flags and weights,
-    applying flags, over axis -1 per antenna.
+    """Perform weighted average of data, flags and weights, over axis -1.
+
+    This applies flags and is done per antenna.
 
     Parameters
     ----------
@@ -362,12 +384,21 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
         ant_idx = np.where((bls_lookup[:, 0] == ant)
                            ^ (bls_lookup[:, 1] == ant))[0]
 
-        ant_weights = da.sum(flagged_weights[..., ant_idx], axis=-1)
-        ant_data = da.sum(weighted_data[..., ant_idx], axis=-1) / ant_weights
-        n_flags = da.sum(calprocs.asbool(flags[..., ant_idx]), axis=-1)
+        # conjugate visibilities if antenna is 2nd on the baseline
+        ant_data = weighted_data[..., ant_idx]
+        ant1 = bls_lookup[ant_idx][:, 0] == ant
+        ant1 = np.broadcast_to(ant1, ant_data.shape)
+        ant_conj_data = where(ant1, ant_data, da.conj(ant_data))
+
+        ant_ave_data, ant_weights = _wavg_axis(ant_conj_data,
+                                               flagged_weights[..., ant_idx],
+                                               axis=-1)
+        # update flags to include all invalid data
+        updated_flags = flagged_weights[..., ant_idx] == 0
+        n_flags = da.sum(updated_flags, axis=-1)
         ant_flags = n_flags > ant_idx.shape[0] * threshold
 
-        av_data.append(ant_data)
+        av_data.append(ant_ave_data)
         av_flags.append(ant_flags)
         av_weights.append(ant_weights)
 
@@ -379,10 +410,11 @@ def wavg_ant(data, flags, weights, ant_array, bls_lookup, threshold=0.8):
 
 
 def wavg_t_f(data, flags, weights, nchans):
-    """
-    Perform weighted average of data, flags and weights,
-    over all times and in frequency blocks to form a product with nchans channels.
-    If nchans is less than the number of channels in the data, don't average in frequency
+    """Perform weighted average, over all times and in frequency blocks.
+
+    This averages data, flags and weights, forming a product with nchans
+    channels. If nchans is less than the number of channels in the data,
+    don't average in frequency.
 
     Parameters:
     -----------
@@ -416,8 +448,7 @@ def wavg_t_f(data, flags, weights, nchans):
 
 
 def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, **kwargs):
-    """
-    Fit bandpass to visibility data.
+    """Fit bandpass to visibility data.
 
     Parameters
     ----------
@@ -431,7 +462,6 @@ def bp_fit(data, weights, corrprod_lookup, bp0=None, refant=0, **kwargs):
     -------
     bpass : Bandpass, shape(num_chans, num_pols, num_ants)
     """
-
     n_ants = calprocs.ants_from_bllist(corrprod_lookup)
 
     # -----------------------------------------------------

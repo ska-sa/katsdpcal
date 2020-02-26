@@ -23,6 +23,7 @@ from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
 import katdal.datasources
 from katdal import SpectralWindow
+from katsdptelstate import ImmutableKeyError
 
 import attr
 import numba
@@ -54,6 +55,10 @@ class EnumEncoder(json.JSONEncoder):
         if isinstance(obj, enum.Enum):
             return obj.name
         return json.JSONEncoder.default(self, obj)
+
+
+class ObservationStartEvent:
+    """capture_init has been requested"""
 
 
 class ObservationEndEvent:
@@ -109,8 +114,7 @@ ActivityState = namedtuple('ActivityState',
 
 
 def shared_empty(shape, dtype):
-    """
-    Allocate a numpy array from shared memory. The contents are undefined.
+    """Allocate a numpy array from shared memory. The contents are undefined.
 
     .. note:: This only works on UNIX-like systems, not Windows.
     """
@@ -152,7 +156,8 @@ def _slots_slices(slots):
 
 
 def _sum_corr(sum_corr, new_corr, limit=None):
-    """
+    """Aggregate corrected visibility data.
+
     Combines a dictionary of corrected data produced by the pipeline into a dictionary
     which aggregates the corrected data produced throughout the observation.
 
@@ -320,8 +325,9 @@ class Task:
 
 
 def _run_task(task):
-    """Free function wrapping the Task runner. It needs to be free because
-    bound instancemethods can't be pickled for multiprocessing.
+    """Free function wrapping the Task runner.
+
+    It needs to be free because bound instancemethods can't be pickled for multiprocessing.
     """
     task._run()
 
@@ -428,7 +434,8 @@ class Accumulator:
             return ActivityState(activity, activity_time, target_name, target_tags)
 
         def _is_break(self, old, new, slots):
-            """Determine whether to break batches between `old` and `new`:
+            """Determine whether to break batches between `old` and `new`.
+
              * case 1 -- activity change (unless gain cal following target)
              * case 2 -- beamformer phase up ended
              * case 3 -- buffer capacity limit reached
@@ -588,8 +595,7 @@ class Accumulator:
             self._drained_rx_event.set()
 
         async def _accumulate(self):
-            """
-            Accumulate SPEAD heaps into arrays and send batches to the pipeline.
+            """Accumulate SPEAD heaps into arrays and send batches to the pipeline.
 
             This does the main work of :meth:`run`, which just wraps
             it to handle startup and cleanup.
@@ -601,7 +607,6 @@ class Accumulator:
                weights_channel
                dump_index
             """
-
             ig = spead2.ItemGroup()
             n_stop = 0                   # Number of stop heaps received
 
@@ -721,7 +726,10 @@ class Accumulator:
                 if self._previous is not None:
                     self._logger.info('waiting for %s to finish', self._previous.capture_block_id)
                     await self._previous.done_event.wait()
-
+                # Tell pipeline that a new observation has begun
+                # Only pipeline uses the ObservationStartEvent so there is
+                # no need to send it to any other queue.
+                self.owner.accum_pipeline_queue.put(ObservationStartEvent())
                 await self._accumulate()
                 # Tell the pipeline that the observation ended, but only if there
                 # was something to work on.
@@ -1030,9 +1038,7 @@ class Accumulator:
 
 
 class Pipeline(Task):
-    """
-    Task (Process or Thread) which runs pipeline
-    """
+    """Task (Process or Thread) which runs pipeline."""
 
     def __init__(self, task_class, buffers,
                  accum_pipeline_queue, pipeline_sender_queue, pipeline_report_queue, master_queue,
@@ -1061,7 +1067,8 @@ class Pipeline(Task):
             'KCROSS_DIODE': solutions.CalSolutionStoreLatest('KCROSS_DIODE'),
             'B': solutions.CalSolutionStoreLatest('B'),
             'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
-            'G': solutions.CalSolutionStore('G')
+            'G': solutions.CalSolutionStore('G'),
+            'G_FLUX': solutions.CalSolutionStore('G')
         }
 
     def get_sensors(self):
@@ -1082,6 +1089,9 @@ class Pipeline(Task):
                 'number of times the pipeline threw an exception (prometheus: counter)',
                 default=0, initial_status=aiokatcp.Sensor.Status.NOMINAL),
             aiokatcp.Sensor(
+                str, 'pipeline-reference-antenna',
+                'Reference antenna selected by the pipeline'),
+            aiokatcp.Sensor(
                 float, 'pipeline-start-flag-fraction-auto-pol',
                 'Starting flag fraction prior to RFI detection: auto-pol (prometheus: Gauge)'),
             aiokatcp.Sensor(
@@ -1096,7 +1106,7 @@ class Pipeline(Task):
         ]
 
     def run(self):
-        """Task (Process or Thread) run method. Runs pipeline
+        """Task (Process or Thread) run method, which runs pipeline.
 
         This is a wrapper around :meth:`_run` which just handles the
         diagnostics option.
@@ -1112,8 +1122,7 @@ class Pipeline(Task):
             self._run_impl()
 
     def _run_impl(self):
-        """
-        Real implementation of :meth:`_run`.
+        """Real implementation of :meth:`_run`.
 
         Note: do not call this `_run`, since that is a method of the base class.
         """
@@ -1126,7 +1135,11 @@ class Pipeline(Task):
             while True:
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
-                if isinstance(event, BufferReadyEvent):
+                if isinstance(event, ObservationStartEvent):
+                    if self.parameters['reset_solution_stores']:
+                        logger.info('Resetting solution stores')
+                        self._reset_solution_stores()
+                elif isinstance(event, BufferReadyEvent):
                     logger.info('buffer with %d slots acquired by %s',
                                 len(event.slots), self.name)
                     start_time = time.time()
@@ -1162,6 +1175,7 @@ class Pipeline(Task):
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
                 elif isinstance(event, ObservationEndEvent):
+                    self.get_measured_flux(event)
                     self.master_queue.put(
                         ObservationStateEvent(event.capture_block_id, State.REPORTING))
                     self.pipeline_sender_queue.put(event)
@@ -1182,6 +1196,21 @@ class Pipeline(Task):
                                            self.solution_stores, self.l0_name, self.sensors)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
+
+    def get_measured_flux(self, event):
+        # Get the flux densities of the gain calibrators
+        measured_flux, measured_flux_std = calprocs.measure_flux(
+            self.solution_stores['G_FLUX'], self.solution_stores['G'],
+            event.start_time, event.end_time)
+        # Save it to telstate
+        ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+        # Only save the key if another process hasn't done it already
+        try:
+            ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
+            ts_cb_cal.add('measured_flux_std', measured_flux_std, immutable=True)
+            logger.info('Saved flux densities of gain calibrators to telstate.')
+        except ImmutableKeyError:
+            pass
 
 
 @attr.s
@@ -1710,9 +1739,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
 
 
 def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
-    """
-    Create empty buffer record using specified dimensions
-    """
+    """Create empty buffer record using specified dimensions."""
     if use_multiprocessing:
         factory = shared_empty
     else:

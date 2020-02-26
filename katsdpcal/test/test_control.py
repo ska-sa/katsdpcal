@@ -16,7 +16,7 @@ import numba
 import numpy as np
 from nose.tools import (
     assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_almost_equal, assert_not_equal, assert_raises_regex)
+    assert_almost_equal, assert_not_equal, assert_raises_regex, assert_is_none)
 import asynctest
 import scipy.interpolate
 
@@ -146,8 +146,8 @@ class ServerData:
     """Test data associated with a single simulated cal server"""
 
     def make_parameters(self, telstate_l0):
-        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_4k.txt')
-        rfi_file = os.path.join(rfi_dir, 'rfi_mask.pickle')
+        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L.txt')
+        rfi_file = os.path.join(rfi_dir, 'rfi_mask.txt')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0,
                                           self.testcase.n_servers, self.server_id, rfi_file)
@@ -217,6 +217,17 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.addCleanup(patcher.stop)
         return mock_obj
 
+    def populate_telstate_cb(self, telstate, cb='cb'):
+        telstate_cb_l0 = telstate.view(telstate.join(cb, 'sdp_l0test'))
+        telstate_cb_l0['first_timestamp'] = 100.0
+        telstate_cb = telstate.view(cb)
+        telstate_cb.add('obs_activity', 'track', ts=0)
+        obs_params = {'description' : 'test observation',
+                      'proposal_id' : '123_03',
+                      'sb_id_code' : '123_0005',
+                      'observer' : 'Kim'}
+        telstate_cb['obs_params'] = obs_params
+
     def populate_telstate(self, telstate_l0):
         telstate = telstate_l0.root()
         bls_ordering = []
@@ -250,15 +261,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_l0['sync_time'] = 1400000000.0
         telstate_l0['excise'] = True
         telstate_l0['need_weights_power_scale'] = True
-        telstate_cb_l0 = telstate.view(telstate.join('cb', 'sdp_l0test'))
-        telstate_cb_l0['first_timestamp'] = 100.0
-        telstate_cb = telstate.view('cb')
-        telstate_cb.add('obs_activity', 'track', ts=0)
-        obs_params = {'description' : 'test observation',
-                      'proposal_id' : '123_03',
-                      'sb_id_code' : '123_0005',
-                      'observer' : 'Kim'}
-        telstate_cb['obs_params'] = obs_params
+        self.populate_telstate_cb(telstate)
         for antenna in self.antennas:
             # The position is irrelevant for now, so just give all the
             # antennas the same position.
@@ -300,6 +303,13 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.output_streams[key] = stream
         return stream
 
+    def init_item_group(self):
+        """Initalise a :class:`spead2.send.ItemGroup` and send it to servers."""
+        self.ig = spead2.send.ItemGroup()
+        self.add_items(self.ig)
+        for endpoint in self.l0_endpoints:
+            self.l0_streams[endpoint].send_heap(self.ig.get_heap(descriptors='all'))
+
     async def setUp(self):
         self.n_channels = 4096
         self.n_substreams = 8    # L0 substreams
@@ -327,8 +337,6 @@ class TestCalDeviceServer(asynctest.TestCase):
             [Endpoint('239.102.254.{}'.format(i), 7148) for i in range(self.n_servers)]
         ]
 
-        self.ig = spead2.send.ItemGroup()
-        self.add_items(self.ig)
         self.l0_queues = {endpoint: spead2.InprocQueue() for endpoint in self.l0_endpoints}
         self.l0_streams = {}
         sender_thread_pool = spead2.ThreadPool()
@@ -344,8 +352,8 @@ class TestCalDeviceServer(asynctest.TestCase):
             queue = self.l0_queues[self.l0_endpoints[base]]
             stream = spead2.send.InprocStream(sender_thread_pool, queue)
             stream.set_cnt_sequence(i, self.n_endpoints)
-            stream.send_heap(self.ig.get_heap(descriptors='all'))
             self.l0_streams[endpoint] = stream
+        self.init_item_group()
 
         # Need a real function to use in the mock, otherwise it doesn't become
         # a bound method.
@@ -716,7 +724,10 @@ class TestCalDeviceServer(asynctest.TestCase):
         ret_G, ret_G_ts = cal_product_G[0]
         assert_equal(np.complex64, ret_G.dtype)
         assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
-        ret_BG = ret_B * ret_G[np.newaxis, :, :]
+        # Scale the returned G by the sqrt of the measured flux density of the model
+        ret_F = telstate_cb_cal['measured_flux']
+        ret_F_scale = np.sqrt(ret_F.get(target.name, 1.0))
+        ret_BG = ret_B * ret_G[np.newaxis, :, :] / ret_F_scale
         BG = np.broadcast_to(G[np.newaxis, :, :], ret_BG.shape)
         # cal puts NaNs in B in the channels for which it applies the static
         # RFI mask, interpolate across these
@@ -904,6 +915,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         refant_name = telstate_cb_cal['refant']
         assert_not_equal(self.antennas[worst_index], refant_name)
+        await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
 
     def prepare_heaps(self, rs, n_times,
                       vis=None, weights=None, weights_channel=None, flags=None):
@@ -956,6 +968,19 @@ class TestCalDeviceServer(asynctest.TestCase):
             ts += self.telstate.sdp_l0test_int_time
         return heaps
 
+    async def wait_for_heaps(self, num_heaps, timeout):
+        """Wait until `num_heaps` have been delivered to the accumulator or `timeout` in secs."""
+        for i in range(timeout):
+            await asyncio.sleep(1)
+            heaps = await self.get_sensor('input-heaps-total')
+            total_heaps = sum(int(x) for x in heaps)
+            if total_heaps == num_heaps:
+                print('all heaps received')
+                break
+            print('waiting {} ({}/{} received)'.format(i, total_heaps, num_heaps))
+        else:
+            raise RuntimeError('Timed out waiting for the heaps to be received')
+
     async def test_buffer_wrap(self):
         """Test capture with more heaps than buffer slots, to check that it handles
         wrapping around the end of the buffer.
@@ -979,16 +1004,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.make_request('capture-init', 'cb')
         # Wait until all the heaps have been delivered, timing out eventually.
         # This will take a while because it needs to allow the pipeline to run.
-        for i in range(240):
-            await asyncio.sleep(1)
-            heaps = await self.get_sensor('input-heaps-total')
-            total_heaps = sum(int(x) for x in heaps)
-            if total_heaps == n_times * self.n_substreams:
-                print('all heaps received')
-                break
-            print('waiting {} ({}/{} received)'.format(i, total_heaps, n_times * self.n_substreams))
-        else:
-            raise RuntimeError('Timed out waiting for the heaps to be received')
+        await self.wait_for_heaps(n_times * self.n_substreams, 240)
         for stream in self.l0_streams.values():
             stream.send_heap(self.ig.get_end())
         await self.shutdown_servers(60)
@@ -1097,6 +1113,89 @@ class TestCalDeviceServer(asynctest.TestCase):
         # are easier to diagnose.
         np.testing.assert_allclose(expected[1, 100], actual[1, 100], rtol=1e-4)
         np.testing.assert_allclose(expected, actual, rtol=1e-4)
+
+    async def wait_for_sensor(self, sensor, value, timeout):
+        """Wait `timeout` seconds for `sensor` to have `value`."""
+        for i in range(timeout):
+            await asyncio.sleep(1)
+            rw = await self.get_sensor(sensor)
+            if rw == value:
+                break
+        else:
+            raise RuntimeError('Timed out waiting for %s to be %s' % (sensor, value))
+
+    async def test_reset_solution_stores(self):
+        """Test that the solution stores are reset between calls to capture_init"""
+        # Force pipeline to reset the solution stores
+        for serv in self.servers:
+            serv.server.pipeline.parameters['reset_solution_stores'] = True
+        n_times = 5
+        start_time = self.telstate.sdp_l0test_sync_time + 100.
+        end_time = start_time + n_times * self.telstate.sdp_l0test_int_time
+        target = ('J1331+3030, radec delaycal bpcal gaincal, 13:31:08.29, +30:30:33.0, '
+                  '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
+        self.telstate.add('cbf_target', target, ts=0.01)
+        heaps = self.prepare_heaps(None, n_times)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb')
+        await self.wait_for_heaps(n_times * self.n_substreams, 60)
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        await self.make_request('capture-done')
+        # The pipeline has finished running when 'reports-written' increments
+        await self.wait_for_sensor('reports-written', [b'1'] * self.n_servers, 240)
+
+        # Check that the solution stores have the solutions for the expected target
+        ss = [serv.server.pipeline.solution_stores for serv in self.servers]
+        for serv_store in ss:
+            assert_equal(serv_store['B'].latest.target, 'J1331+3030')
+            assert_equal(serv_store['K'].latest.target, 'J1331+3030')
+            assert_true(serv_store['G'].has_target('J1331+3030'))
+            assert_true(serv_store['G_FLUX'].has_target('J1331+3030'))
+
+        # Refresh ItemGroup and send it to servers.
+        self.init_item_group()
+
+        # Set up a new capture block in telstate
+        self.populate_telstate_cb(self.telstate, 'cb2')
+
+        # A new target for a new CB
+        # Only use gaincal tag so we can check the stores have been reset
+        target = ('J1331+3030_2, radec gaincal, 13:31:08.29, +30:30:33.0, '
+                  '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
+        self.telstate.add('cbf_target', target, ts=0.02)
+        heaps = self.prepare_heaps(None, n_times)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb2')
+        await self.wait_for_heaps(n_times * self.n_substreams, 60)
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        # The pipeline has finished running when 'reports-written' increments
+        await self.wait_for_sensor('reports-written', [b'2'] * self.n_servers, 240)
+
+        # Check the solution stores only contain solutions from the new CB
+        ss = [serv.server.pipeline.solution_stores for serv in self.servers]
+        for serv_store in ss:
+            assert_is_none(serv_store['B'].latest)
+            assert_is_none(serv_store['K'].latest)
+            assert_true(serv_store['G'].has_target('J1331+3030_2'))
+            assert_false(serv_store['G'].has_target('J1331+3030'))
+            # There should now be no values in the G_FLUX store for this CB
+            G_FLUX = serv_store['G_FLUX'].get_range(start_time, end_time)
+            assert_equal(G_FLUX.values.size, 0)
+
+        # Check that 'cb' has 'measured_flux' in telstate for 'J1331+3030' only
+        telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
+        assert_in('J1331+3030', telstate_cb_cal.get('measured_flux'))
+        assert_not_in('J1331+3030_2', telstate_cb_cal.get('measured_flux'))
+
+        # Check that 'cb2' has no 'measured_flux' targets in telstate
+        telstate_cb2_cal = control.make_telstate_cb(self.telstate_cal, 'cb2')
+        assert_equal(telstate_cb2_cal.get('measured_flux'), {})
+
+        await self.shutdown_servers(180)
 
     async def test_pipeline_exception(self):
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
