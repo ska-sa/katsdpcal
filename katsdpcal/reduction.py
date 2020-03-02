@@ -602,15 +602,21 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                     save_solution(ts, parameters['product_names']['BCROSS_DIODE'],
                                   solution_stores['BCROSS_DIODE'], bcross_soln)
 
-                    logger.info('Solving for BCROSS_DIODE_SKY on beamformer calibrator %s',
-                                target_name)
-                    bcross_sky_soln = s.bcross_to_sky(bcross_soln, parameters['bcross_sky_spline'],
-                                                      parameters['pol_ordering'])
+                    # if a non-zero spline exists, then create the BCROSS_DIODE_SKY product
+                    if np.any(parameters['bcross_sky_spline'][1] != 0):
+                        logger.info('Solving for BCROSS_DIODE_SKY on beamformer calibrator %s',
+                                    target_name)
+                        bcross_sky_soln = s.bcross_to_sky(bcross_soln,
+                                                          parameters['bcross_sky_spline'],
+                                                          parameters['pol_ordering'])
 
-                    # store bcross_sky_soln only in telstate,
-                    # as it is never applied to the data by the pipeline
-                    save_solution(ts, parameters['product_names']['BCROSS_DIODE_SKY'],
-                                  None, bcross_sky_soln)
+                        # store bcross_sky_soln only in telstate,
+                        # as it is never applied to the data by the pipeline
+                        save_solution(ts, parameters['product_names']['BCROSS_DIODE_SKY'],
+                                      None, bcross_sky_soln)
+                    else:
+                        logger.info('No spline correction available, skipping solve for '
+                                    'BCROSS_DIODE_SKY')
 
                     # apply solutions and put corrected data into the av_corr dictionary
                     solns_to_apply.append(s.interpolate(bcross_soln))

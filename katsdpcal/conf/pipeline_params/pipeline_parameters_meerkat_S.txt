@@ -25,3 +25,8 @@ rfi_calib_spike_width_hz : 2136230   # 1sigma frequency width of smoothing Gauss
 rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
 rfi_extend_hz : 400543               # Convolution width in frequency to extend flags, Hz
 rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
+
+# HV phase 'to sky' spline, placeholer spline has coefs of zero to be updated in the future
+bcross_sky_knots : 1750, 1968, 2188, 2628, 3124, 3294, 3394, 3500      # knots in MHz
+bcross_sky_coefs : 0, 0, 0, 0, 0, 0, 0, 0, 0                           # coefs of fit (in degrees)
+bcross_sky_k : 3
