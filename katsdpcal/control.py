@@ -57,6 +57,10 @@ class EnumEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+class ObservationStartEvent:
+    """capture_init has been requested"""
+
+
 class ObservationEndEvent:
     """An observation has finished upstream"""
     def __init__(self, capture_block_id, start_time, end_time):
@@ -722,7 +726,10 @@ class Accumulator:
                 if self._previous is not None:
                     self._logger.info('waiting for %s to finish', self._previous.capture_block_id)
                     await self._previous.done_event.wait()
-
+                # Tell pipeline that a new observation has begun
+                # Only pipeline uses the ObservationStartEvent so there is
+                # no need to send it to any other queue.
+                self.owner.accum_pipeline_queue.put(ObservationStartEvent())
                 await self._accumulate()
                 # Tell the pipeline that the observation ended, but only if there
                 # was something to work on.
@@ -1128,7 +1135,11 @@ class Pipeline(Task):
             while True:
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
-                if isinstance(event, BufferReadyEvent):
+                if isinstance(event, ObservationStartEvent):
+                    if self.parameters['reset_solution_stores']:
+                        logger.info('Resetting solution stores')
+                        self._reset_solution_stores()
+                elif isinstance(event, BufferReadyEvent):
                     logger.info('buffer with %d slots acquired by %s',
                                 len(event.slots), self.name)
                     start_time = time.time()

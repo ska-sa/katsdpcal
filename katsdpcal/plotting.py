@@ -312,7 +312,7 @@ def plot_el_v_time(targets, times, elevations, title=None, **plot_kwargs):
 
 
 def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
-                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
+                     pol=[0, 1], phase_range=[-180, 180], units=None, **plot_kwargs):
     """Plots Amplitude and Phase vs UVdist.
 
     Parameters
@@ -329,6 +329,8 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -339,6 +341,11 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
                              squeeze=False, sharey='col')
     if title is not None:
         fig.suptitle(title, y=0.95)
+
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
 
     for p in range(npols):
         for i in range(times):
@@ -360,9 +367,9 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
 
-        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         if amp:
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
             lim = amp_range(data)
             if not np.isnan(lim).any():
                 axes[p, 1].set_ylim(*lim)
@@ -477,7 +484,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
 
 
 def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=False,
-              pol=[0, 1], phase_range=[-180, 180], amp_model=None, **plot_kwargs):
+              pol=[0, 1], phase_range=[-180, 180], amp_model=None, units=None, **plot_kwargs):
     """Plots spectrum of corrected data.
 
     Parameters
@@ -500,6 +507,8 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         start and stop phase ranges to plot, optional
     amp_model : :class:`np.ndarray`, optional
         real, (num_chans) amplitude model to plot
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -510,15 +519,20 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
     if title is not None:
         fig.suptitle(title, y=0.95)
 
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
+
     for p in range(npols):
         # plot full range amplitude plots
         p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
             axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
         else:
             # plot phase plots
             axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
@@ -617,7 +631,7 @@ def amp_range(data):
 
 
 def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
-                     pol=[0, 1], phase_range=[-180, 180], **plot_kwargs):
+                     pol=[0, 1], phase_range=[-180, 180], units=None, **plot_kwargs):
     """Plots amp/phase versus time.
 
     Parameters
@@ -636,6 +650,8 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         list of polarisation descriptions
     phase_range : list, optional
         start and stop phase ranges to plot, optional
+    units : str, optional
+        amplitude units for y-axis label
     plot_kwargs : keyword arguments, optional
         additional keyword arguments for plotting function
     """
@@ -646,6 +662,11 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
     if title is not None:
         fig.suptitle(title, y=0.95)
 
+    if units is not None:
+        unit_str = '({})'.format(units)
+    else:
+        unit_str = ''
+
     datetimes = [datetime.datetime.utcfromtimestamp(unix_timestamp) for unix_timestamp in times]
     dates = md.date2num(datetimes)
     time_xtick_fmt(axes, [datetimes[0], datetimes[-1]])
@@ -655,7 +676,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
                 p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.', **plot_kwargs)
-                axes[p, 0].set_ylabel('Amp Pol_{0}'.format(pol[p]))
+                axes[p, 0].set_ylabel('Amp Pol_{0} {1}'.format(pol[p], unit_str))
             else:
                 p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.',
                                      **plot_kwargs)

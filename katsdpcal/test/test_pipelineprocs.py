@@ -36,27 +36,77 @@ class TestArgparseParameters(unittest.TestCase):
         self.assertEqual([], parameters['rfi_windows_freq'])
 
 
+class TestParametersToChannels(unittest.TestCase):
+    def setUp(self):
+        self.parameters = {
+            'k_bfreq': 1326.200,
+            'k_efreq': 1368.012,
+            'g_bfreq': 1326.200,
+            'g_efreq': 1368.012,
+            'rfi_targ_spike_width_hz': 104491,
+            'rfi_calib_spike_width_hz': 2089843,
+            'rfi_average_hz': 104491,
+            'rfi_extend_hz': 391845,
+            'rfi_windows_post_average': [1, 2, 4, 8]
+        }
+        self.freqs = np.arange(32768) / 32768 * 856000000.0 + 856000000.0
+
+    def test_freq_params(self):
+        parameters = self.parameters.copy()
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        # params given in Hz/MHz should be converted to channels
+        self.assertEqual(18000, parameters['g_bchan'])
+        self.assertEqual(19600, parameters['g_echan'])
+        self.assertEqual(4, parameters['rfi_average_freq'])
+        self.assertEqual(15, parameters['rfi_extend_freq'])
+        self.assertEqual([1, 8, 16, 32], parameters['rfi_windows_freq'])
+
+    def test_chan_params(self):
+        parameters = self.parameters.copy()
+        del parameters['k_bfreq']
+        del parameters['rfi_extend_hz']
+        parameters.update({'k_bchan' : 4500})
+        parameters.update({'rfi_extend_freq' : 7})
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        # params given in channels should remain the same
+        self.assertEqual(4500, parameters['k_bchan'])
+        self.assertEqual(7, parameters['rfi_extend_freq'])
+
+    def test_both(self):
+        parameters = self.parameters.copy()
+        parameters.update({'g_bchan' : 5500})
+        # if param given in channels and freqs, use channel value
+        pipelineprocs.parameters_to_channels(parameters, self.freqs)
+        self.assertEqual(5500, parameters['g_bchan'])
+
+    def test_neither(self):
+        parameters = self.parameters.copy()
+        del parameters['k_bfreq']
+        with self.assertRaises(ValueError):
+            pipelineprocs.parameters_to_channels(parameters, self.freqs)
+
+
 class TestFinaliseParameters(unittest.TestCase):
     def setUp(self):
-        # These parameters are based on pipeline_parameters_meerkat_L_4k.txt
+        # These parameters are based on pipeline_parameters_meerkat_L.txt
         self.parameters = {
             'k_solint': 5.0,
             'k_chan_sample': 1,
-            'k_bchan': 2250,
-            'k_echan': 2450,
+            'k_bfreq': 1326.200,
+            'k_efreq': 1368.012,
             'kcross_chanave': 1,
             'bp_solint': 5.0,
             'g_solint': 5.0,
-            'g_bchan': 2250,
-            'g_echan': 2450,
+            'g_bfreq': 1326.200,
+            'g_efreq': 1368.012,
             'rfi_calib_nsigma': 4.5,
             'rfi_targ_nsigma': 7.0,
-            'rfi_windows_freq': [1, 2, 4, 8],
-            'rfi_average_freq': 1,
-            'rfi_targ_spike_width_freq': 20.0,
-            'rfi_calib_spike_width_freq': 10.0,
+            'rfi_windows_post_average': [1, 2, 4, 8],
+            'rfi_average_hz': 104491,
+            'rfi_targ_spike_width_hz': 4179687,
+            'rfi_calib_spike_width_hz': 2089843,
             'rfi_spike_width_time': 100.0,
-            'rfi_extend_freq': 3,
+            'rfi_extend_hz': 391845,
             'rfi_freq_chunks': 8
         }
 
@@ -103,6 +153,7 @@ class TestFinaliseParameters(unittest.TestCase):
         self.telstate_l0['bls_ordering'] = bls_ordering
         for antenna in self.antennas:
             self.telstate[self.telstate.join(antenna.name, 'observer')] = antenna.description
+        self.expected_freqs_all = np.arange(4096) / 4096 * 856000000.0 + 856000000.0
 
     def test_normal(self):
         parameters = pipelineprocs.finalise_parameters(
@@ -111,9 +162,8 @@ class TestFinaliseParameters(unittest.TestCase):
         self.assertEqual(self.antenna_names, parameters['antenna_names'])
         self.assertEqual(self.antennas, parameters['antennas'])
         expected_freqs = np.arange(1024) / 4096 * 856000000.0 + 1284000000.0
-        expected_freqs_all = np.arange(4096) / 4096 * 856000000.0 + 856000000.0
         np.testing.assert_allclose(expected_freqs, parameters['channel_freqs'])
-        np.testing.assert_allclose(expected_freqs_all, parameters['channel_freqs_all'])
+        np.testing.assert_allclose(self.expected_freqs_all, parameters['channel_freqs_all'])
         self.assertEqual(slice(2048, 3072), parameters['channel_slice'])
         np.testing.assert_array_equal(np.zeros((1, 1024, 1, 10), np.bool_), parameters['rfi_mask'])
         # Check the channel indices are offset
@@ -125,14 +175,21 @@ class TestFinaliseParameters(unittest.TestCase):
         # bls_ordering, pol_ordering, bls_lookup get tested elsewhere
 
     def test_rfi_mask(self):
-        # Create a random RFI mask. Randomness makes it highly likely that a
-        # shift will be detected.
+        # Create a set of random RFI ranges as a mask.
+        # Randomness makes it highly likely that a shift will be detected
         rs = np.random.RandomState(seed=1)
-        channel_mask = rs.rand(4096) < 0.5
-        with mock.patch('builtins.open'):   # To suppress trying to open a real file
-            with mock.patch('pickle.load', return_value=channel_mask.copy()):
+        random_freqs = np.ceil(rs.rand(8) * 856) + 856
+        rfi_ranges = np.sort(random_freqs).reshape((4, 2))
+        with mock.patch('builtins.open'):  # To suppress trying to open a real file
+            with mock.patch('numpy.loadtxt', return_value=rfi_ranges):
                 parameters = pipelineprocs.finalise_parameters(
                     self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
+
+        channel_mask = np.zeros((4096,), np.bool_)
+        for r in rfi_ranges:
+            idx = np.where((self.expected_freqs_all < r[1] * 1e6) &
+                           (self.expected_freqs_all >= r[0] * 1e6))[0]
+            channel_mask[idx] = 1
 
         # Check mask is False on long baselines and auto-correlations
         mask = channel_mask[np.newaxis, :, np.newaxis, np.newaxis]
@@ -145,14 +202,6 @@ class TestFinaliseParameters(unittest.TestCase):
         bl_mask[..., auto_bls] = False
         np.testing.assert_array_equal(bl_mask[:, 2048:3072], parameters['rfi_mask'])
 
-    def test_bad_rfi_mask(self):
-        mask = np.zeros(4097, np.bool_) < 0.5  # Wrong number of channels
-        with mock.patch('builtins.open'):   # To suppress trying to open a real file
-            with mock.patch('pickle.load', return_value=mask.copy()):
-                with self.assertRaises(ValueError):
-                    pipelineprocs.finalise_parameters(
-                        self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
-
     def test_invalid_server_id(self):
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 5, None)
@@ -162,17 +211,17 @@ class TestFinaliseParameters(unittest.TestCase):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 3, 0, None)
 
     def test_missing_parameter(self):
-        del self.parameters['k_bchan']
+        del self.parameters['k_bfreq']
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 
     def test_bad_channel_range(self):
-        self.parameters['k_echan'] = 2200
+        self.parameters['k_efreq'] = 1315765625  # chan 2200 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 
     def test_channel_range_spans_servers(self):
-        self.parameters['k_echan'] = 3073
+        self.parameters['k_efreq'] = 1498208985  # chan 3073 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
 
