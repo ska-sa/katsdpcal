@@ -575,7 +575,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                   s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
             # ----------------------------------------
-            # KCROSS solution
+            # KCROSS_DIODE, BCROSS_DIODE and BCROSS_DIODE_SKY solutions
             logger.info('Checking if the noise diode was fired')
             ant_names = [a.name for a in s.antennas]
             nd_on = check_noise_diode(ts, ant_names, [t0, t1])
@@ -601,6 +601,21 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                     bcross_soln = s.bcross_sol(solns_to_apply, nd_on)
                     save_solution(ts, parameters['product_names']['BCROSS_DIODE'],
                                   solution_stores['BCROSS_DIODE'], bcross_soln)
+
+                    # if a non-zero spline exists, then create the BCROSS_DIODE_SKY product
+                    if np.any(parameters['bcross_sky_spline'][1]):
+                        logger.info('Upgrading BCROSS_DIODE to BCROSS_DIODE_SKY')
+                        bcross_sky_soln = s.bcross_to_sky(bcross_soln,
+                                                          parameters['bcross_sky_spline'],
+                                                          parameters['pol_ordering'])
+
+                        # store bcross_sky_soln only in telstate,
+                        # as it is never applied to the data by the pipeline
+                        save_solution(ts, parameters['product_names']['BCROSS_DIODE_SKY'],
+                                      None, bcross_sky_soln)
+                    else:
+                        logger.info('No spline correction available, skipping solve for '
+                                    'BCROSS_DIODE_SKY')
 
                     # apply solutions and put corrected data into the av_corr dictionary
                     solns_to_apply.append(s.interpolate(bcross_soln))

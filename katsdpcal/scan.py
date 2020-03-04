@@ -672,6 +672,43 @@ class Scan:
             raise ValueError('b_soln has soltype {}, expected soltype B'.format(b_soln.soltype))
         return norm_fact
 
+    def bcross_to_sky(self, bcross_soln, spline, pol):
+        """
+        Converts BCROSS_DIODE solution to BCROSS_DIODE_SKY
+
+        Parameters
+        ----------
+        bcross_soln : :class: `~.CalSolution`
+            'BCROSS_DIODE' solution, complex (nchans, npols, nants)
+        spline : tuple
+            tuple of knots, co-efficients and degree of spline
+        pol : list of str
+            pol ordering of visibilities
+
+        Returns
+        -------
+        :class: `~.CalSolution'
+            'BCROSS_DIODE_SKY' solution, complex (nchans, npols, nants),
+        """
+
+        # convert phase spline to complex gain
+        phase_chan = scipy.interpolate.splev(self.channel_freqs/1e6, spline)
+        sky_gain = np.exp(1j * np.pi / 180 * phase_chan, dtype=np.complex64)
+
+        # spline gain in parameters is for 'hv' phase,
+        # conjugate if necessary
+        if pol[0] == 'v':
+            sky_gain = np.conj(sky_gain)
+
+        # multiply median bcross_diode with to_sky correction
+        values = bcross_soln.values
+        median = np.nanmedian(values, axis=-1, keepdims=True)
+        median[:, 0, :] *= sky_gain[:, np.newaxis]
+        bcross_sky = np.broadcast_to(median, values.shape)
+
+        return CalSolution('BCROSS_DIODE_SKY', bcross_sky, bcross_soln.time,
+                           soltarget=self.target.name)
+
     def _resid(self, soln, data, weights, **kwargs):
         """Calculate residuals and weights for a given solution, data and weights.
 
@@ -802,11 +839,10 @@ class Scan:
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
-            if soln.soltype == 'KCROSS_DIODE':
-                # select HV delay at refant
-                soln = soln.values[..., self.refant][..., np.newaxis]
-            else:
-                soln = soln.values
+            # select median HV delay to apply, instead of just selecting the refant HV delay
+            # this robustifies against problems with the refant measurement and
+            # reduces variation in the HV phase of observations with different refants
+            soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
 
             g_from_k = da.exp(2j * np.pi * soln[:, np.newaxis, :, :]
@@ -814,12 +850,12 @@ class Scan:
             return self._apply(g_from_k, vis, cross_pol)
 
         elif soln.soltype in ['BCROSS_DIODE']:
-            # select HV phase at refant
-            soln = soln.values[..., self.refant][..., np.newaxis]
+            # select median HV phase to apply
+            soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
             return self._apply(soln, vis, cross_pol)
 
-        elif soln.soltype == 'B':
+        elif soln.soltype in ['B', 'BCROSS_DIODE_SKY']:
             return self._apply(soln_values, vis, cross_pol)
         else:
             raise ValueError('Solution type {} is invalid.'.format(soln.soltype))

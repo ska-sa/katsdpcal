@@ -106,6 +106,11 @@ class TestFinaliseParameters(unittest.TestCase):
             'rfi_targ_spike_width_hz': 4179687,
             'rfi_calib_spike_width_hz': 2089843,
             'rfi_spike_width_time': 100.0,
+            'bcross_sky_knots': [856, 856, 856, 856, 963, 1070, 1284,
+                                 1525, 1608, 1658, 1711, 1711, 1711, 1711],
+            'bcross_sky_coefs': [1.507, 15.957, 13.683, 21.0169, 21.793,
+                                 26.879, 32.611, 32.973, 66.216, 16.998, 0,  0,  0,  0],
+            'bcross_sky_k': 3,
             'rfi_extend_hz': 391845,
             'rfi_freq_chunks': 8
         }
