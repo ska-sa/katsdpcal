@@ -575,7 +575,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                   s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply)
 
             # ----------------------------------------
-            # KCROSS solution
+            # KCROSS_DIODE, BCROSS_DIODE and BCROSS_DIODE_SKY solutions
             logger.info('Checking if the noise diode was fired')
             ant_names = [a.name for a in s.antennas]
             nd_on = check_noise_diode(ts, ant_names, [t0, t1])
@@ -603,9 +603,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                                   solution_stores['BCROSS_DIODE'], bcross_soln)
 
                     # if a non-zero spline exists, then create the BCROSS_DIODE_SKY product
-                    if np.any(parameters['bcross_sky_spline'][1] != 0):
-                        logger.info('Solving for BCROSS_DIODE_SKY on beamformer calibrator %s',
-                                    target_name)
+                    if np.any(parameters['bcross_sky_spline'][1]):
+                        logger.info('Upgrading BCROSS_DIODE to BCROSS_DIODE_SKY')
                         bcross_sky_soln = s.bcross_to_sky(bcross_soln,
                                                           parameters['bcross_sky_spline'],
                                                           parameters['pol_ordering'])

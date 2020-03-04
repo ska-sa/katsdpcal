@@ -839,7 +839,9 @@ class Scan:
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
             return self._apply(g_from_k, vis, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
-            # select median HV delay to apply
+            # select median HV delay to apply, instead of just selecting the refant HV delay
+            # this robustifies against problems with the refant measurement and
+            # reduces variation in the HV phase of observations with different refants
             soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
 
