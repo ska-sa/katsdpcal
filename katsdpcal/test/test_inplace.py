@@ -52,7 +52,7 @@ class TestStoreInplace:
         y = da.concatenate([self.a, self.x], axis=1)
         na_orig = self.na.copy()
         nx_orig = self.nx.copy()
-        for key, value in y.dask.items():
+        for key, value in y.__dask_graph__().items():
             print(key)
             print('   ', value)
         inplace.store_inplace(y * 2, y)
@@ -80,15 +80,23 @@ class TestStoreInplace:
 
 
 class TestRename:
-    def test(self):
+    def _test_array(self, array):
+        expected = array.compute()
+        old_keys = set(array.__dask_graph__().keys())
+        inplace.rename(array)
+        new_keys = set(array.__dask_graph__().keys())
+        assert_false(old_keys & new_keys)
+        np.testing.assert_array_equal(expected, array.compute())
+
+    def test_simple(self):
         a = np.array([1, 2, 3, 4, 5, 6], np.int32)
         b = np.array([10, 9, 8, 7, 6, 5], np.int32)
         x = da.from_array(a, chunks=(2,))
         y = da.from_array(b, chunks=(2,))
         z = x * y
-        expected = np.array([10, 18, 24, 28, 30, 30], np.int32)
-        old_keys = set(z.dask.keys())
-        inplace.rename(z)
-        new_keys = set(z.dask.keys())
-        assert_false(old_keys & new_keys)
-        np.testing.assert_array_equal(expected, z.compute())
+        self._test_array(z)
+
+    def test_reduction(self):
+        a = da.ones((10, 10), chunks=(2, 2), dtype=np.int32)
+        self._test_array(da.sum(a))
+        self._test_array(da.sum(a, axis=0))

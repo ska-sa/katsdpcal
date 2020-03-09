@@ -9,12 +9,16 @@ import dask.base
 import dask.core
 import dask.optimization
 import dask.array.optimization
+from dask.blockwise import Blockwise
+from dask.highlevelgraph import HighLevelGraph
 
 
 class _ArrayDependency:
-    """An array that a task depends on. To make this object hashable, two
-    arrays to be equal if they refer to the same data with the same type,
-    shape etc, even if they are different views.
+    """An array that a task depends on.
+
+    To make this object hashable, two arrays are considered to be equal if they
+    refer to the same data with the same type, shape etc, even if they are
+    different views.
 
     An "elementwise" dependency is one where the output of the task has the
     same shape as the input and the dependencies are elementwise.
@@ -44,7 +48,8 @@ class _ArrayDependency:
 
 
 class UnsafeInplaceError(Exception):
-    """Exception raised when an in-place data hazard is detected"""
+    """Exception raised when an in-place data hazard is detected."""
+
     def __init__(self, source_key, target_key):
         self.source_key = source_key
         self.target_key = target_key
@@ -114,8 +119,7 @@ def _safe_in_place(dsk, source_keys, target_keys):
 
 
 def store_inplace(sources, targets, safe=True, **kwargs):
-    """Evaluate a dask computation and write results back to the numpy arrays
-    backing dask arrays.
+    """Evaluate a dask computation and store results in the original numpy arrays.
 
     Dask is designed to operate on immutable data: the key for a node in the
     graph is intended to uniquely identify the value. It's possible to create
@@ -201,8 +205,8 @@ def store_inplace(sources, targets, safe=True, **kwargs):
             src_keys.append(src_key)
             trg_keys.append(trg_key)
             out_keys.append(key)
-        dsk.update(source_chunked.dask)
-        dsk.update(target.dask)
+        dsk.update(source_chunked.__dask_graph__())
+        dsk.update(target.__dask_graph__())
     if len(set(trg_keys)) < len(trg_keys):
         raise ValueError('The target contains duplicate keys')
     if safe:
@@ -231,6 +235,25 @@ def _rename_key(key, salt):
         raise TypeError('Cannot rename key {!r}'.format(key))
 
 
+def _rename_layer(layer, keymap, salt):
+    """Rename a single layer in a :class:`dask.highlevelgraph.HighLevelGraph`."""
+    if isinstance(layer, Blockwise):
+        new_indices = tuple(
+            (_rename_key(name, salt) if ind is not None else name, ind)
+            for name, ind in layer.indices)
+        sub_keymap = {key: _rename_key(key, salt) for key in layer.dsk}
+        return Blockwise(
+            _rename_key(layer.output, salt),
+            layer.output_indices,
+            _rename_layer(layer.dsk, sub_keymap, salt),
+            new_indices,
+            {_rename_key(name, salt): value for name, value in layer.numblocks.items()},
+            layer.concatenate,
+            layer.new_axes)
+    else:
+        return {keymap[key]: _rename(value, keymap) for (key, value) in layer.items()}
+
+
 def rename(array, salt=''):
     """Rewrite the graph in a dask array to rename all the nodes.
 
@@ -246,6 +269,18 @@ def rename(array, salt=''):
         share keys, then calling this function on those arrays with the same
         salt will cause them to again share keys.
     """
-    keymap = {key: _rename_key(key, salt) for key in array.dask}
-    array.dask = {keymap[key]: _rename(value, keymap) for (key, value) in array.dask.items()}
+    dsk = array.__dask_graph__()
+    keymap = {key: _rename_key(key, salt) for key in dsk}
+    if isinstance(dsk, HighLevelGraph):
+        layers = {
+            _rename_key(name, salt): _rename_layer(layer, keymap, salt)
+            for name, layer in dsk.layers.items()
+        }
+        dependencies = {
+            _rename_key(name, salt): [_rename_key(dep, salt) for dep in deps]
+            for name, deps in dsk.dependencies.items()
+        }
+        array.dask = HighLevelGraph(layers, dependencies)
+    else:
+        array.dask = _rename_layer(dsk, keymap)
     array.name = _rename_key(array.name, salt)

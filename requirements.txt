@@ -11,7 +11,7 @@ cityhash                # for katdal
 click==6.7              # for distributed
 cloudpickle==0.5.2      # for distributed
 cycler                  # for matplotlib
-dask==2.2.0             # pinned to a newer version because required by distributed
+dask==2.10.1            # pinned to a newer version because required by distributed
 decorator               # for katsdpsigproc, aiokatcp
 distributed==2.2.0
 docutils

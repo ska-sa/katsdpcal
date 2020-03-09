@@ -3,7 +3,6 @@
 import time
 import functools
 import logging
-import operator
 
 import numpy as np
 import dask.array as da
@@ -83,13 +82,6 @@ class ScanData:
         chunks = tuple(cls._intersect_chunks(c, e) for (c, e) in zip(chunks, array.chunks))
         if chunks != array.chunks:
             array = da.rechunk(array, chunks)
-            # Workaround for https://github.com/dask/dask/issues/3139
-            # This flattens the graph to be simply a bunch of getitem calls on
-            # the original arrays, which for unknown reasons works around
-            # the performance issue.
-            array.dask = array.__dask_optimize__(array.dask, array.__dask_keys__(),
-                                                 fast_functions=(da.core.getter, operator.getitem),
-                                                 rename_fused_keys=False)
         return array
 
 

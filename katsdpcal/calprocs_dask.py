@@ -334,7 +334,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
         layers = dict(base_graph.layers)
         layers[name] = layer
         dependencies = dict(base_graph.dependencies)
-        dependencies[name] = base_name
+        dependencies[name] = {base_name}
         dsk = HighLevelGraph(layers, dependencies)
         return da.Array(dsk, name, out_chunks, dtype)
 
