@@ -8,17 +8,17 @@ bokeh
 certifi                 # for requests
 chardet                 # for requests
 cityhash                # for katdal
-click==6.7              # for distributed
-cloudpickle==0.5.2      # for distributed
+click==7.0              # for distributed
+cloudpickle==1.3.0      # for distributed
 cycler                  # for matplotlib
-dask==2.10.1            # pinned to a newer version because required by distributed
+dask
 decorator               # for katsdpsigproc, aiokatcp
-distributed==2.2.0
+distributed==2.12.0
 docutils
 funcsigs                # for numba
 future                  # for katdal, katpoint
 h5py                    # for katdal
-heapdict==1.0.0         # for distributed
+heapdict==1.0.1         # for distributed
 idna                    # for requests
 jinja2                  # for bokeh
 jsonschema
@@ -34,7 +34,7 @@ numpy
 packaging               # for bokeh
 pandas                  # for katsdpsigproc
 pillow                  # for bokeh
-psutil==5.4.3           # for distributed
+psutil==5.7.0           # for distributed
 pyephem                 # for katpoint
 pygelf                  # for katsdpservices
 pyjwt                   # for katdal
@@ -46,15 +46,15 @@ rdbtools                # for katdal
 redis                   # for katsdptelstate
 requests                # for katdal
 scipy
-sortedcontainers==1.5.9
+sortedcontainers
 spead2
-tblib==1.3.2            # for distributed
+tblib==1.6.0            # for distributed
 terminaltables          # for aiomonitor
 toolz                   # for dask
-tornado==6.0.2          # for distributed, bokeh
+tornado                 # for distributed, bokeh
 typing_extensions       # for katsdpsigproc
 urllib3                 # for requests
-zict==0.1.3             # for distributed
+zict==2.0.0             # for distributed
 
 katdal @ git+https://github.com/ska-sa/katdal
 katpoint @ git+https://github.com/ska-sa/katpoint
