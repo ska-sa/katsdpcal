@@ -15,14 +15,17 @@ dask
 decorator               # for katsdpsigproc, aiokatcp
 distributed==2.12.0
 docutils
+ephem                   # for pyephem
 funcsigs                # for numba
 future                  # for katdal, katpoint
 h5py                    # for katdal
 heapdict==1.0.1         # for distributed
 idna                    # for requests
+importlib-metadata      # for jsonschema
 jinja2                  # for bokeh
 jsonschema
 katversion
+kiwisolver              # for matplotlib
 llvmlite                # for numba
 mako                    # for katsdpsigproc
 markupsafe              # for mako
@@ -38,6 +41,7 @@ psutil==5.7.0           # for distributed
 pyephem                 # for katpoint
 pygelf                  # for katsdpservices
 pyjwt                   # for katdal
+pyrsistent              # for jsonschema
 python-dateutil         # for pandas, matplotlib, bokeh
 python-lzf              # for katdal
 pytz                    # for pandas, matplotlib
@@ -55,6 +59,7 @@ tornado                 # for distributed, bokeh
 typing_extensions       # for katsdpsigproc
 urllib3                 # for requests
 zict==2.0.0             # for distributed
+zipp                    # for importlib-metadata
 
 katdal @ git+https://github.com/ska-sa/katdal
 katpoint @ git+https://github.com/ska-sa/katpoint
