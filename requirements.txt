@@ -16,7 +16,6 @@ decorator               # for katsdpsigproc, aiokatcp
 distributed==2.12.0
 docutils
 ephem                   # for pyephem
-funcsigs                # for numba
 future                  # for katdal, katpoint
 h5py                    # for katdal
 heapdict==1.0.1         # for distributed
