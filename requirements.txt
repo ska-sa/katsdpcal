@@ -34,7 +34,7 @@ numpy
 packaging               # for bokeh
 pandas                  # for katsdpsigproc
 pillow                  # for bokeh
-psutil==5.4.3           # for distributed
+psutil==5.6.6           # for distributed
 pyephem                 # for katpoint
 pygelf                  # for katsdpservices
 pyjwt                   # for katdal
