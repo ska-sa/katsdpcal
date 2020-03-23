@@ -9,7 +9,7 @@ import numpy as np
 import katsdptelstate
 
 from collections import defaultdict
-from katdal.sensordata import TelstateSensorData, SensorCache
+from katdal.sensordata import TelstateSensorGetter, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
 
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
@@ -78,7 +78,7 @@ def get_tracks(data, telstate, dump_period):
         List of slices indicating dumps associated with each track in buffer
     """
     sensor_name = 'obs_activity'
-    cache = {sensor_name: TelstateSensorData(telstate, sensor_name)}
+    cache = {sensor_name: TelstateSensorGetter(telstate, sensor_name)}
     sensors = SensorCache(cache, data['times'], dump_period, props=SENSOR_PROPS)
     activity = sensors.get(sensor_name)
     return [segment for (segment, a) in activity.segments() if a == 'track']
