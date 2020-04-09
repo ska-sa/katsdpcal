@@ -190,7 +190,7 @@ class SimData:
 
         for key, value in sorted(time_dict.items()):
             logger.info('Setting %s', key)
-            for t, v in zip(value['timestamp'], value['value']):
+            for v, t in value:
                 telstate.add(key, v, ts=t)
 
     def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
@@ -683,11 +683,11 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_sync_time'] = 0.0
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
-        # antenna descriptions for all antennas
+        # antenna descriptions  and noise diodes for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
-            param_dict['{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])] = \
-                self.file.sensor.get('Antennas/{0}/nd_coupler'.format(ant.name), extract=False)
+            nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
+            param_dict[nd_name] = self.file.source.telstate.get_range(nd_name, st=0)
         return param_dict
 
     def tx_data(self, telstate, tx, max_scans):
