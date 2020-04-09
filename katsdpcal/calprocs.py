@@ -1419,3 +1419,127 @@ def snr_antenna(data, weights, bls_lookup, flag_ants=None):
             snr[..., a] = 1. / rms
 
     return snr
+
+
+class FluxDensityModel():
+    """A flux density model.
+
+    A flux density model valid over a given frequency interval, specified
+    as coefficients to a variety of defined flux density polynomials.
+    The model can be supplied as a description string, where the frequency range
+    and coefficients are supplied as space separated values e.g
+    'min_freq_MHz max_freq_MHz a b c d e'
+
+    Parameters
+    ----------
+    min_freq_MHz : float or str
+        minimum frequency that flux density model is valid for or
+        a description string
+    max_freq_MHz : float
+        maximum frequency that flux density model is valid for
+    coefs : tuple
+       the first entry in the tuple can be a string, specifying
+       the polynomial type, if no string is supplied the polynomial
+       is assumed to be a Baars polynomial with frequency specified in MHz
+    """
+    def __init__(self, min_freq_MHz, max_freq_MHz=None, coefs=None):
+        self.desc = None
+        # If the first parameter is a description string, extract the relevant flux parameters
+        if isinstance(min_freq_MHz, str):
+            # Cannot have other parameters if description string is given - this is a safety check
+            if not (max_freq_MHz is None and coefs is None):
+                raise ValueError("First parameter {} is description string"
+                                 "- cannot have other parameters".format(min_freq_MHz))
+
+            # Split description string on spaces
+            flux_info = [num for num in min_freq_MHz.strip(' ()').split()]
+
+            # first coefficient can be a string indicating type of flux density polynomial
+            # if no string is supplied assume baars_mhz polynomial
+            try:
+                float(flux_info[2])
+                self.desc = 'baars_mhz'
+            except ValueError:
+                self.desc = flux_info.pop(2)
+            try:
+                flux_info = [float(num) for num in flux_info]
+            except ValueError:
+                raise ValueError('Floating point number {} is invalid'.format(min_freq_MHz))
+            if len(flux_info) < 2:
+                raise ValueError('Flux density description string {}'
+                                 'is invalid'.format(min_freq_MHz))
+
+            min_freq_MHz, max_freq_MHz, coefs = flux_info[0], flux_info[1], tuple(flux_info[2:])
+
+        self.min_freq_MHz = min_freq_MHz
+        self.max_freq_MHz = max_freq_MHz
+
+        try:
+            float(coefs[0])
+            if not self.desc:
+                self.desc = 'baars_mhz'
+        except ValueError:
+            self.desc = coefs[0]
+            coefs = coefs[1:]
+
+        self.coefs = coefs
+
+    def _extract_coefs(self, max_coefs):
+        coefs = np.zeros(max_coefs)
+        coefs[:min(len(self.coefs), max_coefs)] = self.coefs[:min(len(self.coefs), max_coefs)]
+        if len(self.coefs) > max_coefs:
+            logger.warning('Received %d coefficients but only expected %d - ignoring the rest',
+                           len(self.coefs), max_coefs)
+        return coefs
+
+    def _baars_mhz(self, freq_MHz):
+        max_coefs = 6
+        a, b, c, d, e, f = self._extract_coefs(max_coefs)
+        log10_v = np.log10(freq_MHz)
+        log10_S = a + b * log10_v + c * log10_v ** 2 + d * log10_v ** 3 + e * np.exp(f * log10_v)
+        return 10 ** log10_S
+
+    def _wsc_ord_mhz(self, freq_MHz):
+        max_coefs = 7
+        ref_freq, I, a, b, c, d, e = self._extract_coefs(max_coefs)
+        x = freq_MHz/ref_freq - 1
+        flux = I + a * x + b * x ** 2 + c * x ** 3 + d * x ** 4 + e * x ** 5
+        return flux
+
+    def _wsc_log_mhz(self, freq_MHz):
+        max_coefs = 7
+        ref_freq, I, a, b, c, d, e = self._extract_coefs(max_coefs)
+        x = np.log10(freq_MHz/ref_freq)
+        ln_S = np.log10(I) + a * x + b * x ** 2 + c * x ** 3 + d * x ** 4 + e * x ** 5
+        return np.exp(ln_S)
+
+    def flux_density(self, freq_MHz):
+        """Calculate Stokes I flux density for given observation frequency.
+
+        Returns nan for frequencies outside the valid range of the model.
+
+        Parameters
+        ----------
+        freq_MHz : float or iterable of floats
+            frequency at which to calculate flux density
+        """
+        if self.desc == 'baars_mhz':
+            flux = self._baars_mhz(freq_MHz)
+        elif self.desc == 'wsclean_ord_mhz':
+            flux = self._wsc_ord_mhz(freq_MHz)
+        elif self.desc == 'wsclean_log_mhz':
+            flux = self._wsc_log_mhz(freq_MHz)
+        else:
+            raise ValueError("Unknown flux density polynomial '%s'" % (self.desc))
+
+        try:
+            iter(freq_MHz)
+            freq_MHz = np.asarray(freq_MHz)
+            flux[freq_MHz < self.min_freq_MHz] = np.nan
+            flux[freq_MHz > self.max_freq_MHz] = np.nan
+            return flux
+        except TypeError:
+            if (freq_MHz >= self.min_freq_MHz) and (freq_MHz <= self.max_freq_MHz):
+                return flux
+            else:
+                return np.nan

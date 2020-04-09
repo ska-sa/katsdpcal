@@ -555,7 +555,11 @@ def get_model(target, lsm_dir_list=[]):
             model_components = None
 
     else:
+        model_components = []
         with open(model_file) as file:
-            model_cat = katpoint.Catalogue(file)
-            model_components = [m.description for m in model_cat]
+            for line in file:
+                li = line.strip()
+                if not li.startswith('#'):
+                    model_components.append(li)
+
     return model_components, model_file
