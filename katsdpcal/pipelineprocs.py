@@ -550,7 +550,6 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
             # DIRECTORY use the one that matches the sub_band of the observation
 
             band_list = [m for m in model_list if m.endswith('_{0}.txt'.format(BAND_MAP[sub_band]))]
-            logger.info('band list is %s', band_list)
             if band_list:
                 if len(band_list) > 1:
                     logger.warning(
