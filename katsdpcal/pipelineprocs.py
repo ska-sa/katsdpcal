@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 # --- General pipeline interactions
 # -------------------------------------------------------------------------------------------------
 
+BAND_MAP = {'u': 'UHF', 'l': 'L', 's': 'S', 'x': 'X'}
+
 
 class Converter:
     """Converts parameters between representations.
@@ -502,11 +504,12 @@ def get_baseline_mask(bls_lookup, ants, limits):
     return baseline_mask
 
 
-def get_model(target, lsm_dir_list=[]):
+def get_model(target, lsm_dir_list=[], sub_band='l'):
     """Get a sky model from a text file if one exists.
 
     The name of the text file must incorporate the name of the source.
-    If no text file is found, return the target sky model.
+    If multiple model files exist select the one whose suffix matches
+    the band name. If no text file is found, return the target sky model.
 
     Parameters
     ----------
@@ -514,6 +517,8 @@ def get_model(target, lsm_dir_list=[]):
         target
     lsm_dir_list : list
         search path for the source model txt file
+    sub_band : str
+        sub_band name to search for in model txt file name
 
     Returns
     -------
@@ -542,11 +547,21 @@ def get_model(target, lsm_dir_list=[]):
             model_file = model_list[0]
         elif len(model_list) > 1:
             # if there are more than one model files for the source IN THE SAME
-            # DIRECTORY warn the user and use the first model
-            logger.warning(
-                'More than one possible sky model file for'
-                ' %s: %s, using %s', target.name, model_list, model_list[0])
-            model_file = model_list[0]
+            # DIRECTORY use the one that matches the sub_band of the observation
+
+            band_list = [m for m in model_list if m.endswith('_{0}.txt'.format(BAND_MAP[sub_band]))]
+            logger.info('band list is %s', band_list)
+            if band_list:
+                if len(band_list) > 1:
+                    logger.warning(
+                        'More than one possible sky model file for'
+                        ' %s: %s, using %s', target.name, band_list, band_list[0])
+                model_file = band_list[0]
+            else:
+                logger.warning(
+                    'More than one possible sky model file for'
+                    ' %s: %s, using %s', target.name, model_list, model_list[0])
+                model_file = model_list[0]
 
     if model_file == []:
         if target.flux_model is not None:

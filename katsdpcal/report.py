@@ -102,7 +102,7 @@ def utc_tstr(timestamp, day=False):
     return time_string
 
 
-def model_flux(target, freqs):
+def model_flux(target, freqs, sub_band):
     """Flux density of the first source in the target model.
 
     If there is no model, returns None.
@@ -113,17 +113,19 @@ def model_flux(target, freqs):
         target to obtain model for
     freqs : :class:`np.ndarray`
         frequencies in MHz to obtain flux density for
+    sub_band : str
+        sub_band of observation
 
     Returns
     -------
     flux_density : :class:`np.ndarray` or None
         flux density in Jy
     """
-    model_params, model_file = pp.get_model(target, lsm_dir)
+    model_params, model_file = pp.get_model(target, lsm_dir, sub_band)
     # use only the first source in the list, assumed to be the brightest, dominant source
     if model_params is not None:
-        source = katpoint.Target(model_params[0])
-        flux_density = source.flux_density(freqs)
+        flux_model = calprocs.FluxDensityModel(''.join(model_params[0].split(',')[-1]))
+        flux_density = flux_model.flux_density(freqs)
     else:
         flux_density = None
     return flux_density
@@ -177,7 +179,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     report.writeln('* {0}:  {1}'.format(var_text, value))
 
 
-def _get_units(target, freqs, flux_cal={}):
+def _get_units(target, freqs, sub_band, flux_cal={}):
     """Determine the amplitude units of a target.
 
     Parameters
@@ -186,7 +188,9 @@ def _get_units(target, freqs, flux_cal={}):
         target whose amplitude units are to be obtained
     freqs : :class:`np.ndarray`
         frequencies in MHz to obtain flux density for
-    flux_cal : dict
+    sub_band : str
+        sub_band of the observation
+    flux_cal : dict, optional
         dict of flux calibrated targets
 
     Returns
@@ -198,7 +202,7 @@ def _get_units(target, freqs, flux_cal={}):
     implicit_tags = ['bpcal', 'bfcal']
 
     implicit_gain = any([t in target.tags for t in implicit_tags])
-    is_model = model_flux(target, freqs) is not None
+    is_model = model_flux(target, freqs, sub_band) is not None
     is_flux = target.name in flux_cal.keys()
 
     if (implicit_gain and is_model) or is_flux:
@@ -393,7 +397,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
     report.writeln()
 
 
-def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
+def write_flux_cal(report, flux_cal, flux_std, parameters, targets, sub_band):
     """Write Flux calibration info in a table.
 
     Info only gets written if the 'measured_flux' dict in telstate
@@ -411,6 +415,8 @@ def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
         pipeline parameters
     targets : list of :class:`katpoint.Target`
         targets in the observation
+    sub_band : str
+        sub_band of the observation
     """
 
     if flux_cal:
@@ -440,7 +446,7 @@ def write_flux_cal(report, flux_cal, flux_std, parameters, targets):
             tags = cal.tags
 
             # if model flux is available report it
-            model = model_flux(cal, freqs)
+            model = model_flux(cal, freqs, sub_band)
             if model is not None:
                 model_desc = '{:.3f} Jy'.format(np.average(model))
             else:
@@ -627,7 +633,7 @@ def write_hv(report, report_path, targets, av_corr,
 
 
 def write_ng_freq(report, report_path, targets, av_corr,
-                  refant_name, antenna_names, correlator_freq, pol=[0, 1]):
+                  refant_name, antenna_names, correlator_freq, sub_band, pol=[0, 1]):
     """Include plots of spectra of calibrators without applied gains.
 
     These calibrators do not have gains applied by the pipeline. Make one plot
@@ -649,6 +655,8 @@ def write_ng_freq(report, report_path, targets, av_corr,
         list of antenna names
     correlator_freq : :class:`np.ndarray`
         real (nchan), correlator channel frequencies
+    sub_band : str
+        sub_band of observation
     pol : list
         description of polarisation axes, optional
     """
@@ -674,9 +682,9 @@ def write_ng_freq(report, report_path, targets, av_corr,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
-        units = _get_units(kat_target, freq_chan)
+        units = _get_units(kat_target, freq_chan, sub_band)
 
-        flux_density = model_flux(kat_target, freq_chan)
+        flux_density = model_flux(kat_target, freq_chan, sub_band)
         for ti in range(len(av_times)):
             report.writeln()
             t = utc_tstr(av_times[ti])
@@ -696,7 +704,7 @@ def write_ng_freq(report, report_path, targets, av_corr,
 
 
 def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
-                 cal_bls_lookup, correlator_freq, is_calibrator=True, pol=[0, 1]):
+                 cal_bls_lookup, correlator_freq, sub_band, is_calibrator=True, pol=[0, 1]):
     """Include plots of spectra of calibrators with applied gains.
 
     Include plots of spectra of calibrators which have gains applied
@@ -720,6 +728,8 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
         int (nbls x 2), of antenna indices in each baseline
     correlator_freq : :class:`np.ndarray`
         real (ncha), correlator channel frequencies
+    sub_band : str
+        sub_band of observation
     is_calibrator: bool, optional
         make plots of amp and phase and label them as calibrator plots if true,
         else plot only amplitudes and label them as target plots
@@ -755,11 +765,11 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
         idx_chan, freq_chan = get_freq_info(correlator_freq, n_av_chan)
         freq_range = [freq_chan[0], freq_chan[-1]]
 
-        units = _get_units(kat_target, freq_chan, flux_cal)
+        units = _get_units(kat_target, freq_chan, sub_band, flux_cal)
         # Get model flux, in order to plot model spectrum
         # the following only obtains the flux of the first source in the model,
         # which is assumed to be the brightest/dominant source in the field.
-        flux_density = model_flux(kat_target, freq_chan)
+        flux_density = model_flux(kat_target, freq_chan, sub_band)
 
         # Set the plot label
         if is_calibrator:
@@ -784,7 +794,7 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
 
 
 def write_g_time(report, report_path, flux_cal, targets, av_corr,
-                 antenna_names, cal_bls_lookup, correlator_freq, pol):
+                 antenna_names, cal_bls_lookup, correlator_freq, sub_band, pol):
     """Plots of amp and phase versus time of all scans of the given targets.
 
     The plots show data averaged per antenna.
@@ -807,6 +817,8 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
         array of antenna indices in each baseline
     correlator_freq : :class:`np.ndarray`
         real (nchan), correlator channel frequencies
+    sub_band : str
+        sub_band of observation
     pol : list
         description of polarisation axes, optional
     """
@@ -830,7 +842,7 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
                 av_data = [d * flux_cal[target_name] for d in av_data]
             data += av_data
             times += av_times
-            units.append(_get_units(kat_target, correlator_freq, flux_cal))
+            units.append(_get_units(kat_target, correlator_freq, sub_band, flux_cal))
 
         if all([u == 'Jy' for u in units]):
             units = 'Jy'
@@ -864,7 +876,7 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
 
 
 def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
-               antennas, cal_array_position, correlator_freq,
+               antennas, cal_array_position, correlator_freq, sub_band,
                is_calibrator=True, pol=[0, 1]):
     """Include plots of amp and phase/amp versus uvdist in report.
 
@@ -892,6 +904,8 @@ def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
         description string of array position
     correlator_freq : :class:`np.ndarray`
         real (nchan) correlator channel frequencies
+    sub_band : str
+        sub_band of observation
     is_calibrator : bool, optional
         make plots of amp and phase and label them as calibrator plots if true,
         else plot only amplitudes and label them as target plots
@@ -930,7 +944,7 @@ def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
         uvdist = calc_uvdist(cal, freq_chan, av_times,
                              cal_bls_lookup, antennas, cal_array_position)
 
-        units = _get_units(kat_target, freq_chan, flux_cal)
+        units = _get_units(kat_target, freq_chan, sub_band, flux_cal)
         if is_calibrator:
             plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
             amp = False
@@ -1666,8 +1680,9 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             # add cal products to report
             flux_cal = ts.get('measured_flux')
             flux_std = ts.get('measured_flux_std')
+            sub_band = ts.get('sub_band')
 
-            write_flux_cal(cal_rst, flux_cal, flux_std, parameters, unique_targets)
+            write_flux_cal(cal_rst, flux_cal, flux_std, parameters, unique_targets, sub_band)
             write_products(cal_rst, report_path, ts, parameters,
                            st, et, antenna_names, correlator_freq, pol)
             # Corrected data
@@ -1699,22 +1714,22 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                     cal_rst.write_heading_1('Calibrator Summary Plots')
 
                     write_ng_freq(cal_rst, report_path, nogain, av_corr,
-                                  refant_name, bls_names, correlator_freq, pol)
+                                  refant_name, bls_names, correlator_freq, sub_band, pol)
                     write_g_freq(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
-                                 cal_bls_lookup, correlator_freq, True, pol)
+                                 cal_bls_lookup, correlator_freq, sub_band, True, pol)
                     write_g_time(cal_rst, report_path, flux_cal, gain, av_corr, antenna_names,
-                                 cal_bls_lookup, correlator_freq, pol)
-
+                                 cal_bls_lookup, correlator_freq, sub_band, pol)
                     write_g_uv(cal_rst, report_path, flux_cal, gain, av_corr, cal_bls_lookup,
-                               antennas, cal_array_position, correlator_freq, True, pol=pol)
+                               antennas, cal_array_position, correlator_freq, sub_band, True,
+                               pol=pol)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets
                 cal_rst.write_heading_1('Calibrated Target Fields')
                 write_g_freq(cal_rst, report_path, flux_cal, target, av_corr, antenna_names,
-                             cal_bls_lookup, correlator_freq, False, pol=pol)
+                             cal_bls_lookup, correlator_freq, sub_band, False, pol=pol)
                 write_g_uv(cal_rst, report_path, flux_cal, target, av_corr, cal_bls_lookup,
-                           antennas, cal_array_position, correlator_freq, False, pol=pol)
+                           antennas, cal_array_position, correlator_freq, sub_band, False, pol=pol)
 
             cal_rst.writeln()
 
