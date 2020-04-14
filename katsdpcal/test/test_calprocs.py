@@ -675,3 +675,43 @@ class TestSnrAntenna(unittest.TestCase):
         expected[1, 1, 1] = 2
         snr = calprocs.snr_antenna(self.vis, self.weights, self.bls_lookup, ant_flags)
         np.testing.assert_allclose(expected, snr, rtol=1e3)
+
+
+class TestFluxDensityModel(unittest.TestCase):
+    """Tests for :class:`katsdpcal.calprocs.FluxDensityModel`"""
+    def _test_str(self, desc_str, expected_flux):
+        """Tests flux density produced with a string input."""
+        flux_model = calprocs.FluxDensityModel(desc_str)
+        flux = flux_model.flux_density([100, 2000])
+        np.testing.assert_equal(flux, expected_flux)
+
+    def _test_inputs(self, min_freq, max_freq, coefs, expected_flux):
+        """Tests flux density produced with min_freq, max_freq and coefs inputs"""
+        flux_model = calprocs.FluxDensityModel(min_freq, max_freq, coefs)
+        flux = flux_model.flux_density([100, 2000])
+        np.testing.assert_equal(flux, expected_flux)
+
+    def test_baars(self):
+        """Correct flux produced with Baars_MHz polynomial"""
+        self._test_str('10.0 1000.0 5 2 3 0 0', [10 ** 21.0, np.nan])
+        self._test_str('(10.0 1000.0 baars_mhz 5 2 3)', [10 ** 21.0, np.nan])
+        self._test_inputs(10.0, 1000.0, (5, 2, 3), [10 ** 21.0, np.nan])
+        self._test_inputs(10.0, 1000.0, ('baars_mhz', 5, 2, 3), [10 ** 21.0, np.nan])
+
+    def test_wsclean_ord(self):
+        """Correct flux produced with wsclean ordinary polynomial"""
+        self._test_str('10.0 1000.0 wsclean_ord_mhz 20.0 2 3 1', [30.0, np.nan])
+        self._test_inputs(10.0, 1000.0, ('wsclean_ord_mhz', 20, 2, 3, 1),
+                          [30.0, np.nan])
+
+    def test_wsclean_log(self):
+        desc_str = '10.0 1000.0 wsclean_log_mhz 1.0 0.0001 2 3 -1 0 0.25'
+        self._test_str(desc_str, [np.exp(12.0), np.nan])
+        self._test_inputs(10, 1000, ('wsclean_log_mhz', 1, 0.0001, 2, 3, -1, 0 , 0.25),
+                          [np.exp(12.0), np.nan])
+
+    def test_unknown_polynomial(self):
+        desc_str = '10.0 1000.0 baars_ghz 5 2 3'
+        flux_model = calprocs.FluxDensityModel(desc_str)
+        with self.assertRaises(ValueError):
+            flux_model.flux_density([100, 2000])
