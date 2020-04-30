@@ -546,7 +546,7 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
         if len(model_list) == 1:
             model_file = model_list[0]
         elif len(model_list) > 1:
-            # if there are more than one model files for the source IN THE SAME
+            # if there is more than one model file for the source IN THE SAME
             # DIRECTORY use the one that matches the sub_band of the observation
 
             band_list = [m for m in model_list if m.endswith('_{0}.txt'.format(BAND_MAP[sub_band]))]

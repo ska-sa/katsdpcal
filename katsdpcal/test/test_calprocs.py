@@ -679,39 +679,41 @@ class TestSnrAntenna(unittest.TestCase):
 
 class TestFluxDensityModel(unittest.TestCase):
     """Tests for :class:`katsdpcal.calprocs.FluxDensityModel`"""
-    def _test_str(self, desc_str, expected_flux):
-        """Tests flux density produced with a string input."""
-        flux_model = calprocs.FluxDensityModel(desc_str)
-        flux = flux_model.flux_density([100, 2000])
-        np.testing.assert_equal(flux, expected_flux)
 
-    def _test_inputs(self, min_freq, max_freq, coefs, expected_flux):
-        """Tests flux density produced with min_freq, max_freq and coefs inputs"""
-        flux_model = calprocs.FluxDensityModel(min_freq, max_freq, coefs)
+    def _test_inputs(self, expected_flux, *args):
+        """Tests flux density produced with given parameters or description string"""
+        flux_model = calprocs.FluxDensityModel(*args)
         flux = flux_model.flux_density([100, 2000])
-        np.testing.assert_equal(flux, expected_flux)
+        np.testing.assert_allclose(flux, expected_flux, rtol=1e-3)
 
     def test_baars(self):
         """Correct flux produced with Baars_MHz polynomial"""
-        self._test_str('10.0 1000.0 5 2 3 0 0', [10 ** 21.0, np.nan])
-        self._test_str('(10.0 1000.0 baars_mhz 5 2 3)', [10 ** 21.0, np.nan])
-        self._test_inputs(10.0, 1000.0, (5, 2, 3), [10 ** 21.0, np.nan])
-        self._test_inputs(10.0, 1000.0, ('baars_mhz', 5, 2, 3), [10 ** 21.0, np.nan])
+        exp_flux = [10 ** 21.0, np.nan]
+        self._test_inputs(exp_flux, '10.0 1000.0 5 2 3 0 0')
+        self._test_inputs(exp_flux, '(10.0 1000.0 baars_mhz 5 2 3)')
+        self._test_inputs(exp_flux, 10.0, 1000.0, (5, 2, 3))
+        self._test_inputs(exp_flux, 10.0, 1000.0, (5, 2, 3), 'baars_mhz')
 
     def test_wsclean_ord(self):
         """Correct flux produced with wsclean ordinary polynomial"""
-        self._test_str('10.0 1000.0 wsclean_ord_mhz 20.0 2 3 1', [30.0, np.nan])
-        self._test_inputs(10.0, 1000.0, ('wsclean_ord_mhz', 20, 2, 3, 1),
-                          [30.0, np.nan])
+        exp_flux = [30.0, np.nan]
+        self._test_inputs(exp_flux, '10.0 1000.0 wsclean 2 [3 1] false 20000000')
+        self._test_inputs(exp_flux, 10.0, 1000.0, (3, 1), 'wsclean', False, 2, 20000000)
 
     def test_wsclean_log(self):
-        desc_str = '10.0 1000.0 wsclean_log_mhz 1.0 0.0001 2 3 -1 0 0.25'
-        self._test_str(desc_str, [np.exp(12.0), np.nan])
-        self._test_inputs(10, 1000, ('wsclean_log_mhz', 1, 0.0001, 2, 3, -1, 0 , 0.25),
-                          [np.exp(12.0), np.nan])
+        ref_freq = (100.0/np.e ** 2) * 1e6
+        stokes_I = np.e ** (0.1)
+        desc = '10.0 1000.0 wsclean {:.3f} [2 3 -1 0 0.25] true {:.3f}'.format(stokes_I, ref_freq)
+        exp_flux = [np.exp(16.1), np.nan]
+        self._test_inputs(exp_flux, desc)
+        self._test_inputs(exp_flux, 10, 1000, (2, 3, -1, 0 , 0.25),
+                          'wsclean', True, stokes_I, ref_freq)
 
     def test_unknown_polynomial(self):
         desc_str = '10.0 1000.0 baars_ghz 5 2 3'
-        flux_model = calprocs.FluxDensityModel(desc_str)
         with self.assertRaises(ValueError):
-            flux_model.flux_density([100, 2000])
+            calprocs.FluxDensityModel(desc_str)
+
+    def test_missing_variable(self):
+        with self.assertRaises(ValueError):
+            calprocs.FluxDensityModel(100, 1000, [2, 3, 1], 'wsclean', 100)
