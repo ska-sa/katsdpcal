@@ -5,6 +5,7 @@ Calibration procedures for MeerKAT calibration pipeline
 Solvers and averagers for use in the MeerKAT calibration pipeline.
 """
 
+import ast
 import logging
 
 import numpy as np
@@ -1476,7 +1477,7 @@ class FluxDensityModel:
 
             # Split description string on spaces
             flux_info = [num for num in min_freq_MHz.strip(' ()').split()]
-            if len(flux_info) < 2:
+            if len(flux_info) < 3:
                 raise ValueError('Flux density description string {}'
                                  'is invalid'.format(min_freq_MHz))
             # first coefficient can be a string indicating type of flux density polynomial
@@ -1488,22 +1489,25 @@ class FluxDensityModel:
             else:
                 self.model_type = 'baars_mhz'
 
+            try:
+                self.min_freq_MHz = float(flux_info[0])
+                self.max_freq_MHz = float(flux_info[1])
+            except ValueError:
+                raise ValueError('Min/max_freq_MHz contains invalid floating point '
+                                 'numbers')
+
             if self.model_type == 'baars_mhz':
-                self._set_baars_params(flux_info)
+                self._set_baars_params(flux_info[2:])
 
             elif self.model_type == 'wsclean':
-                self._set_wsclean_params(min_freq_MHz)
+                self._set_wsclean_params(flux_info[2:])
 
         else:
             self.min_freq_MHz = min_freq_MHz
             self.max_freq_MHz = max_freq_MHz
             self.coefs = coefs
             # if no model type supplied assume baars_mhz polynomial
-            if model_type:
-                self.model_type = model_type
-            else:
-                self.model_type = 'baars_mhz'
-
+            self.model_type = model_type if model_type else 'baars_mhz'
             self.log = log
             self.stokes_I = stokes_I
             self.ref_freq = ref_freq
@@ -1518,44 +1522,26 @@ class FluxDensityModel:
         self._flux_density, max_coefs = self._model_func()
         self.coefs = self._extract_coefs(max_coefs)
 
-    def _set_baars_params(self, flux_info):
+    def _set_baars_params(self, coefs):
         try:
-            flux_info = [float(num) for num in flux_info]
+            coefs = [float(c) for c in coefs]
         except ValueError:
-            raise ValueError('Description string {} contains invalid floating point '
-                             'numbers'.format(' '.join(flux_info)))
-
-        self.min_freq_MHz, self.max_freq_MHz = flux_info[0], flux_info[1]
-        self.coefs = tuple(flux_info[2:])
-
-    def _set_wsclean_params(self, desc):
-        flux_info = [num for num in desc.strip('()').split()]
-        # separate coefs from other parameters
-        idx_last_coef = [i + 1 for i, term in enumerate(flux_info) if term.endswith(']')][0]
-        coefs = flux_info[4:idx_last_coef]
-        flux_info = flux_info[:4] + flux_info[idx_last_coef:]
-
-        try:
-            coefs = [float(num.strip('[]')) for num in coefs]
-        except ValueError:
-            raise ValueError('Coefficients {} contain invalid floating point'
+            raise ValueError('Description string coefficients {} contain invalid floating point '
                              'numbers'.format(' '.join(coefs)))
 
-        self.coefs = coefs
-        params = [('min_freq_MHz', float, 'float'),
-                  ('max_freq_MHz', float, 'float'),
-                  ('model_type', str, 'str'),
-                  ('stokes_I', float, 'float'),
-                  ('log', self._convert_str2bool , 'boolean'),
-                  ('ref_freq', float, 'float')]
+        self.coefs = tuple(coefs)
 
-        for i, param in enumerate(params):
-            # set the params and convert to the required type
-            try:
-                setattr(self, param[0], param[1](flux_info[i]))
-            except ValueError:
-                raise ValueError('Attribute "{}" cannot be converted to required'
-                                 'type {}'.format(param[0], param[2]))
+    def _set_wsclean_params(self, wsclean_info):
+        csv = ','.join(s.capitalize() for s in wsclean_info)
+        try:
+            stokes_I, coefs, log, ref_freq = ast.literal_eval(csv)
+            self.stokes_I = float(stokes_I)
+            self.coefs = [float(c) for c in coefs]
+            self.log = bool(log)
+            self.ref_freq = float(ref_freq)
+        except ValueError as err:
+            raise ValueError("Invalid wsclean component description"
+                             "string '{}'".format(' '.join(wsclean_info))) from err
 
     def _convert_str2bool(self, input_str):
         valid = {'true': True, 'false': False}
@@ -1616,7 +1602,7 @@ class FluxDensityModel:
 
         Parameters
         ----------
-        freq_MHz : float or sequency of floats
+        freq_MHz : float or sequence of floats
             frequency at which to calculate flux density in MHz
         """
 
@@ -1625,4 +1611,5 @@ class FluxDensityModel:
         flux = np.asarray(flux)
         flux[freq_MHz < self.min_freq_MHz] = np.nan
         flux[freq_MHz > self.max_freq_MHz] = np.nan
+        # use flux.item() to convert 0-d array back to scalar if necessary
         return flux if flux.ndim else flux.item()
