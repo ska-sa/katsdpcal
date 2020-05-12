@@ -1543,14 +1543,6 @@ class FluxDensityModel:
             raise ValueError("Invalid wsclean component description"
                              "string '{}'".format(' '.join(wsclean_info))) from err
 
-    def _convert_str2bool(self, input_str):
-        valid = {'true': True, 'false': False}
-        lower_value = input_str.lower()
-        if lower_value in valid:
-            return valid[lower_value]
-        else:
-            raise ValueError('invalid literal for boolean: "%s"' % input_str)
-
     def _model_func(self):
         if self.model_type == 'baars_mhz':
             flux_func = self._baars_mhz
