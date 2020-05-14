@@ -986,23 +986,32 @@ class Scan:
         """
         # phase centre position
         ra0, dec0 = self.target.radec()
+        # divide model sources into katpoint targets and flux density models
+        model_targets = [katpoint.Target(','.join(mc.split(',')[:-1])) for
+                         mc in self.model_raw_params]
+        model_fluxes = [calprocs.FluxDensityModel(''.join(mc.split(',')[-1])) for
+                        mc in self.model_raw_params]
+
         # position of first source
-        position_offset = self.target.separation(self.model_raw_params.targets[0],
+        position_offset = self.target.separation(model_targets[0],
                                                  antenna=self.array_position)
 
         def valid_allfreq(model_cat, freqs):
             """Check all models in model_cat are valid for the given freqs (in Hz)"""
-            min_valid = [m.flux_model.min_freq_MHz for m in model_cat]
-            max_valid = [m.flux_model.max_freq_MHz for m in model_cat]
+            min_valid = [m.min_freq_MHz for m in model_cat]
+            max_valid = [m.max_freq_MHz for m in model_cat]
 
             freqs_MHz = freqs / 1e6
             return max(min_valid) <= min(freqs_MHz) and min(max_valid) >= max(freqs_MHz)
 
         # check supplied model components are valid for entire frequency range of the band
-        if not valid_allfreq(self.model_raw_params, self.channel_freqs) \
+        if not valid_allfreq(model_fluxes, self.channel_freqs) \
                 and len(self.model_raw_params) > 1:
             # If not select only the first source
-            self.model_raw_params = katpoint.Catalogue(self.model_raw_params.targets[0])
+            self.model_raw_params = self.model_raw_params[0]
+            model_targets = [model_targets[0]]
+            model_fluxes = [model_fluxes[0]]
+
             self.logger.warning(
                 '     A source in the sky model is not valid'
                 ', selecting only the first source '
@@ -1012,7 +1021,7 @@ class Scan:
         if (len(self.model_raw_params) == 1) \
                 and (position_offset < calprocs.arcsec_to_rad(max_offset)):
 
-            if not valid_allfreq(self.model_raw_params, self.channel_freqs):
+            if not valid_allfreq(model_fluxes, self.channel_freqs):
                 self.logger.warning(
                     '     The  model is not valid '
                     'for part of the band, setting model flux to 1')
@@ -1020,8 +1029,8 @@ class Scan:
 
             else:
                 # CASE A - Point source at the phase centre, with spectral slope
-                source = self.model_raw_params.targets[0]
-                self.model = source.flux_density(
+                source = model_targets[0]
+                self.model = model_fluxes[0].flux_density(
                     self.channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
                 self.model = np.require(self.model, dtype=np.float32)
                 self.logger.info(
@@ -1050,9 +1059,9 @@ class Scan:
 
             wl = katpoint.lightspeed / self.channel_freqs
             # iteratively add sources to the model
-            for source in self.model_raw_params:
+            for source, flux_model in zip(model_targets, model_fluxes):
                 # currently using the same Stokes I flux model for both polarisations
-                S = source.flux_density(self.channel_freqs / 1.0e6)
+                S = flux_model.flux_density(self.channel_freqs / 1.0e6)
                 l, m = self.target.sphere_to_plane(
                     *source.radec(), projection_type='SIN', coord_system='radec')
 
@@ -1087,7 +1096,7 @@ class Scan:
 
     def add_model(self, model_raw_params):
         """Add raw parameters for model."""
-        self.model_raw_params = katpoint.Catalogue(model_raw_params)
+        self.model_raw_params = model_raw_params
 
     def _get_solver_model(self, modvis, chan_select=None):
         """Get model to supply to solver.

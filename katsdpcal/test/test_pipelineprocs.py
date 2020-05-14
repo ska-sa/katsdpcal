@@ -261,10 +261,10 @@ class TestCreateModel(unittest.TestCase):
             with open(fname, 'w') as f:
                 print(self.file_model, file=f)
 
-            expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
-                               ' 5.0 6.0 7.0 8.0)']
+            expected_params = ['S0, radec, 08:25:26.87, -50:10:38.49, (800 1712'
+                               ' 5 6 7 8)']
 
-            model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+            model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir, 'l')
             self.assertEqual(fname, model_file)
             np.testing.assert_equal(model_params, expected_params)
 
@@ -274,14 +274,14 @@ class TestCreateModel(unittest.TestCase):
         """If no matching model file exists, use the target model"""
         expected_params = [self.target.description]
 
-        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir, 'l')
         self.assertEqual([], model_file)
         np.testing.assert_equal(model_params, expected_params)
 
     def test_nomodel(self):
         """If no model file and no target model, return None"""
         target = katpoint.Target('cal | cal_alias, radec target, 08:25:26.87, -50:10:38.49')
-        model_params, model_file = pipelineprocs.get_model(target, self.lsm_dir)
+        model_params, model_file = pipelineprocs.get_model(target, self.lsm_dir, 'l')
         self.assertEqual([], model_file)
         self.assertEqual(None, model_params)
 
@@ -292,7 +292,18 @@ class TestCreateModel(unittest.TestCase):
             with open(fname, 'w') as f:
                 print(self.file_model, file=f)
 
-        expected_params = ['S0, radec, 8:25:26.87, -50:10:38.5, (800.0 1712.0'
-                           ' 5.0 6.0 7.0 8.0)']
-        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir)
+        expected_params = ['S0, radec, 08:25:26.87, -50:10:38.49, (800 1712'
+                           ' 5 6 7 8)']
+        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir, 'l')
         np.testing.assert_equal(model_params, expected_params)
+
+    def test_two_files_band(self):
+        """If two file match target name, confirm it returns the file that matches the band"""
+        for name in ['cal', 'alias_L']:
+            fname = os.path.join(self.lsm_dir, name + '.txt')
+            with open(fname, 'w') as f:
+                print(self.file_model, file=f)
+
+        model_params, model_file = pipelineprocs.get_model(self.target, self.lsm_dir, 'l')
+        fname = os.path.join(self.lsm_dir, 'alias_L.txt')
+        np.testing.assert_equal(fname, model_file)

@@ -675,3 +675,45 @@ class TestSnrAntenna(unittest.TestCase):
         expected[1, 1, 1] = 2
         snr = calprocs.snr_antenna(self.vis, self.weights, self.bls_lookup, ant_flags)
         np.testing.assert_allclose(expected, snr, rtol=1e3)
+
+
+class TestFluxDensityModel(unittest.TestCase):
+    """Tests for :class:`katsdpcal.calprocs.FluxDensityModel`"""
+
+    def _test_inputs(self, expected_flux, *args):
+        """Tests flux density produced with given parameters or description string"""
+        flux_model = calprocs.FluxDensityModel(*args)
+        flux = flux_model.flux_density([100, 2000])
+        np.testing.assert_allclose(flux, expected_flux, rtol=1e-3)
+
+    def test_baars(self):
+        """Correct flux produced with Baars_MHz polynomial"""
+        exp_flux = [10 ** 21.0, np.nan]
+        self._test_inputs(exp_flux, '10.0 1000.0 5 2 3 0 0')
+        self._test_inputs(exp_flux, '(10.0 1000.0 baars_mhz 5 2 3)')
+        self._test_inputs(exp_flux, 10.0, 1000.0, (5, 2, 3))
+        self._test_inputs(exp_flux, 10.0, 1000.0, (5, 2, 3), 'baars_mhz')
+
+    def test_wsclean_ord(self):
+        """Correct flux produced with wsclean ordinary polynomial"""
+        exp_flux = [30.0, np.nan]
+        self._test_inputs(exp_flux, '10.0 1000.0 wsclean 2 [3 1] false 20000000')
+        self._test_inputs(exp_flux, 10.0, 1000.0, (3, 1), 'wsclean', False, 2, 20000000)
+
+    def test_wsclean_log(self):
+        ref_freq = (100.0/np.e ** 2) * 1e6
+        stokes_I = np.e ** (0.1)
+        desc = '10.0 1000.0 wsclean {:.3f} [2 3 -1 0 0.25] true {:.3f}'.format(stokes_I, ref_freq)
+        exp_flux = [np.exp(16.1), np.nan]
+        self._test_inputs(exp_flux, desc)
+        self._test_inputs(exp_flux, 10, 1000, (2, 3, -1, 0 , 0.25),
+                          'wsclean', True, stokes_I, ref_freq)
+
+    def test_unknown_polynomial(self):
+        desc_str = '10.0 1000.0 baars_ghz 5 2 3'
+        with self.assertRaises(ValueError):
+            calprocs.FluxDensityModel(desc_str)
+
+    def test_missing_variable(self):
+        with self.assertRaises(ValueError):
+            calprocs.FluxDensityModel(100, 1000, [2, 3, 1], 'wsclean', 100)
