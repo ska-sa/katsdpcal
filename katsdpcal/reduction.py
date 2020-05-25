@@ -780,6 +780,12 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
             s.apply_inplace(solns_to_apply)
 
+            # save average model for report, if a model exists
+            if s.model is not None:
+                chan_sample = s.nchan//1024
+                model_average = np.average(s.model, axis=(0, -2, -1))[::chan_sample]
+                av_corr[target_name + '_model'].insert(0, model_average)
+
             # TARGET
             if 'target' in taglist:
                 # accumulate list of target scans to be streamed to L1
