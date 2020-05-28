@@ -340,9 +340,11 @@ class Scan:
 
         g_freqs = self.channel_freqs[bchan:echan]
 
+        # initialise model, even if it is not used in solving for g
+        # so it can be included in the report
+        self._init_model()
         if use_model:
-            # initialise and apply model, if this scan target has an associated model
-            self._init_model()
+            # apply model if required
             fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
         else:
             fitvis = modvis[chan_slice]

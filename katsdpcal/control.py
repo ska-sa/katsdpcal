@@ -173,12 +173,14 @@ def _sum_corr(sum_corr, new_corr, limit=None):
     Returns
     -------
     dict of lists
-        for all keys except 't_flags', output dictionary list contains all the elements
+        for all keys except those listed below, output dictionary list contains all the elements
         of the two input dictionary lists on a per key basis.
         For key 't_flags', the output dictionary contains a single element which is the sum
         of the sum_corr['t_flags'] and new_corr['t_flags']
         For keys containing '_g_spec', the output dictionary is a list containing the weighted
         average of the current pipeline outputs and the previous outputs.
+        For keys containing '_model', the output dictionary is a list containing the average of
+        the current pipeline outputs and the previous outputs.
     """
     # list of keys which don't append data on a per scan basis
     keylist = ['t_flags']
@@ -199,6 +201,13 @@ def _sum_corr(sum_corr, new_corr, limit=None):
                 sum_corr[key] = [(vis, flags, weights)]
                 del new_corr[key]
                 # add this key to the list
+                keylist.append(key)
+
+            # average the model from each scan
+            elif key.endswith('_model'):
+                sum_corr[key] += new_corr[key]
+                sum_corr[key] = [np.mean(sum_corr[key], 0)]
+                del new_corr[key]
                 keylist.append(key)
 
             else:
@@ -1513,6 +1522,23 @@ class ReportWriter(Task):
         logger.info('Moved observation report to %s', report_dir)
         return report_dir
 
+    def get_model_flux(self, av_corr, event):
+        # Get model flux in the channel window used to solve for gains
+        nchans = len(self.parameters['channel_freqs'])
+        bchan = self.parameters['g_bchan']
+        echan = self.parameters['g_echan']
+        # only do this on the server which contains the data in the appropriate window
+        if 0 <= bchan and echan <= nchans:
+            for key in av_corr.keys():
+                if key.endswith('_model'):
+                    model = av_corr[key][0]
+                    chan_samp = nchans // model.shape[0]
+                    flux_density = av_corr[key][0][bchan//chan_samp:echan//chan_samp]
+                    av_flux = np.abs(np.average(flux_density))
+
+                    ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+                    ts_cb_cal.add(key + '_flux', av_flux, immutable=True)
+
     def run(self):
         reports_sensor = self.sensors['reports-written']
         report_time_sensor = self.sensors['report-last-time']
@@ -1548,6 +1574,7 @@ class ReportWriter(Task):
                     logger.info('Starting report on %s', event.capture_block_id)
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
+                    self.get_model_flux(av_corr, event)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)
