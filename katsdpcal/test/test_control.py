@@ -1007,7 +1007,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.wait_for_heaps(n_times * self.n_substreams, 240)
         for stream in self.l0_streams.values():
             stream.send_heap(self.ig.get_end())
-        await self.shutdown_servers(60)
+        await self.shutdown_servers(90)
 
     async def test_out_of_order(self):
         """A heap received from the past should be processed (if possible).
@@ -1103,7 +1103,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
         await asyncio.sleep(1)
-        await self.make_request('shutdown', timeout=60)
+        await self.make_request('shutdown', timeout=90)
         # Reassemble the buffered data from the individual servers
         actual = np.zeros_like(expected)
         for server in self.servers:
