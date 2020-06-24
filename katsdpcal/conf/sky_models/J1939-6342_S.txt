@@ -1,0 +1,9 @@
+# References: 
+# position: Simbad ICRS
+# flux model a0, a1, a2, a3: from "A revised flux scale for the AT compact array", Reynolds, 1994
+#    parameters in the model given for MHz scale:
+#    b0 = -30.7667; b1 = 26.4908; b2 = -7.0977; b3 = 0.605334
+# flux for other sources in the field from B. Hugo
+# TODO: update the applicable frequency range of B. Hugo model to something sensible
+#
+J1939-6342, radec, 19:39:25.03, -63:42:45.70, (408 8640 -30.7667 26.4908 -7.0977 0.605334)

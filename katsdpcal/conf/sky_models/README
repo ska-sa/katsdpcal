@@ -1,4 +1,4 @@
-Katpoint description strings for sources in the sky model
+Description strings for sources in the sky model
 
 Description strings have 5 comma-separated fields with format:
 name list, tags, longitudinal, latitudinal, flux model
@@ -6,4 +6,11 @@ name list, tags, longitudinal, latitudinal, flux model
 An example description string is:
 name1 | *name 2, radec cal, 12:34:56.7, -04:34:34.2, (1000.0 2000.0 1.0)
 
-See katpoint documentation for further details
+Flux models can be provided in two formats, one is the 
+Baars polynomial format used by katpoint (see katpoint documentation for further details).
+The second format is similar to the wsclean format (see https://sourceforge.net/p/wsclean/wiki/ComponentList/).
+
+The wsclean component is space separated (not comma separated) and  prefaced by the
+minimum and maximum frequency of the model (in MHz) and a string `wsclean` indicating the type of model to be used.
+An example model is :
+855 1712 wsclean 15.0 [-1.5 -9.1] false 1200000.0 
