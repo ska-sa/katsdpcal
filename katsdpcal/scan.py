@@ -1252,20 +1252,17 @@ class Scan:
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime
-    def rfi(self, flagger, mask=None, auto_ant=False, sensors=None):
+    def rfi(self, flagger, auto_ant=False, sensors=None):
         """Produce L1 `cal_rfi` flags based on cross-pol data and include mask.
 
         Detect flags in the visibilities. Detected flags are added to the
         `cal_rfi` bit of the flag array. Flags are detected using cross-pol data
-        but added to both the cross_pol and auto_pol flags. Optionally provide
-        a channel mask, which is added to the static bit of the flag array.
+        but added to both the cross_pol and auto_pol flags.
 
         Parameters
         ----------
         flagger : :class:`SumThresholdFlagger`
             Flagger, with :meth:`get_flags` to detect rfi
-        mask : 1d array, boolean, optional
-            Channel mask to apply
         auto_ant : boolean, optional
             If True, flag the auto_ant data, otherwise
             flag cross_ant data (default).
@@ -1277,16 +1274,11 @@ class Scan:
         if auto_ant:
             scandata = self.auto_ant
             label = ', auto-corrs'
-            if mask is not None:
-                mask = mask[..., self.ac_mask]
         else:
             scandata = self.cross_ant
             label = ''
-            if mask is not None:
-                mask = mask[..., self.xc_mask]
 
-        # Get the relevant flag bits from katdal
-        static_bit = FLAG_NAMES.index('static')
+        # Get the relevant flag bit from katdal
         cal_rfi_bit = FLAG_NAMES.index('cal_rfi')
 
         data = {}
@@ -1297,11 +1289,6 @@ class Scan:
             data[key + '_flags'] = data[key].flags
             data[key + '_start_flag_fraction'] = (
                 da.sum(calprocs.asbool(data[key+'_flags'])) / total_size).compute()
-            # do we have an rfi mask? In which case, use it
-            # Add to 'static' flag bit.
-            # TODO: Should mask_flags already be in static bit?
-            if mask is not None:
-                data[key + '_flags'] |= (mask * np.uint8(2**static_bit))
 
         rfi_flags = da.blockwise(
             _rfi, 'TFpb', data['cross_pol'].vis, 'tfpb', data['cross_pol_flags'], 'tfpb',

@@ -18,7 +18,7 @@ from katsdpcal.pipelineprocs import (
     register_argparse_parameters, parameters_from_file, parameters_from_argparse,
     finalise_parameters, parameters_to_telstate, BAND_MAP)
 
-from katsdpcal import param_dir, rfi_dir
+from katsdpcal import param_dir
 
 
 FLAGS_STREAMS_SCHEMA = {
@@ -286,10 +286,6 @@ def main():
         param_filename = 'pipeline_parameters_meerkat_{}.txt'.format(band)
         param_file = os.path.join(param_dir, param_filename)
         logger.info('Parameter file for %s-band: %s', band, param_file)
-        rfi_filename = 'rfi_mask.txt'
-        rfi_file = os.path.join(rfi_dir, rfi_filename)
-        logger.info('RFI mask file for %s-band: %s', band, rfi_file)
-
     else:
         param_file = opts.parameter_file
         logger.info('Parameter file: %s', param_file)

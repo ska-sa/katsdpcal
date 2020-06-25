@@ -162,7 +162,7 @@ class TestFinaliseParameters(unittest.TestCase):
 
     def test_normal(self):
         parameters = pipelineprocs.finalise_parameters(
-            self.parameters, self.telstate_l0, 4, 2, None)
+            self.parameters, self.telstate_l0, 4, 2)
         self.assertEqual(None, parameters['refant_index'])
         self.assertEqual(self.antenna_names, parameters['antenna_names'])
         self.assertEqual(self.antennas, parameters['antennas'])
@@ -170,7 +170,6 @@ class TestFinaliseParameters(unittest.TestCase):
         np.testing.assert_allclose(expected_freqs, parameters['channel_freqs'])
         np.testing.assert_allclose(self.expected_freqs_all, parameters['channel_freqs_all'])
         self.assertEqual(slice(2048, 3072), parameters['channel_slice'])
-        np.testing.assert_array_equal(np.zeros((1, 1024, 1, 10), np.bool_), parameters['rfi_mask'])
         # Check the channel indices are offset
         self.assertEqual(202, parameters['k_bchan'])
         self.assertEqual(402, parameters['k_echan'])
@@ -179,61 +178,33 @@ class TestFinaliseParameters(unittest.TestCase):
         self.assertEqual(2, parameters['rfi_freq_chunks'])
         # bls_ordering, pol_ordering, bls_lookup get tested elsewhere
 
-    def test_rfi_mask(self):
-        # Create a set of random RFI ranges as a mask.
-        # Randomness makes it highly likely that a shift will be detected
-        rs = np.random.RandomState(seed=1)
-        random_freqs = np.ceil(rs.rand(8) * 856) + 856
-        rfi_ranges = np.sort(random_freqs).reshape((4, 2))
-        with mock.patch('builtins.open'):  # To suppress trying to open a real file
-            with mock.patch('numpy.loadtxt', return_value=rfi_ranges):
-                parameters = pipelineprocs.finalise_parameters(
-                    self.parameters, self.telstate_l0, 4, 2, rfi_filename='my_rfi_file')
-
-        channel_mask = np.zeros((4096,), np.bool_)
-        for r in rfi_ranges:
-            idx = np.where((self.expected_freqs_all < r[1] * 1e6) &
-                           (self.expected_freqs_all >= r[0] * 1e6))[0]
-            channel_mask[idx] = 1
-
-        # Check mask is False on long baselines and auto-correlations
-        mask = channel_mask[np.newaxis, :, np.newaxis, np.newaxis]
-        mask = np.broadcast_to(mask, (1, 4096, 1, 10))
-        bl_mask = mask.copy()
-        bls_lookup = parameters['bls_lookup']
-        long_bls = np.where((bls_lookup[:, 0] == 1) ^ (bls_lookup[:, 1] == 1))[0]
-        bl_mask[..., long_bls] = False
-        auto_bls = np.where((bls_lookup[:, 0] == bls_lookup[:, 1]))[0]
-        bl_mask[..., auto_bls] = False
-        np.testing.assert_array_equal(bl_mask[:, 2048:3072], parameters['rfi_mask'])
-
     def test_invalid_server_id(self):
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 5, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 5)
 
     def test_invalid_server_count(self):
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 3, 0, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 3, 0)
 
     def test_missing_parameter(self):
         del self.parameters['k_bfreq']
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
     def test_bad_channel_range(self):
         self.parameters['k_efreq'] = 1315765625  # chan 2200 in L-band 4K
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
     def test_channel_range_spans_servers(self):
         self.parameters['k_efreq'] = 1498208985  # chan 3073 in L-band 4K
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
     def test_unexpected_parameters(self):
         self.parameters['foo'] = 'bar'
         with self.assertRaises(ValueError):
-            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2, None)
+            pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
 
 class TestCreateModel(unittest.TestCase):
