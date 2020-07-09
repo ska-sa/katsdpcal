@@ -573,7 +573,7 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
         with open(model_file) as file:
             for line in file:
                 li = line.strip()
-                if not li.startswith('#'):
+                if li and not li.startswith('#'):
                     model_components.append(li)
 
     return model_components, model_file
