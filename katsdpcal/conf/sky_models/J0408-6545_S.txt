@@ -7,5 +7,4 @@
 # 0.543% (reasonably flat across band) has been detected on Feb 6, 2018
 # TODO : add sensible limits to the frequency range of the model
 # TODO : this model is derived at L-band and should be updated 
-
 J0408-6545, radec, 4:8:20.38, -65:45:09.08, (0.0 50e3 -113.5182 110.7809 -35.2682 3.7012 0 0 1 0.0035 -0.0042 0)
