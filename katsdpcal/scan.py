@@ -255,46 +255,71 @@ class Scan:
 
     # ---------------------------------------------------------------------------------------------
     @logsolutiontime
-    def refant_find(self, bchan=1, echan=None, chan_sample=1):
+    def refant_find(self, bchan=1, echan=None, chan_sample=1, refant_index=None):
         """Find a good reference antenna candidate.
+
+        If a refant_index is supplied, check its flag fraction.
+        If > 80% of data is flagged, select a new refant_index, else return same index
 
         Parameters
         ----------
         bchan : start channel for fit, int, optional
         echan : end channel for fit, int, optional
         chan_sample : channel sampling to use in delay fit, optional
+        refant_index : int or None, optional
 
         Returns
         -------
         refant_index : int
             index of preferred refant
         """
-        modvis = self.cross_ant.tf.auto_pol.vis
-
-        # determine channel range for fit
-        chan_slice = np.s_[:, bchan:echan, :, :]
-        # use specified channel range for frequencies
-        k_freqs = self.channel_freqs[bchan:echan]
-
-        # initialise model, if this scan target has an associated model
-        self._init_model()
-        # for delay case, only apply case C full visibility model (other models don't impact delay)
-        if self.model is None:
-            fitvis = modvis[chan_slice]
-        elif self.model.shape[-1] == 1:
-            fitvis = modvis[chan_slice]
+        if refant_index:
+            refant_bls = np.where((self.cross_ant.bls_lookup[:, 0] == refant_index) ^
+                                  (self.cross_ant.bls_lookup[:, 1] == refant_index))[0]
+            total_size = np.multiply.reduce(
+                self.cross_ant.pb.auto_pol.vis[..., refant_bls].shape) / 100.
+            flags = da.sum(calprocs.asbool(self.cross_ant.pb.auto_pol.flags[..., refant_bls]))
+            flag_frac = (flags / total_size).compute()
+            logger.info('Flag fraction on refant is %.3f%%', flag_frac)
         else:
-            fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
-        # average over all time, for specified channel range (no averaging over channel)
-        ave_vis = calprocs_dask.wavg(
-            fitvis,
-            self.cross_ant.tf.auto_pol.flags[chan_slice],
-            self.cross_ant.tf.auto_pol.weights[chan_slice])
+            flag_frac = 100.0
 
-        # fit for delay
-        ave_vis = ave_vis.compute()
-        refant_index = calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs)
-        return refant_index
+        if flag_frac < 80.0:
+            return refant_index
+        else:
+            if refant_index:
+                logger.info('Flag fraction on refant is > 80%% (%.3f%%),'
+                            ' selecting a new refant', flag_frac)
+
+            modvis = self.cross_ant.tf.auto_pol.vis
+            # determine channel range for fit
+            chan_slice = np.s_[:, bchan:echan, :, :]
+            # use specified channel range for frequencies
+            k_freqs = self.channel_freqs[bchan:echan]
+
+            # initialise model, if this scan target has an associated model
+            self._init_model()
+            # for delay case, only apply case C full visibility model
+            # (other models don't impact delay)
+            if self.model is None:
+                fitvis = modvis[chan_slice]
+            elif self.model.shape[-1] == 1:
+                fitvis = modvis[chan_slice]
+            else:
+                fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+            # average over all time, for specified channel range (no averaging over channel)
+            ave_vis = calprocs_dask.wavg(
+                fitvis,
+                self.cross_ant.tf.auto_pol.flags[chan_slice],
+                self.cross_ant.tf.auto_pol.weights[chan_slice])
+
+            # fit for delay
+            ave_vis = ave_vis.compute()
+            refant_order = list(calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs))
+            # ensure we don't pick the old, flagged antenna
+            if refant_index:
+                refant_order.remove(refant_index)
+            return refant_order[0]
 
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions

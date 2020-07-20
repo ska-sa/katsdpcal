@@ -1080,6 +1080,10 @@ class Pipeline(Task):
             'G_FLUX': solutions.CalSolutionStore('G')
         }
 
+    def _reset_refant(self):
+        self.parameters['refant_index_prev'] = self.parameters['refant_index']
+        self.parameters['refant_index'] = None
+
     def get_sensors(self):
         return [
             aiokatcp.Sensor(
@@ -1145,6 +1149,7 @@ class Pipeline(Task):
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
                 if isinstance(event, ObservationStartEvent):
+                    self._reset_refant()
                     if self.parameters['reset_solution_stores']:
                         logger.info('Resetting solution stores')
                         self._reset_solution_stores()
