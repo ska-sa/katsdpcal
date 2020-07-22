@@ -277,9 +277,9 @@ class Scan:
             refant_bls = np.where((self.cross_ant.bls_lookup[:, 0] == refant_index) ^
                                   (self.cross_ant.bls_lookup[:, 1] == refant_index))[0]
             total_size = np.multiply.reduce(
-                self.cross_ant.pb.auto_pol.vis[..., refant_bls].shape) / 100.
+                self.cross_ant.pb.auto_pol.vis[..., refant_bls].shape)
             flags = da.sum(calprocs.asbool(self.cross_ant.pb.auto_pol.flags[..., refant_bls]))
-            flag_frac = (flags / total_size).compute()
+            flag_frac = 100. * (flags / total_size).compute()
 
             if flag_frac < 80.0:
                 return refant_index
