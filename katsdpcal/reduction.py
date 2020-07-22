@@ -385,6 +385,40 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
     return solutions.CalSolution('B', b_interp, b_soln.time, b_soln.target)
 
 
+def set_refant(s, ts, parameters, sensors):
+    """Select and update the reference antenna.
+
+    Update the reference antenna in all relevant stores including sensors,
+    parameters, telstate and scan attributes.
+
+    Parameters
+    ----------
+    s : :class:`~.Scan`
+        scan of data to select refant
+    ts : :class:`katsdptelstate.TelescopeState`
+        telstate used in solver and updated to new refant
+    parameters : dict
+        calibration parameters used by solver and updated to new refant
+    sensors : dict
+        Sensors available in the calling parent
+    """
+    # select a new refant if the old one is flagged
+    best_refant_index = shared_solve(ts, parameters, None,
+                                     parameters['k_bchan'], parameters['k_echan'],
+                                     s.refant_find, refant_index=parameters['refant_index_prev'])
+
+    # update parameters, telstate and scan with new refant
+    best_refant = parameters['antenna_names'][best_refant_index]
+    parameters['refant_index'] = s.refant = best_refant_index
+    parameters['refant'] = ts['refant'] = best_refant
+
+    # update sensors if refant has changed
+    if best_refant_index != parameters['refant_index_prev']:
+        logger.info('Reference antenna set to %s', parameters['refant'])
+        sensors['pipeline-reference-antenna'].set_value(
+            parameters['refant'], timestamp=s.timestamps[0])
+
+
 def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
     """Pipeline calibration.
 
@@ -514,21 +548,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, parameters['rfi_mask'], sensors=sensors)
 
-            # Set a reference antenna if one isn't already set
+            # Set a reference antenna for this cbid if one isn't already set
             if s.refant is None:
-                best_refant_index = shared_solve(ts, parameters, None,
-                                                 parameters['k_bchan'], parameters['k_echan'],
-                                                 s.refant_find)
-                parameters['refant_index'] = best_refant_index
-                parameters['refant'] = parameters['antenna_names'][best_refant_index]
-                logger.info('Reference antenna set to %s', parameters['refant'])
-                sensors['pipeline-reference-antenna'].set_value(
-                    parameters['refant'], timestamp=s.timestamps[0])
-                s.refant = best_refant_index
+                set_refant(s, ts, parameters, sensors)
 
-            # Add the reference antenna to telstate for each new cbid
-            if 'refant' not in ts:
-                ts['refant'] = parameters['refant']
         # run_t0 = time.time()
         # perform calibration as appropriate, from scan intent tags:
 

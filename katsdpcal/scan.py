@@ -209,7 +209,7 @@ class Scan:
     """
 
     def __init__(self, data, time_slice, dump_period, bls_lookup, target,
-                 chans, ants, refant=0, array_position=None, logger=logger):
+                 chans, ants, refant=None, array_position=None, logger=logger):
         # cross-correlation and auto-correlation masks.
         # Must be np arrays so they can be used for indexing
         self.xc_mask = np.array([b0 != b1 for b0, b1 in bls_lookup])
@@ -255,22 +255,36 @@ class Scan:
 
     # ---------------------------------------------------------------------------------------------
     @logsolutiontime
-    def refant_find(self, bchan=1, echan=None, chan_sample=1):
+    def refant_find(self, bchan=1, echan=None, chan_sample=1, refant_index=None):
         """Find a good reference antenna candidate.
+
+        If a refant_index is supplied, check its flag fraction.
+        If > 80% of data is flagged, select a new refant_index, else return same index
 
         Parameters
         ----------
         bchan : start channel for fit, int, optional
         echan : end channel for fit, int, optional
         chan_sample : channel sampling to use in delay fit, optional
+        refant_index : int or None, optional
 
         Returns
         -------
         refant_index : int
             index of preferred refant
         """
-        modvis = self.cross_ant.tf.auto_pol.vis
+        if refant_index is not None:
+            refant_bls = np.where((self.cross_ant.bls_lookup[:, 0] == refant_index) ^
+                                  (self.cross_ant.bls_lookup[:, 1] == refant_index))[0]
+            total_size = np.multiply.reduce(
+                self.cross_ant.pb.auto_pol.vis[..., refant_bls].shape)
+            flags = da.sum(calprocs.asbool(self.cross_ant.pb.auto_pol.flags[..., refant_bls]))
+            flag_frac = 100. * (flags / total_size).compute()
 
+            if flag_frac < 80.0:
+                return refant_index
+
+        modvis = self.cross_ant.tf.auto_pol.vis
         # determine channel range for fit
         chan_slice = np.s_[:, bchan:echan, :, :]
         # use specified channel range for frequencies
@@ -278,7 +292,8 @@ class Scan:
 
         # initialise model, if this scan target has an associated model
         self._init_model()
-        # for delay case, only apply case C full visibility model (other models don't impact delay)
+        # for delay case, only apply case C full visibility model
+        # (other models don't impact delay)
         if self.model is None:
             fitvis = modvis[chan_slice]
         elif self.model.shape[-1] == 1:
@@ -293,8 +308,13 @@ class Scan:
 
         # fit for delay
         ave_vis = ave_vis.compute()
-        refant_index = calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs)
-        return refant_index
+        refant_order = list(calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs))
+        # ensure we don't pick the old, flagged antenna
+        if refant_index is not None:
+            logger.info('Flag fraction on refant is > 80%% (%.3f%%),'
+                        ' selecting a new refant', flag_frac)
+            refant_order.remove(refant_index)
+        return refant_order[0]
 
     # ---------------------------------------------------------------------------------------------
     # Calibration solution functions
