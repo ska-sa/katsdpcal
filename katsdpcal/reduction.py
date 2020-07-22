@@ -409,10 +409,8 @@ def set_refant(s, ts, parameters, sensors):
 
     # update parameters, telstate and scan with new refant
     best_refant = parameters['antenna_names'][best_refant_index]
-    parameters['refant_index'] = best_refant_index
-    parameters['refant'] = best_refant
-    s.refant = best_refant_index
-    ts['refant'] = parameters['refant']
+    parameters['refant_index'] = s.refant = best_refant_index
+    parameters['refant'] = ts['refant'] = best_refant
 
     # update sensors if refant has changed
     if best_refant_index != parameters['refant_index_prev']:

@@ -866,7 +866,7 @@ class TestCalDeviceServer(asynctest.TestCase):
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
-         not set to the noisiest antenna. Also checks that a new refant in selected for a new
+         not set to the noisiest antenna. Also checks that a new refant is selected for a new
          capture block if the old one is flagged
         """
         ts = 100.0
