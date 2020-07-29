@@ -346,8 +346,8 @@ def best_refant(data, corrprod_lookup, chans):
 
     Returns
     -------
-    best_refant : int
-        Index of antenna with the maximum median of PNR over all baselines
+    best_refant : :class:`np.ndarray`
+        Array of indices of antennas in decreasing order of median of PNR over all baselines
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
@@ -374,7 +374,7 @@ def best_refant(data, corrprod_lookup, chans):
         # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
         med_pnr_ants[a] = np.median(pnr)
-    return np.argmax(med_pnr_ants)
+    return np.argsort(med_pnr_ants)[::-1]
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):

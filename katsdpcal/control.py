@@ -21,7 +21,7 @@ import async_timeout
 import aiokatcp
 from aiokatcp import FailReply
 from katdal.h5datav3 import FLAG_NAMES
-import katdal.datasources
+from katdal.vis_flags_weights import corrprod_to_autocorr, weight_power_scale
 from katdal import SpectralWindow
 from katsdptelstate import ImmutableKeyError
 
@@ -676,9 +676,9 @@ class Accumulator:
                     if self.owner.need_weights_power_scale:
                         # weight_power_scale expects a time axis, hence newaxis
                         weights = weights[np.newaxis, ...]
-                        katdal.datasources.weight_power_scale(
-                            vis[np.newaxis, ...], weights, *self.owner.weights_power_scale_params,
-                            out=weights)
+                        weight_power_scale(vis[np.newaxis, ...], weights,
+                                           *self.owner.weight_power_scale_params,
+                                           out=weights)
                         weights = weights[0]
                     self._update_buffer(self.owner.buffers['vis'][slot, trg_subset],
                                         vis, self.owner.ordering)
@@ -1043,7 +1043,7 @@ class Accumulator:
         antenna_names = self.parameters['antenna_names']
         bls_ordering = self.telstate_l0['bls_ordering']
         self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
-        self.weights_power_scale_params = katdal.datasources.corrprod_to_autocorr(bls_ordering)
+        self.weight_power_scale_params = corrprod_to_autocorr(bls_ordering)
 
 
 class Pipeline(Task):
@@ -1079,6 +1079,10 @@ class Pipeline(Task):
             'G': solutions.CalSolutionStore('G'),
             'G_FLUX': solutions.CalSolutionStore('G')
         }
+
+    def _reset_refant(self):
+        self.parameters['refant_index_prev'] = self.parameters['refant_index']
+        self.parameters['refant_index'] = None
 
     def get_sensors(self):
         return [
@@ -1145,6 +1149,7 @@ class Pipeline(Task):
                 logger.info('waiting for next event (%s)', self.name)
                 event = self.accum_pipeline_queue.get()
                 if isinstance(event, ObservationStartEvent):
+                    self._reset_refant()
                     if self.parameters['reset_solution_stores']:
                         logger.info('Resetting solution stores')
                         self._reset_solution_stores()

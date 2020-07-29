@@ -865,7 +865,8 @@ class TestCalDeviceServer(asynctest.TestCase):
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
-         not set to the noisiest antenna.
+         not set to the noisiest antenna. Also checks that a new refant is selected for a new
+         capture block if the old one is flagged
         """
         ts = 100.0
         n_times = 25
@@ -906,15 +907,59 @@ class TestCalDeviceServer(asynctest.TestCase):
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
-        await asyncio.sleep(1)
+        await self.wait_for_heaps(n_times * self.n_substreams, 60)
         for stream in self.l0_streams.values():
             stream.send_heap(self.ig.get_end())
-        await self.shutdown_servers(180)
-        await self.assert_sensor_value('accumulator-capture-active', 0)
+        await self.make_request('capture-done')
+        # The pipeline has finished running when 'reports-written' increments
+        await self.wait_for_sensor('reports-written', [b'1'] * self.n_servers, 240)
+
+        # Check the pipeline did not select the noisy antenna as the refant
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         refant_name = telstate_cb_cal['refant']
         assert_not_equal(self.antennas[worst_index], refant_name)
         await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
+
+        # Refresh ItemGroup and send it to servers.
+        self.init_item_group()
+        # Set up a new capture block in telstate
+        self.populate_telstate_cb(self.telstate, 'cb2')
+        # A new target for a new CB
+        self.telstate.add('cbf_target', self.telstate.cbf_target, ts=0.02)
+
+        # flag the refant selected in the previous capture block
+        bls_ordering = self.telstate.sdp_l0test_bls_ordering
+        ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
+        ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
+        refant_index_cb = self.antennas.index(refant_name)
+        flag_refant = np.where((np.array(ant1) == refant_index_cb) |
+                               (np.array(ant2) == refant_index_cb), 1, 0).astype(np.uint8)
+        flag_refant = np.broadcast_to(flag_refant, flags.shape)
+
+        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flag_refant, weights, weights_channel)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb2')
+        await self.wait_for_heaps(n_times * self.n_substreams, 60)
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+
+        # The pipeline has finished running when 'reports-written' increments
+        await self.wait_for_sensor('reports-written', [b'2'] * self.n_servers, 240)
+
+        # Check the pipeline did not select the now flagged antenna as the refant
+        telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb2')
+        refant_name = telstate_cb_cal['refant']
+        refant_index_cb2 = self.antennas.index(refant_name)
+        assert_not_equal(self.antennas[refant_index_cb], refant_name)
+        await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
+        # Check the pipeline params have been updated to reflect the current and past refants
+        pp = [serv.server.pipeline.parameters for serv in self.servers]
+        for params in pp:
+            assert_equal(params['refant_index_prev'], refant_index_cb)
+            assert_equal(params['refant_index'], refant_index_cb2)
+
+        await self.shutdown_servers(180)
 
     def prepare_heaps(self, rs, n_times,
                       vis=None, weights=None, weights_channel=None, flags=None):
