@@ -6,7 +6,7 @@ import matplotlib.dates as md
 from cycler import cycler
 # use Agg backend for when the pipeline is run without an X1 connection
 from matplotlib import use
-use('Agg', warn=False)
+use('Agg')
 
 import matplotlib.pylab as plt     # noqa: E402
 
