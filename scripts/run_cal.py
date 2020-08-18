@@ -296,7 +296,7 @@ def main():
     parameters.update(parameters_from_argparse(opts))
     logger.info('Finalising parameters')
     parameters = finalise_parameters(parameters, telstate_l0,
-                                     opts.servers, opts.server_id - 1, rfi_file)
+                                     opts.servers, opts.server_id - 1)
     parameters_to_telstate(parameters, telstate_cal, opts.l0_name)
 
     nant = len(parameters['antennas'])
