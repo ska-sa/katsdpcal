@@ -5,7 +5,6 @@ import argparse
 import unittest
 import tempfile
 import shutil
-from unittest import mock
 
 import numpy as np
 
