@@ -9,7 +9,6 @@ Calibration pipeline package for MeerKAT.
 from pkg_resources import resource_filename
 param_dir = resource_filename(__name__, 'conf/pipeline_params')
 lsm_dir = resource_filename(__name__, 'conf/sky_models')
-rfi_dir = resource_filename(__name__, 'conf/rfi_masks')
 docutils_dir = resource_filename(__name__, 'conf/docutil_style')
 
 # BEGIN VERSION CHECK

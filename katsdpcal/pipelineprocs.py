@@ -158,7 +158,6 @@ USER_PARAMS_FREQS = [
 
 # Parameters that the user cannot set directly (the type is not used)
 COMPUTED_PARAMETERS = [
-    Parameter('rfi_mask', 'boolean array of channels to mask', np.ndarray),
     Parameter('refant_index', 'index of refant in antennas', int),
     Parameter('antenna_names', 'antenna names', list, telstate='antlist'),
     Parameter('antennas', 'antenna objects', list),
@@ -220,7 +219,7 @@ def register_argparse_parameters(parser):
                             metavar=parameter.metavar)
 
 
-def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filename=None):
+def finalise_parameters(parameters, telstate_l0, servers, server_id):
     """Set the defaults and computed parameters in `parameters`.
 
     On input, `parameters` contains keys from :const:`USER_PARAMS_CHANS` or
@@ -241,8 +240,6 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         Number of cooperating servers
     server_id : int
         Number of this server amongst `servers` (0-based)
-    rfi_filename : str
-        Filename containing a pickled RFI mask
 
     Raises
     ------
@@ -315,27 +312,6 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id, rfi_filenam
         parameters[name] = parameter.converter.to_local(parameters[name], global_parameters)
 
     parameters['refant_index'] = None
-    if rfi_filename is not None:
-        mask_ranges = np.loadtxt(rfi_filename, comments='#', delimiter=',')
-        rfi_mask = np.zeros((n_chans,), np.bool_)
-        for r in mask_ranges:
-            idx = np.where((channel_freqs < r[1] * 1e6) & (channel_freqs >= r[0] * 1e6))[0]
-            rfi_mask[idx] = 1
-        parameters['rfi_mask'] = rfi_mask
-    else:
-        parameters['rfi_mask'] = np.zeros((n_chans,), np.bool_)
-    # Only use static channel mask on baselines greater than 1 and less than 1000 meters
-    bl_mask = get_baseline_mask(parameters['bls_lookup'], antennas, (1, 1000))
-    rfi_mask_shape = (1, n_chans, 1, len(parameters['bls_lookup']))
-    rfi_mask = np.zeros(rfi_mask_shape, np.bool_)
-    channel_mask = parameters['rfi_mask'][np.newaxis, :, np.newaxis, np.newaxis]
-    rfi_mask[..., bl_mask] |= channel_mask
-    # Mask edges of the band
-    edge_chan = np.int(0.05 * n_chans)
-    rfi_mask[:, :edge_chan] = True
-    rfi_mask[:, -edge_chan:] = True
-    parameters['rfi_mask'] = rfi_mask[:, channel_slice, :, :]
-
     for prefix in ['k', 'g']:
         bchan = parameters[prefix + '_bchan']
         echan = parameters[prefix + '_echan']
@@ -476,32 +452,6 @@ def parameters_to_telstate(parameters, telstate_cal, l0_name):
         telstate_cal[key] = telstate_l0[key]
     # Add the L0 stream name too, so that any other information can be found there.
     telstate_cal['src_streams'] = [l0_name]
-
-
-def get_baseline_mask(bls_lookup, ants, limits):
-    """Mask indicating baselines with a length within `limits`.
-
-    Compute a mask of the same length as bls_lookup that indicates
-    whether the baseline length of the given correlation product is within
-    the given limits (in meters).
-
-    Parameters
-    ----------
-    bls_lookup : :class:`np.ndarray`, int(n_corrs, 2)
-        indices of antenna pairs in each correlation product
-    ants: list of :class:`katpoint.Antenna`
-        antennas in bls_lookup
-    limits : tuple
-        (lower_limit, upper_limit) in meters
-    """
-    baseline_mask = np.zeros(bls_lookup.shape[0], dtype=np.bool)
-
-    for prod, baseline in enumerate(bls_lookup):
-        bl_vector = ants[baseline[0]].baseline_toward(ants[baseline[1]])
-        bl_length = np.linalg.norm(bl_vector)
-        if (bl_length >= limits[0]) & (bl_length < limits[1]):
-            baseline_mask[prod] = True
-    return baseline_mask
 
 
 def get_model(target, lsm_dir_list=[], sub_band='l'):

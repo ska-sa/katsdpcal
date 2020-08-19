@@ -30,7 +30,7 @@ import katpoint
 from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
 
-from katsdpcal import control, calprocs, pipelineprocs, param_dir, rfi_dir
+from katsdpcal import control, calprocs, pipelineprocs, param_dir
 
 
 numba.config.THREADING_LAYER = 'safe'
@@ -147,10 +147,9 @@ class ServerData:
 
     def make_parameters(self, telstate_l0):
         param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L.txt')
-        rfi_file = os.path.join(rfi_dir, 'rfi_mask.txt')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0,
-                                          self.testcase.n_servers, self.server_id, rfi_file)
+                                          self.testcase.n_servers, self.server_id)
         pipelineprocs.parameters_to_telstate(parameters, telstate_l0.root(), 'sdp_l0test')
         return parameters
 
@@ -833,7 +832,7 @@ class TestCalDeviceServer(asynctest.TestCase):
                                  items['frequency'].value)
                     out_flags = items['flags'].value
                     # Mask out the ones that get changed by cal
-                    mask = (1 << FLAG_NAMES.index('static')) | (1 << FLAG_NAMES.index('cal_rfi'))
+                    mask = 1 << FLAG_NAMES.index('cal_rfi')
                     expected = flags[self.servers[i].parameters['channel_slice']]
                     expected = calprocs.wavg_flags_f(expected, continuum_factor, expected, axis=0)
                     np.testing.assert_array_equal(out_flags & ~mask, expected)
