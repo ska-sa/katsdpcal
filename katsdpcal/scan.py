@@ -1068,7 +1068,9 @@ class Scan:
             # calculate uvw, if it hasn't already been calculated
             if self.uvw is None:
                 uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
-                self.uvw = np.array(uvw, np.float32)
+                # Use np.float64 precision for accurate prediction of source positions
+                # away from the centre of the field.
+                self.uvw = np.array(uvw, np.float64)
 
             # set up model visibility
             ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
@@ -1076,8 +1078,8 @@ class Scan:
 
             # currently model is the same for both polarisations
             # TODO: include polarisation in models
-            k_ant = np.zeros((ntimes, nchans, nants), np.complex64)
-            complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
+            k_ant = np.zeros((ntimes, nchans, nants), np.complex128)
+            complexmodel = np.zeros((ntimes, nchans, nbls), np.complex128)
 
             wl = katpoint.lightspeed / self.channel_freqs
             # iteratively add sources to the model
@@ -1091,9 +1093,10 @@ class Scan:
                 complexmodel = calprocs.add_model_vis(k_ant,
                                                       self.cross_ant.bls_lookup[:, 0],
                                                       self.cross_ant.bls_lookup[:, 1],
-                                                      S.astype(np.float32), complexmodel)
+                                                      S.astype(np.float64), complexmodel)
             # add an axis for polarisation
-            self.model = complexmodel[:, :, np.newaxis, :]
+            # cast to np.complex64 so cal solution precision isn't upgraded
+            self.model = np.complex64(complexmodel[:, :, np.newaxis, :])
         return
 
     def _init_model(self, max_offset=8.0):
