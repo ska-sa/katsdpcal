@@ -1093,7 +1093,7 @@ class Scan:
                 complexmodel = calprocs.add_model_vis(k_ant,
                                                       self.cross_ant.bls_lookup[:, 0],
                                                       self.cross_ant.bls_lookup[:, 1],
-                                                      S.astype(np.float64), complexmodel)
+                                                      S, complexmodel)
             # add an axis for polarisation
             # cast to np.complex64 so cal solution precision isn't upgraded
             self.model = np.complex64(complexmodel[:, :, np.newaxis, :])
