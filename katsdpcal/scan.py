@@ -1079,7 +1079,8 @@ class Scan:
             # currently model is the same for both polarisations
             # TODO: include polarisation in models
             k_ant = np.zeros((ntimes, nchans, nants), np.complex128)
-            complexmodel = np.zeros((ntimes, nchans, nbls), np.complex128)
+            # complexmodel is np.complex64 so cal solution precision isn't upgraded
+            complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
 
             wl = katpoint.lightspeed / self.channel_freqs
             # iteratively add sources to the model
@@ -1095,8 +1096,7 @@ class Scan:
                                                       self.cross_ant.bls_lookup[:, 1],
                                                       S, complexmodel)
             # add an axis for polarisation
-            # cast to np.complex64 so cal solution precision isn't upgraded
-            self.model = np.complex64(complexmodel[:, :, np.newaxis, :])
+            self.model = complexmodel[:, :, np.newaxis, :]
         return
 
     def _init_model(self, max_offset=8.0):
