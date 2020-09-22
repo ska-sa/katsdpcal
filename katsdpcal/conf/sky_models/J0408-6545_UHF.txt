@@ -1,6 +1,6 @@
 # References:
 # Flux model use wsclean format
-# Fluxes and positions from B.Hugo model in Modelling of PKS B1934-638 (J193925.0-634245) as UHF and L-Band calibrator for MeerKAT
+# Fluxes and positions from B.Hugo model. Derived from transfer calibration described in Modelling of PKS B1934-638 (J193925.0-634245) as UHF and L-Band calibrator for MeerKAT
 # Warning: this model is artificially truncated to the top 90 smeared responses
 prim, radec, 4:08:20.37884, -65:45:09.0806, 544 1088 wsclean 27.37915813 [-33.15606519 42.78876974 -40.3651652 16.24754683] False 815867187.5
 s0c217, radec, 4:08:19.990, -65:45:12.000, 544 1088 wsclean 1.65558359117149 [-1.5221687171346798 -0.8777717446641651 -0.428215077975892 0.0] False 815867187.5
