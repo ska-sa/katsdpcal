@@ -973,11 +973,15 @@ class Accumulator:
         logger.info('Initializing SPEAD receiver')
         rx = spead2.recv.asyncio.Stream(
             self._thread_pool,
-            max_heaps=2 * self.n_substreams, ring_heaps=self.n_substreams,
-            contiguous_only=False)
-        rx.set_memory_allocator(self._memory_pool)
-        rx.set_memcpy(spead2.MEMCPY_NONTEMPORAL)
-        rx.stop_on_stop_item = False
+            spead2.recv.StreamConfig(
+                max_heaps=2 * self.n_substreams,
+                memory_allocator=self._memory_pool,
+                memcpy=spead2.MEMCPY_NONTEMPORAL,
+                stop_on_stop_item=False),
+            spead2.recv.RingStreamConfig(
+                heaps=self.n_substreams,
+                contiguous_only=False)
+        )
         for l0_endpoint in self.l0_endpoints:
             if self.l0_interface_address is not None:
                 rx.add_udp_reader(l0_endpoint.host, l0_endpoint.port,
@@ -1322,7 +1326,7 @@ class Transmitter:
         """Do further setup in the child process."""
         config = spead2.send.StreamConfig(max_packet_size=8872, rate=self.rate)
         self._tx = spead2.send.UdpStream(
-            spead2.ThreadPool(), self.endpoint.host, self.endpoint.port,
+            spead2.ThreadPool(), [(self.endpoint.host, self.endpoint.port)],
             config, ttl=1, interface_address=self.flags_stream.interface_address or '')
         self._tx.set_cnt_sequence(self._server_id, self._n_servers)
 
@@ -1513,7 +1517,7 @@ class ReportWriter(Task):
                             current_report_dir, av_corr,
                             st=obs_start, et=obs_end)
         except Exception as error:
-            logger.warn('Report generation failed: %s', error, exc_info=True)
+            logger.warning('Report generation failed: %s', error, exc_info=True)
 
         logger.info('   Observation ended')
         logger.info('===========================')
@@ -1682,7 +1686,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
             self._shutting_down = True
             if force:
                 if self._capture_block_state:
-                    logger.warn('Forced shutdown with active capture blocks - data may be lost')
+                    logger.warning('Forced shutdown with active capture blocks - data may be lost')
                 else:
                     logger.info('Forced shutdown, no active capture blocks')
             else:
@@ -1703,7 +1707,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
                     await loop.run_in_executor(executor, task.join)
                 await self.accumulator.stop(force=True)
             else:
-                logger.warn('Cannot force kill tasks, because they are threads')
+                logger.warning('Cannot force kill tasks, because they are threads')
         self.master_queue.put(StopEvent())
         # Wait until all pending sensor updates have been applied
         await self._run_queue_task
