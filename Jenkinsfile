@@ -4,7 +4,7 @@
 katsdp.killOldJobs()
 
 katsdp.setDependencies([
-    'ska-sa/katsdpdockerbase/master',
+    'ska-sa/katsdpdockerbase/new-rdma-core',
     'ska-sa/katpoint/master',
     'ska-sa/katdal/master',
     'ska-sa/katsdpsigproc/master',
@@ -14,5 +14,6 @@ katsdp.standardBuild(
     python3: true,
     python2: false,
     docker_venv: true,
-    push_external: true)
+    push_external: true,
+    katsdpdockerbase_ref: 'new-rdma-core')
 katsdp.mail('sdpdev+katsdpcal@ska.ac.za')

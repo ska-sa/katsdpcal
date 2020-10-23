@@ -50,7 +50,7 @@ redis                   # for katsdptelstate
 requests                # for katdal
 scipy
 sortedcontainers
-spead2==3.0.0
+spead2
 tblib==1.6.0            # for distributed
 terminaltables          # for aiomonitor
 toolz                   # for dask
