@@ -38,10 +38,12 @@ numba.config.THREADING_LAYER = 'safe'
 
 def get_sent_heaps(send_stream):
     """Extracts the heaps that a :class:`spead2.send.InprocStream` sent."""
-    decoder = spead2.recv.Stream(spead2.ThreadPool())
-    decoder.stop_on_stop_item = False
-    send_stream.queue.stop()
-    decoder.add_inproc_reader(send_stream.queue)
+    decoder = spead2.recv.Stream(
+        spead2.ThreadPool(),
+        spead2.recv.StreamConfig(stop_on_stop_item=False)
+    )
+    send_stream.queues[0].stop()
+    decoder.add_inproc_reader(send_stream.queues[0])
     return list(decoder)
 
 
@@ -290,15 +292,16 @@ class TestCalDeviceServer(asynctest.TestCase):
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
 
-    def _get_output_stream(self, thread_pool, hostname, port, config,
+    def _get_output_stream(self, thread_pool, endpoints, config,
                            *args, **kwargs):
         """Mock implementation of UdpStream that returns an InprocStream instead.
 
         It stores the stream in self.output_streams, keyed by hostname and port.
         """
-        key = Endpoint(hostname, port)
+        assert_equal(len(endpoints), 1)
+        key = Endpoint(*endpoints[0])
         assert_not_in(key, self.output_streams)
-        stream = spead2.send.InprocStream(thread_pool, spead2.InprocQueue())
+        stream = spead2.send.InprocStream(thread_pool, [spead2.InprocQueue()])
         self.output_streams[key] = stream
         return stream
 
@@ -349,7 +352,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             # https://github.com/ska-sa/spead2/issues/40
             base = (i // endpoints_per_server + 1) * endpoints_per_server - 1
             queue = self.l0_queues[self.l0_endpoints[base]]
-            stream = spead2.send.InprocStream(sender_thread_pool, queue)
+            stream = spead2.send.InprocStream(sender_thread_pool, [queue])
             stream.set_cnt_sequence(i, self.n_endpoints)
             self.l0_streams[endpoint] = stream
         self.init_item_group()

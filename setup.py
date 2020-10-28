@@ -36,7 +36,7 @@ setup(
         "attrs", "sortedcontainers",
         "aiokatcp", "async_timeout",
         "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse,aiomonitor]",
-        "katsdpsigproc", "spead2>=1.8.0,<3", "docutils", "matplotlib>=2",
+        "katsdpsigproc", "spead2>=3.0.0", "docutils", "matplotlib>=2",
         "jsonschema"
     ],
     tests_require=["nose", "asynctest"],

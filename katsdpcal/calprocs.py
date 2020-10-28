@@ -814,9 +814,9 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
         # Ensure the time median of the scaled amplitudes and
         # target amplitudes are the same shape so they can be divided safely
         if median_scaled_amp.shape != median_targ_amp.shape:
-            logger.warn('Gains for flux calibrators and %s have different shape. '
-                        '%s != %s. Skipping flux calibration on %s.',
-                        targ, median_scaled_amp.shape, median_targ_amp.shape, targ)
+            logger.warning('Gains for flux calibrators and %s have different shape. '
+                           '%s != %s. Skipping flux calibration on %s.',
+                           targ, median_scaled_amp.shape, median_targ_amp.shape, targ)
             continue
         soln_ratio = median_targ_amp / median_scaled_amp
         flux_scale = np.nanmedian(soln_ratio)

@@ -269,8 +269,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
             elif isinstance(soln, (Integral, np.ndarray)):
                 info = ('soln', soln)
                 if solution_store is not None:
-                    logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
-                                ' and won\'t be stored in solution store')
+                    logger.warning(
+                        'Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
+                        ' and won\'t be stored in solution store')
             else:
                 raise TypeError('Unhandled solution type {}'.format(type(soln)))
         except Exception as error:
@@ -322,8 +323,9 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                 # We don't pass telstate, because we got the value from telstate
                 save_solution(None, None, solution_store, soln)
             else:
-                logger.warn('Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
-                            ' and won\'t be stored in solution store')
+                logger.warning(
+                    'Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
+                    ' and won\'t be stored in solution store')
         return soln
 
 
