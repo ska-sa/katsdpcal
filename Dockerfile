@@ -1,6 +1,6 @@
 ARG KATSDPDOCKERBASE_REGISTRY=quay.io/ska-sa
 
-FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build:new-rdma-core as build
+FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build as build
 
 # Enable Python 3 venv
 ENV PATH="$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
@@ -20,7 +20,7 @@ WORKDIR /tmp
 
 #######################################################################
 
-FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-runtime:new-rdma-core
+FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-runtime
 LABEL maintainer="sdpdev+katsdpcal@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve3 /home/kat/ve3
