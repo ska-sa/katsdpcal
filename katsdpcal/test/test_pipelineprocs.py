@@ -91,13 +91,13 @@ class TestFinaliseParameters(unittest.TestCase):
         self.parameters = {
             'k_solint': 5.0,
             'k_chan_sample': 1,
-            'k_bfreq': 1326.200,
-            'k_efreq': 1368.012,
+            'k_bfreq': [1326.200],
+            'k_efreq': [1368.012],
             'kcross_chanave': 1,
             'bp_solint': 5.0,
             'g_solint': 5.0,
-            'g_bfreq': 1326.200,
-            'g_efreq': 1368.012,
+            'g_bfreq': [1326.200],
+            'g_efreq': [1368.012],
             'rfi_calib_nsigma': 4.5,
             'rfi_targ_nsigma': 7.0,
             'rfi_windows_post_average': [1, 2, 4, 8],
@@ -191,12 +191,12 @@ class TestFinaliseParameters(unittest.TestCase):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
     def test_bad_channel_range(self):
-        self.parameters['k_efreq'] = 1315765625  # chan 2200 in L-band 4K
+        self.parameters['k_efreq'] = [1315765625]  # chan 2200 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
     def test_channel_range_spans_servers(self):
-        self.parameters['k_efreq'] = 1498208985  # chan 3073 in L-band 4K
+        self.parameters['k_efreq'] = [1498208985]  # chan 3073 in L-band 4K
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
 
@@ -204,6 +204,14 @@ class TestFinaliseParameters(unittest.TestCase):
         self.parameters['foo'] = 'bar'
         with self.assertRaises(ValueError):
             pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
+
+    def test_list_parameters(self):
+        self.parameters['k_bfreq'] = [1112.1, 1326.2]
+        self.parameters['k_efreq'] = [1154.012, 1368.012]
+        self.parameters['subband_bfreq'] = [642.0, 856.0]
+        parameters = pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
+        self.assertEqual(202, parameters['k_bchan'])
+        self.assertEqual(402, parameters['k_echan'])
 
 
 class TestCreateModel(unittest.TestCase):

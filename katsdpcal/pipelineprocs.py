@@ -140,10 +140,12 @@ USER_PARAMS_CHANS = [
 
 # Parameters that the user can set directly, in units of Hz/MHz
 USER_PARAMS_FREQS = [
-    Parameter('k_bfreq', 'start frequency for k fit, (MHz)', float),
-    Parameter('k_efreq', 'stop frequency for k fit, (MHz)', float),
-    Parameter('g_bfreq', 'start frequency for g fit, (MHz)', float),
-    Parameter('g_efreq', 'stop frequency for g fit, (MHz)', float),
+    Parameter('k_bfreq', 'start frequency for k fit per subband, (MHz)', comma_list(float)),
+    Parameter('k_efreq', 'stop frequency for k fit per subband, (MHz)', comma_list(float)),
+    Parameter('g_bfreq', 'start frequency for g fit per subband, (MHz)', comma_list(float)),
+    Parameter('g_efreq', 'stop frequency for g fit per subband, (MHz)', comma_list(float)),
+    Parameter('subband_bfreq', 'start frequency range corresponding to parameters'
+              ' supplied per frequency subband, (MHz)', comma_list(float), telstate=False),
     Parameter('rfi_average_hz', 'amount to average in frequency before flagging, (Hz)', float),
     Parameter('rfi_windows_post_average',
               'size of windows for SumThreshold on frequency averaged data, (channels)',
@@ -290,6 +292,9 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         parameters['array_position'] = katpoint.Antenna(
             'array_position', *antennas[0].ref_position_wgs84)
 
+    # select appropriate parameters for the given frequency range
+    parameters_for_freq(parameters, channel_freqs)
+
     # Convert frequency parameters from Hz/MHz to channels
     parameters_to_channels(parameters, channel_freqs)
 
@@ -416,6 +421,33 @@ def parameters_to_channels(parameters, channel_freqs):
                 pre_avg_windows[0] = 1
                 parameters[chan] = pre_avg_windows
             del parameters[freq]
+
+
+def parameters_for_freq(parameters, channel_freqs):
+    """Select the appropriate parameters for the given frequency setup.
+
+    If solution interval parameters (e.g. k_bfreq) are supplied as a list,
+    then select the appropriate value for the frequency setup of the observation
+    """
+    subband_keys = ['g_bfreq', 'g_efreq', 'k_bfreq', 'k_efreq']
+    for key in subband_keys:
+        if key not in parameters:
+            continue
+        if len(parameters[key]) > 1:
+            try:
+                subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
+                                   if min(channel_freqs/1e6) >= s_freq])
+                parameters[key] = parameters[key][subband_idx]
+            except KeyError:
+                logger.error("If '%s' is a list of values,"
+                             " a 'subband_bfreq' parameter is required", key)
+                raise
+        elif len(parameters[key]) == 1:
+            parameters[key] = float(parameters[key][0])
+
+    # remove parameter as it is no longer required
+    if 'subband_bfreq' in parameters:
+        del parameters['subband_bfreq']
 
 
 def parameters_to_telstate(parameters, telstate_cal, l0_name):
