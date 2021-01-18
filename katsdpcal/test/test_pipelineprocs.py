@@ -208,7 +208,7 @@ class TestFinaliseParameters(unittest.TestCase):
     def test_list_parameters(self):
         self.parameters['k_bfreq'] = [1112.1, 1326.2]
         self.parameters['k_efreq'] = [1154.012, 1368.012]
-        self.parameters['band_start_freq'] = [642.0, 856.0]
+        self.parameters['subband_bfreq'] = [642.0, 856.0]
         parameters = pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
         self.assertEqual(202, parameters['k_bchan'])
         self.assertEqual(402, parameters['k_echan'])

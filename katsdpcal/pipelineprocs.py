@@ -144,7 +144,7 @@ USER_PARAMS_FREQS = [
     Parameter('k_efreq', 'stop frequency for k fit per subband, (MHz)', comma_list(float)),
     Parameter('g_bfreq', 'start frequency for g fit per subband, (MHz)', comma_list(float)),
     Parameter('g_efreq', 'stop frequency for g fit per subband, (MHz)', comma_list(float)),
-    Parameter('band_start_freq', 'start frequency range corresponding to parameters'
+    Parameter('subband_bfreq', 'start frequency range corresponding to parameters'
               ' supplied per frequency subband, (MHz)', comma_list(float), telstate=False),
     Parameter('rfi_average_hz', 'amount to average in frequency before flagging, (Hz)', float),
     Parameter('rfi_windows_post_average',
@@ -429,23 +429,24 @@ def parameters_for_freq(parameters, channel_freqs):
     If solution interval parameters (e.g. k_bfreq) are supplied as a list,
     then select the appropriate value for the frequency setup of the observation
     """
-    for key in parameters.keys():
-        if key.endswith('_efreq') or key.endswith('_bfreq'):
+    subband_keys = ['g_bfreq', 'g_efreq', 'k_bfreq', 'k_efreq']
+    for key in subband_keys:
+        if key in parameters and parameters[key] != []:
             if len(parameters[key]) > 1:
                 try:
-                    band_idx = max([i for i, s_freq in enumerate(parameters['band_start_freq'])
-                                    if min(channel_freqs/1e6) >= s_freq])
-                    parameters[key] = parameters[key][band_idx]
+                    subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
+                                       if min(channel_freqs/1e6) >= s_freq])
+                    parameters[key] = parameters[key][subband_idx]
                 except KeyError:
                     logger.error("If '%s' is a list of values,"
-                                 " a 'band_start_freq' parameter is required", key)
+                                 " a 'subband_bfreq' parameter is required", key)
                     raise
             elif len(parameters[key]) == 1:
                 parameters[key] = float(parameters[key][0])
 
     # remove parameter as it is no longer required
-    if 'band_start_freq' in parameters:
-        del parameters['band_start_freq']
+    if 'subband_bfreq' in parameters:
+        del parameters['subband_bfreq']
 
 
 def parameters_to_telstate(parameters, telstate_cal, l0_name):

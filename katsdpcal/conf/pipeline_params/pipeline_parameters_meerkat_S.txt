@@ -5,7 +5,7 @@ k_solint : 5.0                       # nominal pre-k g solution interval, second
 k_chan_sample : 1                    # channel sampling for pre-K BP soln
 k_bfreq : 2010.60, 2517.60, 2876.46  # start frequency of first channel for K fit per subband, MHz
 k_efreq : 2096.08, 2603.40, 2961.90  # end frequency of last channel for K fit per subband , MHz
-band_start_freq : 1750.00, 1968.75, 2406.25     # start frequency range for per subband parameters
+subband_bfreq : 1750.00, 1968.75, 2406.25     # start frequency range for per subband parameters
 kcross_chanave : 1                   # number of channels to average together to kcross solution
 
 # bandpass calibration
