@@ -431,18 +431,19 @@ def parameters_for_freq(parameters, channel_freqs):
     """
     subband_keys = ['g_bfreq', 'g_efreq', 'k_bfreq', 'k_efreq']
     for key in subband_keys:
-        if key in parameters and parameters[key] != []:
-            if len(parameters[key]) > 1:
-                try:
-                    subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
-                                       if min(channel_freqs/1e6) >= s_freq])
-                    parameters[key] = parameters[key][subband_idx]
-                except KeyError:
-                    logger.error("If '%s' is a list of values,"
-                                 " a 'subband_bfreq' parameter is required", key)
-                    raise
-            elif len(parameters[key]) == 1:
-                parameters[key] = float(parameters[key][0])
+        if key not in parameters:
+            continue
+        if len(parameters[key]) > 1:
+            try:
+                subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
+                                   if min(channel_freqs/1e6) >= s_freq])
+                parameters[key] = parameters[key][subband_idx]
+            except KeyError:
+                logger.error("If '%s' is a list of values,"
+                             " a 'subband_bfreq' parameter is required", key)
+                raise
+        elif len(parameters[key]) == 1:
+            parameters[key] = float(parameters[key][0])
 
     # remove parameter as it is no longer required
     if 'subband_bfreq' in parameters:
