@@ -28,7 +28,6 @@ setup(
     platforms=["OS Independent"],
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
-    setup_requires=["katversion"],
     python_requires=">=3.5",
     install_requires=[
         "numpy>=1.15", "scipy>=0.17", "numba>=0.19.0",
