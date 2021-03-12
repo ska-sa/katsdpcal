@@ -277,7 +277,7 @@ def rename(array, salt=''):
             for name, layer in dsk.layers.items()
         }
         dependencies = {
-            _rename_key(name, salt): [_rename_key(dep, salt) for dep in deps]
+            _rename_key(name, salt): {_rename_key(dep, salt) for dep in deps}
             for name, deps in dsk.dependencies.items()
         }
         array.dask = HighLevelGraph(layers, dependencies)
