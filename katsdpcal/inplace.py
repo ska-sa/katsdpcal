@@ -283,4 +283,10 @@ def rename(array, salt=''):
         array.dask = HighLevelGraph(layers, dependencies)
     else:
         array.dask = _rename_layer(dsk, keymap)
-    array.name = _rename_key(array.name, salt)
+    new_name = _rename_key(array.name, salt)
+    try:
+        array.name = new_name
+    except TypeError:
+        # Recent versions of dask (at least since 2021.3.0) require setting
+        # _name rather than name.
+        array._name = new_name
