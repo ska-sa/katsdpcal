@@ -30,7 +30,7 @@ setup(
     zip_safe=False,
     python_requires=">=3.5",
     install_requires=[
-        "numpy>=1.15", "scipy>=0.17", "numba>=0.19.0",
+        "numpy>=1.15", "scipy>=0.17", "numba>=0.49.0",
         "dask[array,distributed]>=1.1.0", "distributed>=2.2.0", "bokeh",
         "attrs", "sortedcontainers",
         "aiokatcp", "async_timeout",
