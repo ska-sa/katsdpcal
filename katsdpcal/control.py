@@ -1510,7 +1510,7 @@ class ReportWriter(Task):
         current_report_dir = report_dir + '-current'
         try:
             os.mkdir(current_report_dir)
-        except OSError:
+        except FileExistsError:
             logger.warning('Report directory %s already exists', current_report_dir)
 
         # create pipeline report
