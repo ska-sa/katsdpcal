@@ -17,6 +17,7 @@ def parse_opts():
     parser.add_argument('--file', type=str, help='H5 or MS file for simulated data')
     parser.add_argument('--bchan', type=int, default=0, help='First channel to take from file')
     parser.add_argument('--echan', type=int, default=None, help='Last channel to take from file')
+    parser.add_argument('--substreams', type=int, default=1, help='Number of substreams (servers)')
     parser.set_defaults(telstate='localhost')
     return parser.parse_args()
 
@@ -27,7 +28,8 @@ async def main():
     telstate = opts.telstate
 
     logging.info("Opening file %s", opts.file)
-    simdata = SimData.factory(opts.file, bchan=opts.bchan, echan=opts.echan)
+    simdata = SimData.factory(opts.file, bchan=opts.bchan, echan=opts.echan,
+                              n_substreams=opts.substreams)
 
     async with simdata:
         logging.info("Clearing telescope state")

@@ -1,8 +1,9 @@
 """
-KAT-7 Simulator for testing MeerKAT calibration pipeline
-========================================================
-Simulator class for HDF5 files produced by KAT-7 correlator,
-for testing of the MeerKAT pipeline.
+Replayer for testing MeerKAT calibration pipeline
+=================================================
+
+It generates telstate state information and a SPEAD stream based on an
+existing katdal dataset or Measurement Set.
 """
 
 import logging
@@ -15,7 +16,7 @@ from spead2 import send
 from .calprocs import get_reordering_nopol
 
 import katdal
-from katdal.h5datav3 import FLAG_NAMES
+from katdal.flags import NAMES as FLAG_NAMES
 import katpoint
 import aiokatcp
 import async_timeout
@@ -78,21 +79,25 @@ class SimData:
     ----------
     filename : str
         name of katdal or MS file
-    server : :class:`katsdptelstate.endpoint.Endpoint`
-        Katcp server for cal
+    servers : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server(s) for cal
     bchan,echan : int
         Channel range to select out of the file. If `echan` is ``None``, the
         range extends to the last channel.
+    n_substreams : int
+        Number of substreams within the SPEAD stream.
     """
-    def __init__(self, filename, server=None, bchan=0, echan=None):
-        if server is not None:
-            self.client = aiokatcp.Client(server.host, server.port)
-        else:
-            self.client = None
+    def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
+        if servers is None:
+            servers = []
+        if n_substreams is None:
+            n_substreams = max(1, len(servers))
+        self.clients = [aiokatcp.Client(server.host, server.port) for server in servers]
         self.filename = filename
         self.bchan = bchan
         self.echan = echan
         self.cbid = None
+        self.n_substreams = n_substreams
         # Subclass must provide num_scans
 
     @classmethod
@@ -106,26 +111,26 @@ class SimData:
                             '(Must be katdal or MS.)')
 
     async def capture_init(self):
-        if self.client is not None:
-            await self.client.wait_connected()
-            cbid = '{}'.format(int(time.time()))
-            await self.client.request('capture-init', cbid)
-            self.cbid = cbid
+        cbid = '{}'.format(int(time.time()))
+        self.cbid = cbid
+        for client in self.clients:
+            await client.wait_connected()
+            await client.request('capture-init', cbid)
 
     async def capture_done(self):
-        if self.client is not None:
+        for client in self.clients:
             try:
                 with async_timeout.timeout(10):
-                    await self.client.wait_connected()
-                    await self.client.request('capture-done')
+                    await client.wait_connected()
+                    await client.request('capture-done')
             except asyncio.TimeoutError:
                 pass
 
     async def close(self):
-        if self.client is not None:
-            self.client.close()
-            await self.client.wait_closed()
-            self.client = None
+        for client in self.clients:
+            client.close()
+            await client.wait_closed()
+        self.clients.clear()
 
     async def __aenter__(self):
         return self
@@ -175,8 +180,12 @@ class SimData:
         parameter_dict['sdp_l0_n_chans'] = echan - bchan
 
         # fill in counts that depend on others
+
         parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
-        parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
+        n_chans = echan - bchan
+        if n_chans % self.n_substreams != 0:
+            raise ValueError('number of substreams must divide into the number of channels')
+        parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
         # separate keys without times from those with times
         notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                        if not key.endswith('noise_diode')}
@@ -193,24 +202,30 @@ class SimData:
             for v, t in value:
                 telstate.add(key, v, ts=t)
 
-    def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
+    def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None):
         """Iterates through file and transmits data as a SPEAD stream.
 
         Parameters
         ----------
         telstate : :class:`katsdptelstate.TelescopeState`
             Telescope State
-        l0_endoint : :class:`katsdptelstate.endpoint.Endpoint`
-            Endpoint for SPEAD stream
+        l0_endpoints : sequence of :class:`katsdptelstate.endpoint.Endpoint`
+            Endpoints for SPEAD stream
         spead_rate : float
             SPEAD data transmission rate (bytes per second)
         max_scans : int, optional
             Maximum number of scans to transmit
         """
+        if self.n_substreams % len(l0_endpoints) != 0:
+            raise ValueError('Number of endpoints must divide into number of substreams')
         logging.info('TX: Initializing...')
         # configure SPEAD - may need to rate-limit transmission for laptops etc.
-        config = send.StreamConfig(max_packet_size=8872, rate=spead_rate)
-        tx = send.UdpStream(spead2.ThreadPool(), [(l0_endpoint.host, l0_endpoint.port)], config)
+        config = send.StreamConfig(
+            max_packet_size=8872, rate=spead_rate, max_heaps=self.n_substreams)
+        tx = send.UdpStream(
+            spead2.ThreadPool(),
+            [(l0_endpoint.host, l0_endpoint.port) for l0_endpoint in l0_endpoints],
+            config)
 
         # if the maximum number of scans to transmit has not been
         # specified, set to total number of scans
@@ -219,6 +234,22 @@ class SimData:
 
         # transmit data timestamp by timestamp and update telescope state
         self.tx_data(telstate, tx, max_scans)
+
+    def _substream_slice(self, array, substream):
+        """Extract the part of an array appropriate to a specific substream.
+
+        Parameters
+        ----------
+        array : :class:`np.ndarray`
+            Array to slice. Frequency must be the first axis.
+        substream : int
+            Index of the substream
+        """
+        assert array.shape[0] % self.n_substreams == 0
+        n_chans_per_substream = array.shape[1] // self.n_substreams
+        chan0 = n_chans_per_substream * substream
+        chan1 = chan0 + n_chans_per_substream
+        return array[chan0 : chan1]
 
     def setup_ig(self, ig, correlator_data, flags, weights):
         """Initialises data transmit ItemGroup for SPEAD transmit.
@@ -235,16 +266,20 @@ class SimData:
             weights
         """
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                    shape=correlator_data.shape, dtype=correlator_data.dtype)
+                    shape=self._substream_slice(correlator_data, 0).shape,
+                    dtype=correlator_data.dtype)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=flags.shape, dtype=flags.dtype)
+                    shape=self._substream_slice(flags, 0).shape,
+                    dtype=flags.dtype)
         # Note: real ingest sends weights as uint8, but we want to be able to
         # send the same weights we retrieved from the file, so we use float32,
         # and set weights_channel to 1.0.
+        weights_substream = self._substream_slice(weights, 0)
         ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=weights.shape, dtype=np.float32)
+                    shape=weights_substream.shape,
+                    dtype=np.float32)
         ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
-                    shape=(weights.shape[0],), dtype=np.float32)
+                    shape=(weights_substream.shape[0],), dtype=np.float32)
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
         ig.add_item(id=None, name='dump_index', description='Index in time',
@@ -278,16 +313,29 @@ class SimData:
         weights : :class:`np.ndarray`
             Weights
         """
-        # transmit vis, flags and weights, timestamp
-        ig['correlator_data'].value = correlator_data
-        ig['flags'].value = flags
-        ig['weights_channel'].value = np.ones(weights.shape[:-1], np.float32)
-        ig['weights'].value = weights
-        ig['timestamp'].value = timestamp
-        ig['dump_index'].value = dump_index
-        ig['frequency'].value = 0
-        # send all of the descriptors with every heap
-        tx.send_heap(ig.get_heap(descriptors='all'))
+        heaps = []
+        for i in range(self.n_substreams):
+            # transmit vis, flags and weights, timestamp
+            ig['correlator_data'].value = self._substream_slice(correlator_data, i)
+            ig['flags'].value = self._substream_slice(flags, i)
+            substream_weights = self._substream_slice(weights, i)
+            ig['weights_channel'].value = np.ones(substream_weights.shape[:-1], np.float32)
+            ig['weights'].value = substream_weights
+            ig['timestamp'].value = timestamp
+            ig['dump_index'].value = dump_index
+            ig['frequency'].value = correlator_data.shape[0] // self.n_substreams * i
+            # We map endpoints to spead2 substreams, so we need to convert our
+            # substream index into an endpoint index.
+            endpoint = i // (self.n_substreams // tx.num_substreams)
+            # send all of the descriptors with every heap.
+            heap = ig.get_heap(descriptors='all')
+            heaps.append(spead2.send.HeapReference(heap, substream_index=endpoint))
+        tx.send_heaps(heaps, spead2.send.GroupMode.ROUND_ROBIN)
+
+    def transmit_end(self, tx, ig):
+        """Send end-of-stream notification to each endpoint."""
+        for i in range(tx.num_substreams):
+            tx.send_heap(ig.get_end(), substream_index=i)
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
@@ -305,13 +353,16 @@ class SimDataMS(SimData):
     ----------
     filename : str
         Name of MS file
-    server : :class:`katsdptelstate.endpoint.Endpoint`
-        Katcp server for cal
+    servers : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server(s) for cal
     bchan,echan : int, optional
         Channel range to select out of the file. If `echan` is ``None``, the
         range extends to the last channel.
     mode : {'r', 'r+'}, optional
         Either 'r' to open the table read-only or 'r+' to open it read-write
+    n_substreams : int
+        Number of substreams within the SPEAD stream. This will typically
+        equal the number of UDP endpoints, but may be more.
 
     Attributes
     ----------
@@ -340,8 +391,8 @@ class SimDataMS(SimData):
     correlation (including auto-corrs).
     """
 
-    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
-        super().__init__(filename, server, bchan, echan)
+    def __init__(self, filename, servers=None, bchan=0, echan=None, mode='r', n_substreams=1):
+        super().__init__(filename, servers, bchan, echan, n_substreams)
         readonly = mode != 'r+'
         try:
             self.file = table(filename, readonly=readonly)
@@ -588,7 +639,7 @@ class SimDataMS(SimData):
                 break
 
         # end transmission
-        tx.send_heap(ig.get_end())
+        self.transmit_end(tx, ig)
 
         # MS only has 'track' scans?
         logger.info('Track timestamps: %d', time_ind)
@@ -659,8 +710,8 @@ class SimDataMS(SimData):
 
 
 class SimDataKatdal(SimData):
-    def __init__(self, filename, server=None, bchan=0, echan=None):
-        super().__init__(filename, server, bchan, echan)
+    def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
+        super().__init__(filename, servers, bchan, echan, n_substreams)
         try:
             self.file = katdal.open(filename, upgrade_flags=False)
         except IOError as error:
@@ -683,7 +734,7 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_sync_time'] = 0.0
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
-        # antenna descriptions  and noise diodes for all antennas
+        # antenna descriptions and noise diodes for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
@@ -763,7 +814,7 @@ class SimDataKatdal(SimData):
                 break
 
         # end transmission
-        tx.send_heap(ig.get_end())
+        self.transmit_end(tx, ig)
 
         logger.info('Track timestamps: %d', track_ts)
         logger.info('Slew timestamps:  %d', slew_ts)
