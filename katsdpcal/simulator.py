@@ -202,7 +202,8 @@ class SimData:
             for v, t in value:
                 telstate.add(key, v, ts=t)
 
-    def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None):
+    def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
+                      interface=None):
         """Iterates through file and transmits data as a SPEAD stream.
 
         Parameters
@@ -215,6 +216,8 @@ class SimData:
             SPEAD data transmission rate (bytes per second)
         max_scans : int, optional
             Maximum number of scans to transmit
+        interface : str, optional
+            Name of the interface on which to transmit data, if it is multicast.
         """
         if self.n_substreams % len(l0_endpoints) != 0:
             raise ValueError('Number of endpoints must divide into number of substreams')
@@ -222,10 +225,15 @@ class SimData:
         # configure SPEAD - may need to rate-limit transmission for laptops etc.
         config = send.StreamConfig(
             max_packet_size=8872, rate=spead_rate, max_heaps=self.n_substreams)
+        if interface:
+            interface_address = katsdpservices.get_interface_address(interface)
+        else:
+            interface_address = ''
         tx = send.UdpStream(
             spead2.ThreadPool(),
             [(l0_endpoint.host, l0_endpoint.port) for l0_endpoint in l0_endpoints],
-            config)
+            config,
+            interface_address=interface_address)
 
         # if the maximum number of scans to transmit has not been
         # specified, set to total number of scans

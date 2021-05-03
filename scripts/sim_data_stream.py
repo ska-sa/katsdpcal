@@ -30,6 +30,9 @@ def parse_opts():
         '--server', type=endpoint.endpoint_list_parser(2048), default='localhost:2048',
         help='Address(es) of cal katcp server(s). Default: %(default)s', metavar='ENDPOINT')
     parser.add_argument(
+        '--l0-interface',
+        help='Interface on which to send L0 spectral data. Default: auto', metavar='INTERFACE')
+    parser.add_argument(
         '--bchan', type=int, default=0, help='First channel to take from file')
     parser.add_argument(
         '--echan', type=int, default=None, help='Last channel to take from file')
@@ -55,7 +58,8 @@ async def main():
         logger.info("Issuing capture-init")
         await simdata.capture_init()
         logger.info("TX: start.")
-        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans)
+        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans,
+                              interface=opts.l0_interface)
         logger.info("TX: ended.")
         logger.info("Issuing capture-done")
         await simdata.capture_done()
