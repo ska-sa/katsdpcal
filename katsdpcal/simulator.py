@@ -15,6 +15,7 @@ import spead2
 from spead2 import send
 from .calprocs import get_reordering_nopol
 
+import katsdpservices
 import katdal
 from katdal.flags import NAMES as FLAG_NAMES
 import katpoint
