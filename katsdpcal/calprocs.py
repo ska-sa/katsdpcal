@@ -904,7 +904,7 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
     -------
     ordering
         ordering array necessary to change given bls_ordering into desired
-        ordering, numpy array shape(nbl*4, 2)
+        ordering, numpy array shape(nbl*4)
     bls_wanted
         ordering of baselines, without polarisation, list shape(nbl, 2)
     pol_order
