@@ -717,3 +717,72 @@ class TestFluxDensityModel(unittest.TestCase):
     def test_missing_variable(self):
         with self.assertRaises(ValueError):
             calprocs.FluxDensityModel(100, 1000, [2, 3, 1], 'wsclean', 100)
+
+
+class TestGetReordering(unittest.TestCase):
+    def setUp(self):
+        self.bls_ordering = np.array([
+            ['m000h', 'm000h'],
+            ['m000h', 'm000v'],
+            ['m000v', 'm000v'],
+            ['m000v', 'm000h'],
+            ['m000h', 'm001v'],
+            ['m001v', 'm001v'],
+            ['m000v', 'm001h'],
+            ['m001h', 'm001h'],
+            ['m000h', 'm001h'],
+            ['m001h', 'm001v'],
+            ['m000v', 'm001v'],
+            ['m001v', 'm001h']
+        ])
+        self.antlist = ['m000', 'm001']
+
+    def test_basic(self):
+        ordering, bls_wanted, pol_order = calprocs.get_reordering(self.antlist, self.bls_ordering)
+        self.assertEqual(bls_wanted, [['m000', 'm001'], ['m000', 'm000'], ['m001', 'm001']])
+        self.assertEqual(pol_order, [['v', 'v'], ['h', 'h'], ['v', 'h'], ['h', 'v']])
+        np.testing.assert_array_equal(ordering, [10, 2, 5, 8, 0, 7, 6, 3, 11, 4, 1, 9])
+
+    def test_str_antlist(self):
+        antlist = ','.join(self.antlist)
+        ordering, bls_wanted, pol_order = calprocs.get_reordering(antlist, self.bls_ordering)
+        self.assertEqual(bls_wanted, [['m000', 'm001'], ['m000', 'm000'], ['m001', 'm001']])
+        self.assertEqual(pol_order, [['v', 'v'], ['h', 'h'], ['v', 'h'], ['h', 'v']])
+        np.testing.assert_array_equal(ordering, [10, 2, 5, 8, 0, 7, 6, 3, 11, 4, 1, 9])
+
+    def test_output_pol_order(self):
+        output_order_pol = [['h', 'h'], ['v', 'v'], ['v', 'h'], ['h', 'v']]
+        ordering, bls_wanted, pol_order = calprocs.get_reordering(
+            self.antlist, self.bls_ordering, output_order_pol=output_order_pol)
+        self.assertEqual(bls_wanted, [['m000', 'm001'], ['m000', 'm000'], ['m001', 'm001']])
+        self.assertEqual(pol_order, output_order_pol)
+        np.testing.assert_array_equal(ordering, [8, 0, 7, 10, 2, 5, 6, 3, 11, 4, 1, 9])
+
+    def test_output_order_bls(self):
+        output_order_bls = [['m000', 'm000'], ['m000', 'm001'], ['m001', 'm001']]
+        ordering, bls_wanted, pol_order = calprocs.get_reordering(
+            self.antlist, self.bls_ordering, output_order_bls=output_order_bls)
+        self.assertEqual(bls_wanted, output_order_bls)
+        self.assertEqual(pol_order, [['v', 'v'], ['h', 'h'], ['v', 'h'], ['h', 'v']])
+        np.testing.assert_array_equal(ordering, [2, 10, 5, 0, 8, 7, 3, 6, 11, 1, 4, 9])
+
+    def test_no_ac(self):
+        # Remove autocorrelations from bls_ordering
+        bls_ordering = np.array([
+            ['m000h', 'm001v'],
+            ['m000v', 'm001h'],
+            ['m000h', 'm001h'],
+            ['m000v', 'm001v'],
+            ['m000h', 'm002v'],
+            ['m000v', 'm002h'],
+            ['m000h', 'm002h'],
+            ['m000v', 'm002v'],
+            ['m001h', 'm002v'],
+            ['m001v', 'm002h'],
+            ['m001h', 'm002h'],
+            ['m001v', 'm002v'],
+        ])
+        ordering, bls_wanted, pol_order = calprocs.get_reordering(self.antlist, bls_ordering)
+        self.assertEqual(bls_wanted, [['m000', 'm001'], ['m000', 'm002'], ['m001', 'm002']])
+        self.assertEqual(pol_order, [['v', 'v'], ['h', 'h'], ['v', 'h'], ['h', 'v']])
+        np.testing.assert_array_equal(ordering, [3, 7, 11, 2, 6, 10, 1, 5, 9, 0, 4, 8])
