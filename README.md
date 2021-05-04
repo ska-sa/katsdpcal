@@ -20,15 +20,15 @@ The simulator uses either an H5 or MS file as the data source.
 
 2. Run the h5 Telescope State simulator:
 
- > sim_ts.py --telstate 127.0.0.1:6379 --file \<file.rdb/h5/ms\>
+       sim_ts.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
 
 3. Run the pipeline controller:
 
- > run_cal.py --telstate 127.0.0.1:6379
+       run_cal.py --telstate 127.0.0.1:6379
 
 4. Run the h5 data stream:
 
- > sim_data_stream.py --telstate 127.0.0.1:6379 --file \<file.rdb/h5/ms\>
+       sim_data_stream.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
 
 You can pass `--max-scans` to restrict the number of scans to replay from a large file.
 
@@ -39,7 +39,7 @@ This additionally requires
 * tmux
 * tmuxp (0.8.1+)
 
- > run_katsdpcal_sim.py --telstate 127.0.0.1:6379 --file \<file.rdb/h5/ms\> --max-scans=7 --keep-sessions
+      run_katsdpcal_sim.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms> --max-scans=7 --keep-sessions
 
 The shortcut simulator runs each of the five commands above in separate tmux
 sessions, named redis, sim\_ts, pipeline and sim\_data respectively.
@@ -55,17 +55,17 @@ it can scale up to higher numbers.
 
 2. Run the Telescope State simulator:
 
- > sim_ts.py --telstate 127.0.0.1:6379 --file \<file.rdb/h5/ms\> --substreams 2
+       sim_ts.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms> --substreams 2
 
 3. Run the pipeline controller (in parallel):
 
- > run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
-     --servers 4 -p 2060 --server-id 1
- > run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
-     --servers 4 -p 2061 --server-id 2
+       run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
+         --servers 4 -p 2060 --server-id 1
+       run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
+         --servers 4 -p 2061 --server-id 2
 
 4. Run the h5 data stream:
 
- > sim_data_stream.py --telstate 127.0.0.1:6379 --file \<file.rdb/h5/ms\> \
-     --l0-spead 239.102.254.0+1:7148 --l0-interface=lo \
-     --server localhost:2060,localhost:2061
+       sim_data_stream.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms> \
+         --l0-spead 239.102.254.0+1:7148 --l0-interface=lo \
+         --server localhost:2060,localhost:2061
