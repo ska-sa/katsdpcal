@@ -962,6 +962,7 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
 
         bls_pol_wanted = get_pol_bls(bls_wanted, pol_order)
     else:
+        bls_wanted = output_order_bls
         bls_pol_wanted = get_pol_bls(output_order_bls, pol_order)
     # note: bls_pol_wanted must be an np array for list equivalence below
 
