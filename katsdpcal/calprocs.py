@@ -968,8 +968,8 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
 
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
-    ordering = np.array([np.all(bls_ordering == bls, axis=1).nonzero()[0][0]
-                         for bls in bls_pol_wanted])
+    ordering_map = {tuple(bls): i for i, bls in enumerate(bls_ordering)}
+    ordering = np.array([ordering_map[tuple(bls)] for bls in bls_pol_wanted])
 
     # how to use this:
     # print bls_ordering[ordering]
