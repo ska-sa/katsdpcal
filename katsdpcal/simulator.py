@@ -255,7 +255,7 @@ class SimData:
             Index of the substream
         """
         assert array.shape[0] % self.n_substreams == 0
-        n_chans_per_substream = array.shape[1] // self.n_substreams
+        n_chans_per_substream = array.shape[0] // self.n_substreams
         chan0 = n_chans_per_substream * substream
         chan1 = chan0 + n_chans_per_substream
         return array[chan0 : chan1]
