@@ -23,6 +23,7 @@ import aiokatcp
 import async_timeout
 
 import numpy as np
+import dask.array as da
 from random import random
 import ephem
 
@@ -249,7 +250,7 @@ class SimData:
 
         Parameters
         ----------
-        array : :class:`np.ndarray`
+        array : array-like
             Array to slice. Frequency must be the first axis.
         substream : int
             Index of the substream
@@ -792,13 +793,11 @@ class SimDataKatdal(SimData):
             if scan_state == 'slew':
                 slew_ts += n_ts
 
-            # transmit the data from this scan, timestamp by timestamp
-            scan_data = self.file.vis[:]
             # Hack to get around flags returning a bool of selected flags
-            flags_indexer = self.file.flags
-            flags_indexer._transforms = []
-            scan_flags = flags_indexer[:]
-            scan_weights = self.file.weights
+            self.file.flags._transforms = []
+            scan_data = self.file.vis.dataset
+            scan_flags = self.file.flags.dataset
+            scan_weights = self.file.weights.dataset
 
             # set up item group, using info from first data item
             if 'correlator_data' not in ig:
@@ -814,6 +813,9 @@ class SimDataKatdal(SimData):
                 # flags for this time stamp, for specified channel range
                 tx_flags = scan_flags[i, :, :]
                 tx_weights = scan_weights[i, :, :]
+                # If we have Dask datasets, it's time to compute them
+                if isinstance(tx_vis, da.Array):
+                    tx_vis, tx_flags, tx_weights = da.compute(tx_vis, tx_flags, tx_weights)
 
                 # transmit timestamps, vis, flags, weights
                 self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
