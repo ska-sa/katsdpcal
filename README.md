@@ -60,9 +60,9 @@ it can scale up to higher numbers.
 3. Run the pipeline controller (in parallel):
 
        run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
-         --servers 4 -p 2060 --server-id 1
+         --servers 2 -p 2060 --server-id 1
        run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
-         --servers 4 -p 2061 --server-id 2
+         --servers 2 -p 2061 --server-id 2
 
 4. Run the h5 data stream:
 
