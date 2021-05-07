@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def parse_opts():
     parser = ArgumentParser(description='Simulate SPEAD data stream from file')
     parser.add_argument(
-        '--l0-spead', type=endpoint.endpoint_parser(7200), default='127.0.0.1:7200',
+        '--l0-spead', type=endpoint.endpoint_list_parser(7200), default='127.0.0.1:7200',
         help='endpoint to send L0 SPEAD stream (including multicast IPs). '
              '[<ip>][:port]. [default=%(default)s]', metavar='ENDPOINT')
     parser.add_argument('--file', type=str, help='File for simulated data (H5 or MS)')
@@ -27,8 +27,11 @@ def parse_opts():
         '--max-scans', type=int, default=None,
         help='Number of scans to transmit. Default: all')
     parser.add_argument(
-        '--server', type=endpoint.endpoint_parser(2048), default='localhost:2048',
-        help='Address of cal katcp server. Default: %(default)s', metavar='ENDPOINT')
+        '--server', type=endpoint.endpoint_list_parser(2048), default='localhost:2048',
+        help='Address(es) of cal katcp server(s). Default: %(default)s', metavar='ENDPOINT')
+    parser.add_argument(
+        '--l0-interface',
+        help='Interface on which to send L0 spectral data. Default: auto', metavar='INTERFACE')
     parser.add_argument(
         '--bchan', type=int, default=0, help='First channel to take from file')
     parser.add_argument(
@@ -37,19 +40,26 @@ def parse_opts():
     return parser.parse_args()
 
 
+def get_n_substreams(telstate):
+    return telstate['sdp_l0_n_chans'] // telstate['sdp_l0_n_chans_per_substream']
+
+
 async def main():
     setup_logging()
     opts = parse_opts()
 
     logger.info("Use TS set up by sim_ts.py and run_cal.py scripts.")
     telstate = opts.telstate
+    n_substreams = get_n_substreams(telstate)
 
-    simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan)
+    simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan,
+                              n_substreams=n_substreams)
     async with simdata:
         logger.info("Issuing capture-init")
         await simdata.capture_init()
         logger.info("TX: start.")
-        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans)
+        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans,
+                              interface=opts.l0_interface)
         logger.info("TX: ended.")
         logger.info("Issuing capture-done")
         await simdata.capture_done()
