@@ -3,6 +3,8 @@
 Refer to :func:`store_inplace` for details.
 """
 
+import itertools
+
 import numpy as np
 import dask.array as da
 import dask.base
@@ -23,6 +25,7 @@ class _ArrayDependency:
     An "elementwise" dependency is one where the output of the task has the
     same shape as the input and the dependencies are elementwise.
     """
+
     def __init__(self, array, elementwise):
         self.array = array
         self.elementwise = elementwise
@@ -65,7 +68,84 @@ def _in_graph(dsk, key):
         return False
 
 
-def _safe_in_place(dsk, source_keys, target_keys):
+def _slice_key(slc):
+    """Turn a slice or tuple of slices into a hashable type."""
+    if isinstance(slc, slice):
+        return (slc.start, slc.stop, slc.step)
+    elif isinstance(slc, tuple):
+        return tuple(_slice_key(s) for s in slc)
+    else:
+        raise TypeError(f'Expected slice or tuple of slices, not {type(slc)}')
+
+
+def _is_getter(dsk, v):
+    """Check whether an element of a graph is a getter task."""
+    # Getters can also have length 5 to pass optional arguments. For
+    # now we ignore these to avoid dealing with locks. We also exclude
+    # more complicated cases where the parameters are not simply a
+    # node and a literal expression.
+    return (type(v) is tuple and len(v) == 3
+            and v[0] in da.optimization.GETTERS
+            and _in_graph(dsk, v[1])
+            and not dask.core.has_tasks(dsk, v[2]))
+
+
+def _array_get(dsk, key, cache):
+    """Obtain a key from a dask graph.
+
+    This is similar to :meth:`dask.core.get`, but it only executes tasks that
+    are considered getters. Any other tasks raise :exc:`ValueError`.
+    """
+    if key in cache:
+        return cache[key]
+    v = dsk[key]
+    if _is_getter(dsk, v):
+        array = v[0](_array_get(dsk, v[1], cache), v[2])
+    else:
+        try:
+            array = dsk[v]
+        except (KeyError, TypeError):
+            # Either missing or not hashable
+            array = v
+
+    if not isinstance(array, np.ndarray):
+        raise ValueError(f'Key {key} does not refer to an array')
+    cache[key] = array
+    return array
+
+
+class _StoreWrapper:
+    """Interface for :meth:`dask.array.store`.
+
+    It holds a map from indices to numpy arrays, and when called, sets the data in
+    the corresponding array. This is a very limited interface that is only
+    intended to work with :meth:`dask.array.store` rather than a general way to
+    write to a stitched-together set of numpy arrays.
+
+    Parameters
+    ----------
+    array : da.Array
+        A dask array whose individual chunks refer directly to numpy arrays.
+    """
+
+    def __init__(self, array):
+        slices = da.core.slices_from_chunks(array.chunks)
+        graph = array.__dask_graph__()
+        self._slice_map = {}
+        cache = {}
+        for key, slc in zip(dask.core.flatten(array.__dask_keys__()), slices):
+            ndarray = _array_get(graph, key, cache)
+            if not isinstance(ndarray, np.ndarray):
+                raise ValueError(f'Target key {key} does not directly map a numpy array')
+            # Slices are not hashable
+            self._slice_map[_slice_key(slc)] = ndarray
+        print(self._slice_map.keys())
+
+    def __setitem__(self, idx, value):
+        self._slice_map[_slice_key(idx)][:] = value
+
+
+def _safe_inplace(sources, targets):
     """Safety check on :func:`safe_in_place`. It uses the following algorithm:
 
     1. For each key in the graph, determine a set of :class:`_ArrayDependency`s that
@@ -78,6 +158,19 @@ def _safe_in_place(dsk, source_keys, target_keys):
     2. If a source and target corresponding to *different* chunks depend on
     overlapping numpy arrays, the operation is unsafe.
     """
+    # Create a graph with all the sources and targets in it
+    dsk = HighLevelGraph.from_collections('store', {}, sources + targets)
+    source_keys = list(itertools.chain.from_iterable(
+        dask.core.flatten(source.__dask_keys__())
+        for source in sources
+    ))
+    target_keys = list(itertools.chain.from_iterable(
+        dask.core.flatten(target.__dask_keys__())
+        for target in targets
+    ))
+    if len(set(target_keys)) < len(target_keys):
+        raise ValueError('The target contains duplicate keys')
+
     dependencies = dict((k, dask.optimization.get_dependencies(dsk, k)) for k in dsk)
     # For each key, contains a set of _ArrayDependencys
     arrays = {}
@@ -89,14 +182,7 @@ def _safe_in_place(dsk, source_keys, target_keys):
             arrays[k] = arrays[v]
         else:
             out = set()
-            # Getters can also have length 5 to pass optional arguments. For
-            # now we ignore these to avoid dealing with locks. We also exclude
-            # more complicated cases where the parameters are not simply a
-            # node and a literal expression.
-            is_getter = (type(v) is tuple and len(v) == 3
-                         and v[0] in da.optimization.GETTERS
-                         and _in_graph(dsk, v[1])
-                         and not dask.core.has_tasks(dsk, v[2]))
+            is_getter = _is_getter(dsk, v)
             for dep in dependencies[k]:
                 for array_dep in arrays[dep]:
                     if is_getter:
@@ -108,7 +194,7 @@ def _safe_in_place(dsk, source_keys, target_keys):
             arrays[k] = out
     for key in target_keys:
         if len(arrays[key]) != 1 or not next(iter(arrays[key])).elementwise:
-            raise ValueError('Target key {} does not directly map a numpy array')
+            raise ValueError(f'Target key {key} does not directly map a numpy array')
     for i, src_key in enumerate(source_keys):
         for j, trg_key in enumerate(target_keys):
             if i != j:
@@ -175,9 +261,6 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     ValueError
         if the sources and targets have the wrong type or don't match
     """
-    def store(target, source):
-        target[:] = source
-
     if isinstance(sources, da.Array):
         sources = [sources]
         targets = [targets]
@@ -187,31 +270,13 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     if any(not isinstance(t, da.Array) for t in targets):
         raise ValueError('All targets must be instances of da.Array')
 
-    dsk = {}
-    src_keys = []
-    trg_keys = []
-    out_keys = []
-    for source, target in zip(sources, targets):
-        if source.shape != target.shape:
-            raise ValueError('Source and target have different shapes')
-        source_chunked = source.rechunk(target.chunks)
-        slices = da.core.slices_from_chunks(target.chunks)
-        name = 'store-' + source_chunked.name
-        for src_key, trg_key, slc in zip(dask.core.flatten(source_chunked.__dask_keys__()),
-                                         dask.core.flatten(target.__dask_keys__()),
-                                         slices):
-            key = (name,) + src_key[1:]
-            dsk[key] = (store, trg_key, src_key)
-            src_keys.append(src_key)
-            trg_keys.append(trg_key)
-            out_keys.append(key)
-        dsk.update(source_chunked.__dask_graph__())
-        dsk.update(target.__dask_graph__())
-    if len(set(trg_keys)) < len(trg_keys):
-        raise ValueError('The target contains duplicate keys')
+    chunked_sources = [
+        source.rechunk(target.chunks) for source, target in zip(sources, targets)
+    ]
     if safe:
-        _safe_in_place(dsk, src_keys, trg_keys)
-    dask.base.compute_as_if_collection(da.Array, dsk, out_keys)
+        _safe_inplace(chunked_sources, targets)
+    store_wrappers = [_StoreWrapper(target) for target in targets]
+    da.store(chunked_sources, store_wrappers, lock=False)
 
 
 def _rename(comp, keymap):
