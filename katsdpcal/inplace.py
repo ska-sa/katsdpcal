@@ -244,6 +244,7 @@ def store_inplace(sources, targets, safe=True, **kwargs):
         out_keys.extend(layer.keys())
         graphs.append(HighLevelGraph.from_collections(name, layer, (source, target)))
     graph = HighLevelGraph.merge(*graphs)
+    graph = da.Array.__dask_optimize__(graph, out_keys)
     dask.base.compute_as_if_collection(da.Array, graph, out_keys)
 
 
