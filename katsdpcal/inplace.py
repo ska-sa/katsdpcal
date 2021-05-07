@@ -138,7 +138,6 @@ class _StoreWrapper:
                 raise ValueError(f'Target key {key} does not directly map a numpy array')
             # Slices are not hashable
             self._slice_map[_slice_key(slc)] = ndarray
-        print(self._slice_map.keys())
 
     def __setitem__(self, idx, value):
         self._slice_map[_slice_key(idx)][:] = value
