@@ -98,58 +98,6 @@ def _is_getter(dsk, v):
             and not dask.core.has_tasks(dsk, v[2]))
 
 
-def _array_get(dsk, key, cache):
-    """Obtain a key from a dask graph.
-
-    This is similar to :meth:`dask.core.get`, but it only executes tasks that
-    are considered getters. Any other tasks raise :exc:`ValueError`.
-    """
-    if key in cache:
-        return cache[key]
-    v = dsk[key]
-    if _is_getter(dsk, v):
-        array = v[0](_array_get(dsk, v[1], cache), v[2])
-    elif _in_graph(dsk, v):
-        array = _array_get(dsk, v, cache)
-    else:
-        array = v
-
-    if not isinstance(array, np.ndarray):
-        raise ValueError(f'Key {key} does not refer to an array')
-    cache[key] = array
-    return array
-
-
-class _StoreWrapper:
-    """Interface for :meth:`dask.array.store`.
-
-    It holds a map from indices to numpy arrays, and when called, sets the data in
-    the corresponding array. This is a very limited interface that is only
-    intended to work with :meth:`dask.array.store` rather than a general way to
-    write to a stitched-together set of numpy arrays.
-
-    Parameters
-    ----------
-    array : da.Array
-        A dask array whose individual chunks refer directly to numpy arrays.
-    """
-
-    def __init__(self, array):
-        slices = da.core.slices_from_chunks(array.chunks)
-        graph = array.__dask_graph__()
-        self._slice_map = {}
-        cache = {}
-        for key, slc in zip(dask.core.flatten(array.__dask_keys__()), slices):
-            ndarray = _array_get(graph, key, cache)
-            if not isinstance(ndarray, np.ndarray):
-                raise ValueError(f'Target key {key} does not directly map a numpy array')
-            # Slices are not hashable
-            self._slice_map[_slice_key(slc)] = ndarray
-
-    def __setitem__(self, idx, value):
-        self._slice_map[_slice_key(idx)][:] = value
-
-
 def _safe_inplace(sources, targets):
     """Safety check on :func:`safe_in_place`. It uses the following algorithm:
 
@@ -280,8 +228,23 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     ]
     if safe:
         _safe_inplace(chunked_sources, targets)
-    store_wrappers = [_StoreWrapper(target) for target in targets]
-    da.store(chunked_sources, store_wrappers, lock=False)
+
+    def store(target, source):
+        target[:] = source
+
+    graphs = []
+    out_keys = []
+    for source, target in zip(chunked_sources, targets):
+        name = 'store-' + source.name + '-' + target.name
+        layer = {
+            (name,) + src_key[1:]: (store, trg_key, src_key)
+            for src_key, trg_key in zip(dask.core.flatten(source.__dask_keys__()),
+                                        dask.core.flatten(target.__dask_keys__()))
+        }
+        out_keys.extend(layer.keys())
+        graphs.append(HighLevelGraph.from_collections(name, layer, (source, target)))
+    graph = HighLevelGraph.merge(*graphs)
+    dask.base.compute_as_if_collection(da.Array, graph, out_keys)
 
 
 def _rename(comp, keymap):
