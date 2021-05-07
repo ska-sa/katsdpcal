@@ -904,7 +904,7 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
     -------
     ordering
         ordering array necessary to change given bls_ordering into desired
-        ordering, numpy array shape(nbl*4, 2)
+        ordering, numpy array shape(nbl*4)
     bls_wanted
         ordering of baselines, without polarisation, list shape(nbl, 2)
     pol_order
@@ -962,13 +962,14 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
 
         bls_pol_wanted = get_pol_bls(bls_wanted, pol_order)
     else:
+        bls_wanted = output_order_bls
         bls_pol_wanted = get_pol_bls(output_order_bls, pol_order)
     # note: bls_pol_wanted must be an np array for list equivalence below
 
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
-    ordering = np.array([np.all(bls_ordering == bls, axis=1).nonzero()[0][0]
-                         for bls in bls_pol_wanted])
+    ordering_map = {tuple(bls): i for i, bls in enumerate(bls_ordering)}
+    ordering = np.array([ordering_map[tuple(bls)] for bls in bls_pol_wanted])
 
     # how to use this:
     # print bls_ordering[ordering]
