@@ -13,7 +13,14 @@ import dask.core
 import dask.optimization
 import dask.array.optimization
 from dask.blockwise import Blockwise
-from dask.highlevelgraph import HighLevelGraph, MaterializedLayer
+from dask.highlevelgraph import HighLevelGraph
+try:
+    from dask.highlevelgraph import MaterializedLayer
+except ImportError:
+    # Older verisons of dask don't have this. We only use it for an instance
+    # check, so a dummy implementation suffices.
+    class MaterializedLayer:
+        pass
 
 
 class _ArrayDependency:
@@ -300,7 +307,7 @@ def _rename_key(key, salt):
 
 def _rename_layer(layer, keymap, salt):
     """Rename a single layer in a :class:`dask.highlevelgraph.HighLevelGraph`."""
-    if isinstance(layer, Blockwise):
+    if type(layer) is Blockwise:
         new_indices = tuple(
             (_rename_key(name, salt) if ind is not None else name, ind)
             for name, ind in layer.indices)
@@ -324,7 +331,7 @@ def _rename_layer(layer, keymap, salt):
             layer.concatenate,
             layer.new_axes,
             **kwargs)
-    elif isinstance(layer, MaterializedLayer):
+    elif type(layer) is MaterializedLayer:
         mapping = {keymap[key]: _rename(value, keymap) for (key, value) in layer.mapping.items()}
         return MaterializedLayer(mapping, layer.annotations)
     else:
