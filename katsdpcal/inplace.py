@@ -3,6 +3,7 @@
 Refer to :func:`store_inplace` for details.
 """
 
+import inspect
 import itertools
 
 import numpy as np
@@ -12,7 +13,7 @@ import dask.core
 import dask.optimization
 import dask.array.optimization
 from dask.blockwise import Blockwise
-from dask.highlevelgraph import HighLevelGraph
+from dask.highlevelgraph import HighLevelGraph, MaterializedLayer
 
 
 class _ArrayDependency:
@@ -307,6 +308,16 @@ def _rename_layer(layer, keymap, salt):
             (_rename_key(name, salt) if ind is not None else name, ind)
             for name, ind in layer.indices)
         sub_keymap = {key: _rename_key(key, salt) for key in layer.dsk}
+        kwargs = {}
+        # The available arguments depend on the Dask version.
+        sig = inspect.signature(Blockwise)
+        for arg_name in ['output_blocks', 'annotations']:
+            if arg_name in sig.parameters:
+                kwargs[arg_name] = getattr(layer, arg_name)
+        if 'io_deps' in sig.parameters:
+            kwargs['io_deps'] = {
+                _rename_key(key, salt): value for key, value in layer.io_deps.items()
+            }
         return Blockwise(
             _rename_key(layer.output, salt),
             layer.output_indices,
@@ -314,7 +325,11 @@ def _rename_layer(layer, keymap, salt):
             new_indices,
             {_rename_key(name, salt): value for name, value in layer.numblocks.items()},
             layer.concatenate,
-            layer.new_axes)
+            layer.new_axes,
+            **kwargs)
+    elif isinstance(layer, MaterializedLayer):
+        mapping = {keymap[key]: _rename(value, keymap) for (key, value) in layer.mapping.items()}
+        return MaterializedLayer(mapping, layer.annotations)
     else:
         return {keymap[key]: _rename(value, keymap) for (key, value) in layer.items()}
 
