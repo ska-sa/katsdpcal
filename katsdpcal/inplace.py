@@ -5,6 +5,7 @@ Refer to :func:`store_inplace` for details.
 
 import inspect
 import itertools
+import uuid
 
 import numpy as np
 import dask.array as da
@@ -13,6 +14,7 @@ import dask.core
 import dask.optimization
 import dask.array.optimization
 from dask.blockwise import Blockwise
+from dask.delayed import Delayed
 from dask.highlevelgraph import HighLevelGraph
 try:
     from dask.highlevelgraph import MaterializedLayer
@@ -232,20 +234,38 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     def store(target, source):
         target[:] = source
 
-    graphs = []
     out_keys = []
+    layers = {}
+    dependencies = {}
+    store_layers = []
     for source, target in zip(chunked_sources, targets):
         name = 'store-' + source.name + '-' + target.name
+        store_layers.append(name)
         layer = {
             (name,) + src_key[1:]: (store, trg_key, src_key)
             for src_key, trg_key in zip(dask.core.flatten(source.__dask_keys__()),
                                         dask.core.flatten(target.__dask_keys__()))
         }
+        # Replicate behaviour of HighLevelGraph.from_collections
+        layers[name] = layer
+        dependencies[name] = set()
+        for collection in source, target:
+            graph = collection.__dask_graph__()
+            layers.update(graph.layers)
+            dependencies.update(graph.dependencies)
+            dependencies[name].update(collection.__dask_layers__())
         out_keys.extend(layer.keys())
-        graphs.append(HighLevelGraph.from_collections(name, layer, (source, target)))
-    graph = HighLevelGraph.merge(*graphs)
-    graph = da.Array.__dask_optimize__(graph, out_keys)
-    dask.base.compute_as_if_collection(da.Array, graph, out_keys)
+
+    # We don't have any outputs from storing, so to form a dask collection
+    # we'll gather up all the output keys into one "root" key and form a
+    # Delayed collection from it. This is similar to what da.store does.
+    root_key = 'store-root-' + str(uuid.uuid4())
+    layers[root_key] = {root_key: out_keys}
+    dependencies[root_key] = set(store_layers)
+    graph = HighLevelGraph(layers, dependencies)
+    graph = da.Array.__dask_optimize__(graph, [root_key])
+    result = Delayed(root_key, graph)
+    result.compute()
 
 
 def _rename(comp, keymap):
