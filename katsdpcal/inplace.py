@@ -102,12 +102,10 @@ def _array_get(dsk, key, cache):
     v = dsk[key]
     if _is_getter(dsk, v):
         array = v[0](_array_get(dsk, v[1], cache), v[2])
+    elif _in_graph(dsk, v):
+        array = _array_get(dsk, v, cache)
     else:
-        try:
-            array = dsk[v]
-        except (KeyError, TypeError):
-            # Either missing or not hashable
-            array = v
+        array = v
 
     if not isinstance(array, np.ndarray):
         raise ValueError(f'Key {key} does not refer to an array')
