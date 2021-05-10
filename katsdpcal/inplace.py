@@ -260,9 +260,10 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     layers[root_key] = {root_key: out_keys}
     dependencies[root_key] = set(store_layers)
     graph = HighLevelGraph(layers, dependencies)
+    # Ensure that array-appropriate optimizations are performed.
     graph = da.Array.__dask_optimize__(graph, [root_key])
     result = Delayed(root_key, graph)
-    result.compute()
+    result.compute(optimize_graph=False)
 
 
 def _rename(comp, keymap):
