@@ -78,16 +78,6 @@ def _in_graph(dsk, key):
         return False
 
 
-def _slice_key(slc):
-    """Turn a slice or tuple of slices into a hashable type."""
-    if isinstance(slc, slice):
-        return (slc.start, slc.stop, slc.step)
-    elif isinstance(slc, tuple):
-        return tuple(_slice_key(s) for s in slc)
-    else:
-        raise TypeError(f'Expected slice or tuple of slices, not {type(slc)}')
-
-
 def _is_getter(dsk, v):
     """Check whether an element of a graph is a getter task."""
     # Getters can also have length 5 to pass optional arguments. For
