@@ -19,7 +19,7 @@ from dask.highlevelgraph import HighLevelGraph
 try:
     from dask.highlevelgraph import MaterializedLayer
 except ImportError:
-    # Older verisons of dask don't have this. We only use it for an instance
+    # Older versions of dask don't have this. We only use it for an instance
     # check, so a dummy implementation suffices.
     class MaterializedLayer:
         pass
