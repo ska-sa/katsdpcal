@@ -13,7 +13,7 @@ import dask.base
 import dask.core
 import dask.optimization
 import dask.array.optimization
-from dask.blockwise import Blockwise
+from dask.blockwise import Blockwise, blockwise
 from dask.delayed import Delayed
 from dask.highlevelgraph import HighLevelGraph
 try:
@@ -231,11 +231,18 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     for source, target in zip(chunked_sources, targets):
         name = 'store-' + source.name + '-' + target.name
         store_layers.append(name)
-        layer = {
-            (name,) + src_key[1:]: (store, trg_key, src_key)
-            for src_key, trg_key in zip(dask.core.flatten(source.__dask_keys__()),
-                                        dask.core.flatten(target.__dask_keys__()))
-        }
+        indices = tuple(range(target.ndim))
+        layer = blockwise(
+            store,
+            name,
+            indices,
+            target.name, indices,
+            source.name, indices,
+            numblocks={
+                source.name: source.numblocks,
+                target.name: target.numblocks
+            }
+        )
         # Replicate behaviour of HighLevelGraph.from_collections
         layers[name] = layer
         dependencies[name] = set()
