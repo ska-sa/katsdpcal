@@ -326,6 +326,9 @@ def rename(array, salt=''):
     This is intended to be used when the backing storage has changed
     underneath, to invalidate any caches.
 
+    TODO: once we're able to upgrade to a newer Dask, use
+    :func:`dask.graph_manipulation.clone`.
+
     Parameters
     ----------
     array : :class:`dask.array.Array`
