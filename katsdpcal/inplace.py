@@ -3,7 +3,6 @@
 Refer to :func:`store_inplace` for details.
 """
 
-import inspect
 import itertools
 import uuid
 
@@ -13,7 +12,8 @@ import dask.base
 import dask.core
 import dask.optimization
 import dask.array.optimization
-from dask.blockwise import Blockwise, blockwise
+import dask.graph_manipulation
+from dask.blockwise import blockwise
 from dask.delayed import Delayed
 from dask.highlevelgraph import HighLevelGraph
 try:
@@ -266,60 +266,6 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     result.compute(optimize_graph=False)
 
 
-def _rename(comp, keymap):
-    """Compute the replacement for a computation by remapping keys through `keymap`."""
-    if _in_graph(keymap, comp):
-        return keymap[comp]
-    elif dask.core.istask(comp):
-        return (comp[0],) + tuple(_rename(c, keymap) for c in comp[1:])
-    elif isinstance(comp, list):
-        return [_rename(c, keymap) for c in comp]
-    else:
-        return comp
-
-
-def _rename_key(key, salt):
-    if isinstance(key, str):
-        return 'rename-' + dask.base.tokenize([key, salt])
-    elif isinstance(key, tuple) and len(key) > 0:
-        return (_rename_key(key[0], salt),) + key[1:]
-    else:
-        raise TypeError('Cannot rename key {!r}'.format(key))
-
-
-def _rename_layer(layer, keymap, salt):
-    """Rename a single layer in a :class:`dask.highlevelgraph.HighLevelGraph`."""
-    if type(layer) is Blockwise:
-        new_indices = tuple(
-            (_rename_key(name, salt) if ind is not None else name, ind)
-            for name, ind in layer.indices)
-        sub_keymap = {key: _rename_key(key, salt) for key in layer.dsk}
-        kwargs = {}
-        # The available arguments depend on the Dask version.
-        sig = inspect.signature(Blockwise)
-        for arg_name in ['output_blocks', 'annotations']:
-            if arg_name in sig.parameters:
-                kwargs[arg_name] = getattr(layer, arg_name)
-        if 'io_deps' in sig.parameters:
-            kwargs['io_deps'] = {
-                _rename_key(key, salt): value for key, value in layer.io_deps.items()
-            }
-        return Blockwise(
-            _rename_key(layer.output, salt),
-            layer.output_indices,
-            _rename_layer(layer.dsk, sub_keymap, salt),
-            new_indices,
-            {_rename_key(name, salt): value for name, value in layer.numblocks.items()},
-            layer.concatenate,
-            layer.new_axes,
-            **kwargs)
-    elif type(layer) is MaterializedLayer:
-        mapping = {keymap[key]: _rename(value, keymap) for (key, value) in layer.mapping.items()}
-        return MaterializedLayer(mapping, layer.annotations)
-    else:
-        return {keymap[key]: _rename(value, keymap) for (key, value) in layer.items()}
-
-
 def rename(array, salt=''):
     """Rewrite the graph in a dask array to rename all the nodes.
 
@@ -335,24 +281,11 @@ def rename(array, salt=''):
         share keys, then calling this function on those arrays with the same
         salt will cause them to again share keys.
     """
-    dsk = array.__dask_graph__()
-    keymap = {key: _rename_key(key, salt) for key in dsk}
-    if isinstance(dsk, HighLevelGraph):
-        layers = {
-            _rename_key(name, salt): _rename_layer(layer, keymap, salt)
-            for name, layer in dsk.layers.items()
-        }
-        dependencies = {
-            _rename_key(name, salt): {_rename_key(dep, salt) for dep in deps}
-            for name, deps in dsk.dependencies.items()
-        }
-        array.dask = HighLevelGraph(layers, dependencies)
-    else:
-        array.dask = _rename_layer(dsk, keymap)
-    new_name = _rename_key(array.name, salt)
+    new_array = dask.graph_manipulation.clone(array, seed=salt)
+    array.dask = new_array.dask
     try:
-        array.name = new_name
+        array.name = new_array.name
     except TypeError:
         # Recent versions of dask (at least since 2021.3.0) require setting
         # _name rather than name.
-        array._name = new_name
+        array._name = new_array.name
