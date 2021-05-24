@@ -11,8 +11,7 @@ import time
 import asyncio
 
 from casacore.tables import table
-import spead2
-from spead2 import send
+import spead2.send.asyncio
 from .calprocs import get_reordering_nopol
 
 import katsdpservices
@@ -23,6 +22,7 @@ import aiokatcp
 import async_timeout
 
 import numpy as np
+import dask.array as da
 from random import random
 import ephem
 
@@ -100,6 +100,7 @@ class SimData:
         self.cbid = None
         self.n_substreams = n_substreams
         # Subclass must provide num_scans
+        self._tx_future = None    # Future for heaps in flight
 
     @classmethod
     def factory(cls, *args, **kwargs):
@@ -203,8 +204,8 @@ class SimData:
             for v, t in value:
                 telstate.add(key, v, ts=t)
 
-    def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
-                      interface=None):
+    async def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
+                            interface=None):
         """Iterates through file and transmits data as a SPEAD stream.
 
         Parameters
@@ -224,13 +225,13 @@ class SimData:
             raise ValueError('Number of endpoints must divide into number of substreams')
         logging.info('TX: Initializing...')
         # configure SPEAD - may need to rate-limit transmission for laptops etc.
-        config = send.StreamConfig(
+        config = spead2.send.StreamConfig(
             max_packet_size=8872, rate=spead_rate, max_heaps=self.n_substreams)
         if interface:
             interface_address = katsdpservices.get_interface_address(interface)
         else:
             interface_address = ''
-        tx = send.UdpStream(
+        tx = spead2.send.asyncio.UdpStream(
             spead2.ThreadPool(),
             [(l0_endpoint.host, l0_endpoint.port) for l0_endpoint in l0_endpoints],
             config,
@@ -242,14 +243,14 @@ class SimData:
             max_scans = self.num_scans
 
         # transmit data timestamp by timestamp and update telescope state
-        self.tx_data(telstate, tx, max_scans)
+        await self.tx_data(telstate, tx, max_scans)
 
     def _substream_slice(self, array, substream):
         """Extract the part of an array appropriate to a specific substream.
 
         Parameters
         ----------
-        array : :class:`np.ndarray`
+        array : array-like
             Array to slice. Frequency must be the first axis.
         substream : int
             Index of the substream
@@ -302,12 +303,16 @@ class SimData:
         key = telstate.join(self.cbid, 'sdp_l0', 'first_timestamp')
         telstate[key] = first_timestamp
 
-    def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
-        """Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
+    async def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
+        """Transmit single SPEAD :class:`~spead2.send.ItemGroup` per server.
+
+        This does not actually wait for the item to be sent. It waits for the
+        previous set of item groups to be sent. This allows for concurrent data
+        preparation and transmission.
 
         Parameters
         ----------
-        tx : :class:`spead2.send.UdpStream`
+        tx : :class:`spead2.send.asyncio.UdpStream`
             SPEAD stream
         ig : :class:`spead2.send.ItemGroup`
             Item group
@@ -339,12 +344,18 @@ class SimData:
             # send all of the descriptors with every heap.
             heap = ig.get_heap(descriptors='all')
             heaps.append(spead2.send.HeapReference(heap, substream_index=endpoint))
-        tx.send_heaps(heaps, spead2.send.GroupMode.ROUND_ROBIN)
+        if self._tx_future is not None:
+            await self._tx_future
+            self._tx_future = None
+        self._tx_future = tx.async_send_heaps(heaps, spead2.send.GroupMode.ROUND_ROBIN)
 
-    def transmit_end(self, tx, ig):
+    async def transmit_end(self, tx, ig):
         """Send end-of-stream notification to each endpoint."""
+        if self._tx_future is not None:
+            await self._tx_future
+            self._tx_future = None
         for i in range(tx.num_substreams):
-            tx.send_heap(ig.get_end(), substream_index=i)
+            await tx.async_send_heap(ig.get_end(), substream_index=i)
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
@@ -549,7 +560,7 @@ class SimDataMS(SimData):
 
         return corrprods, corrprods_nopol
 
-    def tx_data(self, telstate, tx, max_scans):
+    async def tx_data(self, telstate, tx, max_scans):
         """Transmit MS data as a SPEAD stream.
 
         Iterates through MS file and transmits data as a SPEAD stream,
@@ -559,7 +570,7 @@ class SimDataMS(SimData):
         ----------
         telstate : :class:`katsdptelstate.TelescopeState`
             Telescope State
-        tx : :class:`spead2.send.UdpStream`
+        tx : :class:`spead2.send.asyncio.UdpStream`
             SPEAD transmitter
         max_scans : int
             Maximum number of scans to transmit
@@ -574,7 +585,7 @@ class SimDataMS(SimData):
             intents = t.getcol('OBS_MODE')
         # set up ItemGroup for transmission
         flavour = spead2.Flavour(4, 64, 48)
-        ig = send.ItemGroup(flavour=flavour)
+        ig = spead2.send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.to_ut(self.file.getcell('TIME', 0)))
         telstate_cb = telstate.view(self.cbid)
@@ -640,7 +651,7 @@ class SimDataMS(SimData):
                 if 'correlator_data' not in ig:
                     self.setup_ig(ig, tx_vis, tx_flags, tx_weights)
                 # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, time_ind, tx_time, tx_vis, tx_flags, tx_weights)
+                await self.transmit_item(tx, ig, time_ind, tx_time, tx_vis, tx_flags, tx_weights)
 
                 time_ind += 1
 
@@ -648,7 +659,7 @@ class SimDataMS(SimData):
                 break
 
         # end transmission
-        self.transmit_end(tx, ig)
+        await self.transmit_end(tx, ig)
 
         # MS only has 'track' scans?
         logger.info('Track timestamps: %d', time_ind)
@@ -750,7 +761,7 @@ class SimDataKatdal(SimData):
             param_dict[nd_name] = self.file.source.telstate.get_range(nd_name, st=0)
         return param_dict
 
-    def tx_data(self, telstate, tx, max_scans):
+    async def tx_data(self, telstate, tx, max_scans):
         """Transmits katdal dataset as a SPEAD stream.
 
         Iterates through katdal file and transmits data as a SPEAD stream,
@@ -768,7 +779,7 @@ class SimDataKatdal(SimData):
         total_ts, track_ts, slew_ts = 0, 0, 0
 
         flavour = spead2.Flavour(4, 64, 48)
-        ig = send.ItemGroup(flavour=flavour)
+        ig = spead2.send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.file.timestamps[0])
         telstate_cb = telstate.view(self.cbid)
@@ -792,13 +803,11 @@ class SimDataKatdal(SimData):
             if scan_state == 'slew':
                 slew_ts += n_ts
 
-            # transmit the data from this scan, timestamp by timestamp
-            scan_data = self.file.vis[:]
             # Hack to get around flags returning a bool of selected flags
-            flags_indexer = self.file.flags
-            flags_indexer._transforms = []
-            scan_flags = flags_indexer[:]
-            scan_weights = self.file.weights
+            self.file.flags._transforms = []
+            scan_data = self.file.vis.dataset
+            scan_flags = self.file.flags.dataset
+            scan_weights = self.file.weights.dataset
 
             # set up item group, using info from first data item
             if 'correlator_data' not in ig:
@@ -814,16 +823,19 @@ class SimDataKatdal(SimData):
                 # flags for this time stamp, for specified channel range
                 tx_flags = scan_flags[i, :, :]
                 tx_weights = scan_weights[i, :, :]
+                # If we have Dask datasets, it's time to compute them
+                if isinstance(tx_vis, da.Array):
+                    tx_vis, tx_flags, tx_weights = da.compute(tx_vis, tx_flags, tx_weights)
 
                 # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
+                await self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
                 total_ts += 1
 
             if scan_ind+1 == max_scans:
                 break
 
         # end transmission
-        self.transmit_end(tx, ig)
+        await self.transmit_end(tx, ig)
 
         logger.info('Track timestamps: %d', track_ts)
         logger.info('Slew timestamps:  %d', slew_ts)

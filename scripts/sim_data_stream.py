@@ -58,8 +58,8 @@ async def main():
         logger.info("Issuing capture-init")
         await simdata.capture_init()
         logger.info("TX: start.")
-        simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans,
-                              interface=opts.l0_interface)
+        await simdata.data_to_spead(telstate, opts.l0_spead, opts.l0_rate, max_scans=opts.max_scans,
+                                    interface=opts.l0_interface)
         logger.info("TX: ended.")
         logger.info("Issuing capture-done")
         await simdata.capture_done()
