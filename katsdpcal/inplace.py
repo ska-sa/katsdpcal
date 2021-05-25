@@ -3,14 +3,26 @@
 Refer to :func:`store_inplace` for details.
 """
 
+import inspect
+import itertools
+import uuid
+
 import numpy as np
 import dask.array as da
 import dask.base
 import dask.core
 import dask.optimization
 import dask.array.optimization
-from dask.blockwise import Blockwise
+from dask.blockwise import Blockwise, blockwise
+from dask.delayed import Delayed
 from dask.highlevelgraph import HighLevelGraph
+try:
+    from dask.highlevelgraph import MaterializedLayer
+except ImportError:
+    # Older versions of dask don't have this. We only use it for an instance
+    # check, so a dummy implementation suffices.
+    class MaterializedLayer:
+        pass
 
 
 class _ArrayDependency:
@@ -23,6 +35,7 @@ class _ArrayDependency:
     An "elementwise" dependency is one where the output of the task has the
     same shape as the input and the dependencies are elementwise.
     """
+
     def __init__(self, array, elementwise):
         self.array = array
         self.elementwise = elementwise
@@ -65,8 +78,20 @@ def _in_graph(dsk, key):
         return False
 
 
-def _safe_in_place(dsk, source_keys, target_keys):
-    """Safety check on :func:`safe_in_place`. It uses the following algorithm:
+def _is_getter(dsk, v):
+    """Check whether an element of a graph is a getter task."""
+    # Getters can also have length 5 to pass optional arguments. For
+    # now we ignore these to avoid dealing with locks. We also exclude
+    # more complicated cases where the parameters are not simply a
+    # node and a literal expression.
+    return (type(v) is tuple and len(v) == 3
+            and v[0] in da.optimization.GETTERS
+            and _in_graph(dsk, v[1])
+            and not dask.core.has_tasks(dsk, v[2]))
+
+
+def _safe_inplace(sources, targets):
+    """Safety check on :func:`store_inplace`. It uses the following algorithm:
 
     1. For each key in the graph, determine a set of :class:`_ArrayDependency`s that
     contribute to it. In most cases this is just all arrays that are reachable
@@ -78,6 +103,19 @@ def _safe_in_place(dsk, source_keys, target_keys):
     2. If a source and target corresponding to *different* chunks depend on
     overlapping numpy arrays, the operation is unsafe.
     """
+    # Create a graph with all the sources and targets in it
+    dsk = HighLevelGraph.from_collections('store', {}, sources + targets)
+    source_keys = list(itertools.chain.from_iterable(
+        dask.core.flatten(source.__dask_keys__())
+        for source in sources
+    ))
+    target_keys = list(itertools.chain.from_iterable(
+        dask.core.flatten(target.__dask_keys__())
+        for target in targets
+    ))
+    if len(set(target_keys)) < len(target_keys):
+        raise ValueError('The target contains duplicate keys')
+
     dependencies = dict((k, dask.optimization.get_dependencies(dsk, k)) for k in dsk)
     # For each key, contains a set of _ArrayDependencys
     arrays = {}
@@ -89,14 +127,7 @@ def _safe_in_place(dsk, source_keys, target_keys):
             arrays[k] = arrays[v]
         else:
             out = set()
-            # Getters can also have length 5 to pass optional arguments. For
-            # now we ignore these to avoid dealing with locks. We also exclude
-            # more complicated cases where the parameters are not simply a
-            # node and a literal expression.
-            is_getter = (type(v) is tuple and len(v) == 3
-                         and v[0] in da.optimization.GETTERS
-                         and _in_graph(dsk, v[1])
-                         and not dask.core.has_tasks(dsk, v[2]))
+            is_getter = _is_getter(dsk, v)
             for dep in dependencies[k]:
                 for array_dep in arrays[dep]:
                     if is_getter:
@@ -108,7 +139,7 @@ def _safe_in_place(dsk, source_keys, target_keys):
             arrays[k] = out
     for key in target_keys:
         if len(arrays[key]) != 1 or not next(iter(arrays[key])).elementwise:
-            raise ValueError('Target key {} does not directly map a numpy array')
+            raise ValueError(f'Target key {key} does not directly map a numpy array')
     for i, src_key in enumerate(source_keys):
         for j, trg_key in enumerate(target_keys):
             if i != j:
@@ -175,9 +206,6 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     ValueError
         if the sources and targets have the wrong type or don't match
     """
-    def store(target, source):
-        target[:] = source
-
     if isinstance(sources, da.Array):
         sources = [sources]
         targets = [targets]
@@ -187,31 +215,55 @@ def store_inplace(sources, targets, safe=True, **kwargs):
     if any(not isinstance(t, da.Array) for t in targets):
         raise ValueError('All targets must be instances of da.Array')
 
-    dsk = {}
-    src_keys = []
-    trg_keys = []
-    out_keys = []
-    for source, target in zip(sources, targets):
-        if source.shape != target.shape:
-            raise ValueError('Source and target have different shapes')
-        source_chunked = source.rechunk(target.chunks)
-        slices = da.core.slices_from_chunks(target.chunks)
-        name = 'store-' + source_chunked.name
-        for src_key, trg_key, slc in zip(dask.core.flatten(source_chunked.__dask_keys__()),
-                                         dask.core.flatten(target.__dask_keys__()),
-                                         slices):
-            key = (name,) + src_key[1:]
-            dsk[key] = (store, trg_key, src_key)
-            src_keys.append(src_key)
-            trg_keys.append(trg_key)
-            out_keys.append(key)
-        dsk.update(source_chunked.__dask_graph__())
-        dsk.update(target.__dask_graph__())
-    if len(set(trg_keys)) < len(trg_keys):
-        raise ValueError('The target contains duplicate keys')
+    chunked_sources = [
+        source.rechunk(target.chunks) for source, target in zip(sources, targets)
+    ]
     if safe:
-        _safe_in_place(dsk, src_keys, trg_keys)
-    dask.base.compute_as_if_collection(da.Array, dsk, out_keys)
+        _safe_inplace(chunked_sources, targets)
+
+    def store(target, source):
+        target[:] = source
+
+    out_keys = []
+    layers = {}
+    dependencies = {}
+    store_layers = []
+    for source, target in zip(chunked_sources, targets):
+        name = 'store-' + source.name + '-' + target.name
+        store_layers.append(name)
+        indices = tuple(range(target.ndim))
+        layer = blockwise(
+            store,
+            name,
+            indices,
+            target.name, indices,
+            source.name, indices,
+            numblocks={
+                source.name: source.numblocks,
+                target.name: target.numblocks
+            }
+        )
+        # Replicate behaviour of HighLevelGraph.from_collections
+        layers[name] = layer
+        dependencies[name] = set()
+        for collection in source, target:
+            graph = collection.__dask_graph__()
+            layers.update(graph.layers)
+            dependencies.update(graph.dependencies)
+            dependencies[name].update(collection.__dask_layers__())
+        out_keys.extend(layer.keys())
+
+    # We don't have any outputs from storing, so to form a dask collection
+    # we'll gather up all the output keys into one "root" key and form a
+    # Delayed collection from it. This is similar to what da.store does.
+    root_key = 'store-root-' + str(uuid.uuid4())
+    layers[root_key] = {root_key: out_keys}
+    dependencies[root_key] = set(store_layers)
+    graph = HighLevelGraph(layers, dependencies)
+    # Ensure that array-appropriate optimizations are performed.
+    graph = da.Array.__dask_optimize__(graph, [root_key])
+    result = Delayed(root_key, graph)
+    result.compute(optimize_graph=False)
 
 
 def _rename(comp, keymap):
@@ -237,11 +289,21 @@ def _rename_key(key, salt):
 
 def _rename_layer(layer, keymap, salt):
     """Rename a single layer in a :class:`dask.highlevelgraph.HighLevelGraph`."""
-    if isinstance(layer, Blockwise):
+    if type(layer) is Blockwise:
         new_indices = tuple(
             (_rename_key(name, salt) if ind is not None else name, ind)
             for name, ind in layer.indices)
         sub_keymap = {key: _rename_key(key, salt) for key in layer.dsk}
+        kwargs = {}
+        # The available arguments depend on the Dask version.
+        sig = inspect.signature(Blockwise)
+        for arg_name in ['output_blocks', 'annotations']:
+            if arg_name in sig.parameters:
+                kwargs[arg_name] = getattr(layer, arg_name)
+        if 'io_deps' in sig.parameters:
+            kwargs['io_deps'] = {
+                _rename_key(key, salt): value for key, value in layer.io_deps.items()
+            }
         return Blockwise(
             _rename_key(layer.output, salt),
             layer.output_indices,
@@ -249,7 +311,11 @@ def _rename_layer(layer, keymap, salt):
             new_indices,
             {_rename_key(name, salt): value for name, value in layer.numblocks.items()},
             layer.concatenate,
-            layer.new_axes)
+            layer.new_axes,
+            **kwargs)
+    elif type(layer) is MaterializedLayer:
+        mapping = {keymap[key]: _rename(value, keymap) for (key, value) in layer.mapping.items()}
+        return MaterializedLayer(mapping, layer.annotations)
     else:
         return {keymap[key]: _rename(value, keymap) for (key, value) in layer.items()}
 
@@ -259,6 +325,9 @@ def rename(array, salt=''):
 
     This is intended to be used when the backing storage has changed
     underneath, to invalidate any caches.
+
+    TODO: once we're able to upgrade to a newer Dask, use
+    :func:`dask.graph_manipulation.clone`.
 
     Parameters
     ----------

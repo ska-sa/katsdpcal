@@ -3,18 +3,27 @@
 from nose.tools import assert_raises, assert_false
 import numpy as np
 import dask.array as da
+import dask.distributed
 
 from katsdpcal import inplace
 
 
 class TestStoreInplace:
     def setup(self):
+        self.cluster = dask.distributed.LocalCluster(
+            n_workers=1, threads_per_worker=4,
+            processes=False, memory_limit=0)
+        self.client = dask.distributed.Client(self.cluster)
         # Variables with n prefix are numpy arrays
         self.na = np.arange(36).reshape(6, 6)
         self.nx = np.arange(24).reshape(6, 4)
         self.a = da.from_array(self.na, chunks=(3, 2), name=False)
         self.b = da.ones(6, chunks=(2,))
         self.x = da.from_array(self.nx, chunks=(3, 2), name=False)
+
+    def teardown(self):
+        self.client.close()
+        self.cluster.close()
 
     def test_simple(self):
         orig = self.na.copy()
