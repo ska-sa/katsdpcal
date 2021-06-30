@@ -754,6 +754,16 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_sync_time'] = 0.0
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
+        # katsdpmodel keys
+        stream = self.file.source.telstate.get('src_streams')[0]
+        instrument = stream.split(self.file.source.telstate.SEPARATOR)[0]
+        band_mask_key = self.file.source.telstate.join(instrument, 'antenna_channelised_voltage',
+                                                       'model', 'band_mask', 'fixed')
+        model_keys = [band_mask_key, 'sdp_model_base_url',
+                      'model_rfi_mask_fixed', 'sdp_l0_src_streams']
+        for key in model_keys:
+            param_dict[key] = self.file.source.telstate.get(key)
+
         # antenna descriptions and noise diodes for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
