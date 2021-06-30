@@ -1,0 +1,33 @@
+# parameter file for MeerKAT S wide band
+
+# delay calibration
+k_solint : 5.0                       # nominal pre-k g solution interval, seconds
+k_chan_sample : 1                    # channel sampling for pre-K BP soln
+k_bfreq : 2010.60, 2517.60, 2876.46  # start frequency of first channel for K fit per subband, MHz
+k_efreq : 2096.08, 2603.40, 2961.90  # end frequency of last channel for K fit per subband , MHz
+subband_bfreq : 1750.00, 1968.75, 2406.25     # start frequency range for per subband parameters
+kcross_chanave : 1                   # number of channels to average together to kcross solution
+
+# bandpass calibration
+bp_solint : 5.0                      # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+g_solint: 5.0                        # nominal g solution interval, seconds
+g_bfreq : 2010.60, 2517.60, 2876.46  # start frequency of first channel for g fit per subband, MHz
+g_efreq : 2096.08, 2603.40, 2961.90  # end frequency of last channel for g fit per subband, MHz
+
+# Flagging
+rfi_calib_nsigma : 4.5               # Number of sigma to reject outliers for calibrators
+rfi_targ_nsigma : 7.0                # Number of sigma to reject outliers for targets
+rfi_windows_post_average : 1,2,4,8   # Size of windows for SumThreshold, post-avg channels 
+rfi_average_hz : 106811              # Amount to average in frequency before flagging, Hz
+rfi_targ_spike_width_hz : 4272460    # 1sigma frequency width of smoothing Gaussian on final target, Hz
+rfi_calib_spike_width_hz : 2136230   # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
+rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
+rfi_extend_hz : 400543               # Convolution width in frequency to extend flags, Hz
+rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
+
+# HV phase 'to sky' spline, placeholer spline has coefs of zero to be updated in the future
+bcross_sky_knots : 1750, 1968, 2188, 2628, 3124, 3294, 3394, 3500      # knots in MHz
+bcross_sky_coefs : 0, 0, 0, 0, 0, 0, 0, 0, 0                           # coefs of fit (in degrees)
+bcross_sky_k : 3

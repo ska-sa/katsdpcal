@@ -1,4 +1,4 @@
-# parameter file for MeerKAT L band
+# parameter file for MeerKAT L wide band
 
 # delay calibration
 k_solint : 5.0                       # nominal pre-k g solution interval, seconds
