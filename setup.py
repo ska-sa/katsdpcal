@@ -34,7 +34,7 @@ setup(
         "dask[array,distributed]>=1.1.0", "distributed>=2.2.0", "bokeh",
         "attrs", "sortedcontainers",
         "aiokatcp", "astropy", "async_timeout",
-        "katpoint", "katdal", "katsdptelstate", "katsdpservices[argparse,aiomonitor]",
+        "katpoint", "katdal", "katsdpmodels[requests]", "katsdptelstate", "katsdpservices[argparse,aiomonitor]",
         "katsdpsigproc", "spead2>=3.0.0", "docutils", "matplotlib>=2",
         "jsonschema"
     ],

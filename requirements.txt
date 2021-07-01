@@ -24,6 +24,7 @@ zict==2.0.0             # for distributed
 
 katdal @ git+https://github.com/ska-sa/katdal
 katpoint @ git+https://github.com/ska-sa/katpoint
+katsdpmodels[requests] @ git+https://github.com/ska-sa/katsdpmodels
 katsdpservices[argparse,aiomonitor] @ git+https://github.com/ska-sa/katsdpservices
 katsdpsigproc @ git+https://github.com/ska-sa/katsdpsigproc
 katsdptelstate @ git+https://github.com/ska-sa/katsdptelstate
