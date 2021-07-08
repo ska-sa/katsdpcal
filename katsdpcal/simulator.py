@@ -755,20 +755,22 @@ class SimDataKatdal(SimData):
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
         # katsdpmodel keys
-        stream = self.file.source.telstate.get('src_streams')[0]
-        instrument = stream.split(self.file.source.telstate.SEPARATOR)[0]
-        band_mask_key = self.file.source.telstate.join(instrument, 'antenna_channelised_voltage',
-                                                       'model', 'band_mask', 'fixed')
+        telstate = self.file.source.telstate
+        correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
+        f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
+
+        band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
         model_keys = [band_mask_key, 'sdp_model_base_url',
-                      'model_rfi_mask_fixed', 'sdp_l0_src_streams']
+                      'model_rfi_mask_fixed', 'sdp_l0_src_streams',
+                      telstate.join(correlator_stream, 'src_streams')]
         for key in model_keys:
-            param_dict[key] = self.file.source.telstate.get(key)
+            param_dict[key] = telstate[key]
 
         # antenna descriptions and noise diodes for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
-            param_dict[nd_name] = self.file.source.telstate.get_range(nd_name, st=0)
+            param_dict[nd_name] = telstate.get_range(nd_name, st=0)
         return param_dict
 
     async def tx_data(self, telstate, tx, max_scans):

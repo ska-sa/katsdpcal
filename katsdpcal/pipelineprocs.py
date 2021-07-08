@@ -227,16 +227,16 @@ def register_argparse_parameters(parser):
                             metavar=parameter.metavar)
 
 
-def _check_blank_sol(parameters):
-    blank_sol_win = []
+def _check_blank_freqwin(parameters):
+    blank_freqwin = []
     for prefix in ['k', 'g']:
         try:
             if parameters[prefix + '_bfreq'] == parameters[prefix + '_efreq'] == []:
-                blank_sol_win.append(prefix)
+                blank_freqwin.append(prefix)
         # in case solution windows are provided per channel, e.g 'g_bchan'
         except(KeyError):
             pass
-    return blank_sol_win
+    return blank_freqwin
 
 
 def _get_rfi_mask(telstate_l0):
@@ -247,16 +247,15 @@ def _get_rfi_mask(telstate_l0):
                                          katsdpmodels.rfi_mask.RFIMask)
             return rfi_mask_model
         except (requests.ConnectionError, katsdpmodels.models.ModelError) as exc:
-            logger.warning('Failed to load rfi_mask model: s', exc)
+            logger.warning('Failed to load rfi_mask model: %s', exc)
             return None
 
 
 def _get_band_mask(telstate_l0):
     with katsdpmodels.fetch.requests.TelescopeStateFetcher(telstate_l0) as fetcher:
-        stream = telstate_l0['src_streams']
-        instrument = stream[0].split(telstate_l0.SEPARATOR)[0]
-        cbf = telstate_l0.join(instrument, 'antenna', 'channelised', 'voltage')
-        telstate_cbf = telstate_l0.root().view(cbf)
+        correlator_stream = telstate_l0['src_streams'][0]
+        f_engine_stream = telstate_l0.view(correlator_stream)['src_streams'][0]
+        telstate_cbf = telstate_l0.view(f_engine_stream, exclusive=True)
 
         band_mask_model_key = telstate_l0.join('model', 'band_mask', 'fixed')
         try:
@@ -265,7 +264,7 @@ def _get_band_mask(telstate_l0):
                                           telstate=telstate_cbf)
             return band_mask_model
         except (requests.ConnectionError, katsdpmodels.models.ModelError) as exc:
-            logger.warning('Failed to load band_mask model: s', exc)
+            logger.warning('Failed to load band_mask model: %s', exc)
             return None
 
 
@@ -278,36 +277,39 @@ def get_static_mask(telstate_l0, channel_freqs, length=100.0):
         Telescope state with a view of the L0 attributes
     channel_freqs : :class:`np.ndarray`
         frequencies in Hz
-    lengths, optional : float
-        baseline lengths in m
+    length, optional : float
+        baseline length in m
     """
     rfi_mask = _get_rfi_mask(telstate_l0)
     band_mask = _get_band_mask(telstate_l0)
 
-    channel_width = channel_freqs[1] - channel_freqs[0]
+    bandwidth = telstate_l0['bandwidth']
+    channel_width = bandwidth / telstate_l0['n_chans']
     if rfi_mask is None:
         static_mask = np.zeros((1, len(channel_freqs)))
     else:
-        lengths = np.array([length])
-        static_mask = rfi_mask.is_masked(channel_freqs[np.newaxis, :] * u.Hz,
-                                         lengths[:, np.newaxis] * u.m,
+        static_mask = rfi_mask.is_masked(channel_freqs[np.newaxis, :],
+                                         length * u.m,
                                          channel_width * u.Hz)
     if band_mask is not None:
-        bandwidth = telstate_l0['bandwidth']
         center = telstate_l0['center_freq']
         band_spw = katsdpmodels.band_mask.SpectralWindow(bandwidth * u.Hz, center * u.Hz)
-        mask = band_mask.is_masked(band_spw, channel_freqs * u.Hz, channel_width * u.Hz)
+        mask = band_mask.is_masked(band_spw, channel_freqs, channel_width * u.Hz)
         static_mask |= mask[np.newaxis, :]
     return static_mask[0]
 
 
 def _consecutive(index, stepsize=1):
-    """ Partition index into list of arrays of consecutive indices """
+    """Partition index into list of arrays of consecutive indices.
+
+    From https://stackoverflow.com/a/7353335
+    """
     return np.split(index, np.where(np.diff(index) != stepsize)[0]+1)
 
 
-def parameters_for_blank_sol(parameters, channel_freqs, static_mask, prefix):
-    """Select appropriate solutions parameters for for the given solution types.
+def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix):
+    """Set the solution interval parameters (e.g k_bfreq) for the solutions in
+    `prefix` by selecting an unmasked region of the spectrum.
 
     Set the solution interval parameters (e.g. k_bfreq). The interval is selected by
     finding the largest interval of channels which is not masked by the static mask
@@ -331,7 +333,6 @@ def parameters_for_blank_sol(parameters, channel_freqs, static_mask, prefix):
     n_chans = len(channel_freqs)
     servers = parameters['servers']
 
-    len_window = 0
     chan_window = []
     # For each server get the windows of consecutive unmasked channels
     # Iterate in reverse to select the lower frequency range in the case of a tie
@@ -344,36 +345,37 @@ def parameters_for_blank_sol(parameters, channel_freqs, static_mask, prefix):
         con_unmasked = _consecutive(index_unmasked + n_chans * server_id // servers)
         # Update the window selection if it is larger than the previously selected window.
         for window in con_unmasked:
-            if len(window) >= len_window:
-                len_window = len(window)
+            if len(window) >= len(chan_window):
                 chan_window = window
 
-    # This default gain window size for narrowband (with 107kHz bandwidth) is half the size
-    # used in wideband to allow it to fit within a single server in the default 32k, 4 server case
+    # This default gain window size for narrowband (chan_width = 3.265 kHz * 6400 = 20.9 MHz) is
+    # half the size used in wideband (41.8 MHz) to allow it to fit within a single server
+    # in the default 32k, 4 server case
     max_chans_per_server = len(channel_freqs) // servers
-    default_chan_width = min(6400, max_chans_per_server)
-    if len_window >= default_chan_width:
-        bchan = chan_window[len_window // 2] - default_chan_width // 2
-        echan = chan_window[len_window // 2] + default_chan_width // 2
+    default_chan_count = min(6400, max_chans_per_server)
+    len_window = len(chan_window)
+    if len_window >= default_chan_count:
+        bchan = chan_window[len_window // 2] - default_chan_count // 2
+        echan = chan_window[len_window // 2] + default_chan_count // 2
 
     # Select the full interval if it is narrower than the default of 6400 chans
     else:
         bchan = chan_window[0]
         echan = chan_window[-1]
-        actual_width = (channel_freqs[echan] - channel_freqs[bchan]) / 1e6
-        max_chans_per_server = len(channel_freqs) // servers
-        default_width = (channel_freqs[default_chan_width] - channel_freqs[0]) / 1e6
+        actual_sol_bandwidth = (channel_freqs[echan] - channel_freqs[bchan]).to(u.MHz)
+        default_sol_bandwidth = (channel_freqs[default_chan_count] - channel_freqs[0]).to(u.MHz)
         logger.warning("The selected gain window is narrower (%.3f MHz)"
-                       " than the default (%.3f MHz)", actual_width, default_width)
+                       " than the default (%.3f MHz)", actual_sol_bandwidth.value,
+                       default_sol_bandwidth.value)
 
     # Parameters are in units of MHz
     for p in prefix:
         for key in [p + '_bfreq']:
-            parameters[key] = [channel_freqs[bchan] / 1e6]
+            parameters[key] = [channel_freqs[bchan].to(u.MHz).value]
         for key in [p + '_efreq']:
-            parameters[key] = [channel_freqs[echan] / 1e6]
+            parameters[key] = [channel_freqs[echan].to(u.MHz).value]
         logger.info('The %s solution interval is set to %.3f - %.3f MHz',
-                    p, channel_freqs[bchan] / 1e6, channel_freqs[echan] / 1e6)
+                    p, channel_freqs[bchan].to(u.MHz).value, channel_freqs[echan].to(u.MHz).value)
 
 
 def finalise_parameters(parameters, telstate_l0, servers, server_id):
@@ -415,11 +417,12 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
                          .format(n_chans, servers))
     center_freq = telstate_l0['center_freq']
     bandwidth = telstate_l0['bandwidth']
-    channel_freqs = center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans // 2)
+    channel_freqs = (center_freq + (bandwidth / n_chans) * (np.arange(n_chans) - n_chans // 2)) \
+        * u.Hz
     channel_slice = slice(n_chans * server_id // servers,
                           n_chans * (server_id + 1) // servers)
-    parameters['channel_freqs_all'] = channel_freqs
-    parameters['channel_freqs'] = channel_freqs[channel_slice]
+    parameters['channel_freqs_all'] = channel_freqs.value
+    parameters['channel_freqs'] = channel_freqs.value[channel_slice]
     parameters['channel_slice'] = channel_slice
     parameters['servers'] = servers
     parameters['server_id'] = server_id
@@ -450,12 +453,12 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     # check whether the solution windows are blank/not set for the k and g solutions
     # select a window if it is not provided. This is to support narrowband where the
     # frequency interval is variable.
-    blank_sol = _check_blank_sol(parameters)
+    blank_freqwin = _check_blank_freqwin(parameters)
 
-    if any(blank_sol):
+    if any(blank_freqwin):
         # select missing solution interval
         static_mask = get_static_mask(telstate_l0, channel_freqs)
-        parameters_for_blank_sol(parameters, channel_freqs, static_mask, blank_sol)
+        parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, blank_freqwin)
 
     # select appropriate parameters for the given frequency range
     parameters_for_freq(parameters, channel_freqs)
@@ -566,18 +569,18 @@ def parameters_to_channels(parameters, channel_freqs):
     for chan, freq in chans_to_freq.items():
         if freq in parameters:
             if freq.endswith('bfreq'):
-                bfreq_hz = parameters[freq] * 1e6
+                bfreq_hz = parameters[freq] * 1e6 * u.Hz
                 parameters[chan] = channel_freqs.searchsorted(bfreq_hz)
             elif freq.endswith('efreq'):
-                efreq_hz = parameters[freq] * 1e6
+                efreq_hz = parameters[freq] * 1e6 * u.Hz
                 parameters[chan] = channel_freqs.searchsorted(efreq_hz) - 1
             elif freq in ['rfi_average_hz',
                           'rfi_targ_spike_width_hz',
                           'rfi_calib_spike_width_hz']:
-                parameters[chan] = int(np.ceil(parameters[freq] / chan_width))
+                parameters[chan] = int(np.ceil(parameters[freq] / chan_width.value))
             elif freq == 'rfi_extend_hz':
                 # 'rfi_extend_freq' must be odd no of channels
-                odd_no_chans = np.ceil(parameters[freq] / chan_width) // 2 * 2 + 1
+                odd_no_chans = np.ceil(parameters[freq] / chan_width.value) // 2 * 2 + 1
                 parameters[chan] = int(max(3, odd_no_chans))
             elif freq == 'rfi_windows_post_average':
                 # flagger expects threshold window sizes unaveraged channel widths
@@ -601,7 +604,7 @@ def parameters_for_freq(parameters, channel_freqs):
         if len(parameters[key]) > 1:
             try:
                 subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
-                                   if min(channel_freqs/1e6) >= s_freq])
+                                   if min(channel_freqs).to(u.MHz).value >= s_freq])
                 parameters[key] = parameters[key][subband_idx]
             except KeyError:
                 logger.error("If '%s' is a list of values,"
