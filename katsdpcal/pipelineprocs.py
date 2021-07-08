@@ -254,7 +254,7 @@ def _get_rfi_mask(telstate_l0):
 def _get_band_mask(telstate_l0):
     with katsdpmodels.fetch.requests.TelescopeStateFetcher(telstate_l0) as fetcher:
         correlator_stream = telstate_l0['src_streams'][0]
-        f_engine_stream = telstate_l0.view(correlator_stream)['src_streams'][0]
+        f_engine_stream = telstate_l0.view(correlator_stream, exclusive=True)['src_streams'][0]
         telstate_cbf = telstate_l0.view(f_engine_stream, exclusive=True)
 
         band_mask_model_key = telstate_l0.join('model', 'band_mask', 'fixed')
@@ -275,8 +275,8 @@ def get_static_mask(telstate_l0, channel_freqs, length=100.0):
     -----------
     telstate_l0 : :class:`katsdptelstate.TelescopeState`
         Telescope state with a view of the L0 attributes
-    channel_freqs : :class:`np.ndarray`
-        frequencies in Hz
+    channel_freqs : :class:`~astropy.units.Quantity`
+        frequencies
     length, optional : float
         baseline length in m
     """
@@ -288,15 +288,14 @@ def get_static_mask(telstate_l0, channel_freqs, length=100.0):
     if rfi_mask is None:
         static_mask = np.zeros((1, len(channel_freqs)))
     else:
-        static_mask = rfi_mask.is_masked(channel_freqs[np.newaxis, :],
-                                         length * u.m,
-                                         channel_width * u.Hz)
+        static_mask = rfi_mask.is_masked(channel_freqs, length * u.m, channel_width * u.Hz)
+
     if band_mask is not None:
         center = telstate_l0['center_freq']
         band_spw = katsdpmodels.band_mask.SpectralWindow(bandwidth * u.Hz, center * u.Hz)
         mask = band_mask.is_masked(band_spw, channel_freqs, channel_width * u.Hz)
-        static_mask |= mask[np.newaxis, :]
-    return static_mask[0]
+        static_mask |= mask
+    return static_mask
 
 
 def _consecutive(index, stepsize=1):
@@ -352,28 +351,28 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
     # half the size used in wideband (41.8 MHz) to allow it to fit within a single server
     # in the default 32k, 4 server case
     max_chans_per_server = len(channel_freqs) // servers
-    default_chan_count = min(6400, max_chans_per_server)
+    default_width_chans = min(6400, max_chans_per_server)
     len_window = len(chan_window)
-    if len_window >= default_chan_count:
-        bchan = chan_window[len_window // 2] - default_chan_count // 2
-        echan = chan_window[len_window // 2] + default_chan_count // 2
+    if len_window >= default_width_chans:
+        bchan = chan_window[len_window // 2] - default_width_chans // 2
+        echan = chan_window[len_window // 2] + default_width_chans // 2
 
     # Select the full interval if it is narrower than the default of 6400 chans
     else:
         bchan = chan_window[0]
         echan = chan_window[-1]
         actual_sol_bandwidth = (channel_freqs[echan] - channel_freqs[bchan]).to(u.MHz)
-        default_sol_bandwidth = (channel_freqs[default_chan_count] - channel_freqs[0]).to(u.MHz)
+        default_sol_bandwidth = (channel_freqs[default_width_chans] - channel_freqs[0]).to(u.MHz)
         logger.warning("The selected gain window is narrower (%.3f MHz)"
                        " than the default (%.3f MHz)", actual_sol_bandwidth.value,
                        default_sol_bandwidth.value)
 
     # Parameters are in units of MHz
     for p in prefix:
-        parameters[p + '_bfreq'] = [channel_freqs[bchan].to(u.MHz).value]
-        parameters[p + '_efreq'] = [channel_freqs[echan].to(u.MHz).value]
+        parameters[p + '_bfreq'] = [channel_freqs[bchan].to_value(u.MHz)]
+        parameters[p + '_efreq'] = [channel_freqs[echan].to_value(u.MHz)]
         logger.info('The %s solution interval is set to %.3f - %.3f MHz',
-                    p, channel_freqs[bchan].to(u.MHz).value, channel_freqs[echan].to(u.MHz).value)
+                    p, channel_freqs[bchan].to_value(u.MHz), channel_freqs[echan].to_value(u.MHz))
 
 
 def finalise_parameters(parameters, telstate_l0, servers, server_id):
@@ -533,7 +532,7 @@ def parameters_to_channels(parameters, channel_freqs):
     parameters : dict
         Dictionary mapping parameter names from :const:`USER_PARAMS_CHANS` +
         :const:`USER_PARAMS_FREQS`
-    channel_freqs : np.ndarray,
+    channel_freqs : :class:`~astropy.units.Quantity`
         frequency of channels
 
     Raises
@@ -567,10 +566,10 @@ def parameters_to_channels(parameters, channel_freqs):
     for chan, freq in chans_to_freq.items():
         if freq in parameters:
             if freq.endswith('bfreq'):
-                bfreq_hz = parameters[freq] * 1e6 * u.Hz
+                bfreq_hz = parameters[freq] * u.MHz
                 parameters[chan] = channel_freqs.searchsorted(bfreq_hz)
             elif freq.endswith('efreq'):
-                efreq_hz = parameters[freq] * 1e6 * u.Hz
+                efreq_hz = parameters[freq] * u.MHz
                 parameters[chan] = channel_freqs.searchsorted(efreq_hz) - 1
             elif freq in ['rfi_average_hz',
                           'rfi_targ_spike_width_hz',
@@ -602,7 +601,7 @@ def parameters_for_freq(parameters, channel_freqs):
         if len(parameters[key]) > 1:
             try:
                 subband_idx = max([i for i, s_freq in enumerate(parameters['subband_bfreq'])
-                                   if min(channel_freqs).to(u.MHz).value >= s_freq])
+                                   if min(channel_freqs) >= s_freq * u.MHz])
                 parameters[key] = parameters[key][subband_idx]
             except KeyError:
                 logger.error("If '%s' is a list of values,"
