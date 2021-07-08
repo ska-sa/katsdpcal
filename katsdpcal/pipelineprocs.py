@@ -370,10 +370,8 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
 
     # Parameters are in units of MHz
     for p in prefix:
-        for key in [p + '_bfreq']:
-            parameters[key] = [channel_freqs[bchan].to(u.MHz).value]
-        for key in [p + '_efreq']:
-            parameters[key] = [channel_freqs[echan].to(u.MHz).value]
+        parameters[p + '_bfreq'] = [channel_freqs[bchan].to(u.MHz).value]
+        parameters[p + '_efreq'] = [channel_freqs[echan].to(u.MHz).value]
         logger.info('The %s solution interval is set to %.3f - %.3f MHz',
                     p, channel_freqs[bchan].to(u.MHz).value, channel_freqs[echan].to(u.MHz).value)
 
