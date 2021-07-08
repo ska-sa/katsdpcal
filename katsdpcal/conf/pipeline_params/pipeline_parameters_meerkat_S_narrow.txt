@@ -21,7 +21,7 @@ rfi_targ_nsigma : 7.0                # Number of sigma to reject outliers for ta
 rfi_windows_post_average : 1,4,8,16  # Size of windows for SumThreshold, post-avg channels 
 rfi_average_hz : 13351               # Amount to average in frequency before flagging, Hz
 rfi_targ_spike_width_hz : 4272460    # 1sigma frequency width of smoothing Gaussian on final target, Hz
-rfi_calib_spike_width_hz : 42727460  # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
+rfi_calib_spike_width_hz : 4272460  # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
 rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
 rfi_extend_hz : 100135               # Convolution width in frequency to extend flags, Hz
 rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
