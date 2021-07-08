@@ -1612,12 +1612,11 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             # Obtain reference antenna selected by the pipeline
             refant_name = ts.get('refant')
             if refant_name is not None:
-                refant_index = parameters['antenna_names'].index(refant_name)
+                refant_index = antenna_names.index(refant_name)
                 parameters['refant'] = refant_name
                 parameters['refant_index'] = refant_index
 
                 # label the reference antenna in the list of antennas
-                refant_name = antenna_names[refant_index]
                 antenna_names[refant_index] += ', refant'
                 name_width = len(antenna_names[refant_index])
                 antenna_names = [name.ljust(name_width) for name in antenna_names]
