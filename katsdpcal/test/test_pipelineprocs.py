@@ -87,7 +87,7 @@ class TestParametersToChannels(unittest.TestCase):
             pipelineprocs.parameters_to_channels(parameters, self.freqs)
 
 
-class TestParametersForBlankSol(unittest.TestCase):
+class TestParametersForBlankFreqWin(unittest.TestCase):
     def setUp(self):
         self.parameters = {
             'k_bfreq': [],
