@@ -7,9 +7,11 @@ import tempfile
 import shutil
 
 import numpy as np
+import astropy.units as u
 
 import katsdptelstate
 import katpoint
+from unittest import mock
 
 from .. import pipelineprocs
 
@@ -48,7 +50,7 @@ class TestParametersToChannels(unittest.TestCase):
             'rfi_extend_hz': 391845,
             'rfi_windows_post_average': [1, 2, 4, 8]
         }
-        self.freqs = np.arange(32768) / 32768 * 856000000.0 + 856000000.0
+        self.freqs = (np.arange(32768) / 32768 * 856000000.0 + 856000000.0) * u.Hz
 
     def test_freq_params(self):
         parameters = self.parameters.copy()
@@ -83,6 +85,47 @@ class TestParametersToChannels(unittest.TestCase):
         del parameters['k_bfreq']
         with self.assertRaises(ValueError):
             pipelineprocs.parameters_to_channels(parameters, self.freqs)
+
+
+class TestParametersForBlankFreqWin(unittest.TestCase):
+    def setUp(self):
+        self.parameters = {
+            'k_bfreq': [],
+            'k_efreq': [],
+            'g_bfreq': [],
+            'g_efreq': [],
+            'servers': 4
+            }
+        self.freqs = (np.arange(32768) / 32768 * 1070000000.0 + 1336500000.0) * u.Hz
+        self.mask = np.zeros(32768, dtype=bool)
+        self.mask[5090:5100] = True
+        self.mask[25000:27100] = True
+
+    def test_normal(self):
+        parameters = self.parameters.copy()
+        prefix = ['k', 'g']
+        pipelineprocs.parameters_for_blank_freqwin(parameters, self.freqs, self.mask, prefix)
+        self.assertEqual(self.freqs[9088], parameters['k_bfreq'] * u.MHz)
+        self.assertEqual(self.freqs[15488], parameters['k_efreq'] * u.MHz)
+        self.assertEqual(parameters['k_bfreq'], parameters['g_bfreq'])
+        self.assertEqual(parameters['k_efreq'], parameters['g_efreq'])
+
+    def test_one_blank_sol(self):
+        parameters = self.parameters.copy()
+        pipelineprocs.parameters_for_blank_freqwin(parameters, self.freqs, self.mask, ['g'])
+        self.assertEqual([], parameters['k_bfreq'])
+        self.assertEqual([], parameters['k_efreq'])
+        self.assertEqual(self.freqs[9088], parameters['g_bfreq'] * u.MHz)
+        self.assertEqual(self.freqs[15488], parameters['g_efreq'] * u.MHz)
+
+    def test_narrow_width(self):
+        parameters = self.parameters.copy()
+        # all unmasked windows < default 6400 channels
+        self.mask[8192:10092] = True
+        self.mask[16384:18384] = True
+        pipelineprocs.parameters_for_blank_freqwin(parameters, self.freqs, self.mask, ['g', 'k'])
+        self.assertEqual(self.freqs[10092], parameters['k_bfreq'] * u.MHz)
+        self.assertEqual(self.freqs[16383], parameters['k_efreq'] * u.MHz)
 
 
 class TestFinaliseParameters(unittest.TestCase):
@@ -212,6 +255,17 @@ class TestFinaliseParameters(unittest.TestCase):
         parameters = pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 2)
         self.assertEqual(202, parameters['k_bchan'])
         self.assertEqual(402, parameters['k_echan'])
+
+    def test_blank_freq_parameters(self):
+        self.parameters['k_bfreq'] = []
+        self.parameters['k_efreq'] = []
+        mask = np.zeros(4096, dtype=bool)
+        mask[500] = True
+        mask[3100] = True
+        with mock.patch('katsdpcal.pipelineprocs.get_static_mask', return_value=mask):
+            parameters = pipelineprocs.finalise_parameters(self.parameters, self.telstate_l0, 4, 1)
+            self.assertEqual(0, parameters['k_bchan'])
+            self.assertEqual(1023, parameters['k_echan'])
 
 
 class TestCreateModel(unittest.TestCase):
