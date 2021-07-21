@@ -648,8 +648,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                     for soln in solns_to_apply:
                         vis = s.apply(soln, vis, cross_pol=True)
                     logger.info('Averaging corrected auto-corr data for %s:', target_name)
-                    data = (vis, s.auto_ant.tf.cross_pol.flags, s.auto_ant.tf.cross_pol.weights)
-                    s.summarize(av_corr, target_name + '_auto_cross', data, nchans=1024)
+                    cross_data = (vis, s.auto_ant.tf.cross_pol.flags,
+                                  s.auto_ant.tf.cross_pol.weights)
+                    s.summarize(av_corr, target_name + '_auto_cross', cross_data, nchans=1024)
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
 
@@ -707,8 +708,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 for soln in solns_to_apply:
                     vis = s.apply(soln, vis, cross_pol=True)
                 logger.info('Averaging corrected cross-pol data for %s:', target_name)
-                data = (vis, s.cross_ant.tf.cross_pol.flags, s.cross_ant.tf.cross_pol.weights)
-                s.summarize(av_corr, target_name + '_cross', data, nchans=1024, refant_only=True)
+                cross_data = (vis, s.cross_ant.tf.cross_pol.flags, s.cross_ant.tf.cross_pol.weights)
+                s.summarize(av_corr, target_name + '_cross', cross_data, nchans=1024,
+                            refant_only=True)
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):
