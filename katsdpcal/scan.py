@@ -321,7 +321,7 @@ class Scan:
 
     @logsolutiontime
     def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[],
-              calc_snr=True, use_model=True, **kwargs):
+              calc_snr=True, use_model=True, relative=False, **kwargs):
         """Solve for gain.
 
         Parameters
@@ -340,6 +340,8 @@ class Scan:
             if True calculate SNR for G solution
         use_model : bool, optional
             if True correct visibilities by available model
+        relative : bool, optional
+            if True adjust the solution to be relative to the first solution in the time series
 
         Returns
         -------
@@ -397,6 +399,8 @@ class Scan:
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
             cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
 
+        if relative:
+            cal_soln = CalSolutions('G', g_soln / g_soln[0], ave_times, soltarget=self.target.name)
         return cal_soln
 
     @logsolutiontime
