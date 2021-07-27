@@ -1,0 +1,32 @@
+# parameter file for MeerKAT L narrow band
+
+# delay calibration
+k_solint : 5.0                       # nominal pre-k g solution interval, seconds
+k_chan_sample : 1                    # channel sampling for pre-K BP soln
+k_bfreq :                            # start frequency of first channel for K fit, MHz
+k_efreq :                            # end frequency of last channel for K fit, MHz
+kcross_chanave : 1                   # number of channels to average together to kcross solution
+
+# bandpass calibration
+bp_solint : 5.0                      # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+g_solint: 5.0                        # nominal g solution interval, seconds
+g_bfreq :                            # start frequency of first channel for g fit, MHz
+g_efreq :                            # end frequency of last channel for g fit, MHz
+
+# Flagging
+rfi_calib_nsigma : 4.5               # Number of sigma to reject outliers for calibrators
+rfi_targ_nsigma : 7.0                # Number of sigma to reject outliers for targets
+rfi_windows_post_average : 1,4,8,16  # Size of windows for SumThreshold, post-avg channels 
+rfi_average_hz : 13060               # Amount to average in frequency before flagging, Hz
+rfi_targ_spike_width_hz : 4179687    # 1sigma frequency width of smoothing Gaussian on final target, Hz
+rfi_calib_spike_width_hz : 4179687   # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
+rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
+rfi_extend_hz : 97950                # Convolution width in frequency to extend flags, Hz
+rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
+
+# HV phase 'to sky' spline
+bcross_sky_knots : 856, 856, 856, 856, 963, 1070, 1284, 1525, 1608, 1658, 1711, 1711, 1711, 1711                     # knots in MHz
+bcross_sky_coefs : 1.507, 15.957, 13.683, 21.0169, 21.793, 26.879, 32.611, 32.973, 66.216, 16.998, 0,  0,  0,  0     # coefs of fit (in degrees)
+bcross_sky_k : 3                                                                                                     # degree of spline
