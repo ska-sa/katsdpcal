@@ -831,13 +831,15 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
+            nogaintag = ['bpcal', 'delaycal']
             if any(k in gaintag for k in taglist):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
-                if not any('target' in k for k in taglist):
+                gaincaltag = ['gaincal', 'bfcal']
+                if any(k in gaincaltag for k in taglist):
                     s.summarize(av_corr, target_name + '_g_phase', avg_ant=True)
             # summarize non-gain calibrated targets
-            else:
+            if any(k in nogaintag for k in taglist):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
     return target_slices, av_corr

@@ -1410,15 +1410,19 @@ def split_targets(targets):
         kat_target = katpoint.Target(cal)
         tags = kat_target.tags
         # tags which have gains applied by pipeline
-        gaintaglist = ('gaincal', 'bfcal', 'target')
-        if not any(x in gaintaglist for x in tags):
+        gaintaglist = ('gaincal', 'bfcal')
+        nogaintaglist = ('bpcal', 'delaycal')
+        if any(x in nogaintaglist for x in tags):
             nogain.append(cal)
-        elif 'target' in tags:
-            target.append(cal)
-        else:
+        if any(x in gaintaglist for x in tags):
             gain.append(cal)
         if 'polcal' in tags:
             pol.append(cal)
+        # if a target is a calibrator, don't include it here as it will already be included
+        # in the calibrator plots
+        if ('target' in tags and
+                not any(x in nogaintaglist + gaintaglist for x in tags)):
+            target.append(cal)
     return nogain, gain, pol, target
 
 
