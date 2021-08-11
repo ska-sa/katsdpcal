@@ -397,10 +397,11 @@ class Scan:
             # use channel averaged data to calculate snr
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
-            cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
+        else:
+            snr = None
 
-        if relative:
-            cal_soln = CalSolutions('G', g_soln / g_soln[0], ave_times, soltarget=self.target.name)
+        fin_g_soln = g_soln / g_soln[0] if relative else g_soln
+        cal_soln = CalSolutions('G', fin_g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
         return cal_soln
 
     @logsolutiontime
@@ -496,7 +497,7 @@ class Scan:
         chan_slice = np.s_[:, bchan:echan, :, :]
         av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
             modvis[chan_slice], corr.tf.cross_pol.flags[chan_slice],
-            corr.tf.cross_pol.weights[chan_slice])
+            modweights[chan_slice])
         # average over channel if specified
         if chan_ave > 1:
             av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
@@ -824,7 +825,8 @@ class Scan:
             correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
 
         if weights is not None:
-            return vis * correction, weights / np.abs(correction)**2
+            modweights = da.where(np.abs(correction)**2 > 0, weights / np.abs(correction)**2, 0)
+            return vis * correction, modweights
         else:
             return vis * correction
 
