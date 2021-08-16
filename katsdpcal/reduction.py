@@ -662,7 +662,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['k_bchan'], parameters['k_echan'],
-                                      s.g_sol, k_solint, g0_h, calc_snr=False)
+                                      s.g_sol, k_solint, g0_h, calc_snr=False, relative=True)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -725,7 +725,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['g_bchan'], parameters['g_echan'],
                                       s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply,
-                                      calc_snr=False)
+                                      calc_snr=False, relative=True)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------

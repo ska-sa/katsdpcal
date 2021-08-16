@@ -321,7 +321,7 @@ class Scan:
 
     @logsolutiontime
     def g_sol(self, input_solint, g0, bchan=1, echan=0, pre_apply=[],
-              calc_snr=True, use_model=True, **kwargs):
+              calc_snr=True, use_model=True, relative=False, **kwargs):
         """Solve for gain.
 
         Parameters
@@ -340,13 +340,15 @@ class Scan:
             if True calculate SNR for G solution
         use_model : bool, optional
             if True correct visibilities by available model
+        relative : bool, optional
+            if True adjust the solution to be relative to the first solution in the time series
 
         Returns
         -------
         :class:`~.CalSolutions`
             Solutions with soltype 'G', shape (time, pol, nant)
         """
-        modvis = self.pre_apply(pre_apply)
+        modvis, modweights = self.pre_apply(pre_apply)
 
         # set up solution interval
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period,
@@ -373,7 +375,7 @@ class Scan:
         # range (no averaging over channel)
         ave_vis_t, ave_flags_t, ave_weights_t, ave_times = calprocs_dask.wavg_full_t(
             fitvis, self.cross_ant.tf.auto_pol.flags[chan_slice],
-            self.cross_ant.tf.auto_pol.weights[chan_slice], dumps_per_solint, times=self.timestamps)
+            modweights[chan_slice], dumps_per_solint, times=self.timestamps)
         # secondly, average channels
         ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(ave_vis_t, ave_flags_t,
                                                                   ave_weights_t, axis=1)
@@ -395,8 +397,11 @@ class Scan:
             # use channel averaged data to calculate snr
             resid, weights = self._resid(cal_soln, ave_vis, ave_weights, channel_freqs=g_freqs)
             snr = calprocs.snr_antenna(resid, weights, self.cross_ant.bls_lookup, mask[:, 0:1, ...])
-            cal_soln = CalSolutions('G', g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
+        else:
+            snr = None
 
+        fin_g_soln = g_soln / g_soln[0] if relative else g_soln
+        cal_soln = CalSolutions('G', fin_g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
         return cal_soln
 
     @logsolutiontime
@@ -418,11 +423,11 @@ class Scan:
         """
         corr = self.auto_ant
 
-        modvis = self.pre_apply(pre_apply, corr, cross_pol=True)
+        modvis, modweights = self.pre_apply(pre_apply, corr, cross_pol=True)
 
         # average over all time
         av_vis, av_flags, av_weights = calprocs_dask.wavg_full(modvis, corr.tf.cross_pol.flags,
-                                                               corr.tf.cross_pol.weights)
+                                                               modweights)
 
         # Average the HV and complex conjugate of VH together per antenna
         weighted_data, flagged_weights = calprocs_dask.weight_data(av_vis, av_flags, av_weights)
@@ -486,13 +491,13 @@ class Scan:
             soln_type = 'KCROSS'
 
         # pre_apply solutions
-        modvis = self.pre_apply(pre_apply, corr, cross_pol=True)
+        modvis, modweights = self.pre_apply(pre_apply, corr, cross_pol=True)
 
         # average over all time, for specified channel range (no averaging over channel)
         chan_slice = np.s_[:, bchan:echan, :, :]
         av_vis, av_flags, av_weights = calprocs_dask.wavg_full(
             modvis[chan_slice], corr.tf.cross_pol.flags[chan_slice],
-            corr.tf.cross_pol.weights[chan_slice])
+            modweights[chan_slice])
         # average over channel if specified
         if chan_ave > 1:
             av_vis, av_flags, av_weights = calprocs_dask.wavg_full_f(av_vis,
@@ -553,7 +558,7 @@ class Scan:
         :class:`~.CalSolution`
             Delay solution with soltype 'K', shape (2, nant)
         """
-        modvis = self.pre_apply(pre_apply)
+        modvis, modweights = self.pre_apply(pre_apply)
 
         # determine channel range for fit
         chan_slice = np.s_[:, bchan:echan, :, :]
@@ -573,7 +578,7 @@ class Scan:
         ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(
             fitvis,
             self.cross_ant.tf.auto_pol.flags[chan_slice],
-            self.cross_ant.tf.auto_pol.weights[chan_slice])
+            modweights[chan_slice])
 
         ave_time = np.average(self.timestamps, axis=0)
         # fit for delay
@@ -613,7 +618,7 @@ class Scan:
         :class:`~.CalSolution `
             Bandpass with soltype 'B', shape (chan, pol, nant)
         """
-        modvis = self.pre_apply(pre_apply)
+        modvis, modweights = self.pre_apply(pre_apply)
 
         # initialise and apply model, for if this scan target has an associated model
         self._init_model()
@@ -623,7 +628,7 @@ class Scan:
         ave_vis, ave_flags, ave_weights = calprocs_dask.wavg_full(
             fitvis,
             self.cross_ant.tf.auto_pol.flags,
-            self.cross_ant.tf.auto_pol.weights)
+            modweights)
 
         ave_time = np.average(self.timestamps, axis=0)
         # solve for bandpass
@@ -777,10 +782,11 @@ class Scan:
     # ---------------------------------------------------------------------------------------------
     # solution application
 
-    def _apply(self, solval, vis, cross_pol=False):
+    def _apply(self, solval, vis, weights=None, cross_pol=False):
         """Applies calibration solutions.
 
         Must already be interpolated to either full time or full frequency.
+        Optionally updates weights if they are provided.
 
         Parameters
         ----------
@@ -788,6 +794,8 @@ class Scan:
             multiplicative solution values to be divided out of visibility data
         vis : dask.array
             input visibilities to be corrected
+        weights : dask.array, optional
+            input weights to be corrected
         cross_pol : bool, optional
             Apply corrections appropriate for cross hand data if True, else apply
             parallel hand corrections.
@@ -815,17 +823,26 @@ class Scan:
             correction = inv_solval[..., index0] * da.flip(inv_solval, axis=-2).conj()[..., index1]
         else:
             correction = inv_solval[..., index0] * inv_solval[..., index1].conj()
-        return vis * correction
 
-    def apply(self, soln, vis, cross_pol=False, channel_freqs=None):
+        if weights is not None:
+            modweights = da.where(np.abs(correction)**2 > 0, weights / np.abs(correction)**2, 0)
+            return vis * correction, modweights
+        else:
+            return vis * correction
+
+    def apply(self, soln, vis, weights=None, cross_pol=False, channel_freqs=None):
         """Applies calibration solutions.
+
+        Optionally updates weights if they are provided.
 
         Parameters
         ----------
         soln : `~.CalSolutions`
             solution to apply
-        vis : :class: `np.ndarray`
+        vis : dask.array
             complex, shape (ntimes, nchans, npols, nbls)
+        weights : dask.array, optional
+            float, shape (ntimes, nchans, npols, nbls)
         cross_pol : bool, optional
             apply cross hand style corrections if True, else parallel hand corrections. Default
             is False
@@ -834,7 +851,8 @@ class Scan:
 
         Returns
         -------
-        :class: `np.ndarray`, corrected visibility data
+        dask.array, corrected visibility data
+        dask.array, updated weight data, optional
         """
         if channel_freqs is None:
             channel_freqs = self.channel_freqs
@@ -845,13 +863,13 @@ class Scan:
             # add empty channel dimension if necessary
             full_sol = soln_values[:, np.newaxis, :, :] \
                 if soln_values.ndim < 4 else soln_values
-            return self._apply(full_sol, vis, cross_pol)
+            return self._apply(full_sol, vis, weights, cross_pol)
 
         elif soln.soltype == 'K':
             # want shape (ntime, nchan, npol, nant)
             g_from_k = da.exp(2j * np.pi * soln.values[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
-            return self._apply(g_from_k, vis, cross_pol)
+            return self._apply(g_from_k, vis, weights, cross_pol)
         elif soln.soltype in ['KCROSS_DIODE', 'KCROSS']:
             # select median HV delay to apply, instead of just selecting the refant HV delay
             # this robustifies against problems with the refant measurement and
@@ -861,16 +879,16 @@ class Scan:
 
             g_from_k = da.exp(2j * np.pi * soln[:, np.newaxis, :, :]
                               * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
-            return self._apply(g_from_k, vis, cross_pol)
+            return self._apply(g_from_k, vis, weights, cross_pol)
 
         elif soln.soltype in ['BCROSS_DIODE']:
             # select median HV phase to apply
             soln = np.nanmedian(soln.values, axis=-1, keepdims=True)
             soln = np.repeat(soln, self.nant, axis=-1)
-            return self._apply(soln, vis, cross_pol)
+            return self._apply(soln, vis, weights, cross_pol)
 
         elif soln.soltype in ['B', 'BCROSS_DIODE_SKY']:
-            return self._apply(soln_values, vis, cross_pol)
+            return self._apply(soln_values, vis, weights, cross_pol)
         else:
             raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
 
@@ -901,13 +919,16 @@ class Scan:
             data = self.cross_ant
         if cross_pol:
             modvis = data.tf.cross_pol.vis
+            modweights = data.tf.cross_pol.weights
         else:
             modvis = data.tf.auto_pol.vis
+            modweights = data.tf.auto_pol.weights
+
         for soln in pre_apply_solns:
             self.logger.info(
                 '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
-            modvis = self.apply(soln, modvis, cross_pol)
-        return modvis
+            modvis, modweights = self.apply(soln, modvis, modweights, cross_pol)
+        return modvis, modweights
 
     @logsolutiontime
     def apply_inplace(self, solns_to_apply):
