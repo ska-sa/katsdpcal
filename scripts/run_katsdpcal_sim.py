@@ -133,7 +133,8 @@ if __name__ == '__main__':
     pipeline_pane = create_pane('pipeline', tmserver, keep_session=opts.keep_sessions)
     pipeline_pane.cmd(
         'send-keys',
-        'run_cal.py --telstate {} --buffer-maxsize {} --report-path {} --log-path {} {} {}'
+        'run_cal.py --telstate {} --buffer-maxsize {} --report-path {} --log-path {} {} {} '
+        '--servers 4'
         .format(opts.telstate, opts.buffer_maxsize,
                 opts.report_path, opts.log_path, threading_option, no_auto))
     pipeline_pane.enter()
