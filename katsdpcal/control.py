@@ -1583,6 +1583,7 @@ class ReportWriter(Task):
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
+                    logger.info('This is the proposed synchronisation point')
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
                     self.get_model_flux(av_corr, event)
