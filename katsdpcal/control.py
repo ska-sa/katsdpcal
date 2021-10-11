@@ -1568,6 +1568,7 @@ class ReportWriter(Task):
             if isinstance(event, dict):
                 # if corrected data is not empty, aggregate with previous corrected data output
                 logger.info('Corrected Data is in the queue')
+                logger.info('Devel --')
                 if event['targets']:
                     now = time.time()
                     _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)
@@ -1583,7 +1584,9 @@ class ReportWriter(Task):
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
-                    logger.info('This is the proposed synchronisation point')
+                    logger.info('Devel: This is the proposed synchronisation point')
+
+
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
                     self.get_model_flux(av_corr, event)
