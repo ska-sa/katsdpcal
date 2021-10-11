@@ -628,7 +628,7 @@ def K_ant(uvw, ra_l, m, wl, k_ant):
     :class: `np.ndarray`, complex, shape (ntimes, nchans, nants)
         K-Jones term per antenna
     """
-    n = np.sqrt(1 - l * l - m * m)
+    n = np.sqrt(1 - ra_l * ra_l - m * m)
     _, ntimes, nants = uvw.shape
     nchans = wl.shape[0]
 
