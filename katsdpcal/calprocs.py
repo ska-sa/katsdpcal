@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 # threshold for bad/high weights
 HIGH_WEIGHT = 1e15
+
+
 # --------------------------------------------------------------------------------------------------
 # --- Modelling procedures
 # --------------------------------------------------------------------------------------------------
@@ -44,8 +46,8 @@ def radec_to_lm(ra, dec, ra0, dec0):
     l, m : float
         direction cosines
     """
-    l = np.cos(dec)*np.sin(ra - ra0)    # noqa: E741
-    m = np.sin(dec)*np.cos(dec0) - np.cos(dec)*np.sin(dec0)*np.cos(ra-ra0)
+    l = np.cos(dec) * np.sin(ra - ra0)  # noqa: E741
+    m = np.sin(dec) * np.cos(dec0) - np.cos(dec) * np.sin(dec0) * np.cos(ra - ra0)
     return l, m
 
 
@@ -74,7 +76,7 @@ def to_ut(t):
     float
         Unix time in seconds
     """
-    return (t/86400. - 2440587.5 + 2400000.5)*86400.
+    return (t / 86400. - 2440587.5 + 2400000.5) * 86400.
 
 
 def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, antennas,
@@ -105,9 +107,9 @@ def calc_uvw_wave(phase_centre, timestamps, corrprod_lookup, antennas,
     if wavelengths is None:
         return uvw
     elif np.isscalar(wavelengths):
-        return uvw/wavelengths
+        return uvw / wavelengths
     else:
-        return uvw[:, :, np.newaxis, :]/wavelengths[:, np.newaxis]
+        return uvw[:, :, np.newaxis, :] / wavelengths[:, np.newaxis]
 
 
 def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=None):
@@ -144,6 +146,7 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
         baseline_uvw[..., i] = antenna_uvw[..., a1] - antenna_uvw[..., a2]
 
     return baseline_uvw
+
 
 # --------------------------------------------------------------------------------------------------
 # --- Solvers
@@ -182,8 +185,8 @@ def get_bl_ant_pairs(corrprod_lookup):
 def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, conv_thresh, g):
     ref_ant2 = max(ref_ant[0], 0)
     num_ants = init_gain.shape[0]
-    R = np.zeros((num_ants, num_ants), rawvis.dtype)    # Weighted visibility matrix
-    M = np.zeros((num_ants, num_ants), weights.dtype)   # Weighted model
+    R = np.zeros((num_ants, num_ants), rawvis.dtype)  # Weighted visibility matrix
+    M = np.zeros((num_ants, num_ants), weights.dtype)  # Weighted model
     # Convert list of baselines into a covariance matrix
     for i in range(len(ant1)):
         a = ant1[i]
@@ -209,7 +212,7 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
             gd = g.real.dtype.type(0)
             for i in antlist:
                 z = g_old[i] * M[p, i]
-                gn += R[p, i] * z       # exploiting R[p, i] = R[i, p].conj()
+                gn += R[p, i] * z  # exploiting R[p, i] = R[i, p].conj()
                 gd += z.real * z.real + z.imag * z.imag
             g[p] = gn / gd
         # Salvini & Wijnholds tweak gains every *even* iteration but their counter starts at 1
@@ -235,7 +238,7 @@ def _stefcal_gufunc(rawvis, ant1, ant2, weights, ref_ant, init_gain, num_iters, 
 
     # replace gains of completely flagged antennas with NaNs to indicate
     # that no gain was found by stefcal.
-    g[~good_ant] = np.nan*1j
+    g[~good_ant] = np.nan * 1j
 
     ref = g[ref_ant2]
     g *= np.conj(ref) / np.abs(ref)
@@ -319,7 +322,7 @@ def stefcal(rawvis, num_ants, corrprod_lookup, weights=None, ref_ant=0,
 # --------------------------------------------------------------------------------------------------
 
 def g_from_K(chans, K):
-    g_array = np.ones(K.shape+(len(chans),), dtype=np.complex)
+    g_array = np.ones(K.shape + (len(chans),), dtype=np.complex)
     for i, c in enumerate(chans):
         g_array[:, :, i] = np.exp(1.0j * 2. * np.pi * K * c)
     return g_array
@@ -360,7 +363,7 @@ def best_refant(data, corrprod_lookup, chans):
 
     # Calculate the height of the peak and the standard deviation away from the peak
     peak = np.max(np.abs(ft_vis), axis=0)
-    chan_slice = np.s_[len(chans)//2-len(chans)//4:len(chans)//2+len(chans)//4]
+    chan_slice = np.s_[len(chans) // 2 - len(chans) // 4:len(chans) // 2 + len(chans) // 4]
     mean = np.mean(np.abs(ft_vis[chan_slice]), axis=0)
     # Add 1e-9 to avoid divide by zero errors
     std = np.std(np.abs(ft_vis[chan_slice]), axis=0) + 1e-9
@@ -377,7 +380,7 @@ def best_refant(data, corrprod_lookup, chans):
     return np.argsort(med_pnr_ants)[::-1]
 
 
-def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
+def g_fit(data, weights, corrprod_lookup, g0=None, refant=0, **kwargs):
     """Fit complex gains to visibility data.
 
     Parameters
@@ -598,7 +601,7 @@ def normalise_complex(x, weights=None, axis=0):
 
 
 @numba.jit(nopython=True, parallel=True)
-def K_ant(uvw, l, m, wl, k_ant):
+def K_ant(uvw, ra_l, m, wl, k_ant):
     """Calculate K-Jones term per antenna.
 
     Calculate the K-Jones term for a point source with the
@@ -611,7 +614,7 @@ def K_ant(uvw, l, m, wl, k_ant):
     ----------
     uvw : :class:`np.ndarray`, real, shape (3, ntimes, nants)
         uvw co-ordinates of antennas
-    l : float
+    ra_l : float
         direction cosine, right ascension
     m : float
         direction cosine, declination
@@ -625,7 +628,7 @@ def K_ant(uvw, l, m, wl, k_ant):
     :class: `np.ndarray`, complex, shape (ntimes, nchans, nants)
         K-Jones term per antenna
     """
-    n = np.sqrt(1 - l*l - m*m)
+    n = np.sqrt(1 - l * l - m * m)
     _, ntimes, nants = uvw.shape
     nchans = wl.shape[0]
 
@@ -637,13 +640,14 @@ def K_ant(uvw, l, m, wl, k_ant):
             cstop = min(nchans, cstart + cstep)
             for c in range(cstart, cstop):
                 for a in range(nants):
-                    phase = (l * uvw[0, t, a] + m * uvw[1, t, a] + (n-1) * uvw[2, t, a]) / wl[c]
+                    phase = (ra_l * uvw[0, t, a] + m * uvw[1, t, a] + (n - 1) * uvw[2, t,
+                                                                                    a]) / wl[c]
                     k_ant[t, c, a] = np.exp(2j * np.pi * phase)
     return k_ant
 
 
 @numba.jit(nopython=True, parallel=True)
-def add_model_vis(k_ant, ant1, ant2, I, model):
+def add_model_vis(k_ant, ant1, ant2, stokes_i, model):
     """Add model visibilities to model.
 
     Calculate model visibilities from the per-antenna K-Jones term and source
@@ -657,7 +661,7 @@ def add_model_vis(k_ant, ant1, ant2, I, model):
         index of first antenna of each baseline pair
     ant2 : :class:`np.ndarray`, int, shape (nbls)
         index of second antenna of each baseline pair
-    I : :class:`np.ndarray`, real, shape (nchans)
+    stokes_i : :class:`np.ndarray`, real, shape (nchans)
         Stokes I source flux densities per channel
     model : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbls)
         array to add model visibilities to
@@ -679,7 +683,7 @@ def add_model_vis(k_ant, ant1, ant2, I, model):
                 for b in range(nbls):
                     model[t, c, b] += (k_ant[t, c, ant1[b]]
                                        * np.conj(k_ant[t, c, ant2[b]])
-                                       * I[c])
+                                       * stokes_i[c])
     return model
 
 
@@ -761,7 +765,7 @@ def solint_from_nominal(solint, dump_period, num_times):
 
         # choose a solint to minimise the change in the final fractional solution interval
         solint_index = np.argmin(delta)
-        logger.debug('solint index: {0}'.format(solint_index,))
+        logger.debug('solint index: {0}'.format(solint_index, ))
         dumps_per_solint = solint_check_range[solint_index]
     return dumps_per_solint * dump_period, dumps_per_solint
 
@@ -1022,7 +1026,7 @@ def get_reordering_nopol(antlist, bls_ordering, output_order_bls=None):
     # find ordering necessary to change given bls_ordering into desired ordering
     # note: ordering must be a numpy array to be used for indexing later
     ordering = np.array([np.all(bls_ordering == bls, axis=1).nonzero()[0][0]
-                        for bls in bls_wanted])
+                         for bls in bls_wanted])
     # how to use this:
     # print bls_ordering[ordering]
     # print bls_ordering[ordering].reshape([4,nbl,2])
@@ -1098,6 +1102,7 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
     # return useful info
     bl_pair_list = np.column_stack([list1, list2])
     return vis, bl_pair_list, gains
+
 
 # --------------------------------------------------------------------------------------------------
 # --- Averaging
@@ -1308,7 +1313,7 @@ def calc_rms(x, weights, axis):
     # ensure nans have weight zero
     weights_zero = np.where(~np.isfinite(x), 0, weights)
 
-    w_square = x**2 * weights_zero
+    w_square = x ** 2 * weights_zero
     sum_w_square = np.nansum(w_square, axis)
     sum_weights = np.sum(weights_zero, axis)
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -1466,6 +1471,7 @@ class FluxDensityModel:
     ref_freq : float
        ref_freq in wsclean polynomial, specified in Hz, required if model_type is wsclean
     """
+
     def __init__(self, min_freq_MHz, max_freq_MHz=None, coefs=None, model_type=None, log=False,
                  stokes_I=None, ref_freq=None):
         # If the first parameter is a description string, extract the relevant flux parameters

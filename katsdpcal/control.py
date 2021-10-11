@@ -1569,6 +1569,7 @@ class ReportWriter(Task):
                 # if corrected data is not empty, aggregate with previous corrected data output
                 logger.info('Corrected Data is in the queue')
                 logger.info('Devel --')
+
                 if event['targets']:
                     now = time.time()
                     _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)
@@ -1585,7 +1586,6 @@ class ReportWriter(Task):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
                     logger.info('Devel: This is the proposed synchronisation point')
-
 
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
