@@ -1585,11 +1585,12 @@ class ReportWriter(Task):
             elif isinstance(event, ObservationEndEvent):
                 try:
                     logger.info('Starting report on %s', event.capture_block_id)
-                    logger.info('Devel: This is the proposed synchronisation point')
-
+                    logger.info('Devel: proposed synchronisation point')
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
                     self.get_model_flux(av_corr, event)
+                    logger.info('Devel: capture block ID: %s, start: %s, end: %s, %s',
+                                event.capture_block_id, event.start_time, event.end_time, av_corr)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)
