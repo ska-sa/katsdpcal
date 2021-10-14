@@ -598,7 +598,7 @@ def normalise_complex(x, weights=None, axis=0):
 
 
 @numba.jit(nopython=True, parallel=True)
-def K_ant(uvw, l, m, wl, k_ant):
+def K_ant(uvw, l, m, wl, k_ant):    # noqa: E741
     """Calculate K-Jones term per antenna.
 
     Calculate the K-Jones term for a point source with the
@@ -643,7 +643,7 @@ def K_ant(uvw, l, m, wl, k_ant):
 
 
 @numba.jit(nopython=True, parallel=True)
-def add_model_vis(k_ant, ant1, ant2, I, model):
+def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
     """Add model visibilities to model.
 
     Calculate model visibilities from the per-antenna K-Jones term and source
