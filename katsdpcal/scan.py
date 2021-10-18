@@ -1068,7 +1068,7 @@ class Scan:
                 self.logger.warning(
                     '     The  model is not valid '
                     'for part of the band, setting model flux to 1')
-                self.model = np.array([1], np.complex64)
+                self.model = np.ones(self.cross_ant.orig.auto_pol.vis.shape, np.complex64)
 
             else:
                 # CASE A - Point source at the phase centre, with spectral slope
