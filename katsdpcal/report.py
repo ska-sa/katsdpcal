@@ -1410,15 +1410,19 @@ def split_targets(targets):
         kat_target = katpoint.Target(cal)
         tags = kat_target.tags
         # tags which have gains applied by pipeline
-        gaintaglist = ('gaincal', 'bfcal', 'target')
-        if not any(x in gaintaglist for x in tags):
+        gaintaglist = ('gaincal', 'bfcal')
+        nogaintaglist = ('bpcal', 'delaycal')
+        if any(x in nogaintaglist for x in tags):
             nogain.append(cal)
-        elif 'target' in tags:
-            target.append(cal)
-        else:
+        if any(x in gaintaglist for x in tags):
             gain.append(cal)
         if 'polcal' in tags:
             pol.append(cal)
+        # if a target is a calibrator, don't include it here as it will already be included
+        # in the calibrator plots
+        if ('target' in tags and
+                not any(x in nogaintaglist + gaintaglist for x in tags)):
+            target.append(cal)
     return nogain, gain, pol, target
 
 
@@ -1593,13 +1597,6 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln('Stream: {}'.format(stream_name))
             cal_rst.writeln()
 
-            # Obtain reference antenna selected by the pipeline
-            refant_name = ts.get('refant')
-            if refant_name is not None:
-                refant_index = parameters['antenna_names'].index(refant_name)
-                parameters['refant'] = refant_name
-                parameters['refant_index'] = refant_index
-
             antennas = parameters['antennas']
             if av_corr:
                 targets, times = zip(*av_corr['targets'])
@@ -1616,17 +1613,23 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             pol = [_[0].upper() for _ in parameters['pol_ordering']]
             antenna_names = list(parameters['antenna_names'])
 
+            # Obtain reference antenna selected by the pipeline
+            refant_name = ts.get('refant')
+            if refant_name is not None:
+                refant_index = antenna_names.index(refant_name)
+                parameters['refant'] = refant_name
+                parameters['refant_index'] = refant_index
+
+                # label the reference antenna in the list of antennas
+                antenna_names[refant_index] += ', refant'
+                name_width = len(antenna_names[refant_index])
+                antenna_names = [name.ljust(name_width) for name in antenna_names]
+
+            else:
+                logger.info(' - no reference antenna')
+                refant_index = None
+
             if av_corr:
-                # label the reference antenna in the list of antennas, if it has been selected
-                if refant_index is not None:
-                    refant_name = antenna_names[refant_index]
-                    antenna_names[refant_index] += ', refant'
-                    name_width = len(antenna_names[refant_index])
-                    antenna_names = [name.ljust(name_width) for name in antenna_names]
-
-                else:
-                    logger.info(' - no reference antenna selected')
-
                 write_elevation(cal_rst, report_path, unique_targets,
                                 antennas, refant_index, av_corr)
                 # -------------------------------------------------------------------

@@ -148,7 +148,7 @@ class ServerData:
     """Test data associated with a single simulated cal server"""
 
     def make_parameters(self, telstate_l0):
-        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L.txt')
+        param_file = os.path.join(param_dir, 'pipeline_parameters_meerkat_L_wide.txt')
         parameters = pipelineprocs.parameters_from_file(param_file)
         pipelineprocs.finalise_parameters(parameters, telstate_l0,
                                           self.testcase.n_servers, self.server_id)
@@ -778,7 +778,7 @@ class TestCalDeviceServer(asynctest.TestCase):
                                                                            'product_BCROSS_DIODE')
             ret_BCROSS_DIODE_interp = self.interp_B(ret_BCROSS_DIODE)
             np.testing.assert_allclose(np.ones(ret_BCROSS_DIODE.shape),
-                                       np.abs(ret_BCROSS_DIODE_interp))
+                                       np.abs(ret_BCROSS_DIODE_interp), rtol=1e-6)
             BG_angle = np.angle(BG)
             ret_BG_interp_angle = np.angle(ret_BG_interp)
             np.testing.assert_allclose(BG_angle - BG_angle[:, [1], :]

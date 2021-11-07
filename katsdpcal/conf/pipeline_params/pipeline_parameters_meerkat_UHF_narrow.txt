@@ -1,0 +1,32 @@
+# parameter file for MeerKAT UHF narrow band
+
+# delay calibration
+k_solint : 5.0                       # nominal pre-k g solution interval, seconds
+k_chan_sample : 1                    # channel sampling for pre-K BP soln
+k_bfreq :                            # start frequency of first channel for K fit, MHz
+k_efreq :                            # end frequency of last channel for K fit, MHz
+kcross_chanave : 1                   # number of channels to average together to kcross solution
+
+# bandpass calibration
+bp_solint : 5.0                      # nominal pre-bp g solution interval, seconds
+
+# gain calibration
+g_solint: 5.0                        # nominal g solution interval, seconds
+g_bfreq :                            # start frequency of first channel for g fit, MHz
+g_efreq :                            # end frequency of last channel for g fit, MHz
+
+# Flagging
+rfi_calib_nsigma : 4.5               # Number of sigma to reject outliers for calibrators
+rfi_targ_nsigma : 7.0                # Number of sigma to reject outliers for targets
+rfi_windows_post_average : 1,4,8,16  # Size of windows for SumThreshold, post-avg channels
+rfi_average_hz : 8300                # Amount to average in frequency before flagging, Hz
+rfi_targ_spike_width_hz : 2656250    # 1sigma frequency width of smoothing Gaussian on final target, Hz
+rfi_calib_spike_width_hz : 2656250   # 1sigma frequency width of smoothing Gaussian on calibrators, Hz
+rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, seconds
+rfi_extend_hz :  62255               # Convolution width in frequency to extend flags, Hz
+rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
+ 
+# HV phase 'to sky' spline
+bcross_sky_knots : 544, 544, 544, 544, 563, 571, 578, 612, 680, 816, 870, 899, 914, 952, 971, 986, 1003, 1020, 1050, 1057, 1071, 1088, 1088, 1088, 1088      # knots in MHz
+bcross_sky_coefs : 15.44, 14.86, 14.05, 13.62, 12.5, 11.3, 11.35, 13.57, 13.97, 14.27, 14.88, 15.26, 16.32, 17.01, 17.52, 19.25, 21.14, 23.54, 24.51, 25.83, 26.36, 0.0, 0.0, 0.0, 0.0    # coefs of fit (in degrees)
+bcross_sky_k : 3

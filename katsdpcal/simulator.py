@@ -1,8 +1,9 @@
 """
-KAT-7 Simulator for testing MeerKAT calibration pipeline
-========================================================
-Simulator class for HDF5 files produced by KAT-7 correlator,
-for testing of the MeerKAT pipeline.
+Replayer for testing MeerKAT calibration pipeline
+=================================================
+
+It generates telstate state information and a SPEAD stream based on an
+existing katdal dataset or Measurement Set.
 """
 
 import logging
@@ -10,17 +11,18 @@ import time
 import asyncio
 
 from casacore.tables import table
-import spead2
-from spead2 import send
+import spead2.send.asyncio
 from .calprocs import get_reordering_nopol
 
+import katsdpservices
 import katdal
-from katdal.h5datav3 import FLAG_NAMES
+from katdal.flags import NAMES as FLAG_NAMES
 import katpoint
 import aiokatcp
 import async_timeout
 
 import numpy as np
+import dask.array as da
 from random import random
 import ephem
 
@@ -78,22 +80,27 @@ class SimData:
     ----------
     filename : str
         name of katdal or MS file
-    server : :class:`katsdptelstate.endpoint.Endpoint`
-        Katcp server for cal
+    servers : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server(s) for cal
     bchan,echan : int
         Channel range to select out of the file. If `echan` is ``None``, the
         range extends to the last channel.
+    n_substreams : int
+        Number of substreams within the SPEAD stream.
     """
-    def __init__(self, filename, server=None, bchan=0, echan=None):
-        if server is not None:
-            self.client = aiokatcp.Client(server.host, server.port)
-        else:
-            self.client = None
+    def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
+        if servers is None:
+            servers = []
+        if n_substreams is None:
+            n_substreams = max(1, len(servers))
+        self.clients = [aiokatcp.Client(server.host, server.port) for server in servers]
         self.filename = filename
         self.bchan = bchan
         self.echan = echan
         self.cbid = None
+        self.n_substreams = n_substreams
         # Subclass must provide num_scans
+        self._tx_future = None    # Future for heaps in flight
 
     @classmethod
     def factory(cls, *args, **kwargs):
@@ -106,26 +113,26 @@ class SimData:
                             '(Must be katdal or MS.)')
 
     async def capture_init(self):
-        if self.client is not None:
-            await self.client.wait_connected()
-            cbid = '{}'.format(int(time.time()))
-            await self.client.request('capture-init', cbid)
-            self.cbid = cbid
+        cbid = '{}'.format(int(time.time()))
+        self.cbid = cbid
+        for client in self.clients:
+            await client.wait_connected()
+            await client.request('capture-init', cbid)
 
     async def capture_done(self):
-        if self.client is not None:
+        for client in self.clients:
             try:
                 with async_timeout.timeout(10):
-                    await self.client.wait_connected()
-                    await self.client.request('capture-done')
+                    await client.wait_connected()
+                    await client.request('capture-done')
             except asyncio.TimeoutError:
                 pass
 
     async def close(self):
-        if self.client is not None:
-            self.client.close()
-            await self.client.wait_closed()
-            self.client = None
+        for client in self.clients:
+            client.close()
+            await client.wait_closed()
+        self.clients.clear()
 
     async def __aenter__(self):
         return self
@@ -175,8 +182,12 @@ class SimData:
         parameter_dict['sdp_l0_n_chans'] = echan - bchan
 
         # fill in counts that depend on others
+
         parameter_dict['sdp_l0_n_bls'] = len(parameter_dict['sdp_l0_bls_ordering'])
-        parameter_dict['sdp_l0_n_chans_per_substream'] = parameter_dict['sdp_l0_n_chans']
+        n_chans = echan - bchan
+        if n_chans % self.n_substreams != 0:
+            raise ValueError('number of substreams must divide into the number of channels')
+        parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
         # separate keys without times from those with times
         notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                        if not key.endswith('noise_diode')}
@@ -193,24 +204,38 @@ class SimData:
             for v, t in value:
                 telstate.add(key, v, ts=t)
 
-    def data_to_spead(self, telstate, l0_endpoint, spead_rate=5e8, max_scans=None):
+    async def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
+                            interface=None):
         """Iterates through file and transmits data as a SPEAD stream.
 
         Parameters
         ----------
         telstate : :class:`katsdptelstate.TelescopeState`
             Telescope State
-        l0_endoint : :class:`katsdptelstate.endpoint.Endpoint`
-            Endpoint for SPEAD stream
+        l0_endpoints : sequence of :class:`katsdptelstate.endpoint.Endpoint`
+            Endpoints for SPEAD stream
         spead_rate : float
             SPEAD data transmission rate (bytes per second)
         max_scans : int, optional
             Maximum number of scans to transmit
+        interface : str, optional
+            Name of the interface on which to transmit data, if it is multicast.
         """
+        if self.n_substreams % len(l0_endpoints) != 0:
+            raise ValueError('Number of endpoints must divide into number of substreams')
         logging.info('TX: Initializing...')
         # configure SPEAD - may need to rate-limit transmission for laptops etc.
-        config = send.StreamConfig(max_packet_size=8872, rate=spead_rate)
-        tx = send.UdpStream(spead2.ThreadPool(), [(l0_endpoint.host, l0_endpoint.port)], config)
+        config = spead2.send.StreamConfig(
+            max_packet_size=8872, rate=spead_rate, max_heaps=self.n_substreams)
+        if interface:
+            interface_address = katsdpservices.get_interface_address(interface)
+        else:
+            interface_address = ''
+        tx = spead2.send.asyncio.UdpStream(
+            spead2.ThreadPool(),
+            [(l0_endpoint.host, l0_endpoint.port) for l0_endpoint in l0_endpoints],
+            config,
+            interface_address=interface_address)
 
         # if the maximum number of scans to transmit has not been
         # specified, set to total number of scans
@@ -218,7 +243,23 @@ class SimData:
             max_scans = self.num_scans
 
         # transmit data timestamp by timestamp and update telescope state
-        self.tx_data(telstate, tx, max_scans)
+        await self.tx_data(telstate, tx, max_scans)
+
+    def _substream_slice(self, array, substream):
+        """Extract the part of an array appropriate to a specific substream.
+
+        Parameters
+        ----------
+        array : array-like
+            Array to slice. Frequency must be the first axis.
+        substream : int
+            Index of the substream
+        """
+        assert array.shape[0] % self.n_substreams == 0
+        n_chans_per_substream = array.shape[0] // self.n_substreams
+        chan0 = n_chans_per_substream * substream
+        chan1 = chan0 + n_chans_per_substream
+        return array[chan0 : chan1]
 
     def setup_ig(self, ig, correlator_data, flags, weights):
         """Initialises data transmit ItemGroup for SPEAD transmit.
@@ -235,16 +276,20 @@ class SimData:
             weights
         """
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
-                    shape=correlator_data.shape, dtype=correlator_data.dtype)
+                    shape=self._substream_slice(correlator_data, 0).shape,
+                    dtype=correlator_data.dtype)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
-                    shape=flags.shape, dtype=flags.dtype)
+                    shape=self._substream_slice(flags, 0).shape,
+                    dtype=flags.dtype)
         # Note: real ingest sends weights as uint8, but we want to be able to
         # send the same weights we retrieved from the file, so we use float32,
         # and set weights_channel to 1.0.
+        weights_substream = self._substream_slice(weights, 0)
         ig.add_item(id=None, name='weights', description="Weights for visibilities",
-                    shape=weights.shape, dtype=np.float32)
+                    shape=weights_substream.shape,
+                    dtype=np.float32)
         ig.add_item(id=None, name='weights_channel', description='Per-channel scaling for weights',
-                    shape=(weights.shape[0],), dtype=np.float32)
+                    shape=(weights_substream.shape[0],), dtype=np.float32)
         ig.add_item(id=None, name='timestamp', description="Seconds since sync time",
                     shape=(), dtype=None, format=[('f', 64)])
         ig.add_item(id=None, name='dump_index', description='Index in time',
@@ -258,12 +303,16 @@ class SimData:
         key = telstate.join(self.cbid, 'sdp_l0', 'first_timestamp')
         telstate[key] = first_timestamp
 
-    def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
-        """Transmit single SPEAD :class:`~spead2.send.ItemGroup`.
+    async def transmit_item(self, tx, ig, dump_index, timestamp, correlator_data, flags, weights):
+        """Transmit single SPEAD :class:`~spead2.send.ItemGroup` per server.
+
+        This does not actually wait for the item to be sent. It waits for the
+        previous set of item groups to be sent. This allows for concurrent data
+        preparation and transmission.
 
         Parameters
         ----------
-        tx : :class:`spead2.send.UdpStream`
+        tx : :class:`spead2.send.asyncio.UdpStream`
             SPEAD stream
         ig : :class:`spead2.send.ItemGroup`
             Item group
@@ -278,16 +327,35 @@ class SimData:
         weights : :class:`np.ndarray`
             Weights
         """
-        # transmit vis, flags and weights, timestamp
-        ig['correlator_data'].value = correlator_data
-        ig['flags'].value = flags
-        ig['weights_channel'].value = np.ones(weights.shape[:-1], np.float32)
-        ig['weights'].value = weights
-        ig['timestamp'].value = timestamp
-        ig['dump_index'].value = dump_index
-        ig['frequency'].value = 0
-        # send all of the descriptors with every heap
-        tx.send_heap(ig.get_heap(descriptors='all'))
+        heaps = []
+        for i in range(self.n_substreams):
+            # transmit vis, flags and weights, timestamp
+            ig['correlator_data'].value = self._substream_slice(correlator_data, i)
+            ig['flags'].value = self._substream_slice(flags, i)
+            substream_weights = self._substream_slice(weights, i)
+            ig['weights_channel'].value = np.ones(substream_weights.shape[:-1], np.float32)
+            ig['weights'].value = substream_weights
+            ig['timestamp'].value = timestamp
+            ig['dump_index'].value = dump_index
+            ig['frequency'].value = correlator_data.shape[0] // self.n_substreams * i
+            # We map endpoints to spead2 substreams, so we need to convert our
+            # substream index into an endpoint index.
+            endpoint = i // (self.n_substreams // tx.num_substreams)
+            # send all of the descriptors with every heap.
+            heap = ig.get_heap(descriptors='all')
+            heaps.append(spead2.send.HeapReference(heap, substream_index=endpoint))
+        if self._tx_future is not None:
+            await self._tx_future
+            self._tx_future = None
+        self._tx_future = tx.async_send_heaps(heaps, spead2.send.GroupMode.ROUND_ROBIN)
+
+    async def transmit_end(self, tx, ig):
+        """Send end-of-stream notification to each endpoint."""
+        if self._tx_future is not None:
+            await self._tx_future
+            self._tx_future = None
+        for i in range(tx.num_substreams):
+            await tx.async_send_heap(ig.get_end(), substream_index=i)
 
 # -------------------------------------------------------------------------------------------------
 # --- SimDataMS class
@@ -305,13 +373,16 @@ class SimDataMS(SimData):
     ----------
     filename : str
         Name of MS file
-    server : :class:`katsdptelstate.endpoint.Endpoint`
-        Katcp server for cal
+    servers : list of :class:`katsdptelstate.endpoint.Endpoint`
+        Katcp server(s) for cal
     bchan,echan : int, optional
         Channel range to select out of the file. If `echan` is ``None``, the
         range extends to the last channel.
     mode : {'r', 'r+'}, optional
         Either 'r' to open the table read-only or 'r+' to open it read-write
+    n_substreams : int
+        Number of substreams within the SPEAD stream. This will typically
+        equal the number of UDP endpoints, but may be more.
 
     Attributes
     ----------
@@ -340,8 +411,8 @@ class SimDataMS(SimData):
     correlation (including auto-corrs).
     """
 
-    def __init__(self, filename, server=None, bchan=0, echan=None, mode='r'):
-        super().__init__(filename, server, bchan, echan)
+    def __init__(self, filename, servers=None, bchan=0, echan=None, mode='r', n_substreams=1):
+        super().__init__(filename, servers, bchan, echan, n_substreams)
         readonly = mode != 'r+'
         try:
             self.file = table(filename, readonly=readonly)
@@ -489,7 +560,7 @@ class SimDataMS(SimData):
 
         return corrprods, corrprods_nopol
 
-    def tx_data(self, telstate, tx, max_scans):
+    async def tx_data(self, telstate, tx, max_scans):
         """Transmit MS data as a SPEAD stream.
 
         Iterates through MS file and transmits data as a SPEAD stream,
@@ -499,7 +570,7 @@ class SimDataMS(SimData):
         ----------
         telstate : :class:`katsdptelstate.TelescopeState`
             Telescope State
-        tx : :class:`spead2.send.UdpStream`
+        tx : :class:`spead2.send.asyncio.UdpStream`
             SPEAD transmitter
         max_scans : int
             Maximum number of scans to transmit
@@ -514,7 +585,7 @@ class SimDataMS(SimData):
             intents = t.getcol('OBS_MODE')
         # set up ItemGroup for transmission
         flavour = spead2.Flavour(4, 64, 48)
-        ig = send.ItemGroup(flavour=flavour)
+        ig = spead2.send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.to_ut(self.file.getcell('TIME', 0)))
         telstate_cb = telstate.view(self.cbid)
@@ -580,7 +651,7 @@ class SimDataMS(SimData):
                 if 'correlator_data' not in ig:
                     self.setup_ig(ig, tx_vis, tx_flags, tx_weights)
                 # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, time_ind, tx_time, tx_vis, tx_flags, tx_weights)
+                await self.transmit_item(tx, ig, time_ind, tx_time, tx_vis, tx_flags, tx_weights)
 
                 time_ind += 1
 
@@ -588,7 +659,7 @@ class SimDataMS(SimData):
                 break
 
         # end transmission
-        tx.send_heap(ig.get_end())
+        await self.transmit_end(tx, ig)
 
         # MS only has 'track' scans?
         logger.info('Track timestamps: %d', time_ind)
@@ -659,8 +730,8 @@ class SimDataMS(SimData):
 
 
 class SimDataKatdal(SimData):
-    def __init__(self, filename, server=None, bchan=0, echan=None):
-        super().__init__(filename, server, bchan, echan)
+    def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
+        super().__init__(filename, servers, bchan, echan, n_substreams)
         try:
             self.file = katdal.open(filename, upgrade_flags=False)
         except IOError as error:
@@ -683,14 +754,26 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_sync_time'] = 0.0
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
-        # antenna descriptions  and noise diodes for all antennas
+        # katsdpmodel keys
+        telstate = self.file.source.telstate
+        correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
+        f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
+
+        band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
+        model_keys = [band_mask_key, 'sdp_model_base_url',
+                      'model_rfi_mask_fixed', 'sdp_l0_src_streams',
+                      telstate.join(correlator_stream, 'src_streams')]
+        for key in model_keys:
+            param_dict[key] = telstate[key]
+
+        # antenna descriptions and noise diodes for all antennas
         for ant in self.file.ants:
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
-            param_dict[nd_name] = self.file.source.telstate.get_range(nd_name, st=0)
+            param_dict[nd_name] = telstate.get_range(nd_name, st=0)
         return param_dict
 
-    def tx_data(self, telstate, tx, max_scans):
+    async def tx_data(self, telstate, tx, max_scans):
         """Transmits katdal dataset as a SPEAD stream.
 
         Iterates through katdal file and transmits data as a SPEAD stream,
@@ -708,7 +791,7 @@ class SimDataKatdal(SimData):
         total_ts, track_ts, slew_ts = 0, 0, 0
 
         flavour = spead2.Flavour(4, 64, 48)
-        ig = send.ItemGroup(flavour=flavour)
+        ig = spead2.send.ItemGroup(flavour=flavour)
 
         self.setup_capture_block(telstate, self.file.timestamps[0])
         telstate_cb = telstate.view(self.cbid)
@@ -732,13 +815,11 @@ class SimDataKatdal(SimData):
             if scan_state == 'slew':
                 slew_ts += n_ts
 
-            # transmit the data from this scan, timestamp by timestamp
-            scan_data = self.file.vis[:]
             # Hack to get around flags returning a bool of selected flags
-            flags_indexer = self.file.flags
-            flags_indexer._transforms = []
-            scan_flags = flags_indexer[:]
-            scan_weights = self.file.weights
+            self.file.flags._transforms = []
+            scan_data = self.file.vis.dataset
+            scan_flags = self.file.flags.dataset
+            scan_weights = self.file.weights.dataset
 
             # set up item group, using info from first data item
             if 'correlator_data' not in ig:
@@ -754,16 +835,19 @@ class SimDataKatdal(SimData):
                 # flags for this time stamp, for specified channel range
                 tx_flags = scan_flags[i, :, :]
                 tx_weights = scan_weights[i, :, :]
+                # If we have Dask datasets, it's time to compute them
+                if isinstance(tx_vis, da.Array):
+                    tx_vis, tx_flags, tx_weights = da.compute(tx_vis, tx_flags, tx_weights)
 
                 # transmit timestamps, vis, flags, weights
-                self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
+                await self.transmit_item(tx, ig, total_ts, tx_time, tx_vis, tx_flags, tx_weights)
                 total_ts += 1
 
             if scan_ind+1 == max_scans:
                 break
 
         # end transmission
-        tx.send_heap(ig.get_end())
+        await self.transmit_end(tx, ig)
 
         logger.info('Track timestamps: %d', track_ts)
         logger.info('Slew timestamps:  %d', slew_ts)

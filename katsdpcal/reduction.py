@@ -648,8 +648,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                     for soln in solns_to_apply:
                         vis = s.apply(soln, vis, cross_pol=True)
                     logger.info('Averaging corrected auto-corr data for %s:', target_name)
-                    data = (vis, s.auto_ant.tf.cross_pol.flags, s.auto_ant.tf.cross_pol.weights)
-                    s.summarize(av_corr, target_name + '_auto_cross', data, nchans=1024)
+                    cross_data = (vis, s.auto_ant.tf.cross_pol.flags,
+                                  s.auto_ant.tf.cross_pol.weights)
+                    s.summarize(av_corr, target_name + '_auto_cross', cross_data, nchans=1024)
             else:
                 logger.info("Noise diode wasn't fired, no KCROSS_DIODE solution")
 
@@ -661,7 +662,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # solve and interpolate to scan timestamps
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['k_bchan'], parameters['k_echan'],
-                                      s.g_sol, k_solint, g0_h, calc_snr=False)
+                                      s.g_sol, k_solint, g0_h, calc_snr=False, relative=True)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -707,8 +708,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 for soln in solns_to_apply:
                     vis = s.apply(soln, vis, cross_pol=True)
                 logger.info('Averaging corrected cross-pol data for %s:', target_name)
-                data = (vis, s.cross_ant.tf.cross_pol.flags, s.cross_ant.tf.cross_pol.weights)
-                s.summarize(av_corr, target_name + '_cross', data, nchans=1024, refant_only=True)
+                cross_data = (vis, s.cross_ant.tf.cross_pol.flags, s.cross_ant.tf.cross_pol.weights)
+                s.summarize(av_corr, target_name + '_cross', cross_data, nchans=1024,
+                            refant_only=True)
 
         # BANDPASS
         if any('bpcal' in k for k in taglist):
@@ -723,7 +725,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             pre_g_soln = shared_solve(ts, parameters, None,
                                       parameters['g_bchan'], parameters['g_echan'],
                                       s.g_sol, bp_solint, g0_h, pre_apply=solns_to_apply,
-                                      calc_snr=False)
+                                      calc_snr=False, relative=True)
             g_to_apply = s.interpolate(pre_g_soln)
 
             # ---------------------------------------
@@ -829,13 +831,15 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
+            nogaintag = ['bpcal', 'delaycal']
             if any(k in gaintag for k in taglist):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
-                if not any('target' in k for k in taglist):
+                gaincaltag = ['gaincal', 'bfcal']
+                if any(k in gaincaltag for k in taglist):
                     s.summarize(av_corr, target_name + '_g_phase', avg_ant=True)
             # summarize non-gain calibrated targets
-            else:
+            if any(k in nogaintag for k in taglist):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
     return target_slices, av_corr

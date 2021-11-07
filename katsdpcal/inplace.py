@@ -91,7 +91,7 @@ def _is_getter(dsk, v):
 
 
 def _safe_inplace(sources, targets):
-    """Safety check on :func:`safe_in_place`. It uses the following algorithm:
+    """Safety check on :func:`store_inplace`. It uses the following algorithm:
 
     1. For each key in the graph, determine a set of :class:`_ArrayDependency`s that
     contribute to it. In most cases this is just all arrays that are reachable
@@ -271,6 +271,9 @@ def rename(array, salt=''):
 
     This is intended to be used when the backing storage has changed
     underneath, to invalidate any caches.
+
+    TODO: once we're able to upgrade to a newer Dask, use
+    :func:`dask.graph_manipulation.clone`.
 
     Parameters
     ----------
