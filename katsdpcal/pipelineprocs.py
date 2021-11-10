@@ -9,6 +9,8 @@ import argparse
 import math
 
 import attr
+import urllib
+
 import numpy as np
 import astropy.units as u
 import requests
@@ -18,6 +20,7 @@ import katpoint
 import katsdpmodels.fetch.requests
 import katsdpmodels.band_mask
 import katsdpmodels.rfi_mask
+import katsdpmodels.primary_beam
 
 from collections import OrderedDict
 from . import calprocs
@@ -184,7 +187,11 @@ COMPUTED_PARAMETERS = [
     Parameter('bcross_sky_spline', 'spline fit to bcross_sky across frequency (in MHz)', tuple,
               telstate=True),
     Parameter('reset_solution_stores', 'reset the solution stores between capture blocks',
-              bool, telstate=True)
+              bool, telstate=True),
+    Parameter('mkat_beam_model', 'beam model for meerkat antennas',
+              katsdpmodels.primary_beam.PrimaryBeam),
+    Parameter('ska_beam_model', 'beam model for ska antennas',
+              katsdpmodels.primary_beam.PrimaryBeam)
 ]
 
 
@@ -237,6 +244,27 @@ def _check_blank_freqwin(parameters):
         except(KeyError):
             pass
     return blank_freqwin
+
+
+def _get_primary_beam_model(telstate_l0, antenna):
+    with katsdpmodels.fetch.requests.Fetcher() as fetcher:
+
+        sdp_model_base_key = telstate_l0.join('sdp', 'model', 'base', 'url')
+        sdp_model_base_url = telstate_l0[sdp_model_base_key]
+
+        correlator_stream = telstate_l0['src_streams'][0]
+        f_engine_stream = telstate_l0.view(correlator_stream, exclusive=True)['src_streams'][0]
+        telstate_cbf = telstate_l0.view(f_engine_stream, exclusive=True)
+
+        primary_beam_key = telstate_l0.join('model', 'primary_beam', 'cohort', 'fixed')
+        primary_beam_url = telstate_cbf[primary_beam_key][antenna.name]
+        try:
+            beam_model = fetcher.get(urllib.parse.urljoin(sdp_model_base_url, primary_beam_url),
+                                     katsdpmodels.primary_beam.PrimaryBeam)
+            return beam_model
+        except (requests.ConnectionError, katsdpmodels.models.ModelError) as exc:
+            logger.warning('Failed to load primary_beam model: %s', exc)
+            return None
 
 
 def _get_rfi_mask(telstate_l0):
@@ -440,6 +468,16 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     parameters['bls_pol_ordering'] = bls_pol_ordering
     parameters['pol_ordering'] = [p[0] for p in bls_pol_ordering if p[0] == p[1]]
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
+
+    # select first meerkat and ska antennas as canonical antennas to retrieve beam
+    mk_ant = [a for a in antennas if a.name[0] == 'm'][0]
+    parameters['mkat_beam_model'] = _get_primary_beam_model(telstate_l0, mk_ant)
+    ska_ant = [a for a in antennas if a.name[0] == 's']
+    if ska_ant:
+        ska_ant = ska_ant[0]
+        parameters['ska_beam_model'] = _get_primary_beam_model(telstate_l0, ska_ant)
+    else:
+        parameters['ska_beam_model'] = None
 
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.
