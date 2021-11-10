@@ -218,6 +218,15 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.addCleanup(patcher.stop)
         return mock_obj
 
+    def populate_telstate_beam(self, telstate, correlator_stream):
+        f_engine_stream = 'antenna_channelised_voltage'
+        beam_url = 'primary_beam/config/cohort/meerkat/l/v1.alias'
+        telstate_corr = telstate.view(correlator_stream)
+        telstate_corr['src_streams'] = [f_engine_stream]
+        primary_beam_key = telstate.join(f_engine_stream, 'model',
+                                         'primary_beam', 'cohort', 'fixed')
+        telstate[primary_beam_key] = {ant: beam_url for ant in self.antennas}
+
     def populate_telstate_cb(self, telstate, cb='cb'):
         telstate_cb_l0 = telstate.view(telstate.join(cb, 'sdp_l0test'))
         telstate_cb_l0['first_timestamp'] = 100.0
@@ -262,6 +271,10 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_l0['sync_time'] = 1400000000.0
         telstate_l0['excise'] = True
         telstate_l0['need_weights_power_scale'] = True
+        telstate_l0['sdp_model_base_url'] = 'https://sdpmodels.kat.ac.za/'
+        correlator_stream = 'baseline_correlation_products'
+        telstate_l0['src_streams'] = [correlator_stream]
+        self.populate_telstate_beam(telstate, correlator_stream)
         self.populate_telstate_cb(telstate)
         for antenna in self.antennas:
             # The position is irrelevant for now, so just give all the
