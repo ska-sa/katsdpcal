@@ -760,7 +760,9 @@ class SimDataKatdal(SimData):
         f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
 
         band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
-        model_keys = [band_mask_key, 'sdp_model_base_url',
+        primary_beam_key = telstate.join(f_engine_stream, 'model', 'primary_beam',
+                                         'cohort', 'fixed')
+        model_keys = [band_mask_key, primary_beam_key, 'sdp_model_base_url',
                       'model_rfi_mask_fixed', 'sdp_l0_src_streams',
                       telstate.join(correlator_stream, 'src_streams')]
         for key in model_keys:
