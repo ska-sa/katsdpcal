@@ -4,6 +4,7 @@ import time
 import functools
 import logging
 
+import astropy.units as u
 import numpy as np
 import dask.array as da
 import scipy.interpolate
@@ -167,6 +168,12 @@ class Scan:
         Index of reference antenna in antenna description list.
     array_position : :class:`katpoint.Antenna`
         Array centre position.
+    pol_porder : list
+        list indicating polarisation order
+    mkat_beam_model : :class:`katsdpmodels.primary_beam.PrimaryBeam`
+        meerkat antenna primary beam model
+    ska_beam_model : :class:`katsdpmodels.primary_beam.PrimaryBeam`
+        ska antenna primary beam model
     logger : logger
         Logger
 
@@ -209,7 +216,8 @@ class Scan:
     """
 
     def __init__(self, data, time_slice, dump_period, bls_lookup, target,
-                 chans, ants, refant=None, array_position=None, logger=logger):
+                 chans, ants, refant=None, array_position=None, pol_order=['v', 'h'],
+                 mkat_beam_model=None, ska_beam_model=None, logger=logger):
         # cross-correlation and auto-correlation masks.
         # Must be np arrays so they can be used for indexing
         self.xc_mask = np.array([b0 != b1 for b0, b1 in bls_lookup])
@@ -234,6 +242,9 @@ class Scan:
         self.refant = refant
         self.array_position = array_position
         self.nant = len(ants)
+        self.mkat_beam_model = mkat_beam_model
+        self.ska_beam_model = ska_beam_model
+        self.pol_order = pol_order
         # initialise models
         self.model_raw_params = None
         self.model = None
@@ -1104,18 +1115,36 @@ class Scan:
             complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
 
             wl = katpoint.lightspeed / self.channel_freqs
+
+            # select beam used in each baseline pair
+            beam_idx = np.array([int(a.name[0] == 's') for a in self.antennas])
+            beam_ant = beam_idx[self.cross_ant.bls_lookup]
             # iteratively add sources to the model
             for source, flux_model in zip(model_targets, model_fluxes):
-                # currently using the same Stokes I flux model for both polarisations
+                # currently assumes unpolarised calibrators and a single antenna
+                # beam for both polarisations and all antennas of the same design.
+                # The effects of these simplications are outlined
+                # in SPR1-1528
                 S = flux_model.flux_density(self.channel_freqs / 1.0e6)
                 l, m = self.target.sphere_to_plane(
                     *source.radec(), projection_type='SIN', coord_system='radec')
 
+                parangle = self.target.parallactic_angle(self.timestamps, self.array_position)
+                beam = calprocs.beam_sample(self.mkat_beam_model, l, m, parangle * u.rad,
+                                            self.channel_freqs * u.Hz,
+                                            self.pol_order)[..., np.newaxis]
+                if self.ska_beam_model:
+                    ska_beam = calprocs.beam_sample(self.mkat_beam_model, l, m, parangle * u.rad,
+                                                    self.channel_freqs * u.Hz,
+                                                    self.pol_order)[..., np.newaxis]
+                    beam = np.concat([beam, ska_beam], axis=-1)
+
                 k_ant = calprocs.K_ant(self.uvw, l, m, wl, k_ant)
-                complexmodel = calprocs.add_model_vis(k_ant,
+                complexmodel = calprocs.add_model_vis(np.complex64(k_ant),
                                                       self.cross_ant.bls_lookup[:, 0],
                                                       self.cross_ant.bls_lookup[:, 1],
-                                                      S, complexmodel)
+                                                      S, beam, beam_ant[:, 0], beam_ant[:, 1],
+                                                      complexmodel)
             # add an axis for polarisation
             self.model = complexmodel[:, :, np.newaxis, :]
         return

@@ -524,7 +524,11 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                  chans=parameters['channel_freqs'],
                  ants=parameters['antennas'],
                  refant=refant_ind,
-                 array_position=parameters['array_position'], logger=logger)
+                 array_position=parameters['array_position'],
+                 pol_order=parameters['pol_ordering'],
+                 mkat_beam_model=parameters['mkat_beam_model'],
+                 ska_beam_model=parameters['ska_beam_model'],
+                 logger=logger)
         if s.xc_mask.size == 0:
             logger.info('No XC data - no processing performed.')
             continue

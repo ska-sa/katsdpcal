@@ -13,6 +13,7 @@ import scipy.fftpack
 import numba
 
 import katpoint
+import katsdpmodels.primary_beam
 
 from katdal.applycal import complex_interp
 
@@ -643,11 +644,11 @@ def K_ant(uvw, l, m, wl, k_ant):    # noqa: E741
 
 
 @numba.jit(nopython=True, parallel=True)
-def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
+def add_model_vis(k_ant, ant1, ant2, I, beam, beam_ant1, beam_ant2, model):    # noqa: E741
     """Add model visibilities to model.
 
-    Calculate model visibilities from the per-antenna K-Jones term and source
-    Stokes I flux densities and add them to the model array.
+    Calculate model visibilities from the per-antenna K-Jones term, antenna
+    beam patterns and source Stokes I flux densities.  Add visibilities to the model array.
 
     Parameters
     ----------
@@ -659,6 +660,12 @@ def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
         index of second antenna of each baseline pair
     I : :class:`np.ndarray`, real, shape (nchans)
         Stokes I source flux densities per channel
+    beam : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbeams)
+        Antenna beam patterns
+    beam_ant1 : :class:`np.ndarray`, int, shape (nbls)
+        index of beam of first antenna of each baseline pair
+    beam_ant2 : :class:`np.ndarray`, int, shape (nbls)
+        index of beam of second antenna of each baseline pair
     model : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbls)
         array to add model visibilities to
 
@@ -677,8 +684,8 @@ def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
             cstop = min(nchans, cstart + cstep)
             for c in range(cstart, cstop):
                 for b in range(nbls):
-                    model[t, c, b] += (k_ant[t, c, ant1[b]]
-                                       * np.conj(k_ant[t, c, ant2[b]])
+                    model[t, c, b] += (k_ant[t, c, ant1[b]] * beam[t, c, beam_ant1[b]]
+                                       * np.conj(k_ant[t, c, ant2[b]] * beam[t, c, beam_ant2[b]])
                                        * I[c])
     return model
 
@@ -832,6 +839,51 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
         measured_flux[targ] = flux_Jy
         measured_flux_std[targ] = error_flux_Jy
     return measured_flux, measured_flux_std
+
+
+def beam_sample(beam_model, l, m, parangle, chan_freqs, pol_order=['v', 'h']):    # noqa: E741
+    """Sample the beam model at the given co-ordinates and frequencies.
+
+    Sample only the parallel hand beams in the order given by pol_order.
+
+    Parameters:
+    -----------
+    beam_model : :class:`katsdpmodels.primary_beam.PrimaryBeam`
+        model of primary beam
+    l : float
+        ra co-ordinate of target
+    m : float
+        dec co-ordinate of target
+    parangle : :class:`~astropy.units.Quantity`
+        parallactic angles
+    chan_freqs : :class:`~astropy.units.Quantity`
+        frequencies
+    pol_order : list
+        list of order of polarisation in data
+    """
+    # polarisation index in the beam model
+    beam_pol_idx = {'h': 0, 'v': 1}
+
+    # sample beam at close to its frequency resolution
+    channel_width = chan_freqs[1] - chan_freqs[0]
+    freq_samp = int(np.floor(beam_model.frequency_resolution() / channel_width))
+
+    radec_frame = katsdpmodels.primary_beam.RADecFrame.from_parallactic_angle(parangle)
+    beam_sample = beam_model.sample(l, m, chan_freqs[::freq_samp], radec_frame,
+                                    katsdpmodels.primary_beam.OutputType(1))
+
+    # select only the hh and vv beams, in the order appropriate to the data's polarisation order
+    pol0 = beam_pol_idx[pol_order[0]]
+    pol1 = beam_pol_idx[pol_order[1]]
+    beam_phand = np.stack([beam_sample[..., pol0, pol0], beam_sample[..., pol1, pol1]], axis=-1)
+
+    beam_phand = np.mean(beam_phand, axis=-1)
+    beam_interp = scipy.interpolate.interp1d(chan_freqs.value[::freq_samp], beam_phand, axis=0,
+                                             copy=False, bounds_error=False,
+                                             fill_value=np.nan, assume_sorted=True)
+    beam = beam_interp(chan_freqs.value)
+    # reorder axes so that the time axis is first ie (time, chan, 2)
+    return np.moveaxis(beam, 0, 1)
 
 
 # --------------------------------------------------------------------------------------------------
