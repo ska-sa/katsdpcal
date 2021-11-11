@@ -1569,7 +1569,6 @@ class ReportWriter(Task):
                 # if corrected data is not empty, aggregate with previous corrected data output
                 logger.info('Corrected Data is in the queue')
                 logger.info('Devel --')
-
                 if event['targets']:
                     now = time.time()
                     _inc_sensor(report_scans_received_sensor, len(event['targets']), timestamp=now)
@@ -1589,8 +1588,8 @@ class ReportWriter(Task):
                     start_time = time.time()
                     report_active_sensor.set_value(True, timestamp=start_time)
                     self.get_model_flux(av_corr, event)
-                    logger.info('Devel: capture block ID: %s, start: %s, end: %s, %s',
-                                event.capture_block_id, event.start_time, event.end_time, av_corr)
+                    logger.info('Devel: capture block ID: %s, start: %s, end: %s, telstate_cal: %s',
+                                event.capture_block_id, event.start_time, event.end_time, self.telstate_cal)
                     obs_dir = self.write_report(
                         self.telstate_cal, event.capture_block_id,
                         event.start_time, event.end_time, av_corr)

@@ -212,7 +212,10 @@ def metadata(ts, capture_block_id, report_path, run, st=None):
     metadata['StartTime'] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
     metadata['CaptureBlockId'] = capture_block_id
     metadata['Description'] = obs_params['description'] + ' cal report'
-    metadata['ProposalId'] = obs_params['proposal_id']
+    try:
+        metadata['ProposalId'] = obs_params['proposal_id']
+    except:
+        metadata['ProposalId'] = '00001'
     metadata['Observer'] = obs_params['observer']
     metadata['ScheduleBlockIdCode'] = obs_params['sb_id_code']
     metadata['Run'] = run
