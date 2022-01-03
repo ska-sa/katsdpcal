@@ -341,7 +341,7 @@ class Scan:
         use_model : bool, optional
             if True correct visibilities by available model
         relative : bool, optional
-            if True adjust the solution to be relative to the first solution in the time series
+            if True adjust the solution to be relative to the mean solution in the time series
 
         Returns
         -------
@@ -400,7 +400,7 @@ class Scan:
         else:
             snr = None
 
-        fin_g_soln = g_soln / g_soln[0] if relative else g_soln
+        fin_g_soln = g_soln / np.nanmean(g_soln, axis=0) if relative else g_soln
         cal_soln = CalSolutions('G', fin_g_soln, ave_times, soltarget=self.target.name, solsnr=snr)
         return cal_soln
 
