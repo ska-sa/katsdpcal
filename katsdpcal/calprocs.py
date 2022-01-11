@@ -841,13 +841,13 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
     return measured_flux, measured_flux_std
 
 
-def beam_sample(beam_model, l, m, parangle, chan_freqs, pol_order=['v', 'h']):    # noqa: E741
+def beam_sample(beam_model, l, m, parangle, chan_freqs):    # noqa: E741
     """Sample the beam model at the given co-ordinates and frequencies.
 
-    Sample only the parallel hand beams in the order given by pol_order.
+    Sample only the parallel hand beams, average together the H and V primary beams.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     beam_model : :class:`katsdpmodels.primary_beam.PrimaryBeam`
         model of primary beam
     l : float
@@ -858,31 +858,31 @@ def beam_sample(beam_model, l, m, parangle, chan_freqs, pol_order=['v', 'h']):  
         parallactic angles
     chan_freqs : :class:`~astropy.units.Quantity`
         frequencies
-    pol_order : list
-        list of order of polarisation in data
-    """
-    # polarisation index in the beam model
-    beam_pol_idx = {'h': 0, 'v': 1}
 
+    Returns
+    -------
+    complex_beam : :class:`np.ndarray`
+        primary beam at given l, m, parangles (time) and frequencies,
+        np.complex64, shape(ntimes, nchans)
+    """
     # sample beam at close to its frequency resolution
     channel_width = chan_freqs[1] - chan_freqs[0]
-    freq_samp = int(np.floor(beam_model.frequency_resolution() / channel_width))
+    freq_stride = int(np.floor(beam_model.frequency_resolution() / channel_width))
 
     radec_frame = katsdpmodels.primary_beam.RADecFrame.from_parallactic_angle(parangle)
-    beam_sample = beam_model.sample(l, m, chan_freqs[::freq_samp], radec_frame,
-                                    katsdpmodels.primary_beam.OutputType(1))
+    beam_sample = beam_model.sample(l, m, chan_freqs[::freq_stride], radec_frame,
+                                    katsdpmodels.primary_beam.OutputType.JONES_HV)
 
-    # select only the hh and vv beams, in the order appropriate to the data's polarisation order
-    pol0 = beam_pol_idx[pol_order[0]]
-    pol1 = beam_pol_idx[pol_order[1]]
-    beam_phand = np.stack([beam_sample[..., pol0, pol0], beam_sample[..., pol1, pol1]], axis=-1)
+    # select only the hh and vv beams, order doesn't matter as we average the two pols
+    beam_phand = np.stack([beam_sample[..., 0, 0], beam_sample[..., 1, 1]], axis=-1)
 
     beam_phand = np.mean(beam_phand, axis=-1)
-    beam_interp = scipy.interpolate.interp1d(chan_freqs.value[::freq_samp], beam_phand, axis=0,
-                                             copy=False, bounds_error=False,
-                                             fill_value=np.nan, assume_sorted=True)
-    beam = beam_interp(chan_freqs.value)
-    # reorder axes so that the time axis is first ie (time, chan, 2)
+
+    def _complex_interp(fp, xp, x):
+        return complex_interp(xp, x, fp)
+    beam = np.apply_along_axis(_complex_interp, 0, beam_phand,
+                               chan_freqs.value, chan_freqs.value[::freq_stride])
+    # reorder axes so that the time axis is first ie (time, chan, 1)
     return np.moveaxis(beam, 0, 1)
 
 

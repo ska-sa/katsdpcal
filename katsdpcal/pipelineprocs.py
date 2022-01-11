@@ -257,7 +257,7 @@ def _get_primary_beam_model(telstate_l0, antenna):
         telstate_cbf = telstate_l0.view(f_engine_stream, exclusive=True)
 
         primary_beam_key = telstate_l0.join('model', 'primary_beam', 'cohort', 'fixed')
-        primary_beam_url = telstate_cbf[primary_beam_key][antenna.name]
+        primary_beam_url = telstate_cbf[primary_beam_key][antenna]
         try:
             beam_model = fetcher.get(urllib.parse.urljoin(sdp_model_base_url, primary_beam_url),
                                      katsdpmodels.primary_beam.PrimaryBeam)
@@ -470,14 +470,16 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
 
     # select first meerkat and ska antennas as canonical antennas to retrieve beam
-    mk_ant = [a for a in antennas if a.name[0] == 'm'][0]
-    parameters['mkat_beam_model'] = _get_primary_beam_model(telstate_l0, mk_ant)
-    ska_ant = [a for a in antennas if a.name[0] == 's']
-    if ska_ant:
-        ska_ant = ska_ant[0]
-        parameters['ska_beam_model'] = _get_primary_beam_model(telstate_l0, ska_ant)
-    else:
-        parameters['ska_beam_model'] = None
+    # antenna types are distinguished based on antenna names which may not be a very
+    # reliable identifier, if another identifier (e.g. a sensor) becomes available
+    # this should be adopted instead
+    ant_type_names = ['mkat', 'ska']
+    for name in ant_type_names:
+        ants = [a for a in antennas if a.name[0] == name[0]]
+        if ants:
+            parameters[name + '_beam_model'] = _get_primary_beam_model(telstate_l0, ants[0].name)
+        else:
+            parameters[name + '_beam_model'] = None
 
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.
