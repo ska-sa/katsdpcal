@@ -333,7 +333,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert self.n_channels % self.n_substreams == 0
         assert self.n_channels % self.n_servers == 0
         self.n_channels_per_substream = self.n_channels // self.n_substreams
-        self.antennas = ["m090", "m091", "m092", "m093"]
+        self.antennas = ["m090", "m091", "m092", "s093"]
         self.n_antennas = len(self.antennas)
         self.n_baselines = self.n_antennas * (self.n_antennas + 1) * 2
 
