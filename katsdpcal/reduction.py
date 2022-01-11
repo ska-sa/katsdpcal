@@ -608,7 +608,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
                  ants=parameters['antennas'],
                  flag_array=flag_array, slots=slots, refant=refant_ind,
                  array_position=parameters['array_position'],
-                 pol_order=parameters['pol_ordering'],
                  mkat_beam_model=parameters['mkat_beam_model'],
                  ska_beam_model=parameters['ska_beam_model'],
                  logger=logger)
