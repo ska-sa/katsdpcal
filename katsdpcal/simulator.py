@@ -17,14 +17,14 @@ from .calprocs import get_reordering_nopol
 import katsdpservices
 import katdal
 from katdal.flags import NAMES as FLAG_NAMES
-import katpoint
+# import katpoint
 import aiokatcp
 import async_timeout
 
 import numpy as np
 import dask.array as da
+# from astropy.coordinates import EarthLocation
 from random import random
-import ephem
 
 
 logger = logging.getLogger(__name__)
@@ -48,23 +48,23 @@ def get_antdesc_relative(names, diameters, positions):
     Antenna description dictionary
     """
     antdesc = {}
-    first_ant = True
-    for ant, diam, pos in zip(names, diameters, positions):
-        if first_ant:
-            # set up reference position (this is necessary to preserve
-            # precision of antenna positions when converting because of ephem
-            # limitation in truncating decimal places when printing strings).
-            longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0], pos[1], pos[2])
-            longitude_ref = ephem.degrees(str(ephem.degrees(longitude)))
-            latitude_ref = ephem.degrees(str(ephem.degrees(latitude)))
-            altitude_ref = round(altitude)
-            first_ant = False
-        # now determine offsets from the reference position to build up full
-        # antenna description string
-        e, n, u = katpoint.ecef_to_enu(longitude_ref, latitude_ref, altitude_ref,
-                                       pos[0], pos[1], pos[2])
-        antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(
-            ant, longitude_ref, latitude_ref, altitude_ref, diam, e, n, u)
+    # ref_location = EarthLocation.from_geocentric(*positions[0], unit='m')
+    # for ant, diam, pos in zip(names, diameters, positions):
+    #     if first_ant:
+    #         # set up reference position (this is necessary to preserve
+    #         # precision of antenna positions when converting because of ephem
+    #         # limitation in truncating decimal places when printing strings).
+    #         longitude, latitude, altitude = katpoint.ecef_to_lla(pos[0], pos[1], pos[2])
+    #         longitude_ref = ephem.degrees(str(ephem.degrees(longitude)))
+    #         latitude_ref = ephem.degrees(str(ephem.degrees(latitude)))
+    #         altitude_ref = round(altitude)
+    #         first_ant = False
+    #     # now determine offsets from the reference position to build up full
+    #     # antenna description string
+    #     e, n, u = katpoint.ecef_to_enu(longitude_ref, latitude_ref, altitude_ref,
+    #                                    pos[0], pos[1], pos[2])
+    #     antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(
+    #         ant, longitude_ref, latitude_ref, altitude_ref, diam, e, n, u)
     return antdesc
 
 
@@ -733,7 +733,7 @@ class SimDataKatdal(SimData):
     def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
         super().__init__(filename, servers, bchan, echan, n_substreams)
         try:
-            self.file = katdal.open(filename, upgrade_flags=False)
+            self.file = katdal.open(filename, upgrade_flags=False, ant_overrides='new_ants.csv', applycal='l0.KRETRACK')
         except IOError as error:
             raise WrongFileType(str(error)) from error
         self.file.select(channels=slice(bchan, echan))
