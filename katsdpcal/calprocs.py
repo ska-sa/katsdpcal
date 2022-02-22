@@ -11,8 +11,7 @@ import logging
 import numpy as np
 import scipy.fftpack
 import numba
-
-import katpoint
+import astropy.units as u
 
 from katdal.applycal import complex_interp
 
@@ -134,10 +133,11 @@ def calc_uvw(phase_centre, timestamps, corrprod_lookup, antennas, array_centre=N
     if array_centre is None:
         # if no array centre position is given, use lat-long-alt of first
         # antenna in the antenna list
-        array_centre = katpoint.Antenna('array_position', *antennas[0].ref_position_wgs84)
+        array_centre = antennas[0].array_reference_antenna('array_position')
 
     # use the array reference position of antenna_uvw
-    antenna_uvw = np.array(phase_centre.uvw(antennas, timestamps, array_centre))
+    uvw = phase_centre.uvw(antennas, timestamps, array_centre)
+    antenna_uvw = uvw.xyz.to_value(u.m)
 
     baseline_uvw = np.empty([3, len(timestamps), len(corrprod_lookup)])
     for i, [a1, a2] in enumerate(corrprod_lookup):
@@ -1274,15 +1274,6 @@ def wavg_flags_f(flags, chanav, excise, axis):
     for i in range(pre):
         out_flags = out_flags[0]
     return out_flags
-
-
-# --------------------------------------------------------------------------------------------------
-# --- General helper functions
-# --------------------------------------------------------------------------------------------------
-
-def arcsec_to_rad(angle):
-    """Convert angle in arcseconds to angle in radians."""
-    return np.deg2rad(angle / 60. / 60.)
 
 
 # --------------------------------------------------------------------------------------------------

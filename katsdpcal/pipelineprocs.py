@@ -444,8 +444,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.
     if 'array_position' not in USER_PARAMS_CHANS:
-        parameters['array_position'] = katpoint.Antenna(
-            'array_position', *antennas[0].ref_position_wgs84)
+        parameters['array_position'] = antennas[0].array_reference_antenna('array_position')
 
     # check whether the solution windows are blank/not set for the k and g solutions
     # select a window if it is not provided. This is to support narrowband where the
@@ -680,14 +679,13 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
     # default to check the current directory first
     lsm_dir_list.append('.')
 
-    allnames = [target.name] + target.aliases
     model_file = []
     # iterate through the list from the end so the model from the earliest
     # directory in the list is used
     for lsm_dir in reversed(lsm_dir_list):
         model_list = []
         # iterate over all aliases
-        for name in allnames:
+        for name in target.names:
             model_list += glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
 
         if len(model_list) == 1:

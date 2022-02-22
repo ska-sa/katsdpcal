@@ -12,6 +12,8 @@ import dask.array as da
 
 from docutils.core import publish_file
 
+import astropy.units as u
+import astropy.constants as const
 import matplotlib.pylab as plt
 import katpoint
 from katdal.sensordata import to_str
@@ -814,7 +816,7 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
             times += av_times
             units.append(_get_units(kat_target, av_corr, flux_cal))
 
-        if all([u == 'Jy' for u in units]):
+        if all([unit == 'Jy' for unit in units]):
             units = 'Jy'
         else:
             units = 'arb'
@@ -1449,7 +1451,8 @@ def calc_elevation(refant, times, target):
         real, (ntimes) of elevations
     """
     kat_target = katpoint.Target(target)
-    elevations = kat_target.azel(times, refant)[1]
+    azel = kat_target.azel(times, refant)
+    elevations = azel.alt.rad
 
     return elevations
 
@@ -1473,7 +1476,7 @@ def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_positio
     uvdist : :class:`np.ndarray`
         real, (nbls) UV distances in wavelengths
     """
-    wl = katpoint.lightspeed / freq
+    wl = (const.c / (freq * u.Hz)).to_value(u.m)
     cross_idx = np.where(cal_bls_lookup[:, 0] !=
                          cal_bls_lookup[:, 1])[0]
     kat_target = katpoint.Target(target)
@@ -1506,7 +1509,7 @@ def calc_enu_sep(antennas, bls_lookup):
 
     for i in range(len(bl)):
         enu = ant1[i].baseline_toward(ant2[i])
-        bl[i] = enu
+        bl[i] = enu.xyz.to_value(u.m)
 
     sep = np.linalg.norm(bl, axis=1)
 

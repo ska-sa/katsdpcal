@@ -7,6 +7,8 @@ import logging
 import numpy as np
 import dask.array as da
 import scipy.interpolate
+import astropy.units as u
+import astropy.constants as const
 
 from katdal.h5datav3 import FLAG_NAMES
 import katpoint
@@ -1028,7 +1030,9 @@ class Scan:
             Timestamps (optional, only necessary for complex models)
         """
         # phase centre position
-        ra0, dec0 = self.target.radec()
+        radec0 = self.target.radec()
+        ra0 = radec0.ra.rad
+        dec0 = radec0.dec.rad
         # divide model sources into katpoint targets and flux density models
         model_targets = [katpoint.Target(','.join(mc.split(',')[:-1])) for
                          mc in self.model_raw_params]
@@ -1062,7 +1066,7 @@ class Scan:
 
         # deal with easy case first - single point at the phase centre
         if (len(self.model_raw_params) == 1) \
-                and (position_offset < calprocs.arcsec_to_rad(max_offset)):
+                and (position_offset < max_offset * u.arcsec):
 
             if not valid_allfreq(model_fluxes, self.channel_freqs):
                 self.logger.warning(
@@ -1091,7 +1095,7 @@ class Scan:
                 uvw = self.target.uvw(self.antennas, self.timestamps, self.array_position)
                 # Use np.float64 precision for accurate prediction of source positions
                 # away from the centre of the field.
-                self.uvw = np.array(uvw, np.float64)
+                self.uvw = np.require(uvw.xyz.to_value(u.m), np.float64)
 
             # set up model visibility
             ntimes, nchans, npols, nbls = self.cross_ant.orig.auto_pol.vis.shape
@@ -1103,13 +1107,16 @@ class Scan:
             # complexmodel is np.complex64 so cal solution precision isn't upgraded
             complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
 
-            wl = katpoint.lightspeed / self.channel_freqs
+            wl = (const.c / (self.channel_freqs * u.Hz)).to_value(u.m)
             # iteratively add sources to the model
             for source, flux_model in zip(model_targets, model_fluxes):
                 # currently using the same Stokes I flux model for both polarisations
                 S = flux_model.flux_density(self.channel_freqs / 1.0e6)
+                radec = source.radec()
+                ra = radec.ra.rad
+                dec = radec.dec.rad
                 l, m = self.target.sphere_to_plane(
-                    *source.radec(), projection_type='SIN', coord_system='radec')
+                    ra, dec, projection_type='SIN', coord_system='radec')
 
                 k_ant = calprocs.K_ant(self.uvw, l, m, wl, k_ant)
                 complexmodel = calprocs.add_model_vis(k_ant,
