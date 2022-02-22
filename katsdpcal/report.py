@@ -1480,9 +1480,9 @@ def calc_uvdist(target, freq, times, cal_bls_lookup, antennas, cal_array_positio
     cross_idx = np.where(cal_bls_lookup[:, 0] !=
                          cal_bls_lookup[:, 1])[0]
     kat_target = katpoint.Target(target)
-    u, v, w = calprocs.calc_uvw_wave(kat_target, times, cal_bls_lookup[cross_idx],
-                                     antennas, wl, cal_array_position)
-    uvdist = np.hypot(u, v)
+    uvw = calprocs.calc_uvw_wave(kat_target, times, cal_bls_lookup[cross_idx],
+                                 antennas, wl, cal_array_position)
+    uvdist = np.hypot(uvw[0], uvw[1])
     return uvdist
 
 
