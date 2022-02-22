@@ -87,8 +87,11 @@ class SimData:
         range extends to the last channel.
     n_substreams : int
         Number of substreams within the SPEAD stream.
+    cbid : str
+        Capture block ID (if available). If `None`, use the capture_init time.
     """
-    def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
+    def __init__(self, filename, servers=None,
+                 bchan=0, echan=None, n_substreams=1, cbid=None):
         if servers is None:
             servers = []
         if n_substreams is None:
@@ -97,7 +100,7 @@ class SimData:
         self.filename = filename
         self.bchan = bchan
         self.echan = echan
-        self.cbid = None
+        self.cbid = cbid
         self.n_substreams = n_substreams
         # Subclass must provide num_scans
         self._tx_future = None    # Future for heaps in flight
@@ -113,11 +116,11 @@ class SimData:
                             '(Must be katdal or MS.)')
 
     async def capture_init(self):
-        cbid = '{}'.format(int(time.time()))
-        self.cbid = cbid
+        if self.cbid is None:
+            self.cbid = str(int(time.time()))
         for client in self.clients:
             await client.wait_connected()
-            await client.request('capture-init', cbid)
+            await client.request('capture-init', self.cbid)
 
     async def capture_done(self):
         for client in self.clients:
@@ -731,13 +734,17 @@ class SimDataMS(SimData):
 
 class SimDataKatdal(SimData):
     def __init__(self, filename, servers=None, bchan=0, echan=None, n_substreams=1):
-        super().__init__(filename, servers, bchan, echan, n_substreams)
         try:
             self.file = katdal.open(filename, upgrade_flags=False, ant_overrides='new_ants.csv', applycal='l0.KRETRACK')
         except IOError as error:
             raise WrongFileType(str(error)) from error
         self.file.select(channels=slice(bchan, echan))
         self.num_scans = len(self.file.scan_indices)
+        try:
+            cbid = self.file.source.capture_block_id
+        except AttributeError:
+            cbid = None
+        super().__init__(filename, servers, bchan, echan, n_substreams, cbid)
 
     def get_params(self):
         param_dict = {}
