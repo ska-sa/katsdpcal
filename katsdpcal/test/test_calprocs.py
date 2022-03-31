@@ -786,3 +786,29 @@ class TestGetReordering(unittest.TestCase):
         self.assertEqual(bls_wanted, [['m000', 'm001'], ['m000', 'm002'], ['m001', 'm002']])
         self.assertEqual(pol_order, [['v', 'v'], ['h', 'h'], ['v', 'h'], ['h', 'v']])
         np.testing.assert_array_equal(ordering, [3, 7, 11, 2, 6, 10, 1, 5, 9, 0, 4, 8])
+
+
+class TestInterpolateSoln(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.interpolate_soln`"""
+    def test(self):
+        shape = (4, 2, 5)
+        xi = [1, 2, 4, 5]
+
+        soln = np.ones(shape, np.complex64)
+        soln_mag = np.array([2, 4, 8, 10])
+        soln_angle = np.pi / 180 * np.array([10, 20, 40, 50])
+        soln_complex = soln_mag * np.exp(1.j * soln_angle)
+
+        # Test interpolation with and without NaN's
+        soln[:, 0, 2] = soln_complex
+        soln_complex[[1, 3]] = np.nan
+        soln[:, 1, 2] = soln_complex
+ 
+        x = [3, 6]
+        out = calprocs.interpolate_soln(x, xi, soln)
+
+        expected = np.ones((2, 2, 5), np.complex64)
+        expected[:, 0, 2] = np.array([6, 10]) * np.exp(1.j * np.pi / 180 * np.array([30, 50]))
+        expected[:, 1, 2] = np.array([6, 8]) * np.exp(1.j * np.pi / 180 * np.array([30, 40]))
+
+        np.testing.assert_almost_equal(out, expected, 6)

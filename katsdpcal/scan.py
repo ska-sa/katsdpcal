@@ -988,13 +988,7 @@ class Scan:
             # case of only one solution value being interpolated
             return CalSolutions(solns.soltype, solns.values, self.timestamps)
         else:
-            real_interp = scipy.interpolate.interp1d(
-                timestamps, values.real, kind='linear', axis=0, fill_value='extrapolate')
-            imag_interp = scipy.interpolate.interp1d(
-                timestamps, values.imag, kind='linear', axis=0, fill_value='extrapolate')
-            # interp1d gives float64 answers even given float32 inputs
-            interp_solns = real_interp(self.timestamps).astype(np.float32) \
-                + 1.0j * imag_interp(self.timestamps).astype(np.float32)
+            interp_solns = calprocs.interpolate_soln(self.timestamps, timestamps, values)
             return CalSolutions(solns.soltype, interp_solns, self.timestamps)
 
     def inf_interpolate(self, soln):
