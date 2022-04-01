@@ -803,7 +803,7 @@ class TestInterpolateSoln(unittest.TestCase):
         soln[:, 0, 2] = soln_complex
         soln_complex[[1, 3]] = np.nan
         soln[:, 1, 2] = soln_complex
- 
+
         x = [3, 6]
         out = calprocs.interpolate_soln(x, xi, soln)
 

@@ -379,7 +379,7 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
         b_values = b_soln.values
 
     # interpolate over NaNs along the channel axis
-    nchans, npols, nants = b_values.shape
+    nchans, *_ = b_values.shape
     b_interp = interpolate_soln(np.arange(nchans), np.arange(nchans), b_values)
 
     # select channels processed by this cal node
