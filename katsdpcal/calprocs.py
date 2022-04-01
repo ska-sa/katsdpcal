@@ -683,31 +683,39 @@ def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
     return model
 
 
-def interpolate_bandpass(x):
-    """Interpolate over NaNs in the channel axis of a bandpass.
+def interpolate_soln(x, xi, yi):
+    """Interpolate over NaNs in the first axis of a cal solution.
 
     Parameters
     ----------
-    x : :class:`np.ndarray`, complex, shape(nchans, npols, nants)
-        bandpass to interpolate over
+    x : 1-D sequence of float, length *M*
+        The x-coordinates at which to evaluate the interpolated values
+    xi : 1-D sequence of float, length *N*
+        The x-coordinates of the data points, must be sorted in ascending order
+    yi : :class:`np.ndarray`, complex, shape(N, npols, nants)
+        solution to interpolate over, first axis must match the length of xi
 
     Returns
     -------
-    x_interp : :class`np.ndarray`
-         interpolated bandpass
+    y_interp : :class`np.ndarray`
+         interpolated solution, shape(M, npols, nants)
     """
-    nchans, npols, nants = x.shape
-    x_interp = np.empty_like(x)
+    x = np.array(x)
+    xi = np.array(xi)
+
+    n, npols, nants = yi.shape
+    ni = len(x)
+    y_interp = np.zeros((ni, npols, nants), dtype=yi.dtype)
     for p in range(npols):
         for a in range(nants):
-            valid = np.isfinite(x[:, p, a])
+            valid = np.isfinite(yi[:, p, a])
             if np.any(valid):
-                x_interp[:, p, a] = complex_interp(np.arange(nchans),
-                                                   np.arange(nchans)[valid],
-                                                   x[:, p, a][valid])
+                y_interp[:, p, a] = complex_interp(x,
+                                                   xi[valid],
+                                                   yi[:, p, a][valid])
             else:
-                x_interp[:, p, a] = np.nan
-    return x_interp
+                y_interp[:, p, a] = np.nan
+    return y_interp
 
 
 def asbool(arr):
