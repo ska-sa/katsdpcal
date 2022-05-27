@@ -868,20 +868,19 @@ def beam_sample(beam_model, l, m, parangle, chan_freqs):    # noqa: E741
     # sample beam at close to its frequency resolution
     channel_width = chan_freqs[1] - chan_freqs[0]
     freq_stride = int(np.floor(beam_model.frequency_resolution() / channel_width))
+    sampled_freqs = chan_freqs[::freq_stride]
 
     radec_frame = katsdpmodels.primary_beam.RADecFrame.from_parallactic_angle(parangle)
-    beam_sample = beam_model.sample(l, m, chan_freqs[::freq_stride], radec_frame,
+    beam_sample = beam_model.sample(l, m, sampled_freqs, radec_frame,
                                     katsdpmodels.primary_beam.OutputType.JONES_HV)
 
-    # select only the hh and vv beams, order doesn't matter as we average the two pols
-    beam_phand = np.stack([beam_sample[..., 0, 0], beam_sample[..., 1, 1]], axis=-1)
+    # select and average the hh and vv beams, order doesn't matter as we average the two pols
+    beam_phand = 0.5 * (beam_sample[..., 0, 0] + beam_sample[..., 1, 1])
 
-    beam_phand = np.mean(beam_phand, axis=-1)
+    def _complex_interp_over_freq(fp):
+        return complex_interp(chan_freqs.value, sampled_freqs.value, fp)
+    beam = np.apply_along_axis(_complex_interp_over_freq, 0, beam_phand)
 
-    def _complex_interp(fp, xp, x):
-        return complex_interp(xp, x, fp)
-    beam = np.apply_along_axis(_complex_interp, 0, beam_phand,
-                               chan_freqs.value, chan_freqs.value[::freq_stride])
     # reorder axes so that the time axis is first ie (time, chan, 1)
     return np.moveaxis(beam, 0, 1)
 
