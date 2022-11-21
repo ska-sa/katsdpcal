@@ -286,9 +286,8 @@ def main():
         bandwidth = telstate_l0['bandwidth']
         # Conditions for 54 MHz and 107 MHz narrowbands
         narrow54 = 0 < bandwidth <= 54e6
-        narrow = 54e6 < bandwidth <= 107e6
-        modes = {'narrowband':['narrow_54', 'narrow_107'],
-        'wideband':'wide'}
+        narrow107 = 54e6 < bandwidth <= 107e6
+        modes = {'narrowband': ['narrow_54', 'narrow_107'], 'wideband': 'wide'}
         if narrow54:
             mode = modes.get('narrowband')[0]
         elif narrow107:
