@@ -1,4 +1,5 @@
 # parameter file for MeerKAT L 54 MHz narrow band
+# Link to the Jira ticket https://skaafrica.atlassian.net/browse/SPR1-2203
 
 # delay calibration
 k_solint : 5.0                       # nominal pre-k g solution interval, seconds
