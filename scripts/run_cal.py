@@ -283,7 +283,17 @@ def main():
     # determine parameter file to use
     if opts.parameter_file == '':
         band = BAND_MAP[telstate_l0['sub_band']]
-        mode = 'narrow' if telstate_l0['bandwidth'] <= 107e6 else 'wide'
+        bandwidth = telstate_l0['bandwidth']
+        # Conditions for 54 MHz and 107 MHz narrowbands
+        narrow54 = 0 < bandwidth <= 54e6
+        narrow107 = 54e6 < bandwidth <= 107e6
+        modes = {'narrowband': ['narrow_54', 'narrow_107'], 'wideband': 'wide'}
+        if narrow54:
+            mode = modes.get('narrowband')[0]
+        elif narrow107:
+            mode = modes.get('narrowband')[1]
+        else:
+            mode = modes.get('wideband')
         param_filename = 'pipeline_parameters_meerkat_{}_{}.txt'.format(band, mode)
         param_file = os.path.join(param_dir, param_filename)
         logger.info('Parameter file for %s-band %s: %s', band, mode, param_file)
