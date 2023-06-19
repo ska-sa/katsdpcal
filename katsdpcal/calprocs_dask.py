@@ -195,8 +195,8 @@ def wavg_full_t(data, flags, weights, solint, times=None, threshold=0.8):
     av_weights : weighted average of weights
     av_times   : optional average of times
     """
-    # ensure solint is an intager
-    solint = np.int(solint)
+    # ensure solint is an integer
+    solint = int(solint)
     inc_array = range(0, data.shape[0], solint)
 
     av_data = []

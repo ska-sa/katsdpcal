@@ -1144,7 +1144,7 @@ class Pipeline(Task):
         Note: do not call this `_run`, since that is a method of the base class.
         """
         # Ensure that parallelism in numba is thread & fork safe
-        numba.config.THREADING_LAYER = 'safe'
+        numba.config.THREADING_LAYER = 'threadsafe'
         # Ensure that numba doesn't starve the accumulator. The number of
         # threads cannot be set higher than NUMBA_NUM_THREADS (which needs to
         # be overridden from the environment).
@@ -1791,7 +1791,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
     data['excise'] = factory(excise_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
-    data['times'] = factory(buffer_shape[0], dtype=np.float)
+    data['times'] = factory(buffer_shape[0], dtype=float)
     data['dump_indices'] = factory(buffer_shape[0], dtype=np.uint64)
     return data
 

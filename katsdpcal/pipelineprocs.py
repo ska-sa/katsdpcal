@@ -194,7 +194,7 @@ def parameters_from_file(filename):
     The file has the format :samp:`{key}: {value}`. Hashes (#) introduce
     comments.
     """
-    rows = np.loadtxt(filename, delimiter=':', dtype=np.str, comments='#')
+    rows = np.loadtxt(filename, delimiter=':', dtype=str, comments='#')
     raw_params = {key.strip(): value.strip() for (key, value) in rows}
     param_dict = {}
     for parameter in USER_PARAMS_FREQS + USER_PARAMS_CHANS:
