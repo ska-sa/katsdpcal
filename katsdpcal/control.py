@@ -1144,7 +1144,7 @@ class Pipeline(Task):
         Note: do not call this `_run`, since that is a method of the base class.
         """
         # Ensure that parallelism in numba is thread & fork safe
-        numba.config.THREADING_LAYER = 'threadsafe'
+        numba.config.THREADING_LAYER = 'safe'
         # Ensure that numba doesn't starve the accumulator. The number of
         # threads cannot be set higher than NUMBA_NUM_THREADS (which needs to
         # be overridden from the environment).
