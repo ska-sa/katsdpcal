@@ -1329,9 +1329,9 @@ class Scan:
                 da.sum(calprocs.asbool(data[key+'_flags'])) / total_size).compute()
 
         rfi_flags = da.blockwise(
-            _rfi, 'TFpb', data['cross_pol'].vis, 'tfpb', data['cross_pol_flags'], 'tfpb',
+            _rfi, 'TFpb', data['auto_pol'].vis, 'tfpb', data['auto_pol_flags'], 'tfpb',
             dtype=np.uint8,
-            new_axes={'T': data['cross_pol'].vis.shape[0], 'F': data['cross_pol'].vis.shape[1]},
+            new_axes={'T': data['auto_pol'].vis.shape[0], 'F': data['auto_pol'].vis.shape[1]},
             concatenate=True, flagger=flagger, out_bit=cal_rfi_bit
             )
 
