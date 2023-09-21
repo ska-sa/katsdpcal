@@ -761,7 +761,7 @@ def solint_from_nominal(solint, dump_period, num_times):
         dumps_per_solint_low = int(np.round(req_dumps_per_solint * 0.8))
         dumps_per_solint_high = int(np.round(req_dumps_per_solint * 1.2))
         solint_check_range = np.arange(dumps_per_solint_low,
-                                       dumps_per_solint_high + 1).astype(np.int)
+                                       dumps_per_solint_high + 1).astype(int)
 
         # compute size of final partial interval (in dumps)
         tail = (num_times - 1) % solint_check_range + 1
@@ -1077,7 +1077,7 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
     list1 = np.hstack([list1, antlist])
     list1 = np.int_(list1)
 
-    list2 = np.array([], dtype=np.int)
+    list2 = np.array([], dtype=int)
     mod_antlist = antlist[1:]
     for i in range(0, len(mod_antlist)):
         list2 = np.hstack([list2, mod_antlist[:]])
@@ -1150,7 +1150,7 @@ def wavg_full_f(data, flags, weights, chanav, threshold=0.8):
         real (..., av_chans, npols, nbls), weighted average of weights
     """
     # ensure chanav is an integer
-    chanav = np.int(chanav)
+    chanav = int(chanav)
     inc_array = list(range(0, data.shape[-3], chanav))
 
     # suppress any comparison-with-nan errors by replacing them with zeros

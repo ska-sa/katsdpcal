@@ -337,7 +337,7 @@ def main():
     scale_factor = 8. + 1. + 4. + 0.125  # vis + flags + weights + excision
     time_factor = 8. + 0.1  # time + 0.1 for good measure (indiced)
     array_length = opts.buffer_maxsize/((scale_factor*n_chans*npols*nbl) + time_factor)
-    array_length = np.int(np.ceil(array_length))
+    array_length = int(np.ceil(array_length))
     logger.info('Buffer size : %f GB', opts.buffer_maxsize / 1e9)
     logger.info('Total slots in buffer : %d', array_length)
 

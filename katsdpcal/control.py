@@ -1791,7 +1791,7 @@ def create_buffer_arrays(buffer_shape, use_multiprocessing=True):
     data['flags'] = factory(buffer_shape, dtype=np.uint8)
     data['excise'] = factory(excise_shape, dtype=np.uint8)
     data['weights'] = factory(buffer_shape, dtype=np.float32)
-    data['times'] = factory(buffer_shape[0], dtype=np.float)
+    data['times'] = factory(buffer_shape[0], dtype=float)
     data['dump_indices'] = factory(buffer_shape[0], dtype=np.uint64)
     return data
 

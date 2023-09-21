@@ -41,7 +41,7 @@ def init_flagger(parameters, dump_period):
         A SumThresholdFlagger object for use with targets
     """
     # Make windows a integer array
-    rfi_windows_freq = np.array(parameters['rfi_windows_freq'], dtype=np.int)
+    rfi_windows_freq = np.array(parameters['rfi_windows_freq'], dtype=int)
     spike_width_time = parameters['rfi_spike_width_time'] / dump_period
     calib_flagger = SumThresholdFlagger(outlier_nsigma=parameters['rfi_calib_nsigma'],
                                         windows_freq=rfi_windows_freq,
