@@ -550,14 +550,19 @@ class TestAddModelVis(unittest.TestCase):
         ant1 = np.array([0, 0, 0, 1, 1, 2])
         ant2 = np.array([1, 2, 3, 2, 3, 3])
 
+        beam = np.ones((3, 5, 2), np.complex64)
+        beam[1, 3, 1] = 0.5j
+        beam_ant1 = np.array([0, 0, 0, 0, 0, 0])
+        beam_ant2 = np.array([0, 0, 1, 0, 1, 1])
+
         out_shape = (3, 5, 6)
         model = np.ones(out_shape, np.complex64)
         S = np.array([5, 4, 3, 2, 1])
 
-        out_model = calprocs.add_model_vis(kant, ant1, ant2, S, model)
+        out_model = calprocs.add_model_vis(kant, ant1, ant2, S, beam, beam_ant1, beam_ant2, model)
 
         expected_model = np.ones(out_shape, np.complex64) + S[np.newaxis, :, np.newaxis]
-        expected_model[1, 3, :] = [5, 3-2j, 5-4j, 5-4j, 9-8j, 9]
+        expected_model[1, 3, :] = [5, 3-2j, -1-2j, 5-4j, -3-4j, 1-4j]
 
         np.testing.assert_equal(out_model, expected_model)
 
