@@ -1,4 +1,4 @@
-ARG KATSDPDOCKERBASE_REGISTRY=quay.io/ska-sa
+ARG KATSDPDOCKERBASE_REGISTRY=harbor.sdp.kat.ac.za/dpp
 
 FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build as build
 
