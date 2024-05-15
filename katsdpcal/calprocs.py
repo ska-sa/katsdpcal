@@ -932,7 +932,8 @@ def get_pol_bls(bls_ordering, pol):
     pol_bls_ordering : :class:`np.ndarray`
         correlation products without polarisation information, shape(nbl*4, 2)
     """
-    pol_ant_dtype = np.array(bls_ordering[0][0] + 'h').dtype
+    longest_name = max([ant for bls in bls_ordering for ant in bls], key=len)
+    pol_ant_dtype = np.array(longest_name + 'h').dtype
     nbl = len(bls_ordering)
     pol_bls_ordering = np.empty([nbl * len(pol), 2], dtype=pol_ant_dtype)
     for i, p in enumerate(pol):
@@ -969,7 +970,7 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
         bls_ordering = bls_ordering.tolist()
 
     # get current antenna list without polarisation
-    bls_ordering_nopol = [[b[0][0:4], b[1][0:4]] for b in bls_ordering]
+    bls_ordering_nopol = [[b[0][0:-1], b[1][0:-1]] for b in bls_ordering]
     # find unique elements
     unique_bls = []
     for b in bls_ordering_nopol:
@@ -981,7 +982,7 @@ def get_reordering(antlist, bls_ordering, output_order_bls=None, output_order_po
         pol_order = output_order_pol
     else:
         # get polarisation products from current antenna list
-        bls_ordering_polonly = [[b[0][4], b[1][4]] for b in bls_ordering]
+        bls_ordering_polonly = [[b[0][-1], b[1][-1]] for b in bls_ordering]
         # find unique pol combinations
         unique_pol = []
         for pbl in bls_ordering_polonly:
@@ -1095,7 +1096,7 @@ def get_bls_lookup(antlist, bls_ordering):
     # make polarisation and corr_prod lookup tables (assume this doesn't change
     # over the course of an observaton)
     antlist_index = dict([(antlist[i], i) for i in range(len(antlist))])
-    return np.array([[antlist_index[a1[0:4]], antlist_index[a2[0:4]]] for a1, a2 in bls_ordering])
+    return np.array([[antlist_index[a1], antlist_index[a2]] for a1, a2 in bls_ordering])
 
 
 # --------------------------------------------------------------------------------------------------

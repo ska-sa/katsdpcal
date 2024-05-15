@@ -172,7 +172,7 @@ class TestFinaliseParameters(unittest.TestCase):
                 '5870.119 5870.721 1.0, 1:03:04.1 0 0:00:43.8 0:00:44.8 -0:00:29.0 '
                 '-0:00:14.0 -0:08:42.9 0:01:15.1, 1.22'),
             katpoint.Antenna(
-                'm006, -30:42:39.8, 21:26:38.0, 1035.0, 13.5, -18.2315 -295.428 1.788 '
+                's0105, -30:42:39.8, 21:26:38.0, 1035.0, 13.5, -18.2315 -295.428 1.788 '
                 '5880.189 5880.611 1.0, 1:58:23.5 0 0:00:23.3 0:01:44.4 -0:00:16.9 '
                 '-0:00:09.1 -0:07:41.5 0:01:19.5, 1.22')]
         self.antenna_names = [a.name for a in self.antennas]
@@ -196,12 +196,13 @@ class TestFinaliseParameters(unittest.TestCase):
         # add primary beam keys to telstate
         correlator_stream = 'baseline_correlation_products'
         f_engine_stream = 'antenna_channelised_voltage'
-        beam_url = 'primary_beam/config/cohort/meerkat/l/v1.alias'
+        mkat_beam_url = 'primary_beam/config/cohort/meerkat/l/v1.alias'
+        ska_beam_url = 'primary_beam/config/cohort/ska/l/v1.alias'
         self.telstate_corr = self.telstate.view(correlator_stream)
         self.telstate_corr['src_streams'] = [f_engine_stream]
         primary_beam_key = self.telstate.join(f_engine_stream, 'model',
                                               'primary_beam', 'cohort', 'fixed')
-        self.telstate[primary_beam_key] = {'m001': beam_url}
+        self.telstate[primary_beam_key] = {'m001': mkat_beam_url, 's0105': ska_beam_url}
         self.telstate_l0 = self.telstate.view('sdp_l0test')
         self.telstate_l0['sdp_model_base_url'] = 'https://sdpmodels.kat.ac.za/'
 
