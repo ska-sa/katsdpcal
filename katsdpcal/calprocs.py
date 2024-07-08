@@ -343,16 +343,15 @@ def select_med_deviation_pnr_ants(med_pnr_ants):
     Returns
     -------
     high_quality_pnr : class:`np.ndarray`
-       Array of antenna Median Peak to Noise Boolean values that are above one median deviation"""
+       Array of corresponding ant indices with pnr values that are above the calculated mad"""
 
-    ant_indices = np.argsort(med_pnr_ants)[::-1]
+    ant_indices = np.arange(len(med_pnr_ants))
     median = np.nanmedian(med_pnr_ants)
 
     mad = scipy.stats.median_abs_deviation(med_pnr_ants, nan_policy='omit')
-    pnr_vals_less_than_1mad = med_pnr_ants > (median - mad)
-    high_quality_pnr = pnr_vals_less_than_1mad[ant_indices]
+    mad_threshold = median - mad
 
-    return high_quality_pnr
+    return ant_indices[med_pnr_ants > mad_threshold]
 
 
 def best_refant(data, corrprod_lookup, chans):
@@ -399,9 +398,7 @@ def best_refant(data, corrprod_lookup, chans):
         # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
         med_pnr_ants[a] = np.nanmedian(pnr)
-    ant_indices = np.argsort(med_pnr_ants)[::-1]
-    high_pnrs = select_med_deviation_pnr_ants(med_pnr_ants)
-    high_ants = ant_indices[high_pnrs]
+    high_ants = select_med_deviation_pnr_ants(med_pnr_ants)
     ant_longest_bls = np.sort(high_ants)[::-1]
 
     return ant_longest_bls
