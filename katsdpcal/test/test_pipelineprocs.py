@@ -193,11 +193,24 @@ class TestFinaliseParameters(unittest.TestCase):
 
         self.telstate = katsdptelstate.TelescopeState()
         self.telstate.clear()
+        # add primary beam keys to telstate
+        correlator_stream = 'baseline_correlation_products'
+        f_engine_stream = 'antenna_channelised_voltage'
+        beam_url = 'primary_beam/config/cohort/meerkat/l/v1.alias'
+        self.telstate_corr = self.telstate.view(correlator_stream)
+        self.telstate_corr['src_streams'] = [f_engine_stream]
+        primary_beam_key = self.telstate.join(f_engine_stream, 'model',
+                                              'primary_beam', 'cohort', 'fixed')
+        self.telstate[primary_beam_key] = {'m001': beam_url}
         self.telstate_l0 = self.telstate.view('sdp_l0test')
+        self.telstate_l0['sdp_model_base_url'] = 'https://sdpmodels.kat.ac.za/'
+
+        self.telstate_l0['src_streams'] = [correlator_stream]
         self.telstate_l0['n_chans'] = 4096
         self.telstate_l0['bandwidth'] = 856000000.0
         self.telstate_l0['center_freq'] = 1284000000.0
         self.telstate_l0['bls_ordering'] = bls_ordering
+
         for antenna in self.antennas:
             self.telstate[self.telstate.join(antenna.name, 'observer')] = antenna.description
         self.expected_freqs_all = np.arange(4096) / 4096 * 856000000.0 + 856000000.0

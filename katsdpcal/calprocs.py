@@ -13,6 +13,7 @@ import scipy.fftpack
 import numba
 
 import katpoint
+import katsdpmodels.primary_beam
 
 from katdal.applycal import complex_interp
 
@@ -643,11 +644,11 @@ def K_ant(uvw, l, m, wl, k_ant):    # noqa: E741
 
 
 @numba.jit(nopython=True, parallel=True)
-def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
+def add_model_vis(k_ant, ant1, ant2, I, beam, beam_ant1, beam_ant2, model):    # noqa: E741
     """Add model visibilities to model.
 
-    Calculate model visibilities from the per-antenna K-Jones term and source
-    Stokes I flux densities and add them to the model array.
+    Calculate model visibilities from the per-antenna K-Jones term, antenna
+    beam patterns and source Stokes I flux densities.  Add visibilities to the model array.
 
     Parameters
     ----------
@@ -659,6 +660,12 @@ def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
         index of second antenna of each baseline pair
     I : :class:`np.ndarray`, real, shape (nchans)
         Stokes I source flux densities per channel
+    beam : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbeams)
+        Antenna beam patterns
+    beam_ant1 : :class:`np.ndarray`, int, shape (nbls)
+        index of beam of first antenna of each baseline pair
+    beam_ant2 : :class:`np.ndarray`, int, shape (nbls)
+        index of beam of second antenna of each baseline pair
     model : :class:`np.ndarray`, complex, shape (ntimes, nchans, nbls)
         array to add model visibilities to
 
@@ -677,8 +684,8 @@ def add_model_vis(k_ant, ant1, ant2, I, model):    # noqa: E741
             cstop = min(nchans, cstart + cstep)
             for c in range(cstart, cstop):
                 for b in range(nbls):
-                    model[t, c, b] += (k_ant[t, c, ant1[b]]
-                                       * np.conj(k_ant[t, c, ant2[b]])
+                    model[t, c, b] += (k_ant[t, c, ant1[b]] * beam[t, c, beam_ant1[b]]
+                                       * np.conj(k_ant[t, c, ant2[b]] * beam[t, c, beam_ant2[b]])
                                        * I[c])
     return model
 
@@ -840,6 +847,50 @@ def measure_flux(scaled_solns, unscaled_solns, start_time, end_time):
         measured_flux[targ] = flux_Jy
         measured_flux_std[targ] = error_flux_Jy
     return measured_flux, measured_flux_std
+
+
+def beam_sample(beam_model, l, m, parangle, chan_freqs):    # noqa: E741
+    """Sample the beam model at the given co-ordinates and frequencies.
+
+    Sample only the parallel hand beams, average together the H and V primary beams.
+
+    Parameters
+    ----------
+    beam_model : :class:`katsdpmodels.primary_beam.PrimaryBeam`
+        model of primary beam
+    l : float
+        ra co-ordinate of target
+    m : float
+        dec co-ordinate of target
+    parangle : :class:`~astropy.units.Quantity`
+        parallactic angles
+    chan_freqs : :class:`~astropy.units.Quantity`
+        frequencies
+
+    Returns
+    -------
+    complex_beam : :class:`np.ndarray`
+        primary beam at given l, m, parangles (time) and frequencies,
+        np.complex64, shape(ntimes, nchans)
+    """
+    # sample beam at close to its frequency resolution
+    channel_width = chan_freqs[1] - chan_freqs[0]
+    freq_stride = int(np.floor(beam_model.frequency_resolution() / channel_width))
+    sampled_freqs = chan_freqs[::freq_stride]
+
+    radec_frame = katsdpmodels.primary_beam.RADecFrame.from_parallactic_angle(parangle)
+    beam_sample = beam_model.sample(l, m, sampled_freqs, radec_frame,
+                                    katsdpmodels.primary_beam.OutputType.JONES_HV)
+
+    # select and average the hh and vv beams, order doesn't matter as we average the two pols
+    beam_phand = 0.5 * (beam_sample[..., 0, 0] + beam_sample[..., 1, 1])
+
+    def _complex_interp_over_freq(fp):
+        return complex_interp(chan_freqs.value, sampled_freqs.value, fp)
+    beam = np.apply_along_axis(_complex_interp_over_freq, 0, beam_phand)
+
+    # reorder axes so that the time axis is first ie (time, chan, 1)
+    return np.moveaxis(beam, 0, 1)
 
 
 # --------------------------------------------------------------------------------------------------
