@@ -850,8 +850,7 @@ class TestBestRefAnt(unittest.TestCase):
         self.rs = np.random.RandomState(seed=1)
         k = self.rs.uniform(1e-9, 5e-9, (2, 5))
         delay_bls = k[:, self.bls[:, 0]] - k[:, self.bls[:, 1]]
-        phase = np.exp(2.j * np.pi * self.freqs[:, np.newaxis][:, np.newaxis]*delay_bls[:, :])
-        self.vis = np.array(phase, dtype=complex)
+        self.vis = np.exp(2.j * np.pi * self.freqs[:, np.newaxis][:, np.newaxis]*delay_bls[:, :])
         noise = 0.1 * (self.rs.random_sample((10, 2, 10)) - 0.1)
         self.vis *= np.exp(1.j * noise)
 
