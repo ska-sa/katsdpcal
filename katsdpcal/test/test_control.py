@@ -864,7 +864,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Relax the tolerances as the visibilities are generated using
         # the model given by the target string,
         # but calibration is performed using the full sky model.
-        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2)
+        await self.test_capture(expected_BG_rtol=1e-2, expected_BCROSS_DIODE_rtol=1e-2)
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
