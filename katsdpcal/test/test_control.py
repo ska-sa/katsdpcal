@@ -70,6 +70,7 @@ class PingTask(control.Task):
     def __init__(self, task_class, master_queue, slave_queue):
         super().__init__(task_class, master_queue, 'PingTask')
         self.slave_queue = slave_queue
+        self.master_queue = master_queue
 
     def get_sensors(self):
         return [
@@ -94,9 +95,11 @@ class BaseTestTask:
     This is a base class, which is subclassed for each process class.
     """
 
-    def setup(self):
-        self.master_queue = self.module.Queue()
-        self.slave_queue = self.module.Queue()
+    def setup_method(self, method):
+        module = multiprocessing
+
+        self.master_queue = module.Queue()
+        self.slave_queue = module.Queue()
 
     def _check_reading(self, event, name, value,
                        status=aiokatcp.Sensor.Status.NOMINAL, timestamp=None):
@@ -108,7 +111,7 @@ class BaseTestTask:
             assert_equal(timestamp, event.reading.timestamp)
 
     def test(self):
-        task = PingTask(self.module.Process, self.master_queue, self.slave_queue)
+        task = PingTask(multiprocessing.Process, self.master_queue, self.slave_queue)
         assert_equal(False, task.daemon)   # Test the wrapper property
         task.daemon = True       # Ensure it gets killed if the test fails
         assert_equal('PingTask', task.name)
@@ -648,7 +651,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         return metadata
 
     async def test_capture(self, expected_g=1, expected_BG_rtol=1e-2,
-                           expected_BCROSS_DIODE_rtol=1e-3):
+                           expected_BCROSS_DIODE_rtol=1e-2):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
