@@ -95,7 +95,7 @@ class BaseTestTask:
     This is a base class, which is subclassed for each process class.
     """
 
-    def setup_method(self, method):
+    def setup(self, method):
         module = multiprocessing
 
         self.master_queue = module.Queue()
