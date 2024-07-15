@@ -285,8 +285,10 @@ class Scan:
                 return refant_index
 
         modvis = self.cross_ant.tf.auto_pol.vis
+        print(f'modvis:{modvis}')
         # determine channel range for fit
         chan_slice = np.s_[:, bchan:echan, :, :]
+        print(chan_slice)
         # use specified channel range for frequencies
         k_freqs = self.channel_freqs[bchan:echan]
 
@@ -296,10 +298,13 @@ class Scan:
         # (other models don't impact delay)
         if self.model is None:
             fitvis = modvis[chan_slice]
+            print(fitvis)
         elif self.model.shape[-1] == 1:
             fitvis = modvis[chan_slice]
         else:
             fitvis = self._get_solver_model(modvis, chan_select=chan_slice)
+            print(f'model solver: {fitvis}')
+        print(f'fit_vis: {fitvis.compute()}')
         # average over all time, for specified channel range (no averaging over channel)
         ave_vis = calprocs_dask.wavg(
             fitvis,
@@ -308,12 +313,36 @@ class Scan:
 
         # fit for delay
         ave_vis = ave_vis.compute()
+        print(ave_vis)
         refant_order = list(calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs))
-        # ensure we don't pick the old, flagged antenna
+        print(f'refant_order : {refant_order}')
+        print(f'refant: {refant_order[0]}')
+        # refant_order= []
+        print('refant_debug: refant_order')
+
+        if refant_index is not None and refant_index not in refant_order:
+            logger.info('Select another refant in the list')
+            return refant_order[0]
+        else:
+            logger.info('Selected refant_index is in refant_order and refant_index is None.')
+            return refant_order[0]
+
+        # Ensure we don't pick the old, flagged antenna
         if refant_index is not None:
-            logger.info('Flag fraction on refant is > 80%% (%.3f%%),'
-                        ' selecting a new refant', flag_frac)
-            refant_order.remove(refant_index)
+            logger.info('Flag frac on refant is > 80%% (%.3f%%), select a new refant', flag_frac)
+            if refant_index in refant_order:
+                refant_order.remove(refant_index)
+
+        """if refant_order:
+            if refant_index is not None and refant_index not in refant_order:
+                logger.info('Select another refant in the list')
+                return refant_order[0]
+            else:
+                logger.info('Selected refant_index is in refant_order and refant_index is None.')
+                return refant_order[0]
+        else:
+            logger.error('no refant valid')
+            return None"""
         return refant_order[0]
 
     # ---------------------------------------------------------------------------------------------
