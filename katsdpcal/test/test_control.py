@@ -96,8 +96,6 @@ class BaseTestTask:
     """
 
     def setup(self):
-        module = multiprocessing
-
         self.master_queue = module.Queue()
         self.slave_queue = module.Queue()
 
