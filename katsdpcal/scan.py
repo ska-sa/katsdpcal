@@ -309,11 +309,14 @@ class Scan:
         # fit for delay
         ave_vis = ave_vis.compute()
         refant_order = list(calprocs.best_refant(ave_vis, self.cross_ant.bls_lookup, k_freqs))
+
         # ensure we don't pick the old, flagged antenna
         if refant_index is not None:
             logger.info('Flag fraction on refant is > 80%% (%.3f%%),'
                         ' selecting a new refant', flag_frac)
-            refant_order.remove(refant_index)
+            if any(refant_order) == refant_index:
+                refant_order.remove(refant_index)
+
         return refant_order[0]
 
     # ---------------------------------------------------------------------------------------------
