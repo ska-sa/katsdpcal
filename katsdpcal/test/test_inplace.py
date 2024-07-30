@@ -1,6 +1,6 @@
 """Tests for :mod:`katsdpcal.inplace`."""
 
-from nose.tools import assert_raises, assert_false
+from nose.tools import assert_raises
 import numpy as np
 import dask.array as da
 import dask.distributed
@@ -94,7 +94,7 @@ class TestRename:
         old_keys = set(array.__dask_graph__().keys())
         inplace.rename(array)
         new_keys = set(array.__dask_graph__().keys())
-        assert_false(old_keys & new_keys)
+        assert not (old_keys & new_keys)
         np.testing.assert_array_equal(expected, array.compute())
 
     def test_simple(self):
