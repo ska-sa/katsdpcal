@@ -14,9 +14,7 @@ import datetime
 
 import numba
 import numpy as np
-from nose.tools import (
-    assert_equal, assert_is_instance, assert_in, assert_not_in, assert_false, assert_true,
-    assert_almost_equal, assert_not_equal, assert_raises_regex, assert_is_none)
+from nose.tools import assert_raises_regex
 import asynctest
 import scipy.interpolate
 
@@ -53,8 +51,8 @@ def test_shared_empty():
 
     a = control.shared_empty((5, 3), np.int32)
     a.fill(0)
-    assert_equal((5, 3), a.shape)
-    assert_equal(np.int32, a.dtype)
+    assert a.shape == (5, 3)
+    assert a.dtype == np.int32
     p = Process(target=sender, args=(a,))
     p.start()
     p.join()
@@ -100,23 +98,23 @@ class BaseTestTask:
 
     def _check_reading(self, event, name, value,
                        status=aiokatcp.Sensor.Status.NOMINAL, timestamp=None):
-        assert_is_instance(event, control.SensorReadingEvent)
-        assert_equal(name, event.name)
-        assert_equal(value, event.reading.value)
-        assert_equal(status, event.reading.status)
+        assert isinstance(event, control.SensorReadingEvent)
+        assert event.name == name
+        assert event.reading.value == value
+        assert event.reading.status == status
         if timestamp is not None:
-            assert_equal(timestamp, event.reading.timestamp)
+            assert event.reading.timestamp == timestamp
 
     def test(self):
         task = PingTask(self.module.Process, self.master_queue, self.slave_queue)
-        assert_equal(False, task.daemon)   # Test the wrapper property
+        assert task.daemon == False   # Test the wrapper property
         task.daemon = True       # Ensure it gets killed if the test fails
-        assert_equal('PingTask', task.name)
+        assert task.name == 'PingTask'
         task.start()
 
         event = self.master_queue.get()
         self._check_reading(event, 'error', 0, aiokatcp.Sensor.Status.ERROR, 123456789.0)
-        assert_true(task.is_alive())
+        assert task.is_alive()
 
         self.slave_queue.put(3)
         event = self.master_queue.get()
@@ -124,10 +122,10 @@ class BaseTestTask:
 
         self.slave_queue.put(-1)   # Stops the slave
         event = self.master_queue.get()
-        assert_is_instance(event, control.StopEvent)
+        assert isinstance(event, control.StopEvent)
 
         task.join()
-        assert_false(task.is_alive())
+        assert not task.is_alive()
 
 
 class TestTaskMultiprocessing(BaseTestTask):
@@ -298,9 +296,9 @@ class TestCalDeviceServer(asynctest.TestCase):
 
         It stores the stream in self.output_streams, keyed by hostname and port.
         """
-        assert_equal(len(endpoints), 1)
+        assert len(endpoints) == 1
         key = Endpoint(*endpoints[0])
-        assert_not_in(key, self.output_streams)
+        assert key not in self.output_streams
         stream = spead2.send.InprocStream(thread_pool, [spead2.InprocQueue()])
         self.output_streams[key] = stream
         return stream
@@ -413,8 +411,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         values = []
         informs_list = await self.make_request('sensor-value', name)
         for informs in informs_list:
-            assert_equal(1, len(informs))
-            assert_in(informs[0].arguments[3], (b'nominal', b'warn', b'error'))
+            assert len(informs) == 1
+            assert informs[0].arguments[3] in (b'nominal', b'warn', b'error')
             values.append(informs[0].arguments[4])
         return values
 
@@ -426,8 +424,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         values = await self.get_sensor(name)
         for i, value in enumerate(values):
             value = type(expected)(value)
-            assert_equal(expected, value,
-                         "Wrong value for {} ({!r} != {!r})".format(name, expected, value))
+            assert value == expected, "Wrong value for {} ({!r} != {!r})".format(name, value, expected)
 
     async def assert_request_fails(self, msg_re, name, *args):
         """Assert that a request fails, and test the error message against
@@ -448,7 +445,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.make_request('capture-done')
         await self.make_request('shutdown')
         for server in self.servers:
-            assert_equal([], os.listdir(server.report_path))
+            assert os.listdir(server.report_path) == []
         await self.assert_sensor_value('reports-written', 0)
         await self.assert_sensor_value('capture-block-state', b'{}')
 
@@ -482,10 +479,12 @@ class TestCalDeviceServer(asynctest.TestCase):
         inform_lists = await self.make_request('shutdown', timeout=timeout)
         for informs in inform_lists:
             progress = [inform.arguments[0] for inform in informs]
-            assert_equal([b'Accumulator stopped',
-                          b'Pipeline stopped',
-                          b'Sender stopped',
-                          b'ReportWriter stopped'], progress)
+            assert progress == [
+                b'Accumulator stopped',
+                b'Pipeline stopped',
+                b'Sender stopped',
+                b'ReportWriter stopped'
+            ]
 
     def interp_B(self, B):
         """
@@ -528,12 +527,12 @@ class TestCalDeviceServer(asynctest.TestCase):
         B = []
         for i in range(self.n_servers):
             cal_product_Bn = telstate_cb_cal.get_range(bp_key+'{}'.format(i), st=0)
-            assert_equal(1, len(cal_product_Bn))
+            assert len(cal_product_Bn) == 1
             Bn, Bn_ts = cal_product_Bn[0]
-            assert_equal(np.complex64, Bn.dtype)
-            assert_equal((self.n_channels // self.n_servers, 2, self.n_antennas), Bn.shape)
+            assert Bn.dtype == np.complex64
+            assert Bn.shape == (self.n_channels // self.n_servers, 2, self.n_antennas)
             B.append(Bn)
-        assert_not_in(bp_key+'{}'.format(self.n_servers), telstate_cb_cal)
+        assert bp_key+'{}'.format(self.n_servers) not in telstate_cb_cal
         return np.concatenate(B), Bn_ts
 
     def make_vis(self, K, G, target, noise=np.array([])):
@@ -702,30 +701,31 @@ class TestCalDeviceServer(asynctest.TestCase):
         report_last_path = await self.get_sensor('report-last-path')
         for server in self.servers:
             reports = os.listdir(server.report_path)
-            assert_equal(1, len(reports))
+            assert len(reports) == 1
             report = os.path.join(server.report_path, reports[0])
-            assert_true(os.path.isfile(os.path.join(report,
-                                       'calreport{}.html'.format(server.server_id + 1))))
-            assert_true(os.path.samefile(report, report_last_path[server.server_id]))
+            assert os.path.isfile(
+                os.path.join(report, 'calreport{}.html'.format(server.server_id + 1))
+            )
+            assert os.path.samefile(report, report_last_path[server.server_id])
             # Check that metadata file is written and correct
             meta_expected = self.metadata_dict(1400000098)
             meta_expected['Run'] = server.server_id + 1
             meta_file = os.path.join(report, 'metadata.json')
-            assert_true(os.path.isfile(meta_file))
+            assert os.path.isfile(meta_file)
             with open(meta_file, 'r') as infile:
                 meta_out = json.load(infile)
-            assert_equal(meta_out, meta_expected)
+            assert meta_out == meta_expected
 
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
-        assert_equal(self.n_servers, cal_product_B_parts)
+        assert cal_product_B_parts == self.n_servers
         ret_B, ret_B_ts = self.assemble_bandpass(telstate_cb_cal, 'product_B')
 
         cal_product_G = telstate_cb_cal.get_range('product_G', st=0)
-        assert_equal(expected_g, len(cal_product_G))
+        assert len(cal_product_G) == expected_g
         ret_G, ret_G_ts = cal_product_G[0]
-        assert_equal(np.complex64, ret_G.dtype)
-        assert_equal(0, np.count_nonzero(np.isnan(ret_G)))
+        assert ret_G.dtype == np.complex64
+        assert np.count_nonzero(np.isnan(ret_G)) == 0
         # Scale the returned G by the sqrt of the measured flux density of the model
         ret_F = telstate_cb_cal['measured_flux']
         ret_F_scale = np.sqrt(ret_F.get(target.name, 1.0))
@@ -740,37 +740,37 @@ class TestCalDeviceServer(asynctest.TestCase):
                                    rtol=expected_BG_rtol)
 
         cal_product_K = telstate_cb_cal.get_range('product_K', st=0)
-        assert_equal(1, len(cal_product_K))
+        assert len(cal_product_K) == 1
         ret_K, ret_K_ts = cal_product_K[0]
-        assert_equal(np.float32, ret_K.dtype)
+        assert ret_K.dtype == np.float32
         np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
 
         # check SNR products are in telstate
         cal_product_SNR_K = telstate_cb_cal.get_range('product_SNR_K', st=0)
-        assert_equal(1, len(cal_product_SNR_K))
+        assert len(cal_product_SNR_K) == 1
         ret_SNR_K, ret_SNR_K_ts = cal_product_SNR_K[0]
-        assert_equal(np.float32, ret_SNR_K.dtype)
-        assert_equal(ret_SNR_K_ts, ret_K_ts)
+        assert ret_SNR_K.dtype == np.float32
+        assert ret_SNR_K_ts == ret_K_ts
 
         for i in range(self.n_servers):
             cal_product_SNR_B = telstate_cb_cal.get_range('product_SNR_B{0}'.format(i))
-            assert_equal(1, len(cal_product_SNR_B))
+            assert len(cal_product_SNR_B) == 1
             ret_SNR_B, ret_SNR_B_ts = cal_product_SNR_B[0]
-            assert_equal(np.float32, ret_SNR_K.dtype)
-            assert_equal(ret_SNR_B_ts, ret_B_ts)
+            assert ret_SNR_K.dtype == np.float32
+            assert ret_SNR_B_ts == ret_B_ts
 
         cal_product_SNR_G = telstate_cb_cal.get_range('product_SNR_G', st=0)
-        assert_equal(expected_g, len(cal_product_SNR_G))
+        assert len(cal_product_SNR_G) == expected_g
         ret_SNR_G, ret_SNR_G_ts = cal_product_SNR_G[0]
-        assert_equal(np.float32, ret_SNR_G.dtype)
-        assert_equal(ret_SNR_G_ts, ret_G_ts)
+        assert ret_SNR_G.dtype == np.float32
+        assert ret_SNR_G_ts == ret_G_ts
 
         if 'bfcal' in target.tags:
             # Check KCROSS_DIODE
             cal_product_KCROSS_DIODE = telstate_cb_cal.get_range('product_KCROSS_DIODE', st=0)
-            assert_equal(1, len(cal_product_KCROSS_DIODE))
+            assert len(cal_product_KCROSS_DIODE) == 1
             ret_KCROSS_DIODE, ret_KCROSS_DIODE_ts = cal_product_KCROSS_DIODE[0]
-            assert_equal(np.float32, ret_KCROSS_DIODE.dtype)
+            assert ret_KCROSS_DIODE.dtype == np.float32
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
                                        ret_KCROSS_DIODE, rtol=1e-3)
             # Check BCROSS_DIODE
@@ -809,30 +809,35 @@ class TestCalDeviceServer(asynctest.TestCase):
 
         if 'polcal' in target.tags:
             cal_product_KCROSS = telstate_cb_cal.get_range('product_KCROSS', st=0)
-            assert_equal(1, len(cal_product_KCROSS))
+            assert len(cal_product_KCROSS) == 1
             ret_KCROSS, ret_KCROSS_ts = cal_product_KCROSS[0]
-            assert_equal(np.float32, ret_KCROSS.dtype)
+            assert ret_KCROSS.dtype == np.float32
             KCROSS = K - K[1] - (ret_K - ret_K[1])
             np.testing.assert_allclose(np.mean(KCROSS, axis=1)[..., np.newaxis],
                                        ret_KCROSS, rtol=1e-3)
 
         # Check that flags were transmitted
-        assert_equal(set(self.output_streams.keys()),
-                     set(self.flags_endpoints[0] + self.flags_endpoints[1]))
+        assert (
+            set(self.output_streams.keys()) ==
+            set(self.flags_endpoints[0] + self.flags_endpoints[1])
+        )
         continuum_factors = [1, 4]
         for stream_idx, continuum_factor in enumerate(continuum_factors):
             for i, endpoint in enumerate(self.flags_endpoints[stream_idx]):
                 heaps = get_sent_heaps(self.output_streams[endpoint])
-                assert_equal(n_times + 2, len(heaps))   # 2 extra for start and end heaps
+                assert len(heaps) == n_times + 2  # 2 extra for start and end heaps == n_times + 2
                 for j, heap in enumerate(heaps[1:-1]):
                     items = spead2.ItemGroup()
                     items.update(heap)
                     ts = items['timestamp'].value
-                    assert_almost_equal(first_ts + j * self.telstate.sdp_l0test_int_time, ts)
+                    assert pytest.approx(ts, abs=1e-7) == (
+                        first_ts + j * self.telstate.sdp_l0test_int_time
+                    )
                     idx = items['dump_index'].value
-                    assert_equal(j, idx)
-                    assert_equal(i * self.n_channels // self.n_servers // continuum_factor,
-                                 items['frequency'].value)
+                    assert idx == j
+                    assert items['frequency'].value == (
+                        i * self.n_channels // self.n_servers // continuum_factor
+                    )
                     out_flags = items['flags'].value
                     # Mask out the ones that get changed by cal
                     mask = 1 << FLAG_NAMES.index('cal_rfi')
@@ -842,11 +847,11 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Validate the flag information in telstate. We'll just validate the
         # continuum version, since that's the trickier case.
         ts_flags = self.telstate.root().view('sdp_l1_continuum_flags_test')
-        assert_equal(ts_flags['center_freq'], 1284313476.5625)  # Computed by hand
-        assert_equal(ts_flags['n_chans'], 1024)
-        assert_equal(ts_flags['n_chans_per_substream'], 512)
+        assert ts_flags['center_freq'] == 1284313476.5625  # Computed by hand
+        assert ts_flags['n_chans'] == 1024
+        assert ts_flags['n_chans_per_substream'] == 512
         for key in ['bandwidth', 'n_bls', 'bls_ordering', 'sync_time', 'int_time', 'excise']:
-            assert_equal(ts_flags[key], self.telstate_l0[key])
+            assert ts_flags[key] == self.telstate_l0[key]
 
     async def test_capture_separate_tags(self):
         # Change the target to one with different tags
@@ -920,7 +925,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Check the pipeline did not select the noisy antenna as the refant
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         refant_name = telstate_cb_cal['refant']
-        assert_not_equal(self.antennas[worst_index], refant_name)
+        assert refant_name != self.antennas[worst_index]
         await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
 
         # Refresh ItemGroup and send it to servers.
@@ -954,13 +959,13 @@ class TestCalDeviceServer(asynctest.TestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb2')
         refant_name = telstate_cb_cal['refant']
         refant_index_cb2 = self.antennas.index(refant_name)
-        assert_not_equal(self.antennas[refant_index_cb], refant_name)
+        assert refant_name != self.antennas[refant_index_cb]
         await self.assert_sensor_value('pipeline-reference-antenna', refant_name.encode())
         # Check the pipeline params have been updated to reflect the current and past refants
         pp = [serv.server.pipeline.parameters for serv in self.servers]
         for params in pp:
-            assert_equal(params['refant_index_prev'], refant_index_cb)
-            assert_equal(params['refant_index'], refant_index_cb2)
+            assert params['refant_index_prev'] == refant_index_cb
+            assert params['refant_index'] == refant_index_cb2
 
         await self.shutdown_servers(180)
 
@@ -1090,7 +1095,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.make_request('shutdown', timeout=60)
         # Check that all heaps were accepted
         heaps_received = [int(x) for x in await self.get_sensor('input-heaps-total')]
-        assert_equal(heaps_expected, heaps_received)
+        assert heaps_received == heaps_expected
         # Check that they were written to the right places and that timestamps are correct
         for t in range(n_times):
             for s in range(self.n_substreams):
@@ -1113,8 +1118,8 @@ class TestCalDeviceServer(asynctest.TestCase):
                     expected = expected[..., np.newaxis, np.newaxis]  # Add pol, baseline axes
                     expected = np.broadcast_to(expected, weights.shape)
                     np.testing.assert_equal(weights, expected)
-            assert_equal(buffers['dump_indices'][t], t)
-            assert_equal(buffers['times'][t], 1400000100.0 + 4 * t)
+            assert buffers['dump_indices'][t] == t
+            assert buffers['times'][t] == 1400000100.0 + 4 * t
 
     async def test_weights_power_scale(self):
         """Test the application of need_weights_power_scale"""
@@ -1196,10 +1201,10 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Check that the solution stores have the solutions for the expected target
         ss = [serv.server.pipeline.solution_stores for serv in self.servers]
         for serv_store in ss:
-            assert_equal(serv_store['B'].latest.target, 'J1331+3030')
-            assert_equal(serv_store['K'].latest.target, 'J1331+3030')
-            assert_true(serv_store['G'].has_target('J1331+3030'))
-            assert_true(serv_store['G_FLUX'].has_target('J1331+3030'))
+            assert serv_store['B'].latest.target == 'J1331+3030'
+            assert serv_store['K'].latest.target == 'J1331+3030'
+            assert serv_store['G'].has_target('J1331+3030')
+            assert serv_store['G_FLUX'].has_target('J1331+3030')
 
         # Refresh ItemGroup and send it to servers.
         self.init_item_group()
@@ -1225,22 +1230,22 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Check the solution stores only contain solutions from the new CB
         ss = [serv.server.pipeline.solution_stores for serv in self.servers]
         for serv_store in ss:
-            assert_is_none(serv_store['B'].latest)
-            assert_is_none(serv_store['K'].latest)
-            assert_true(serv_store['G'].has_target('J1331+3030_2'))
-            assert_false(serv_store['G'].has_target('J1331+3030'))
+            assert serv_store['B'].latest is None
+            assert serv_store['K'].latest is None
+            assert serv_store['G'].has_target('J1331+3030_2')
+            assert not serv_store['G'].has_target('J1331+3030')
             # There should now be no values in the G_FLUX store for this CB
             G_FLUX = serv_store['G_FLUX'].get_range(start_time, end_time)
-            assert_equal(G_FLUX.values.size, 0)
+            assert G_FLUX.values.size == 0
 
         # Check that 'cb' has 'measured_flux' in telstate for 'J1331+3030' only
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
-        assert_in('J1331+3030', telstate_cb_cal.get('measured_flux'))
-        assert_not_in('J1331+3030_2', telstate_cb_cal.get('measured_flux'))
+        assert 'J1331+3030' in telstate_cb_cal.get('measured_flux')
+        assert 'J1331+3030_2' not in telstate_cb_cal.get('measured_flux')
 
         # Check that 'cb2' has no 'measured_flux' targets in telstate
         telstate_cb2_cal = control.make_telstate_cb(self.telstate_cal, 'cb2')
-        assert_equal(telstate_cb2_cal.get('measured_flux'), {})
+        assert telstate_cb2_cal.get('measured_flux') == {}
 
         await self.shutdown_servers(180)
 
