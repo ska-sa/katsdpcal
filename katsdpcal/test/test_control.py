@@ -210,12 +210,6 @@ class TestCalDeviceServer(asynctest.TestCase):
     that they are produced and calibration reports written.
     """
 
-    def patch(self, *args, **kwargs):
-        patcher = mock.patch(*args, **kwargs)
-        mock_obj = patcher.start()
-        self.addCleanup(patcher.stop)
-        return mock_obj
-
     def populate_telstate_cb(self, telstate, cb='cb'):
         telstate_cb_l0 = telstate.view(telstate.join(cb, 'sdp_l0test'))
         telstate_cb_l0['first_timestamp'] = 100.0
@@ -290,6 +284,19 @@ class TestCalDeviceServer(asynctest.TestCase):
                     description="Channel index of first channel in the heap",
                     shape=(), dtype=np.uint32)
 
+    def init_item_group(self):
+        """Initalise a :class:`spead2.send.ItemGroup` and send it to servers."""
+        self.ig = spead2.send.ItemGroup()
+        self.add_items(self.ig)
+        for endpoint in self.l0_endpoints:
+            self.l0_streams[endpoint].send_heap(self.ig.get_heap(descriptors='all'))
+
+    def patch(self, *args, **kwargs):
+        patcher = mock.patch(*args, **kwargs)
+        mock_obj = patcher.start()
+        self.addCleanup(patcher.stop)
+        return mock_obj
+
     def _get_output_stream(self, thread_pool, endpoints, config,
                            *args, **kwargs):
         """Mock implementation of UdpStream that returns an InprocStream instead.
@@ -303,12 +310,9 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.output_streams[key] = stream
         return stream
 
-    def init_item_group(self):
-        """Initalise a :class:`spead2.send.ItemGroup` and send it to servers."""
-        self.ig = spead2.send.ItemGroup()
-        self.add_items(self.ig)
-        for endpoint in self.l0_endpoints:
-            self.l0_streams[endpoint].send_heap(self.ig.get_heap(descriptors='all'))
+    async def _stop_servers(self):
+        """Similar to shutdown_servers, but run as part of cleanup"""
+        await asyncio.gather(*[server.stop_server() for server in self.cleanup_servers])
 
     async def setUp(self):
         self.n_channels = 4096
@@ -465,76 +469,6 @@ class TestCalDeviceServer(asynctest.TestCase):
         await self.make_request('capture-done')
         await self.assert_request_fails(r'no capture in progress', 'capture-done')
 
-    @classmethod
-    def normalise_phase(cls, value, ref):
-        """Multiply `value` by an amount that sets `ref` to zero phase."""
-        ref_phase = ref / np.abs(ref)
-        return value * ref_phase.conj()
-
-    async def _stop_servers(self):
-        """Similar to shutdown_servers, but run as part of cleanup"""
-        await asyncio.gather(*[server.stop_server() for server in self.cleanup_servers])
-
-    async def shutdown_servers(self, timeout):
-        inform_lists = await self.make_request('shutdown', timeout=timeout)
-        for informs in inform_lists:
-            progress = [inform.arguments[0] for inform in informs]
-            assert progress == [
-                b'Accumulator stopped',
-                b'Pipeline stopped',
-                b'Sender stopped',
-                b'ReportWriter stopped'
-            ]
-
-    def interp_B(self, B):
-        """
-        Linearly interpolate NaN'ed channels in supplied bandbass [B]
-
-        Parameters:
-        -----------
-        B : :class: `np.ndarray`
-            bandpass, complex, shape (n_chans, n_pols, n_ants)
-        Returns:
-        --------
-        B_interp : :class: `np.ndarray`
-        """
-        n_chans, n_pols, n_ants = B.shape
-        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex64)
-        for p in range(n_pols):
-            for a in range(n_ants):
-                valid = np.isfinite(B[:, p, a])
-                if valid.any():
-                    B_interp[:, p, a] = complex_interp(
-                        np.arange(n_chans), np.arange(n_chans)[valid], B[:, p, a][valid])
-        return B_interp
-
-    def assemble_bandpass(self, telstate_cb_cal, bp_key):
-        """
-        Assemble a complete bandpass from the parts stored in
-        telstate. Check that each part has the expected shape and dtype.
-
-        Parameters:
-        -----------
-        telstate_cb_cal : :class:`katsdptelstate.TelescopeState`
-            telstate view to retrieve bandpass from
-        bandpass_key : str
-            telstate key of the bandpass
-        Returns:
-        --------
-        bandpass : :class: `np.ndarray`
-            bandpass, complex, shape (n_chans, n_pols, n_ants)
-        """
-        B = []
-        for i in range(self.n_servers):
-            cal_product_Bn = telstate_cb_cal.get_range(bp_key+'{}'.format(i), st=0)
-            assert len(cal_product_Bn) == 1
-            Bn, Bn_ts = cal_product_Bn[0]
-            assert Bn.dtype == np.complex64
-            assert Bn.shape == (self.n_channels // self.n_servers, 2, self.n_antennas)
-            B.append(Bn)
-        assert bp_key+'{}'.format(self.n_servers) not in telstate_cb_cal
-        return np.concatenate(B), Bn_ts
-
     def make_vis(self, K, G, target, noise=np.array([])):
         """
         Compute visibilities for the supplied target, delays [K] and gains [G]
@@ -622,6 +556,17 @@ class TestCalDeviceServer(asynctest.TestCase):
             ts += self.telstate.sdp_l0test_int_time
         return heaps
 
+    async def shutdown_servers(self, timeout):
+        inform_lists = await self.make_request('shutdown', timeout=timeout)
+        for informs in inform_lists:
+            progress = [inform.arguments[0] for inform in informs]
+            assert progress == [
+                b'Accumulator stopped',
+                b'Pipeline stopped',
+                b'Sender stopped',
+                b'ReportWriter stopped'
+            ]
+
     @classmethod
     def metadata_dict(cls, st=None):
         """
@@ -645,6 +590,61 @@ class TestCalDeviceServer(asynctest.TestCase):
         metadata['Observer'] = 'Kim'
         metadata['ScheduleBlockIdCode'] = '123_0005'
         return metadata
+
+    def assemble_bandpass(self, telstate_cb_cal, bp_key):
+        """
+        Assemble a complete bandpass from the parts stored in
+        telstate. Check that each part has the expected shape and dtype.
+
+        Parameters:
+        -----------
+        telstate_cb_cal : :class:`katsdptelstate.TelescopeState`
+            telstate view to retrieve bandpass from
+        bandpass_key : str
+            telstate key of the bandpass
+        Returns:
+        --------
+        bandpass : :class: `np.ndarray`
+            bandpass, complex, shape (n_chans, n_pols, n_ants)
+        """
+        B = []
+        for i in range(self.n_servers):
+            cal_product_Bn = telstate_cb_cal.get_range(bp_key+'{}'.format(i), st=0)
+            assert len(cal_product_Bn) == 1
+            Bn, Bn_ts = cal_product_Bn[0]
+            assert Bn.dtype == np.complex64
+            assert Bn.shape == (self.n_channels // self.n_servers, 2, self.n_antennas)
+            B.append(Bn)
+        assert bp_key+'{}'.format(self.n_servers) not in telstate_cb_cal
+        return np.concatenate(B), Bn_ts
+
+    def interp_B(self, B):
+        """
+        Linearly interpolate NaN'ed channels in supplied bandbass [B]
+
+        Parameters:
+        -----------
+        B : :class: `np.ndarray`
+            bandpass, complex, shape (n_chans, n_pols, n_ants)
+        Returns:
+        --------
+        B_interp : :class: `np.ndarray`
+        """
+        n_chans, n_pols, n_ants = B.shape
+        B_interp = np.empty((n_chans, n_pols, n_ants), dtype=np.complex64)
+        for p in range(n_pols):
+            for a in range(n_ants):
+                valid = np.isfinite(B[:, p, a])
+                if valid.any():
+                    B_interp[:, p, a] = complex_interp(
+                        np.arange(n_chans), np.arange(n_chans)[valid], B[:, p, a][valid])
+        return B_interp
+
+    @classmethod
+    def normalise_phase(cls, value, ref):
+        """Multiply `value` by an amount that sets `ref` to zero phase."""
+        ref_phase = ref / np.abs(ref)
+        return value * ref_phase.conj()
 
     async def test_capture(self, expected_g=1, expected_BG_rtol=1e-2,
                            expected_BCROSS_DIODE_rtol=1e-3):
