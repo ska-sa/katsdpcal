@@ -14,8 +14,8 @@ import datetime
 
 import numba
 import numpy as np
-from nose.tools import assert_raises_regex
 import asynctest
+import pytest
 import scipy.interpolate
 
 import spead2
@@ -92,7 +92,7 @@ class BaseTestTask:
     This is a base class, which is subclassed for each process class.
     """
 
-    def setup(self):
+    def setup_method(self):
         self.master_queue = self.module.Queue()
         self.slave_queue = self.module.Queue()
 
@@ -430,7 +430,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         """Assert that a request fails, and test the error message against
         a regular expression."""
         for server in self.servers:
-            with assert_raises_regex(FailReply, msg_re):
+            with pytest.raises(FailReply, match=msg_re):
                 await server.client.request(name, *args)
 
     async def test_empty_capture(self):

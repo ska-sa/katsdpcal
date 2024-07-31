@@ -38,6 +38,6 @@ setup(
         "katsdpservices[argparse,aiomonitor]", "katsdpsigproc", "spead2>=3.0.0",
         "docutils", "matplotlib>=2", "jsonschema"
     ],
-    tests_require=["nose", "asynctest"],
+    tests_require=["pytest", "asynctest"],
     use_katversion=True
 )
