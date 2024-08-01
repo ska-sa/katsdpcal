@@ -9,8 +9,7 @@ from katsdpcal import inplace
 
 
 class TestStoreInplace:
-    @classmethod
-    def setup_class(self):
+    def setup_method(self):
         self.cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=4,
             processes=False, memory_limit=0)
@@ -22,8 +21,7 @@ class TestStoreInplace:
         self.b = da.ones(6, chunks=(2,))
         self.x = da.from_array(self.nx, chunks=(3, 2), name=False)
 
-    @classmethod
-    def teardown_class(self):
+    def teardown_method(self):
         self.client.close()
         self.cluster.close()
 
