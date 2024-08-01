@@ -736,8 +736,6 @@ class TestCalDeviceServer(asynctest.TestCase):
         # cal puts NaNs in B in the channels for which it applies the static
         # RFI mask, interpolate across these
         ret_BG_interp = self.interp_B(ret_BG)
-        print(f'BG, {np.abs(BG)}')
-        print(f'ret, {np.abs(ret_BG_interp)}')
         np.testing.assert_allclose(np.abs(BG), np.abs(ret_BG_interp), rtol=expected_BG_rtol)
         np.testing.assert_allclose(self.normalise_phase(BG, BG[..., [0]]),
                                    self.normalise_phase(ret_BG_interp, ret_BG_interp[..., [0]]),
