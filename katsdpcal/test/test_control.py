@@ -107,7 +107,7 @@ class BaseTestTask:
 
     def test(self):
         task = PingTask(self.module.Process, self.master_queue, self.slave_queue)
-        assert task.daemon == False   # Test the wrapper property
+        assert task.daemon is False   # Test the wrapper property
         task.daemon = True       # Ensure it gets killed if the test fails
         assert task.name == 'PingTask'
         task.start()
@@ -428,7 +428,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         values = await self.get_sensor(name)
         for i, value in enumerate(values):
             value = type(expected)(value)
-            assert value == expected, "Wrong value for {} ({!r} != {!r})".format(name, value, expected)
+            assert value == expected, \
+                "Wrong value for {} ({!r} != {!r})".format(name, value, expected)
 
     async def assert_request_fails(self, msg_re, name, *args):
         """Assert that a request fails, and test the error message against
