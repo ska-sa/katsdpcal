@@ -7,14 +7,13 @@ import tempfile
 import shutil
 import os
 import itertools
-from unittest import mock
+from unittest import mock, IsolatedAsyncioTestCase
 import asyncio
 import json
 import datetime
 
 import numba
 import numpy as np
-import asynctest
 import pytest
 import scipy.interpolate
 
@@ -195,7 +194,7 @@ class ServerData:
         bind_address = self.server.server.sockets[0].getsockname()
         self.client = await aiokatcp.Client.connect(
             bind_address[0], bind_address[1], auto_reconnect=False)
-        self.testcase.addCleanup(self.client.wait_closed)
+        self.testcase.addAsyncCleanup(self.client.wait_closed)
         self.testcase.addCleanup(self.client.close)
 
     async def stop_server(self):
@@ -203,7 +202,7 @@ class ServerData:
         await self.server.stop()
 
 
-class TestCalDeviceServer(asynctest.TestCase):
+class TestCalDeviceServer(IsolatedAsyncioTestCase):
     """Tests for :class:`katsdpcal.control.CalDeviceServer.
 
     This does not test the quality of the solutions that are produced, merely
@@ -314,7 +313,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         """Similar to shutdown_servers, but run as part of cleanup"""
         await asyncio.gather(*[server.stop_server() for server in self.cleanup_servers])
 
-    async def setUp(self):
+    def setUp(self):
         self.n_channels = 4096
         self.n_substreams = 8    # L0 substreams
         self.n_endpoints = 4     # L0 endpoints
@@ -375,8 +374,9 @@ class TestCalDeviceServer(asynctest.TestCase):
         self.patch('dask.distributed.LocalCluster')
         self.patch('dask.distributed.Client')
 
+    async def asyncSetUp(self):
         self.cleanup_servers = []
-        self.addCleanup(self._stop_servers)
+        self.addAsyncCleanup(self._stop_servers)
         self.servers = [ServerData(self, i) for i in range(self.n_servers)]
         for server in self.servers:
             await server.start()
