@@ -821,7 +821,7 @@ class TestSelectMedDeviation(unittest.TestCase):
         """Test that nan values are omitted in median absolute deviation calculation"""
         med_pnr = np.array([1, np.nan, 3, 4, 5])
         # median: 3.5, median_deviation: 1, mad_threshold: 2.5
-        expected_mad_pnr = np.array([2, 3, 4])  # Corresponds to antenna med pnr values > 2.5
+        expected_mad_pnr = np.array([2, 3, 4])  # Corresponds to antenna med pnr values >= 2.5
         result_mad_pnr = calprocs.select_med_deviation_pnr_ants(med_pnr)
         np.testing.assert_equal(expected_mad_pnr, result_mad_pnr)
 
@@ -829,7 +829,7 @@ class TestSelectMedDeviation(unittest.TestCase):
         """Test that for an even array the MAD selection is correct"""
         med_pnr = np.array([1, 2, 3, 4])
         # median: 2.5, median_deviation: 1, mad_threshold: 1.5
-        expected_mad_pnr = np.array([1, 2, 3])  # Corresponds to antenna med pnr values > 1.5
+        expected_mad_pnr = np.array([1, 2, 3])  # Corresponds to antenna med pnr values >= 1.5
         result_mad_pnr = calprocs.select_med_deviation_pnr_ants(med_pnr)
         np.testing.assert_equal(expected_mad_pnr, result_mad_pnr)
 
@@ -837,7 +837,7 @@ class TestSelectMedDeviation(unittest.TestCase):
         """Test that for an odd array the MAD selection is correct"""
         med_pnr = np.array([1, 2, 3, 4, 5])
         # median: 3 , median_deviation: 1, mad_threshold: 2
-        expected_mad_pnr = np.array([2, 3, 4])  # Corresponds to antenna med pnr values > 2
+        expected_mad_pnr = np.array([1, 2, 3, 4])  # Corresponds to antenna med pnr values >= 2
         result_mad_pnr = calprocs.select_med_deviation_pnr_ants(med_pnr)
         np.testing.assert_equal(expected_mad_pnr, result_mad_pnr)
 

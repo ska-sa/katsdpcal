@@ -650,7 +650,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         return metadata
 
     async def test_capture(self, expected_g=1, expected_BG_rtol=1e-2,
-                           expected_BCROSS_DIODE_rtol=1e-2):
+                           expected_BCROSS_DIODE_rtol=1e-3, expected_k_rtol=1e-3):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
@@ -747,7 +747,7 @@ class TestCalDeviceServer(asynctest.TestCase):
         assert_equal(1, len(cal_product_K))
         ret_K, ret_K_ts = cal_product_K[0]
         assert_equal(np.float32, ret_K.dtype)
-        np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
+        np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=expected_k_rtol)
 
         # check SNR products are in telstate
         cal_product_SNR_K = telstate_cb_cal.get_range('product_SNR_K', st=0)
@@ -776,7 +776,7 @@ class TestCalDeviceServer(asynctest.TestCase):
             ret_KCROSS_DIODE, ret_KCROSS_DIODE_ts = cal_product_KCROSS_DIODE[0]
             assert_equal(np.float32, ret_KCROSS_DIODE.dtype)
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
-                                       ret_KCROSS_DIODE, rtol=1e-1)
+                                       ret_KCROSS_DIODE, rtol=expected_k_rtol)
             # Check BCROSS_DIODE
             ret_BCROSS_DIODE, ret_BCROSS_DIODE_ts = self.assemble_bandpass(telstate_cb_cal,
                                                                            'product_BCROSS_DIODE')
@@ -868,7 +868,8 @@ class TestCalDeviceServer(asynctest.TestCase):
         # Relax the tolerances as the visibilities are generated using
         # the model given by the target string,
         # but calibration is performed using the full sky model.
-        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2)
+        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2,
+                                expected_k_rtol=3e-3)
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is

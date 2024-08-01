@@ -351,7 +351,7 @@ def select_med_deviation_pnr_ants(med_pnr_ants):
     mad = scipy.stats.median_abs_deviation(med_pnr_ants, nan_policy='omit')
     mad_threshold = median - mad
 
-    return ant_indices[med_pnr_ants > mad_threshold]
+    return ant_indices[med_pnr_ants >= mad_threshold]
 
 
 def best_refant(data, corrprod_lookup, chans):
