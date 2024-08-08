@@ -234,7 +234,7 @@ def _check_blank_freqwin(parameters):
             if parameters[prefix + '_bfreq'] == parameters[prefix + '_efreq'] == []:
                 blank_freqwin.append(prefix)
         # in case solution windows are provided per channel, e.g 'g_bchan'
-        except(KeyError):
+        except KeyError:
             pass
     return blank_freqwin
 

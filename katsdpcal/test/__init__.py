@@ -1,1 +1,1 @@
-"""Nose unit test suite for katsdpcal."""
+"""Unit test suite for katsdpcal."""

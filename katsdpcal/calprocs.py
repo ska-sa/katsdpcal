@@ -1090,7 +1090,7 @@ def fake_vis(shape=(7,), gains=None, noise=None, random_state=None):
     if gains is None:
         gains = random_state.random_sample(shape) + 1j * random_state.random_sample(shape)
     else:
-        assert shape == gains.shape
+        assert gains.shape == shape
 
     # create fake corrupted visibilities
     nbl = nants * (nants + 1) // 2
