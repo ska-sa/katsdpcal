@@ -1,15 +1,15 @@
 """Tests for :mod:`katsdpcal.inplace`."""
 
-from nose.tools import assert_raises, assert_false
 import numpy as np
 import dask.array as da
 import dask.distributed
+import pytest
 
 from katsdpcal import inplace
 
 
 class TestStoreInplace:
-    def setup(self):
+    def setup_method(self):
         self.cluster = dask.distributed.LocalCluster(
             n_workers=1, threads_per_worker=4,
             processes=False, memory_limit=0)
@@ -21,7 +21,7 @@ class TestStoreInplace:
         self.b = da.ones(6, chunks=(2,))
         self.x = da.from_array(self.nx, chunks=(3, 2), name=False)
 
-    def teardown(self):
+    def teardown_method(self):
         self.client.close()
         self.cluster.close()
 
@@ -42,14 +42,14 @@ class TestStoreInplace:
 
     def test_unsafe(self):
         c = self.a + self.a.T
-        with assert_raises(inplace.UnsafeInplaceError):
+        with pytest.raises(inplace.UnsafeInplaceError):
             inplace.store_inplace(c, self.a)
 
     def test_unsafe_with_slice(self):
         c = self.a + self.a.T
-        with assert_raises(inplace.UnsafeInplaceError):
+        with pytest.raises(inplace.UnsafeInplaceError):
             inplace.store_inplace(c[0], self.a[1])
-        with assert_raises(inplace.UnsafeInplaceError):
+        with pytest.raises(inplace.UnsafeInplaceError):
             inplace.store_inplace(c[0:1], self.a[1:2])
 
     def test_compute_slice(self):
@@ -69,22 +69,22 @@ class TestStoreInplace:
         np.testing.assert_array_equal(nx_orig * 2, self.nx)
 
     def test_different_shapes(self):
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             inplace.store_inplace(self.a, self.b)
 
     def test_duplicate_outputs(self):
         a2 = self.a[:]
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             inplace.store_inplace([self.a, a2], [self.a, a2])
 
     def test_target_not_numpy(self):
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             inplace.store_inplace(self.b, self.b)
 
     def test_not_dask(self):
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             inplace.store_inplace(self.a, self.na)
-        with assert_raises(ValueError):
+        with pytest.raises(ValueError):
             inplace.store_inplace(self.na, self.a)
 
 
@@ -94,7 +94,7 @@ class TestRename:
         old_keys = set(array.__dask_graph__().keys())
         inplace.rename(array)
         new_keys = set(array.__dask_graph__().keys())
-        assert_false(old_keys & new_keys)
+        assert not (old_keys & new_keys)
         np.testing.assert_array_equal(expected, array.compute())
 
     def test_simple(self):
