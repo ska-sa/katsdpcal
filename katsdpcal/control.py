@@ -33,7 +33,7 @@ import dask.diagnostics
 import dask.distributed
 
 import katsdpcal
-from .reduction import pipeline
+from .reduction import pipeline, flush_pipeline
 from .report import make_cal_report
 from . import calprocs, calprocs_dask
 from . import solutions
@@ -89,6 +89,12 @@ class BufferReadyEvent:
     def __init__(self, capture_block_id, slots):
         self.capture_block_id = capture_block_id
         self.slots = slots
+
+
+class PipelineSyncEvent:
+    """The observation script is waiting for the pipeline to complete some products."""
+    def __init__(self, capture_block_id):
+        self.capture_block_id = capture_block_id
 
 
 class SensorReadingEvent:
@@ -463,7 +469,7 @@ class Accumulator:
             """
             # **************** ACCUMULATOR BREAK CONDITIONS ****************
             # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-            ignore_states = ['slew', 'stop', 'unknown']
+            ignore_states = ['slew', 'stop', 'unknown', 'await_pipeline']
             if new is not None and old is not None:
                 # CASE 1 -- break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate
@@ -539,6 +545,9 @@ class Accumulator:
                 # flush a batch if necessary
                 if self._is_break(self._state, new_state, self._slots):
                     self._flush_slots()
+                    if new_state.activity == 'await_pipeline':
+                        self.owner.accum_pipeline_queue.put(
+                            PipelineSyncEvent(self.capture_block_id))
 
                 # print name of target and activity type on changes (and start of batch)
                 if new_state is not None and self._state != new_state:
@@ -1130,6 +1139,10 @@ class Pipeline(Task):
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
+    def flush_pipeline(self, capture_block_id):
+        telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
+        flush_pipeline(telstate_cb_cal, self.parameters, self.solution_stores)
+
     def get_measured_flux(self, event):
         # Get the flux densities of the gain calibrators
         measured_flux, measured_flux_std = calprocs.measure_flux(
@@ -1201,7 +1214,7 @@ class Pipeline(Task):
                     try:
                         self.run_pipeline(event.capture_block_id, data)
                     except Exception:
-                        logger.exception('Exception in pipeline')
+                        logger.exception('Exception when running pipeline')
                         error = True
                     end_time = time.time()
                     elapsed = end_time - start_time
@@ -1217,6 +1230,17 @@ class Pipeline(Task):
                     self.pipeline_sender_queue.put(event)
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
+                elif isinstance(event, PipelineSyncEvent):
+                    error = False
+                    try:
+                        self.flush_pipeline(event.capture_block_id)
+                    except Exception:
+                        logger.exception('Exception when flushing pipeline')
+                        error = True
+                    if error:
+                        _inc_sensor(self.sensors['pipeline-exceptions'], 1,
+                                    status=aiokatcp.Sensor.Status.ERROR,
+                                    timestamp=time.time())
                 elif isinstance(event, ObservationEndEvent):
                     self.get_measured_flux(event)
                     self.master_queue.put(
