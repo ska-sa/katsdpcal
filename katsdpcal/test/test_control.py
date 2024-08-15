@@ -264,8 +264,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(antenna))
 
     def add_items(self, ig):
-        channels = self.telstate.sdp_l0test_n_chans_per_substream
-        baselines = len(self.telstate.sdp_l0test_bls_ordering)
+        channels = self.telstate_l0.n_chans_per_substream
+        baselines = len(self.telstate_l0.bls_ordering)
         ig.add_item(id=None, name='correlator_data', description="Visibilities",
                     shape=(channels, baselines), dtype=np.complex64)
         ig.add_item(id=None, name='flags', description="Flags for visibilities",
@@ -329,6 +329,9 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         self.telstate_cal = self.telstate.view('cal')
         self.telstate_l0 = self.telstate.view('sdp_l0test')
         self.populate_telstate(self.telstate_l0)
+        self.dump_period = self.telstate_l0.int_time
+        telstate_cb_l0 = control.make_telstate_cb(self.telstate_l0, 'cb')
+        self.first_dump_ts = self.telstate_l0.sync_time + telstate_cb_l0.first_timestamp
 
         self.l0_endpoints = [Endpoint('239.102.255.{}'.format(i), 7148)
                              for i in range(self.n_endpoints)]
@@ -487,14 +490,14 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         vis : :class: `np.ndarray`
             visibilities(n_freqs, ncorr)
         """
-        bandwidth = self.telstate.sdp_l0test_bandwidth
+        bandwidth = self.telstate_l0.bandwidth
         # The + bandwidth is to convert to L band
         freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
         # The pipeline models require frequency in MHz
         flux_density = target.flux_density(freqs / 1e6)[:, np.newaxis]
         freqs = freqs[:, np.newaxis]
 
-        bls_ordering = self.telstate.sdp_l0test_bls_ordering
+        bls_ordering = self.telstate_l0.bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
         pol1 = ['vh'.index(b[0][-1]) for b in bls_ordering]
@@ -554,7 +557,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 dump_heaps.append((endpoint, self.ig.get_heap()))
             rs.shuffle(dump_heaps)
             heaps.extend(dump_heaps)
-            ts += self.telstate.sdp_l0test_int_time
+            ts += self.dump_period
         return heaps
 
     async def shutdown_servers(self, timeout):
@@ -652,16 +655,16 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        first_ts = ts = 100.0
+        first_ts = ts = self.first_dump_ts - self.telstate_l0.sync_time
         n_times = 25
         rs = np.random.RandomState(seed=1)
 
         target = katpoint.Target(self.telstate.cbf_target)
         for antenna in self.antennas:
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              1, 1400000100 - 2 * 4)
+                              1, ts=self.first_dump_ts - 2 * self.dump_period)
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, 1400000100 + (n_times + 2) * 4)
+                              0, ts=self.first_dump_ts + (n_times + 2) * self.dump_period)
 
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
@@ -709,7 +712,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             )
             assert os.path.samefile(report, report_last_path[server.server_id])
             # Check that metadata file is written and correct
-            meta_expected = self.metadata_dict(1400000098)
+            start_of_first_dump = self.first_dump_ts - 0.5 * self.dump_period
+            meta_expected = self.metadata_dict(start_of_first_dump)
             meta_expected['Run'] = server.server_id + 1
             meta_file = os.path.join(report, 'metadata.json')
             assert os.path.isfile(meta_file)
@@ -795,7 +799,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                                        np.abs(ret_DIODE_SKY_interp), rtol=1e-3)
 
             bcross_sky_spline = self.telstate_cal.get('bcross_sky_spline')
-            bandwidth = self.telstate.sdp_l0test_bandwidth
+            bandwidth = self.telstate_l0.bandwidth
             freqs = np.arange(self.n_channels) / self.n_channels * bandwidth + bandwidth
             spline_angle = np.float32(scipy.interpolate.splev(freqs/1e6, bcross_sky_spline))
 
@@ -832,7 +836,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                     items.update(heap)
                     ts = items['timestamp'].value
                     assert pytest.approx(ts, abs=1e-7) == (
-                        first_ts + j * self.telstate.sdp_l0test_int_time
+                        first_ts + j * self.dump_period
                     )
                     idx = items['dump_index'].value
                     assert idx == j
@@ -877,16 +881,16 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
          not set to the noisiest antenna. Also checks that a new refant is selected for a new
          capture block if the old one is flagged
         """
-        ts = 100.0
+        ts = self.first_dump_ts - self.telstate_l0.sync_time
         n_times = 25
         rs = np.random.RandomState(seed=1)
 
         target = katpoint.Target(self.telstate.cbf_target)
         for antenna in self.antennas:
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              1, 1400000100 - 2 * 4)
+                              1, ts=self.first_dump_ts - 2 * self.dump_period)
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, 1400000100 + (n_times + 2) * 4)
+                              0, ts=self.first_dump_ts + (n_times + 2) * self.dump_period)
 
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
@@ -937,7 +941,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         self.telstate.add('cbf_target', self.telstate.cbf_target, ts=0.02)
 
         # flag the refant selected in the previous capture block
-        bls_ordering = self.telstate.sdp_l0test_bls_ordering
+        bls_ordering = self.telstate_l0.bls_ordering
         ant1 = [self.antennas.index(b[0][:-1]) for b in bls_ordering]
         ant2 = [self.antennas.index(b[1][:-1]) for b in bls_ordering]
         refant_index_cb = self.antennas.index(refant_name)
@@ -999,7 +1003,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         if weights_channel is None:
             weights_channel = np.arange(1, n_times * self.n_channels + 1,
                                         dtype=np.float32).reshape(n_times, -1)
-        ts = 100.0
+        ts = self.first_dump_ts - self.telstate_l0.sync_time
         channel_slices = [np.s_[i * self.n_channels_per_substream :
                                 (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
@@ -1018,7 +1022,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             if rs is not None:
                 rs.shuffle(dump_heaps)
             heaps.extend(dump_heaps)
-            ts += self.telstate.sdp_l0test_int_time
+            ts += self.dump_period
         return heaps
 
     async def wait_for_heaps(self, num_heaps, timeout):
@@ -1047,8 +1051,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # it work, since the batcher assumes that target cannot change without
         # an activity change (TODO: it probably shouldn't assume this).
         target = 'dummy, radec target, 13:30:00.00, +30:30:00.0'
-        slew_start = self.telstate.sdp_l0test_sync_time + 12.5 * self.telstate.sdp_l0test_int_time
-        slew_end = slew_start + 2 * self.telstate.sdp_l0test_int_time
+        slew_start = self.telstate_l0.sync_time + 12.5 * self.dump_period
+        slew_end = slew_start + 2 * self.dump_period
         self.telstate.add('cbf_target', target, ts=slew_start)
         telstate_cb = self.telstate.view('cb')
         telstate_cb.add('obs_activity', 'slew', ts=slew_start)
@@ -1120,7 +1124,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                     expected = np.broadcast_to(expected, weights.shape)
                     np.testing.assert_equal(weights, expected)
             assert buffers['dump_indices'][t] == t
-            assert buffers['times'][t] == 1400000100.0 + 4 * t
+            assert buffers['times'][t] == self.first_dump_ts + self.dump_period * t
 
     async def test_weights_power_scale(self):
         """Test the application of need_weights_power_scale"""
@@ -1183,8 +1187,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         for serv in self.servers:
             serv.server.pipeline.parameters['reset_solution_stores'] = True
         n_times = 5
-        start_time = self.telstate.sdp_l0test_sync_time + 100.
-        end_time = start_time + n_times * self.telstate.sdp_l0test_int_time
+        start_time = self.first_dump_ts
+        end_time = start_time + n_times * self.dump_period
         target = ('J1331+3030, radec delaycal bpcal gaincal, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.01)
