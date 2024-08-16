@@ -511,53 +511,79 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             vis += noiseboth
         return vis
 
-    def prepare_vis_heaps(self, n_times, rs, vis, flags, weights, weights_channel):
-        """Produce a list of heaps with the given L0 correlator data.
+    def prepare_heaps(self, n_times, rs=None, vis=None, flags=None,
+                      weights=None, weights_channel=None, corruption=False):
+        """Generate a list of L0 SPEAD heaps.
+
+        The basic dimensions of the visibility array are `n_times` (T),
+        `self.n_channels` (F) and `self.n_baselines` (B), respectively.
+        The input data arrays will be broadcast to the specified shape
+        if a different shape is provided.
 
         Parameters
         ----------
         n_times : int
-            Number of dumps to produce
-        rs : :class:`np.random.RandomState`
-            Random generator to shuffle heaps
-        vis : array of complex64, shape (n_freqs, n_corr)
-            Visibilities
-        flags : array of uint8, shape (n_freqs, n_corr)
-            Flags
-        weights : array of uint8, shape (n_freqs, n_corr)
-            Detailed weights, to be scaled by `weights_channel`
-        weights_channel : array of float32, shape (n_freqs,)
-            Coarse (per-channel) weights
+            Number of dumps to produce (T)
+        rs : :class:`np.random.RandomState`, optional
+            Random generator used to shuffle the heaps of one dump. If
+            ``None``, they are not shuffled.
+        vis : array of complex64, shape (T, F, B), optional
+            Visibilities, default 1.0 + 0.0j
+        flags : array of uint8, shape (T, F, B), optional
+            Flags, default 0
+        weights : array of uint8, shape (T, F, B), optional
+            Detailed weights, to be scaled by `weights_channel`, default 1
+        weights_channel : array of float32, shape (T, F), optional
+            Coarse (per-channel) weights, defaults to a ramp
+        corruption : bool, optional
+            If True, corrupt some times to check that RFI flagging is working
 
         Returns
         -------
         heaps : list of (`Endpoint`, `spead2.send.Heap`)
             List of heaps, length `n_times` * `n_substreams`
         """
+        def _corrupt(vis, t):
+            return vis + np.complex64(1e9j) if corruption and t in (4, 17) else vis
+
+        shape = (n_times, self.n_channels, self.n_baselines)
+        # Default data values
+        if vis is None:
+            vis = np.ones(1, np.complex64)
+        if flags is None:
+            flags = np.zeros(1, np.uint8)
+        if weights is None:
+            weights = np.ones(1, np.uint8)
+        if weights_channel is None:
+            weights_channel = np.arange(1, n_times * self.n_channels + 1,
+                                        dtype=np.float32).reshape(n_times, -1)
+        # To support large arrays without excessive memory, we use
+        # broadcast_to to generate the full-size array with only a
+        # select element of backing storage.
+        vis = np.broadcast_to(vis, shape)
+        flags = np.broadcast_to(flags, shape)
+        weights = np.broadcast_to(weights, shape)
+        weights_channel = np.broadcast_to(weights_channel, shape[:2])
         # Time of first dump, in seconds since CBF sync time
         ts = self.first_dump_ts - self.telstate_l0.sync_time
-        corrupted_vis = vis + 1e9j
-        corrupt_times = (4, 17)
         channel_slices = [np.s_[i * self.n_channels_per_substream :
                                 (i + 1) * self.n_channels_per_substream]
                           for i in range(self.n_substreams)]
         heaps = []
         for i in range(n_times):
             dump_heaps = []
-
-            # Corrupt some times, to check that the RFI flagging is working
             for endpoint, s in zip(self.substream_endpoints, channel_slices):
-                self.ig['correlator_data'].value = \
-                    corrupted_vis[s] if i in corrupt_times else vis[s]
-                self.ig['flags'].value = flags[s]
-                self.ig['weights'].value = weights[s]
-                self.ig['weights_channel'].value = weights_channel[s]
+                self.ig['correlator_data'].value = _corrupt(vis[i, s], i)
+                self.ig['flags'].value = flags[i, s]
+                self.ig['weights'].value = weights[i, s]
+                self.ig['weights_channel'].value = weights_channel[i, s]
                 self.ig['timestamp'].value = ts
                 self.ig['dump_index'].value = i
                 # Channel index of first channel in the heap
                 self.ig['frequency'].value = np.uint32(s.start)
                 dump_heaps.append((endpoint, self.ig.get_heap()))
-            rs.shuffle(dump_heaps)
+            if rs is not None:
+                rs.shuffle(dump_heaps)
             heaps.extend(dump_heaps)
             ts += self.dump_period
         return heaps
@@ -679,7 +705,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, vis, flags, weights, weights_channel)
+        heaps = self.prepare_heaps(n_times, rs, vis, flags, weights, weights_channel,
+                                   corruption=True)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -918,7 +945,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, vis, flags, weights, weights_channel)
+        heaps = self.prepare_heaps(n_times, rs, vis, flags, weights, weights_channel,
+                                   corruption=True)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -951,7 +979,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                                (np.array(ant2) == refant_index_cb), 1, 0).astype(np.uint8)
         flag_refant = np.broadcast_to(flag_refant, flags.shape)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, vis, flag_refant, weights, weights_channel)
+        heaps = self.prepare_heaps(n_times, rs, vis, flag_refant, weights, weights_channel,
+                                   corruption=True)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb2')
@@ -976,58 +1005,6 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         await self.shutdown_servers(180)
 
-    def prepare_heaps(self, rs, n_times,
-                      vis=None, weights=None, weights_channel=None, flags=None):
-        """Produce a list of heaps with arbitrary data.
-
-        Parameters
-        ----------
-        rs : :class:`numpy.random.RandomState`
-            Random generator used to shuffle the heaps of one dump. If
-            ``None``, they are not shuffled.
-        n_times : int
-            Number of dumps
-        vis,weights,weights_channel,flags: :class:`numpy.ndarray`
-            Data to transmit, in the form placed in the heaps but with a
-            leading time axis. If not specified, `vis` and `weights` default
-            to 1.0, `flags` to zeros and `weights_channel` to a ramp.
-        """
-        shape = (n_times, self.n_channels, self.n_baselines)
-        # To support large arrays without excessive memory, we use
-        # broadcast_to to generate the full-size array with only a
-        # select element of backing storage.
-        if vis is None:
-            vis = np.broadcast_to(np.ones(1, np.complex64), shape)
-        if weights is None:
-            weights = np.broadcast_to(np.ones(1, np.uint8), shape)
-        if flags is None:
-            flags = np.broadcast_to(np.zeros(1, np.uint8), shape)
-        if weights_channel is None:
-            weights_channel = np.arange(1, n_times * self.n_channels + 1,
-                                        dtype=np.float32).reshape(n_times, -1)
-        # Time of first dump, in seconds since CBF sync time
-        ts = self.first_dump_ts - self.telstate_l0.sync_time
-        channel_slices = [np.s_[i * self.n_channels_per_substream :
-                                (i + 1) * self.n_channels_per_substream]
-                          for i in range(self.n_substreams)]
-        heaps = []
-        for i in range(n_times):
-            dump_heaps = []
-            for endpoint, s in zip(self.substream_endpoints, channel_slices):
-                self.ig['correlator_data'].value = vis[i, s]
-                self.ig['flags'].value = flags[i, s]
-                self.ig['weights'].value = weights[i, s]
-                self.ig['weights_channel'].value = weights_channel[i, s]
-                self.ig['timestamp'].value = ts
-                self.ig['dump_index'].value = i
-                self.ig['frequency'].value = np.uint32(s.start)
-                dump_heaps.append((endpoint, self.ig.get_heap()))
-            if rs is not None:
-                rs.shuffle(dump_heaps)
-            heaps.extend(dump_heaps)
-            ts += self.dump_period
-        return heaps
-
     async def wait_for_heaps(self, num_heaps, timeout):
         """Wait until `num_heaps` have been delivered to the accumulator or `timeout` in secs."""
         for i in range(timeout):
@@ -1047,7 +1024,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         """
         rs = np.random.RandomState(seed=1)
         n_times = 130
-        for endpoint, heap in self.prepare_heaps(rs, n_times):
+        for endpoint, heap in self.prepare_heaps(n_times, rs):
             self.l0_streams[endpoint].send_heap(heap)
         # Add a target change at an uneven time, so that the batches won't
         # neatly align with the buffer end. We also have to fake a slew to make
@@ -1079,7 +1056,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         telstate_cb.add('obs_activity', 'slew', ts=1.0)
         n_times = 7
         # Each element is actually an (endpoint, heap) pair
-        heaps = self.prepare_heaps(None, n_times)
+        heaps = self.prepare_heaps(n_times)
         # Drop some heaps and delay others
         early_heaps = []
         late_heaps = []
@@ -1141,7 +1118,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # Adjust the autocorrelation power of some inputs
         vis[1, 100, bls_ordering.index(('m091h', 'm091h'))] = 4.0
         vis[1, 100, bls_ordering.index(('m092v', 'm092v'))] = 8.0
-        heaps = self.prepare_heaps(None, n_times, vis=vis, weights_channel=weights_channel)
+        heaps = self.prepare_heaps(n_times, vis=vis, weights_channel=weights_channel)
 
         # Compute expected weights
         ordering = calprocs.get_reordering(self.antennas, bls_ordering)[0]
@@ -1195,7 +1172,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         target = ('J1331+3030, radec delaycal bpcal gaincal, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.01)
-        heaps = self.prepare_heaps(None, n_times)
+        heaps = self.prepare_heaps(n_times)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -1225,7 +1202,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         target = ('J1331+3030_2, radec gaincal, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.02)
-        heaps = self.prepare_heaps(None, n_times)
+        heaps = self.prepare_heaps(n_times)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb2')
@@ -1258,9 +1235,10 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         await self.shutdown_servers(180)
 
     async def test_pipeline_exception(self):
+        rs = np.random.RandomState(seed=1)
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             await self.assert_sensor_value('pipeline-exceptions', 0)
-            for endpoint, heap in self.prepare_heaps(np.random.RandomState(seed=1), 5):
+            for endpoint, heap in self.prepare_heaps(n_times=5, rs=rs):
                 self.l0_streams[endpoint].send_heap(heap)
             await self.make_request('capture-init', 'cb')
             await asyncio.sleep(1)
