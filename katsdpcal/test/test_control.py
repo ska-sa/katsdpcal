@@ -683,7 +683,10 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        n_times = 25
+        # Number of dumps spent tracking and awaiting, respectively
+        n_track = 25
+        n_await = 3
+        n_times = n_track + n_await
         rs = np.random.RandomState(seed=1)
 
         target = katpoint.Target(self.telstate.cbf_target)
@@ -692,6 +695,9 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                               1, ts=self.first_dump_ts - 2 * self.dump_period)
             self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
                               0, ts=self.first_dump_ts + (n_times + 2) * self.dump_period)
+        telstate_cb = self.telstate.view('cb')
+        telstate_cb.add('obs_activity', 'await_pipeline',
+                        ts=self.first_dump_ts + (n_track - 0.5) * self.dump_period)
 
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
@@ -719,9 +725,9 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         await self.assert_sensor_value('accumulator-capture-active', 0)
         await self.assert_sensor_value('input-heaps-total',
                                        n_times * self.n_substreams // self.n_servers)
-        await self.assert_sensor_value('accumulator-batches', 1)
+        await self.assert_sensor_value('accumulator-batches', 2)
         await self.assert_sensor_value('accumulator-observations', 1)
-        await self.assert_sensor_value('pipeline-last-slots', n_times)
+        await self.assert_sensor_value('pipeline-last-slots', n_await)
         await self.assert_sensor_value('reports-written', 1)
         # Check that the slot accounting all balances
         await self.assert_sensor_value('slots', 60)
@@ -1234,12 +1240,30 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         await self.shutdown_servers(180)
 
-    async def test_pipeline_exception(self):
+    async def test_run_pipeline_exception(self):
         rs = np.random.RandomState(seed=1)
         with mock.patch.object(control.Pipeline, 'run_pipeline', side_effect=ZeroDivisionError):
             await self.assert_sensor_value('pipeline-exceptions', 0)
             for endpoint, heap in self.prepare_heaps(n_times=5, rs=rs):
                 self.l0_streams[endpoint].send_heap(heap)
+            await self.make_request('capture-init', 'cb')
+            await asyncio.sleep(1)
+            await self.assert_sensor_value('capture-block-state', b'{"cb": "CAPTURING"}')
+            for stream in self.l0_streams.values():
+                stream.send_heap(self.ig.get_end())
+            await self.shutdown_servers(60)
+            await self.assert_sensor_value('pipeline-exceptions', 1)
+            await self.assert_sensor_value('capture-block-state', b'{}')
+
+    async def test_flush_pipeline_exception(self):
+        rs = np.random.RandomState(seed=1)
+        with mock.patch.object(control.Pipeline, 'flush_pipeline', side_effect=ZeroDivisionError):
+            await self.assert_sensor_value('pipeline-exceptions', 0)
+            for endpoint, heap in self.prepare_heaps(n_times=5, rs=rs):
+                self.l0_streams[endpoint].send_heap(heap)
+            telstate_cb = self.telstate.view('cb')
+            telstate_cb.add('obs_activity', 'await_pipeline',
+                            ts=self.first_dump_ts + 3.5 * self.dump_period)
             await self.make_request('capture-init', 'cb')
             await asyncio.sleep(1)
             await self.assert_sensor_value('capture-block-state', b'{"cb": "CAPTURING"}')
