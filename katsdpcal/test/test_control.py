@@ -511,30 +511,31 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             vis += noiseboth
         return vis
 
-    def prepare_vis_heaps(self, n_times, rs, ts, vis, flags, weights, weights_channel):
-        """
-        Produce a list of heaps with the given data
-        Parameters:
-        -----------
-        n_times : int
-            number of dumps
-        rs : :class: `np.random.RandomState`
-            Random generator to shuffle heaps
-        ts : int
-            time of first dump
-        vis : :class: `np.ndarray`
-            visibilities, complex of shape (n_freqs, n_corr)
-        flags: :class: `np.ndarray`
-            flags, uint8 of shape vis
-        weights: :class: `np.ndarray`
-            weights, uint8 of shape vis
-        weights_channel: :class: `np.ndarray`
-            weights_channel, uint8 of shape(n_freqs)
+    def prepare_vis_heaps(self, n_times, rs, vis, flags, weights, weights_channel):
+        """Produce a list of heaps with the given L0 correlator data.
 
-        Returns:
-        --------
-        heaps : list of tuples
+        Parameters
+        ----------
+        n_times : int
+            Number of dumps to produce
+        rs : :class:`np.random.RandomState`
+            Random generator to shuffle heaps
+        vis : array of complex64, shape (n_freqs, n_corr)
+            Visibilities
+        flags : array of uint8, shape (n_freqs, n_corr)
+            Flags
+        weights : array of uint8, shape (n_freqs, n_corr)
+            Detailed weights, to be scaled by `weights_channel`
+        weights_channel : array of float32, shape (n_freqs,)
+            Coarse (per-channel) weights
+
+        Returns
+        -------
+        heaps : list of (`Endpoint`, `spead2.send.Heap`)
+            List of heaps, length `n_times` * `n_substreams`
         """
+        # Time of first dump, in seconds since CBF sync time
+        ts = self.first_dump_ts - self.telstate_l0.sync_time
         corrupted_vis = vis + 1e9j
         corrupt_times = (4, 17)
         channel_slices = [np.s_[i * self.n_channels_per_substream :
@@ -553,6 +554,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 self.ig['weights_channel'].value = weights_channel[s]
                 self.ig['timestamp'].value = ts
                 self.ig['dump_index'].value = i
+                # Channel index of first channel in the heap
                 self.ig['frequency'].value = np.uint32(s.start)
                 dump_heaps.append((endpoint, self.ig.get_heap()))
             rs.shuffle(dump_heaps)
@@ -655,7 +657,6 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
-        first_ts = ts = self.first_dump_ts - self.telstate_l0.sync_time
         n_times = 25
         rs = np.random.RandomState(seed=1)
 
@@ -678,7 +679,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
+        heaps = self.prepare_vis_heaps(n_times, rs, vis, flags, weights, weights_channel)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -827,6 +828,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             set(self.flags_endpoints[0] + self.flags_endpoints[1])
         )
         continuum_factors = [1, 4]
+        # Time of first dump, in seconds since CBF sync time
+        first_ts = self.first_dump_ts - self.telstate_l0.sync_time
         for stream_idx, continuum_factor in enumerate(continuum_factors):
             for i, endpoint in enumerate(self.flags_endpoints[stream_idx]):
                 heaps = get_sent_heaps(self.output_streams[endpoint])
@@ -881,7 +884,6 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
          not set to the noisiest antenna. Also checks that a new refant is selected for a new
          capture block if the old one is flagged
         """
-        ts = self.first_dump_ts - self.telstate_l0.sync_time
         n_times = 25
         rs = np.random.RandomState(seed=1)
 
@@ -916,7 +918,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
+        heaps = self.prepare_vis_heaps(n_times, rs, vis, flags, weights, weights_channel)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -949,7 +951,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                                (np.array(ant2) == refant_index_cb), 1, 0).astype(np.uint8)
         flag_refant = np.broadcast_to(flag_refant, flags.shape)
 
-        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flag_refant, weights, weights_channel)
+        heaps = self.prepare_vis_heaps(n_times, rs, vis, flag_refant, weights, weights_channel)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb2')
@@ -1003,6 +1005,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         if weights_channel is None:
             weights_channel = np.arange(1, n_times * self.n_channels + 1,
                                         dtype=np.float32).reshape(n_times, -1)
+        # Time of first dump, in seconds since CBF sync time
         ts = self.first_dump_ts - self.telstate_l0.sync_time
         channel_slices = [np.s_[i * self.n_channels_per_substream :
                                 (i + 1) * self.n_channels_per_substream]
