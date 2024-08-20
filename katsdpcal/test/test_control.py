@@ -92,7 +92,6 @@ class BaseTestTask:
     This is a base class, which is subclassed for each process class.
     """
 
-
     def setup_method(self):
         self.master_queue = self.module.Queue()
         self.slave_queue = self.module.Queue()
@@ -650,7 +649,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         return value * ref_phase.conj()
 
     async def test_capture(self, expected_g=1, expected_BG_rtol=1e-2,
-                           expected_BCROSS_DIODE_rtol=1e-2):
+                           expected_BCROSS_DIODE_rtol=1e-2,
+                           expected_k_rtol=1e-3):
         """Tests the capture with some data, and checks that solutions are
         computed and a report written.
         """
@@ -748,7 +748,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         assert len(cal_product_K) == 1
         ret_K, ret_K_ts = cal_product_K[0]
         assert ret_K.dtype == np.float32
-        np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=1e-3)
+        np.testing.assert_allclose(K - K[:, [0]], ret_K - ret_K[:, [0]], rtol=expected_k_rtol)
 
         # check SNR products are in telstate
         cal_product_SNR_K = telstate_cb_cal.get_range('product_SNR_K', st=0)
@@ -777,7 +777,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             ret_KCROSS_DIODE, ret_KCROSS_DIODE_ts = cal_product_KCROSS_DIODE[0]
             assert ret_KCROSS_DIODE.dtype == np.float32
             np.testing.assert_allclose(K - K[1] - (ret_K - ret_K[1]),
-                                       ret_KCROSS_DIODE, rtol=1e-1)
+                                       ret_KCROSS_DIODE, rtol=expected_k_rtol)
             # Check BCROSS_DIODE
             ret_BCROSS_DIODE, ret_BCROSS_DIODE_ts = self.assemble_bandpass(telstate_cb_cal,
                                                                            'product_BCROSS_DIODE')
@@ -874,7 +874,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # Relax the tolerances as the visibilities are generated using
         # the model given by the target string,
         # but calibration is performed using the full sky model.
-        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2)
+        await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2,
+                                expected_k_rtol=3e-3)
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
@@ -1186,47 +1187,13 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # Force pipeline to reset the solution stores
         for serv in self.servers:
             serv.server.pipeline.parameters['reset_solution_stores'] = True
-        n_times = 25
-        ts = 100.0
-        n_times = 25
-        rs = np.random.RandomState(seed=1)
-
-        target = katpoint.Target(self.telstate.cbf_target)
-        for antenna in self.antennas:
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              1, 1400000100 - 2 * 4)
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
-                              0, 1400000100 + (n_times + 2) * 4)
-
-        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
-        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) \
-            + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
-
-        vis = self.make_vis(K, G, target)
-
-        # Add noise per antenna
-        var = rs.uniform(0, 2, self.n_antennas)
-        # ensure one antenna is noisier than the others
-        var[0] += 4.0
-        rs.shuffle(var)
-        scale = np.array([(var), (var)])
-        noise = rs.normal(np.zeros((2, self.n_antennas)), scale, (vis.shape[0], 2, self.n_antennas))
-        vis = self.make_vis(K, G, target, noise)
-        flags = np.zeros(vis.shape, np.uint8)
-
-        # Set flag on one channel per baseline, to test the baseline permutation.
-        for i in range(flags.shape[1]):
-            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
-        weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
-        weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
-
-        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
-
+        n_times = 5
         start_time = self.telstate.sdp_l0test_sync_time + 100.
         end_time = start_time + n_times * self.telstate.sdp_l0test_int_time
         target = ('J1331+3030, radec delaycal bpcal gaincal, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.01)
+        heaps = self.prepare_heaps(None, n_times)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb')
@@ -1256,7 +1223,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         target = ('J1331+3030_2, radec gaincal, 13:31:08.29, +30:30:33.0, '
                   '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.02)
-        heaps = self.prepare_vis_heaps(n_times, rs, ts, vis, flags, weights, weights_channel)
+        heaps = self.prepare_heaps(None, n_times)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
         await self.make_request('capture-init', 'cb2')
