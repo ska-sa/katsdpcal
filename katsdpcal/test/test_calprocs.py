@@ -812,3 +812,93 @@ class TestInterpolateSoln(unittest.TestCase):
         expected[:, 1, 2] = np.array([6, 8]) * np.exp(1.j * np.pi / 180 * np.array([30, 40]))
 
         np.testing.assert_almost_equal(out, expected, 6)
+
+
+class TestSelectMedDeviation(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.select_med_deviation
+    This tests that the Median Absolute Deviation (MAD) threshold is correctly calulated
+    for even/odd PNR value arrays or where nans are present"""
+    def test_nan_pnr_values(self):
+        """Test that nan values are omitted in median absolute deviation calculation"""
+        self.array_med_pnr = np.array([1., np.nan, 3, 4, 5])
+        self.ant_indices = np.array([1, 4, 3, 2, 0])
+        median = 3.5
+        deviation_median = 1
+        self.mad_threshold = (median - deviation_median)
+
+        self.expected_mad_pnr = self.array_med_pnr > self.mad_threshold
+        self.expected_mad_pnr = self.expected_mad_pnr[self.ant_indices]
+        result_mad_pnr = calprocs.select_med_deviation_pnr_ants(self.array_med_pnr)
+        np.testing.assert_equal(self.expected_mad_pnr, result_mad_pnr)
+
+    def test_evenArray_pnr_values(self):
+        """Test that for an even array the MAD selection is correct"""
+        self.array_med_pnr = np.array([1, 2, 3, 4])
+        self.ant_indices = np.array([3, 2, 1, 0])
+        median = (2+3)/2
+        deviation_median = (0.5+1.5)/2
+        self.mad_threshold = (median - deviation_median)
+        # 1.5
+
+        self.expected_mad_pnr = self.array_med_pnr > self.mad_threshold
+        self.expected_mad_pnr = self.expected_mad_pnr[self.ant_indices]
+        result_mad_pnr = calprocs.select_med_deviation_pnr_ants(self.array_med_pnr)
+
+        np.testing.assert_equal(self.expected_mad_pnr, result_mad_pnr)
+
+    def test_oddArray_pnr_values(self):
+        """Test that for an odd array the MAD selection is correct"""
+        self.array_med_pnr = np.array([1, 2, 3, 4, 5])
+        self.ant_indices = np.array([4, 3, 2, 1, 0])
+        median = 3
+        deviation_median = 1
+        self.mad_threshold = (median - deviation_median)  # 2
+
+        self.expected_mad_pnr = self.array_med_pnr > self.mad_threshold
+        self.expected_mad_pnr = self.expected_mad_pnr[self.ant_indices]
+        result_mad_pnr = calprocs.select_med_deviation_pnr_ants(self.array_med_pnr)
+        np.testing.assert_equal(self.expected_mad_pnr, result_mad_pnr)
+
+
+class TestBestRefAnt(unittest.TestCase):
+    """Tests for :func:`katsdpcal.calprocs.best_refant"""
+    def setUp(self):
+        self.data = np.ones((10, 2, 10), np.complex64)
+        self.bls = np.array([[0, 0, 1, 0, 1, 2, 0, 1, 2, 3], [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]]).T
+        self.bandwidth = 856000000.0
+        self.chans = np.linspace(1e+9, 1.5e+9, 10)
+        self.freqs = np.arange(len(self.chans)) / self.chans * self.bandwidth + self.bandwidth
+        self.offset = np.pi/4
+        target = ('J1939-6342, radec, 19:39:25.03, -63:42:45.6,''(0.00408  0.00508 0.0708 0.0608)')
+        self.flux = katpoint.Target(target).flux_density(0.00408)
+        self.flux_array = np.array([self.flux])[:, np.newaxis]
+        self.rs = np.random.RandomState(seed=1)
+        k = self.rs.uniform(-50e-12, 50e-12, (2, 5))
+        pol1 = {0: {0: k[0][0], 1: k[0][1], 2: k[0][2], 3: k[0][3], 4: k[0][4]}}
+        pol2 = {1: {0: k[1][0], 1: k[1][1], 2: k[1][2], 3: k[1][3], 4: k[1][4]}}
+        self.delays = {'polv': pol1, 'polh': pol2}
+        baseline_delays = {}
+        for (a1, a2) in self.bls:
+            baseline_delays[(a1, a2)] = self.delays['polv'][0][a1] - self.delays['polh'][1][a2]
+        self.delay_array = np.array([baseline_delays[(ant1, ant2)] for (ant1, ant2) in self.bls])
+        self.vis_delay_offset = np.exp(2.j * np.pi * self.freqs[:, np.newaxis] * self.delay_array + self.offset)
+        self.data[:, 0, :] *= np.angle(self.vis_delay_offset)
+        noise = 0.1 * (self.rs.random_sample((10, 2, 10)) - 0.1)
+        self.data *= np.exp(1.j * noise)
+
+    def test_nan_antenna(self):
+        """Test that a nan antenna is not selected by best_refant"""
+
+        nan_antenna = [np.any(1 == x) for x in self.bls]
+        self.data[:, :, nan_antenna] = np.nan
+        result_ant_longest_bls = calprocs.best_refant(self.data, self.bls, self.chans)
+        assert 1 not in result_ant_longest_bls
+
+    def test_noisy_antenna(self):
+        """Test that a noisy antenna is not selected by best_refant"""
+
+        noisy_mask = (self.bls[:, 0] == 2) ^ (self.bls[:, 1] == 2)
+        extra_noise = 10 * (self.rs.random_sample((10, 4)) - 0.5)  # Higher noise level
+        self.data[:, 0, noisy_mask] *= np.exp(1.j * extra_noise)
+        result_ant_longest_bls = calprocs.best_refant(self.data, self.bls, self.chans)
+        assert 2 not in result_ant_longest_bls

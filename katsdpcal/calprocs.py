@@ -329,9 +329,34 @@ def ants_from_bllist(bllist):
     return len(set([item for sublist in bllist for item in sublist]))
 
 
+def select_med_deviation_pnr_ants(med_pnr_ants):
+    """Median Absolute Deviation of Reference Antenna PNR values.
+    Select antenna peak to noise (PNR) values that are above one median deviation of the
+    antenna median PNR for best reference antenna selection. This ensures
+    that a subset of antennas with reasonable peak to noise are selected.
+
+    Parameters
+    ----------
+    med_pnr_ants : :class:`np.ndarray`
+       Array of antenna Median Peak to Noise values
+
+    Returns
+    -------
+    high_quality_pnr : class:`np.ndarray`
+       Array of antenna Median Peak to Noise Boolean values that are above one median deviation"""
+
+    ant_indices = np.argsort(med_pnr_ants)[::-1]
+    median = np.nanmedian(med_pnr_ants)
+
+    mad = scipy.stats.median_abs_deviation(med_pnr_ants, nan_policy='omit')
+    pnr_vals_less_than_1mad = med_pnr_ants > (median - mad)
+    high_quality_pnr = pnr_vals_less_than_1mad[ant_indices]
+
+    return high_quality_pnr
+
+
 def best_refant(data, corrprod_lookup, chans):
     """Identify antenna that is most suited to be the reference antenna.
-
     Determine antenna whose FFT has the maximum peak to noise ratio (PNR) by
     taking the median PNR of the FFT over all baselines to each antenna.
 
@@ -346,8 +371,8 @@ def best_refant(data, corrprod_lookup, chans):
 
     Returns
     -------
-    best_refant : :class:`np.ndarray`
-        Array of indices of antennas in decreasing order of median of PNR over all baselines
+    antenna_longest_bls : :class:`np.ndarray`
+        Array of indices of antennas in decreasing order of baselength
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
@@ -373,8 +398,13 @@ def best_refant(data, corrprod_lookup, chans):
         # NB: it's important that mask is an np.ndarray here and not a list,
         # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
-        med_pnr_ants[a] = np.median(pnr)
-    return np.argsort(med_pnr_ants)[::-1]
+        med_pnr_ants[a] = np.nanmedian(pnr)
+    ant_indices = np.argsort(med_pnr_ants)[::-1]
+    high_pnrs = select_med_deviation_pnr_ants(med_pnr_ants)
+    high_ants = ant_indices[high_pnrs]
+    ant_longest_bls = np.sort(high_ants)[::-1]
+
+    return ant_longest_bls
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
