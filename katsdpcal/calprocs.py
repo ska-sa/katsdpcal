@@ -342,17 +342,16 @@ def select_med_deviation_pnr_ants(med_pnr_ants):
 
     Returns
     -------
-    high_quality_pnr : class:`np.ndarray`
-       Array of antenna Median Peak to Noise Boolean values that are above one median deviation"""
+    select_med_deviation_pnr_ants : class:`np.ndarray`
+       Array of corresponding ant indices with PNR values that are above the normalised
+       median absolute deviation threshold """
 
-    ant_indices = np.argsort(med_pnr_ants)[::-1]
+    ant_indices = np.arange(len(med_pnr_ants))
     median = np.nanmedian(med_pnr_ants)
-
     mad = scipy.stats.median_abs_deviation(med_pnr_ants, nan_policy='omit')
-    pnr_vals_less_than_1mad = med_pnr_ants > (median - mad)
-    high_quality_pnr = pnr_vals_less_than_1mad[ant_indices]
+    nmad_threshold = (median - 1.4826 * mad)
 
-    return high_quality_pnr
+    return ant_indices[med_pnr_ants >= nmad_threshold]
 
 
 def best_refant(data, corrprod_lookup, chans):
@@ -371,8 +370,11 @@ def best_refant(data, corrprod_lookup, chans):
 
     Returns
     -------
-    antenna_longest_bls : :class:`np.ndarray`
-        Array of indices of antennas in decreasing order of baselength
+    best_refant : :class:`np.ndarray`
+       Array of antenna indices sorted in descending order of antenna index.
+       This results in the antenna with the highest index in the set to be considered as the
+       best antenna to be selected as the reference antenna, and likewise the antenna with the
+       lowest index value will be the worse case reference antenna.
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
@@ -399,12 +401,10 @@ def best_refant(data, corrprod_lookup, chans):
         # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
         med_pnr_ants[a] = np.nanmedian(pnr)
-    ant_indices = np.argsort(med_pnr_ants)[::-1]
-    high_pnrs = select_med_deviation_pnr_ants(med_pnr_ants)
-    high_ants = ant_indices[high_pnrs]
-    ant_longest_bls = np.sort(high_ants)[::-1]
+    high_ants = select_med_deviation_pnr_ants(med_pnr_ants)
+    refant_best_to_worse = np.sort(high_ants)[::-1]
 
-    return ant_longest_bls
+    return refant_best_to_worse
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
