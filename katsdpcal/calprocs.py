@@ -331,7 +331,7 @@ def ants_from_bllist(bllist):
 
 def select_med_deviation_pnr_ants(med_pnr_ants):
     """Median Absolute Deviation of Reference Antenna PNR values.
-    Select antenna peak to noise (PNR) values that are above one median deviation of the
+    Select antenna peak to noise (PNR) values that are below one normalised median deviation of the
     antenna median PNR for best reference antenna selection. This ensures
     that a subset of antennas with reasonable peak to noise are selected.
 
@@ -344,7 +344,7 @@ def select_med_deviation_pnr_ants(med_pnr_ants):
     -------
     select_med_deviation_pnr_ants : class:`np.ndarray`
        Array of corresponding ant indices with PNR values that are above the normalised
-       median absolute deviation threshold """
+       median absolute deviation threshold"""
 
     ant_indices = np.arange(len(med_pnr_ants))
     median = np.nanmedian(med_pnr_ants)
