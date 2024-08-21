@@ -844,3 +844,19 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
     return target_slices, av_corr
+
+
+def flush_pipeline(ts, parameters, solution_stores):
+    """Flush pending calibration products in pipeline.
+
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope state, scoped to the cal namespace within the capture block
+    parameters : dict
+        The pipeline parameters
+    solution_stores : dict of :class:`~.CalSolutionStore`-like
+        Solution stores for the capture block, indexed by solution type
+    """
+    logger.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    logger.info('Flushed pipeline')

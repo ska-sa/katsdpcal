@@ -33,7 +33,7 @@ import dask.diagnostics
 import dask.distributed
 
 import katsdpcal
-from .reduction import pipeline
+from .reduction import pipeline, flush_pipeline
 from .report import make_cal_report
 from . import calprocs, calprocs_dask
 from . import solutions
@@ -89,6 +89,12 @@ class BufferReadyEvent:
     def __init__(self, capture_block_id, slots):
         self.capture_block_id = capture_block_id
         self.slots = slots
+
+
+class PipelineSyncEvent:
+    """The observation script is waiting for the pipeline to complete some products."""
+    def __init__(self, capture_block_id):
+        self.capture_block_id = capture_block_id
 
 
 class SensorReadingEvent:
@@ -261,6 +267,14 @@ def make_telstate_cb(telstate, capture_block_id):
     return telstate.view(capture_block_id).view(prefix)
 
 
+def _run_task(task):
+    """Free function wrapping the Task runner.
+
+    It needs to be free because bound instancemethods can't be pickled for multiprocessing.
+    """
+    task._run()
+
+
 class Task:
     """Base class for tasks (threads or processes).
 
@@ -331,14 +345,6 @@ class Task:
     @daemon.setter
     def daemon(self, value):
         self._process.daemon = value
-
-
-def _run_task(task):
-    """Free function wrapping the Task runner.
-
-    It needs to be free because bound instancemethods can't be pickled for multiprocessing.
-    """
-    task._run()
 
 
 class Accumulator:
@@ -463,7 +469,7 @@ class Accumulator:
             """
             # **************** ACCUMULATOR BREAK CONDITIONS ****************
             # ********** THIS BREAKING NEEDS TO BE THOUGHT THROUGH CAREFULLY **********
-            ignore_states = ['slew', 'stop', 'unknown']
+            ignore_states = ['slew', 'stop', 'unknown', 'await_pipeline']
             if new is not None and old is not None:
                 # CASE 1 -- break if activity has changed (i.e. the activity time has changed)
                 #   unless previous scan was a target, in which case accumulate
@@ -489,6 +495,25 @@ class Accumulator:
                 return True
 
             return False
+
+        def _flush_slots(self):
+            now = time.time()
+            self._logger.info('Accumulated %d timestamps', len(self._slots))
+            _inc_sensor(self.owner.sensors['accumulator-batches'], 1, timestamp=now)
+
+            # pass the buffer to the pipeline
+            if self._slots:
+                self.owner.accum_pipeline_queue.put(
+                    BufferReadyEvent(self.capture_block_id, self._slots))
+                self._logger.info('accum_pipeline_queue updated by %s', self.owner.name)
+                _inc_sensor(self.owner.sensors['pipeline-slots'],
+                            len(self._slots), timestamp=now)
+                _inc_sensor(self.owner.sensors['accumulator-slots'],
+                            -len(self._slots), timestamp=now)
+
+            self._slots = []
+            self._slot_for_index.clear()
+            self._state = None
 
         async def _ensure_slots(self, cur_idx, stop_pred=lambda: False):
             """Add new slots until there is one for `cur_idx`.
@@ -520,6 +545,9 @@ class Accumulator:
                 # flush a batch if necessary
                 if self._is_break(self._state, new_state, self._slots):
                     self._flush_slots()
+                    if new_state.activity == 'await_pipeline':
+                        self.owner.accum_pipeline_queue.put(
+                            PipelineSyncEvent(self.capture_block_id))
 
                 # print name of target and activity type on changes (and start of batch)
                 if new_state is not None and self._state != new_state:
@@ -537,25 +565,6 @@ class Accumulator:
                 self._state = new_state
                 self._last_idx = idx
             return True
-
-        def _flush_slots(self):
-            now = time.time()
-            self._logger.info('Accumulated %d timestamps', len(self._slots))
-            _inc_sensor(self.owner.sensors['accumulator-batches'], 1, timestamp=now)
-
-            # pass the buffer to the pipeline
-            if self._slots:
-                self.owner.accum_pipeline_queue.put(
-                    BufferReadyEvent(self.capture_block_id, self._slots))
-                self._logger.info('accum_pipeline_queue updated by %s', self.owner.name)
-                _inc_sensor(self.owner.sensors['pipeline-slots'],
-                            len(self._slots), timestamp=now)
-                _inc_sensor(self.owner.sensors['accumulator-slots'],
-                            -len(self._slots), timestamp=now)
-
-            self._slots = []
-            self._slot_for_index.clear()
-            self._state = None
 
         @classmethod
         def _update_buffer(cls, out, l0, ordering):
@@ -902,6 +911,14 @@ class Accumulator:
     def capturing(self):
         return self.sensors['accumulator-capture-active'].value
 
+    def set_ordering_parameters(self):
+        # determine re-ordering necessary to convert from supplied bls
+        # ordering to desired bls ordering
+        antenna_names = self.parameters['antenna_names']
+        bls_ordering = self.telstate_l0['bls_ordering']
+        self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
+        self.weight_power_scale_params = corrprod_to_autocorr(bls_ordering)
+
     async def _next_slot(self, stop_pred=lambda: False):
         """Obtain a new slot in which to store data.
 
@@ -1041,14 +1058,6 @@ class Accumulator:
             self._thread_pool.stop()
             self._thread_pool = None
 
-    def set_ordering_parameters(self):
-        # determine re-ordering necessary to convert from supplied bls
-        # ordering to desired bls ordering
-        antenna_names = self.parameters['antenna_names']
-        bls_ordering = self.telstate_l0['bls_ordering']
-        self.ordering = calprocs.get_reordering(antenna_names, bls_ordering)[0]
-        self.weight_power_scale_params = corrprod_to_autocorr(bls_ordering)
-
 
 class Pipeline(Task):
     """Task (Process or Thread) which runs pipeline."""
@@ -1122,6 +1131,33 @@ class Pipeline(Task):
                 'Final flag fraction post RFI detection: cross-pol (prometheus: Gauge)')
         ]
 
+    def run_pipeline(self, capture_block_id, data):
+        # run pipeline calibration
+        telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
+        target_slices, avg_corr = pipeline(data, telstate_cb_cal, self.parameters,
+                                           self.solution_stores, self.l0_name, self.sensors)
+        # put corrected data into pipeline_report_queue
+        self.pipeline_report_queue.put(avg_corr)
+
+    def flush_pipeline(self, capture_block_id):
+        telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
+        flush_pipeline(telstate_cb_cal, self.parameters, self.solution_stores)
+
+    def get_measured_flux(self, event):
+        # Get the flux densities of the gain calibrators
+        measured_flux, measured_flux_std = calprocs.measure_flux(
+            self.solution_stores['G_FLUX'], self.solution_stores['G'],
+            event.start_time, event.end_time)
+        # Save it to telstate
+        ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
+        # Only save the key if another process hasn't done it already
+        try:
+            ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
+            ts_cb_cal.add('measured_flux_std', measured_flux_std, immutable=True)
+            logger.info('Saved flux densities of gain calibrators to telstate.')
+        except ImmutableKeyError:
+            pass
+
     def run(self):
         """Task (Process or Thread) run method, which runs pipeline.
 
@@ -1178,7 +1214,7 @@ class Pipeline(Task):
                     try:
                         self.run_pipeline(event.capture_block_id, data)
                     except Exception:
-                        logger.exception('Exception in pipeline')
+                        logger.exception('Exception when running pipeline')
                         error = True
                     end_time = time.time()
                     elapsed = end_time - start_time
@@ -1194,6 +1230,17 @@ class Pipeline(Task):
                     self.pipeline_sender_queue.put(event)
                     logger.info('buffer with %d slots released by %s for transmission',
                                 len(event.slots), self.name)
+                elif isinstance(event, PipelineSyncEvent):
+                    error = False
+                    try:
+                        self.flush_pipeline(event.capture_block_id)
+                    except Exception:
+                        logger.exception('Exception when flushing pipeline')
+                        error = True
+                    if error:
+                        _inc_sensor(self.sensors['pipeline-exceptions'], 1,
+                                    status=aiokatcp.Sensor.Status.ERROR,
+                                    timestamp=time.time())
                 elif isinstance(event, ObservationEndEvent):
                     self.get_measured_flux(event)
                     self.master_queue.put(
@@ -1208,29 +1255,6 @@ class Pipeline(Task):
         finally:
             self.pipeline_sender_queue.put(StopEvent())
             self.pipeline_report_queue.put(StopEvent())
-
-    def run_pipeline(self, capture_block_id, data):
-        # run pipeline calibration
-        telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
-        target_slices, avg_corr = pipeline(data, telstate_cb_cal, self.parameters,
-                                           self.solution_stores, self.l0_name, self.sensors)
-        # put corrected data into pipeline_report_queue
-        self.pipeline_report_queue.put(avg_corr)
-
-    def get_measured_flux(self, event):
-        # Get the flux densities of the gain calibrators
-        measured_flux, measured_flux_std = calprocs.measure_flux(
-            self.solution_stores['G_FLUX'], self.solution_stores['G'],
-            event.start_time, event.end_time)
-        # Save it to telstate
-        ts_cb_cal = make_telstate_cb(self.telstate_cal, event.capture_block_id)
-        # Only save the key if another process hasn't done it already
-        try:
-            ts_cb_cal.add('measured_flux', measured_flux, immutable=True)
-            ts_cb_cal.add('measured_flux_std', measured_flux_std, immutable=True)
-            logger.info('Saved flux densities of gain calibrators to telstate.')
-        except ImmutableKeyError:
-            pass
 
 
 @attr.s
