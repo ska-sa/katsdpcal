@@ -313,7 +313,7 @@ class Scan:
         if refant_index is not None:
             logger.info('Flag fraction on refant is > 80%% (%.3f%%),'
                         ' selecting a new refant', flag_frac)
-            if any(refant_order) == refant_index:
+            if refant_index in refant_order:
                 refant_order.remove(refant_index)
         return refant_order[0]
 

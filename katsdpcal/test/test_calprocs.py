@@ -860,8 +860,8 @@ class TestBestRefAnt(unittest.TestCase):
 
         nan_antenna = [np.any(1 == x) for x in self.bls]
         self.vis[:, :, nan_antenna] = np.nan
-        result_ant_longest_bls = calprocs.best_refant(self.vis, self.bls, self.freqs)
-        assert 1 not in result_ant_longest_bls
+        candidate_ants = calprocs.best_refant(self.vis, self.bls, self.freqs)
+        assert 1 not in candidate_ants
 
     def test_noisy_antenna(self):
         """Test that a noisy antenna is not selected by best_refant"""
@@ -869,5 +869,5 @@ class TestBestRefAnt(unittest.TestCase):
         noisy_mask = (self.bls[:, 0] == 2) ^ (self.bls[:, 1] == 2)
         extra_noise = 10 * (self.rs.random_sample((10, 4)) - 0.5)  # Add higher noise level
         self.vis[:, 0, noisy_mask] *= np.exp(1.j * extra_noise)
-        result_ant_longest_bls = calprocs.best_refant(self.vis, self.bls, self.freqs)
-        assert 2 not in result_ant_longest_bls
+        candidate_ants = calprocs.best_refant(self.vis, self.bls, self.freqs)
+        assert 2 not in candidate_ants
