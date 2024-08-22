@@ -28,9 +28,9 @@ setup(
     platforms=["OS Independent"],
     keywords="kat kat7 meerkat ska",
     zip_safe=False,
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     install_requires=[
-        "numpy>=1.15", "scipy>=0.17", "numba>=0.49.0",
+        "numpy>=1.15", "scipy>=1.5.0", "numba>=0.49.0",
         "dask[array,distributed]>=1.1.0", "distributed>=2.2.0", "bokeh",
         "attrs", "sortedcontainers",
         "aiokatcp", "astropy", "async_timeout",

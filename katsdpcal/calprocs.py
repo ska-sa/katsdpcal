@@ -329,11 +329,53 @@ def ants_from_bllist(bllist):
     return len(set([item for sublist in bllist for item in sublist]))
 
 
+def select_med_deviation_pnr_ants(med_pnr_ants):
+    """Median Absolute Deviation of Reference Antenna PNR values.
+    Select antenna peak to noise (PNR) values that are above the normalised median absolute
+    deviation (NMAD) Threshold for best reference antenna selection.
+    This ensures that a subset of antennas with reasonable peak to noise are selected.
+
+    Parameters
+    ----------
+    med_pnr_ants : :class:`np.ndarray`
+       Array of antenna Median Peak to Noise values
+
+    Returns
+    -------
+    select_med_deviation_pnr_ants : class:`np.ndarray`
+       Array of corresponding ant indices with PNR values that are above the normalised
+       median absolute deviation threshold"""
+
+    ant_indices = np.arange(len(med_pnr_ants))
+    median = np.nanmedian(med_pnr_ants)
+    mad = scipy.stats.median_abs_deviation(med_pnr_ants, nan_policy='omit')
+    nmad_threshold = (median - 1.4826 * mad)
+
+    return ant_indices[med_pnr_ants >= nmad_threshold]
+
+
 def best_refant(data, corrprod_lookup, chans):
     """Identify antenna that is most suited to be the reference antenna.
 
-    Determine antenna whose FFT has the maximum peak to noise ratio (PNR) by
-    taking the median PNR of the FFT over all baselines to each antenna.
+    This function determines the best reference antenna through the following process:
+
+    - Perform a Fourier Transform on the visibilities along the frequency axis. Since the
+      visibilities from the correlator have roughly linear phase slopes, the resultant
+      FFT of the visibilities are expected to be highly peaked.
+
+    - Calculate the peak-to-noise ratio (PNR) for all baselines per antenna to measure the
+      strength of the peaked visibilities. Highly peaked visibilities indicates good signal
+      coherence and quality for phase calibration.
+
+    - Calculate the median PNR, this serves as a robust figure of merit for identifying antenna
+      that have good signal coherence.
+
+    - Select antennas with high median PNR values by applying the select_med_deviation_pnr_ants()
+      function, i.e. removes roughly the bottom 20% of antenna from being selected as a candidate
+      reference antenna for calibration.
+
+    - Sort the remaining antenna indices in descending order to promote the outer antennas
+      above the core antennas.
 
     Parameters
     ----------
@@ -346,8 +388,10 @@ def best_refant(data, corrprod_lookup, chans):
 
     Returns
     -------
-    best_refant : :class:`np.ndarray`
-        Array of indices of antennas in decreasing order of median of PNR over all baselines
+    refant_best_to_worse : :class:`np.ndarray`
+       Array of antenna indices sorted according to the suitability of the corresponding antenna
+       to be the reference antenna. The first antenna index in the list is considered to be the
+       best candidate reference antenna.
     """
     # Detect position of fft peak
     ft_vis = scipy.fftpack.fft(data, axis=0)
@@ -373,8 +417,11 @@ def best_refant(data, corrprod_lookup, chans):
         # NB: it's important that mask is an np.ndarray here and not a list,
         # due to https://github.com/numpy/numpy/pull/13715
         pnr = (peak[..., mask] - mean[..., mask]) / std[..., mask]
-        med_pnr_ants[a] = np.median(pnr)
-    return np.argsort(med_pnr_ants)[::-1]
+        med_pnr_ants[a] = np.nanmedian(pnr)
+    high_ants = select_med_deviation_pnr_ants(med_pnr_ants)
+    refant_best_to_worse = np.sort(high_ants)[::-1]
+
+    return refant_best_to_worse
 
 
 def g_fit(data, weights, corrprod_lookup,  g0=None, refant=0, **kwargs):
