@@ -331,9 +331,9 @@ def ants_from_bllist(bllist):
 
 def select_med_deviation_pnr_ants(med_pnr_ants):
     """Median Absolute Deviation of Reference Antenna PNR values.
-    Select antenna peak to noise (PNR) values that are below one normalised median deviation of the
-    antenna median PNR for best reference antenna selection. This ensures
-    that a subset of antennas with reasonable peak to noise are selected.
+    Select antenna peak to noise (PNR) values that are above the normalised median absolute
+    deviation (NMAD) Threshold for best reference antenna selection.
+    This ensures that a subset of antennas with reasonable peak to noise are selected.
 
     Parameters
     ----------
