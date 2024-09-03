@@ -8,6 +8,7 @@ katsdp.setDependencies([
     'ska-sa/katpoint/master',
     'ska-sa/katdal/master',
     'ska-sa/katsdpsigproc/master',
+    'ska-sa/katsdpcalproc/main',
     'ska-sa/katsdpservices/master',
     'ska-sa/katsdptelstate/master'])
 katsdp.standardBuild(

@@ -6,9 +6,9 @@ from argparse import ArgumentParser
 import time
 
 import numpy as np
+from katsdpcalproc import calprocs
 
 from katsdpcal.simulator import init_simdata
-from katsdpcal import calprocs
 
 
 def average_timer(n, func, *args, **kwargs):

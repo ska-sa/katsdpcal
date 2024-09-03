@@ -5,7 +5,12 @@ import katsdptelstate
 import concurrent.futures
 import numpy as np
 
-from ..solutions import CalSolution, CalSolutions, CalSolutionStore, CalSolutionStoreLatest
+from katsdpcalproc.solutions import (
+    CalSolution,
+    CalSolutions,
+    CalSolutionStore,
+    CalSolutionStoreLatest,
+)
 from .. import reduction
 
 

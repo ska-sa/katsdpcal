@@ -11,8 +11,10 @@ import scipy.interpolate
 from katdal.h5datav3 import FLAG_NAMES
 import katpoint
 
-from . import calprocs, calprocs_dask, inplace
-from .solutions import CalSolution, CalSolutions
+from katsdpcalproc import calprocs, calprocs_dask
+from katsdpcalproc.solutions import CalSolution, CalSolutions
+
+from . import inplace
 
 logger = logging.getLogger(__name__)
 

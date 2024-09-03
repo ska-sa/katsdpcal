@@ -11,7 +11,7 @@ import os
 import optparse
 import katpoint
 from scipy.constants import c as light_speed
-from katsdpcal.calprocs import to_ut
+from katsdpcalproc.calprocs import to_ut
 from katsdpcal.simulator import get_antdesc_relative
 
 

@@ -12,7 +12,7 @@ import asyncio
 
 from casacore.tables import table
 import spead2.send.asyncio
-from .calprocs import get_reordering_nopol
+from katsdpcalproc.calprocs import get_reordering_nopol
 
 import katsdpservices
 import katdal
