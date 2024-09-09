@@ -26,8 +26,9 @@ from katsdptelstate.endpoint import Endpoint
 import katpoint
 from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
+from katsdpcalproc import calprocs
 
-from katsdpcal import control, calprocs, pipelineprocs, param_dir
+from katsdpcal import control, pipelineprocs, param_dir
 
 
 numba.config.THREADING_LAYER = 'safe'

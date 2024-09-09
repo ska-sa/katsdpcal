@@ -20,7 +20,7 @@ import katsdpmodels.band_mask
 import katsdpmodels.rfi_mask
 
 from collections import OrderedDict
-from . import calprocs
+from katsdpcalproc import calprocs
 
 logger = logging.getLogger(__name__)
 

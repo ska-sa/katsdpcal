@@ -12,13 +12,13 @@ from collections import defaultdict
 from katdal.sensordata import TelstateSensorGetter, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
 
+from katsdpcalproc import solutions
+from katsdpcalproc.calprocs import interpolate_soln
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
 
-from . import solutions
 from . import pipelineprocs as pp
 from .scan import Scan
 from . import lsm_dir
-from .calprocs import interpolate_soln
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ import datetime
 import threading
 
 from . import plotting
-from . import calprocs
 from . import docutils_dir
 
 import numpy as np
@@ -15,6 +14,7 @@ from docutils.core import publish_file
 import matplotlib.pylab as plt
 import katpoint
 from katdal.sensordata import to_str
+from katsdpcalproc import calprocs
 import json
 
 logger = logging.getLogger(__name__)

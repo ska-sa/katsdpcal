@@ -24,6 +24,7 @@ from katdal.h5datav3 import FLAG_NAMES
 from katdal.vis_flags_weights import corrprod_to_autocorr, weight_power_scale
 from katdal import SpectralWindow
 from katsdptelstate import ImmutableKeyError
+from katsdpcalproc import calprocs, calprocs_dask, solutions
 
 import attr
 import numba
@@ -35,8 +36,6 @@ import dask.distributed
 import katsdpcal
 from .reduction import pipeline, flush_pipeline
 from .report import make_cal_report
-from . import calprocs, calprocs_dask
-from . import solutions
 
 
 logger = logging.getLogger(__name__)
