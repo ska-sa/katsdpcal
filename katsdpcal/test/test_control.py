@@ -950,10 +950,10 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                                 ts=self.first_dump_ts + ((n_track+n_slew) - 0.5) * self.dump_period)
         
         # Creating antenna objects
-        ants=[self.telstate[a+"_observer"] for a in self.antennas]
-        ant_objects=[katpoint.Antenna(a) for a in ants]
+        ants = [self.telstate[a+"_observer"] for a in self.antennas]
+        ant_objects = [katpoint.Antenna(a) for a in ants]
         
-        max_extent=1
+        max_extent = 1
         # Build up sequence of pointing offsets running linearly in x and y directions
         scan = np.linspace(-max_extent, max_extent, n_pointing// 2)
         offsets_along_x = np.c_[scan, np.zeros_like(scan)]
@@ -961,15 +961,15 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         offsets = np.r_[offsets_along_y, offsets_along_x]
 
         # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
-        start_time=self.first_dump_ts- (0.5* self.dump_period)
-        ts=start_time
+        start_time = self.first_dump_ts- (0.5* self.dump_period)
+        ts = start_time
         for offset in offsets:
             for i in range(0,n_pointing):
                 #update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
                 #use first antenna as reference antenna
-                azel=target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
+                azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
                                             antenna=ant_objects[0], timestamp=ts)
-                azel=[katpoint.wrap_angle(azel[0]), katpoint.wrap_angle(azel[1])]
+                azel = [katpoint.wrap_angle(azel[0]), katpoint.wrap_angle(azel[1])]
                 self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_azim', azel[0], ts=ts)
                 self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_elev', azel[1], ts=ts)
                 ts = ts + (self.dump_period/8)
@@ -979,7 +979,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
 
         # Making visibilities and preparing + sending heaps
-        vis=self.make_vis(K,G,target)
+        vis = self.make_vis(K,G,target)
         heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
         for endpoint, heap in heaps:
             self.l0_streams[endpoint].send_heap(heap)
