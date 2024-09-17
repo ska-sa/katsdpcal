@@ -933,20 +933,20 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                   '13:31:08.29, +30:30:33.0, (0 50e3 0.1823 1.4757 -0.4739 0.0336)')
         self.telstate.add('cbf_target', target, ts=0.003)
         target = katpoint.Target(self.telstate.cbf_target)
-
+        telstate_cb = self.telstate.view('cb')
         # Adding track, track, slew obs activities for each offset
         n_activity=0
         for pointing in range(0,n_pointing):
-            self.telstate_cb.add('obs_activity', 'track',
+            telstate_cb.add('obs_activity', 'track',
                             ts=self.first_dump_ts + (n_activity - 0.5) * self.dump_period)
-            print(self.telstate_cb['obs_activity'])
+            print(telstate_cb['obs_activity'])
             
-            self.telstate_cb.add('obs_activity', 'slew',
+            telstate_cb.add('obs_activity', 'slew',
                             ts=self.first_dump_ts + ((n_activity + 2) - 0.5) * self.dump_period)
-            print(self.telstate_cb['obs_activity'])
+            print(telstate_cb['obs_activity'])
             n_activity+=3
 
-        self.telstate_cb.add('obs_activity', 'await_pipeline',
+        telstate_cb.add('obs_activity', 'await_pipeline',
                                 ts=self.first_dump_ts + ((n_track+n_slew) - 0.5) * self.dump_period)
         
         # Creating antenna objects
