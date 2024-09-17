@@ -939,11 +939,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         for pointing in range(0,n_pointing):
             telstate_cb.add('obs_activity', 'track',
                             ts=self.first_dump_ts + (n_activity - 0.5) * self.dump_period)
-            print(telstate_cb['obs_activity'])
-            
             telstate_cb.add('obs_activity', 'slew',
                             ts=self.first_dump_ts + ((n_activity + 2) - 0.5) * self.dump_period)
-            print(telstate_cb['obs_activity'])
             n_activity+=3
 
         telstate_cb.add('obs_activity', 'await_pipeline',
