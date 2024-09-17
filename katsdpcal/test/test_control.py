@@ -914,6 +914,91 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # but calibration is performed using the full sky model.
         await self.test_capture(expected_BG_rtol=5e-2, expected_BCROSS_DIODE_rtol=1e-2,
                                 expected_K_rtol=3e-3)
+        
+    async def test_reference_pointing_capture(self):
+        """Tests the reference pointing feature with some data, and checks that 
+        solutions are computed and checks dtypes and shapes.
+        """
+        # Number of dumps spent tracking, slewing and awaiting
+        n_track = 16
+        n_slew = 8
+        n_await = 3
+        # Number of pointings
+        n_pointing = 8
+        n_times = n_track + n_await
+        rs = np.random.RandomState(seed=1)
+        
+        # Create target with pointingcal tag
+        target = ('J1331+3030, radec pointingcal, '
+                  '13:31:08.29, +30:30:33.0, (0 50e3 0.1823 1.4757 -0.4739 0.0336)')
+        self.telstate.add('cbf_target', target, ts=0.003)
+        target = katpoint.Target(self.telstate.cbf_target)
+
+        # Adding track, track, slew obs activities for each offset
+        n_activity=0
+        for pointing in range(0,n_pointing):
+            self.telstate_cb.add('obs_activity', 'track',
+                            ts=self.first_dump_ts + (n_activity - 0.5) * self.dump_period)
+            print(self.telstate_cb['obs_activity'])
+            
+            self.telstate_cb.add('obs_activity', 'slew',
+                            ts=self.first_dump_ts + ((n_activity + 2) - 0.5) * self.dump_period)
+            print(self.telstate_cb['obs_activity'])
+            n_activity+=3
+
+        self.telstate_cb.add('obs_activity', 'await_pipeline',
+                                ts=self.first_dump_ts + ((n_track+n_slew) - 0.5) * self.dump_period)
+        
+        # Creating antenna objects
+        ants=[self.telstate[a+"_observer"] for a in self.antennas]
+        ant_objects=[katpoint.Antenna(a) for a in ants]
+        
+        max_extent=1
+        # Build up sequence of pointing offsets running linearly in x and y directions
+        scan = np.linspace(-max_extent, max_extent, n_pointing// 2)
+        offsets_along_x = np.c_[scan, np.zeros_like(scan)]
+        offsets_along_y = np.c_[np.zeros_like(scan), scan]
+        offsets = np.r_[offsets_along_y, offsets_along_x]
+
+        # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
+        start_time=self.first_dump_ts- (0.5* self.dump_period)
+        ts=start_time
+        for offset in offsets:
+            for i in range(0,n_pointing):
+                #update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
+                #use first antenna as reference antenna
+                azel=target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
+                                            antenna=ant_objects[0], timestamp=ts)
+                azel=[katpoint.wrap_angle(azel[0]), katpoint.wrap_angle(azel[1])]
+                self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_azim', azel[0], ts=ts)
+                self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_elev', azel[1], ts=ts)
+                ts = ts + (self.dump_period/8)
+
+        # Creating antenna delays and gains
+        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
+        G = rs.uniform(2.0, 4.0, (2, self.n_antennas)) + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas))
+
+        # Making visibilities and preparing + sending heaps
+        vis=self.make_vis(K,G,target)
+        heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
+        for endpoint, heap in heaps:
+            self.l0_streams[endpoint].send_heap(heap)
+        await self.make_request('capture-init', 'cb')
+        await asyncio.sleep(1)
+
+        for stream in self.l0_streams.values():
+            stream.send_heap(self.ig.get_end())
+        await self.shutdown_servers(180)
+
+        telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
+        # Asserting dtypes, shape of cal product
+        if 'pointingcal' in target.tags:
+            for i in range(self.n_servers):
+                cal_product_EPOINTn = telstate_cb_cal.get_range('product_EPOINT'+'{}'.format(i), st=0)
+                assert len(cal_product_EPOINTn) == 1
+                EPOINTn = cal_product_EPOINTn[0]
+                assert EPOINTn.dtype == np.float64
+                assert EPOINTn.shape == (16 // self.n_servers, 2, self.n_antennas, 5)
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
