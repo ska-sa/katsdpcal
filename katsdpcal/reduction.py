@@ -857,7 +857,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
 
 
-    """Calculate offset co-odinates relative to target for each pointing.
+    """Calculate offset co-ordinates relative to target for each pointing.
 
     Parameters
     ----------
@@ -876,7 +876,7 @@ def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
     -------
     offsets : list of (x,y) co-ordinates for each pointing
     """
-    rc=katpoint.RefractionCorrection()
+    rc = katpoint.RefractionCorrection()
     # Set refant index
     refant_ind = parameters['refant_index']
     refant = parameters['antennas'][refant_ind]
@@ -889,7 +889,7 @@ def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
         ref_corr_el = rc.apply(azel[1], temp, pres, humi)
         # Construct target object
         trgt = katpoint.construct_azel_target(azel[0], ref_corr_el)
-        # Get offset az/el co-ordiantes (direction in which reference antenna is pointing)
+        # Get offset az/el co-ordinates (direction in which reference antenna is pointing)
         az = ts.get_range(str(refant.name)+'_pos_actual_scan_azim', et=j )
         el = ts.get_range(str(refant.name)+'_pos_actual_scan_elev', et=j )
         az_actual = katpoint.deg2rad(az[0][0])

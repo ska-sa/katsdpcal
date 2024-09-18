@@ -504,7 +504,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id),
         'BCROSS_DIODE_SKY': 'product_BCROSS_DIODE_SKY{}'.format(server_id),
         'EPOINT': 'product_EPOINT{}'.format(server_id),
-        'SNR_EPOINT': 'product_SNR_EPOINT{}'.format(server_id)
+        'SNR_EPOINT': 'product_SNR_EPOINT{}'.format(server_id),
     }
     parameters['product_B_parts'] = servers
 
