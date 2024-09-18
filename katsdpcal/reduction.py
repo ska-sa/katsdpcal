@@ -876,7 +876,7 @@ def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
     -------
     offsets : list of (x,y) co-ordinates for each pointing
     """
-    rc=katpoint.RefractionCorrection()
+    rc = katpoint.RefractionCorrection()
     # Set refant index
     refant_ind = parameters['refant_index']
     refant = parameters['antennas'][refant_ind]
