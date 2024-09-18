@@ -857,7 +857,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
 
 
-    """Calculate offset co-odinates relative to target for each pointing.
+    """Calculate offset co-ordinates relative to target for each pointing.
 
     Parameters
     ----------
