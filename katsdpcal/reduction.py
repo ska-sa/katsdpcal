@@ -902,7 +902,7 @@ def get_offsets(ts, target, t_stamps, temp, pres, humi, parameters):
     return offsets
 
 
-def flush_pipeline(ts, parameters, solution_stores, num_chunks=16):
+def flush_pipeline(ts, parameters, solution_stores):
     """Secondary pipeline calibration.
 
     Parameters
@@ -921,7 +921,8 @@ def flush_pipeline(ts, parameters, solution_stores, num_chunks=16):
     -------
     Beam solutions saved to telstate
     """
-    # POINTING
+    # TODO: num_chunks should enter through paramters
+    num_chunks = 16
     # Extract bandpass gains from solution stores
     b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time = time.time()).values
     # Extract some some commonly used constants from the TS and parameters
@@ -962,5 +963,6 @@ def flush_pipeline(ts, parameters, solution_stores, num_chunks=16):
     beam_sol=solutions.CalSolution(soltype='P', soltime=soltime, solvalues=beam_sol, soltarget=target.name)
     beam_sol_SNR = solutions.CalSolution(soltype='P', soltime=soltime, solvalues=beam_sol_SNR, soltarget=target.name)
     # Save fitted beam CalSolution and beam SNR to telstate as 
-    save_solution(ts, 'product_EPOINT', None, beam_sol)
-    save_solution(ts, 'product_SNR_EPOINT', None, beam_sol_SNR)
+    save_solution(ts, parameters['product_names']['product_EPOINT'], None, beam_sol)
+    save_solution(ts, parameters['product_names']['product_SNR_EPOINT'], None, beam_sol_SNR)
+   
