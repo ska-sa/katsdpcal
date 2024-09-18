@@ -1090,7 +1090,7 @@ class Pipeline(Task):
             'BCROSS_DIODE': solutions.CalSolutionStoreLatest('BCROSS_DIODE'),
             'G': solutions.CalSolutionStore('G'),
             'G_FLUX': solutions.CalSolutionStore('G'),
-            'B_POINTING': solutions.CalSolutionStore('B')
+            'B_POINTING': solutions.CalSolutionStore('B'),
         }
 
     def _reset_refant(self):
