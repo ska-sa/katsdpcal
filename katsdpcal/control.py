@@ -1142,6 +1142,8 @@ class Pipeline(Task):
     def flush_pipeline(self, capture_block_id):
         telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
         flush_pipeline(telstate_cb_cal, self.parameters, self.solution_stores)
+        # Wipe out intermediate B solutions for reference pointing after fitting beams
+        self.solution_stores['B_POINTING'] = solutions.CalSolutionStore('B')
 
     def get_measured_flux(self, event):
         # Get the flux densities of the gain calibrators
