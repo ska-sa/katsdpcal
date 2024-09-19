@@ -913,15 +913,13 @@ def flush_pipeline(ts, parameters, solution_stores):
         The pipeline parameters
     solution_stores : dict of :class:`~.CalSolutionStore`-like
         Solution stores for the capture block, indexed by solution type
-    num_chunks : int, optional
-        Group the frequency channels into this many sections to obtain
-        pointing fits
-
+        
     Returns
     -------
     Beam solutions saved to telstate
     """
     # TODO: num_chunks should enter through paramters
+    #Group the frequency channels into this many sections
     num_chunks = 16
     # Extract bandpass gains from solution stores
     b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time = time.time()).values
