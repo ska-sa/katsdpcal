@@ -925,7 +925,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         n_await = 3
         # Number of pointings
         n_pointing = 8
-        n_times = n_track + n_await
+        n_times = n_track + n_slew + n_await
         rs = np.random.RandomState(seed=1)
         
         # Create target with pointingcal tag
@@ -950,7 +950,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         ants = [self.telstate[a+"_observer"] for a in self.antennas]
         ant_objects = [katpoint.Antenna(a) for a in ants]
         
-        max_extent = 1
+        max_extent = 1.0
         # Build up sequence of pointing offsets running linearly in x and y directions
         scan = np.linspace(-max_extent, max_extent, n_pointing// 2)
         offsets_along_x = np.c_[scan, np.zeros_like(scan)]
@@ -958,18 +958,20 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         offsets = np.r_[offsets_along_y, offsets_along_x]
 
         # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
+        pos_sensor_period = 0.5
+        num_pos_updates = self.dump_period / pos_sensor_period
         start_time = self.first_dump_ts- (0.5* self.dump_period)
-        ts = start_time
-        for offset in offsets:
-            for i in range(0,n_pointing):
-                #update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
-                #use first antenna as reference antenna
-                azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
-                                            antenna=ant_objects[0], timestamp=ts)
-                azel = [katpoint.wrap_angle(azel[0]), katpoint.wrap_angle(azel[1])]
-                self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_azim', azel[0], ts=ts)
-                self.telstate.add(str(ant_objects[0].name)+'_pos_actual_scan_elev', azel[1], ts=ts)
-                ts = ts + (self.dump_period/8)
+        for ant in ant_objects:
+            ts = start_time
+            for offset in offsets:
+                for i in range(num_pos_updates * (n_track + n_slew) / n_pointing):
+                    #update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
+                    azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
+                                                antenna=ant_objects[0], timestamp=ts)
+                    azel = [katpoint.wrap_angle(azel[0]), azel[1]]
+                    self.telstate.add(ant.name +'_pos_actual_scan_azim', azel[0], ts=ts)
+                    self.telstate.add(ant.name +'_pos_actual_scan_elev', azel[1], ts=ts)
+                    ts = ts + (self.dump_period/8)
 
         # Creating antenna delays and gains
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
@@ -994,7 +996,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 cal_product_EPOINTn = telstate_cb_cal.get_range('product_EPOINT'+'{}'.format(i), st=0)
                 assert len(cal_product_EPOINTn) == 1
                 EPOINTn = cal_product_EPOINTn[0]
-                assert EPOINTn.dtype == np.float64
+                assert EPOINTn.dtype == np.float32
                 assert EPOINTn.shape == (16 // self.n_servers, 2, self.n_antennas, 5)
 
     async def test_set_refant(self):

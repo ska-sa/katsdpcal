@@ -889,8 +889,8 @@ def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):
         # TODO The following ideally needs katdal sensor framework for interpolation
         trgt = katpoint.construct_azel_target(azel[0], ref_corr_el)
         # Get offset az/el co-ordinates (direction in which reference antenna is pointing)
-        az = ts.get_range(str(refant.name)+'_pos_actual_scan_azim', et=j )
-        el = ts.get_range(str(refant.name)+'_pos_actual_scan_elev', et=j )
+        az = ts.get_range(refant.name+'_pos_actual_scan_azim', et=j )
+        el = ts.get_range(refant.name+'_pos_actual_scan_elev', et=j )
         az_actual = katpoint.deg2rad(az[0][0])
         el_actual = rc.apply(katpoint.deg2rad(el[0][0]), temp, pres, humi)
         # Project spherical coordinates to plane with target position as reference
@@ -927,9 +927,10 @@ def flush_pipeline(ts, parameters, solution_stores):
     target_str = ts.get_range('cbf_target', et = mid_times[0])[0][0]
     target = katpoint.Target(target_str)
     # Atmospheric conditions
-    pres = ts.get_range('anc_air_pressure', et = mid_times[-1])[0][0]
-    temp = ts.get_range('anc_air_temperature', et = mid_times[-1])[0][0]
-    humi = ts.get_range('anc_air_relative_humidity', et = mid_times[-1])[0][0]
+    soltime = np.mean(mid_times)
+    pres = ts.get_range('anc_air_pressure', et = soltime)[0][0]
+    temp = ts.get_range('anc_air_temperature', et = soltime)[0][0]
+    humi = ts.get_range('anc_air_relative_humidity', et = soltime)[0][0]
     ants = parameters['antennas']
     dump_period = ts['int_time']
     channel_freqs = parameters['channel_freqs']
@@ -938,7 +939,7 @@ def flush_pipeline(ts, parameters, solution_stores):
     # Calculate offset (x,y) co-ordinates for each pointing
     offsets = get_offsets(ts, parameters, target, mid_times, temp, pres, humi)
     # Extract gains per pointing offset, per receptor and per frequency chunk.
-    data_points = pointing.get_offset_gains(b_solutions, offsets, ants, channel_freqs,
+    data_points = pointing.get_offset_gains(b_solutions.values(), offsets, ants, channel_freqs,
                                              pols, num_chunks)
     # Fit primary beams to the gains
     beams = pointing.beam_fit(data_points, ants, num_chunks)
@@ -950,13 +951,12 @@ def flush_pipeline(ts, parameters, solution_stores):
             if beam is None:
                 continue
             if beam.is_valid:
-                beam_sol[c,:,a]=np.r_[beam.std_center, beam.std_width, beam.std_height]
+                beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
                 beam_sol_SNR[c,:,a]=1/np.r_[beam.std_center, beam.std_width, beam.std_height]
-            else:
-                beam_sol[c,:,a]=np.r_[beam.std_center, beam.std_width, beam.std_height]
+            if not beam.is_valid:
+                beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
                 beam_sol_SNR[c, :, a, 4] = 0.0
-    soltime = np.mean(mid_times)
     beam_sol=solutions.CalSolution(soltype='B', soltime=soltime, solvalues=beam_sol, 
                                    soltarget=target.name, solsnr=beam_sol_SNR)
     # Save fitted beam CalSolution and beam SNR to telstate as 
-    save_solution(ts, parameters['product_names']['product_EPOINT'], None, beam_sol)
+    save_solution(ts, parameters['product_names']['EPOINT'], None, beam_sol)
