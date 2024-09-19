@@ -959,16 +959,16 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
         pos_sensor_period = 0.5
-        num_pos_updates = self.dump_period / pos_sensor_period
+        num_pos_updates = int(np.round(self.dump_period / pos_sensor_period))
         start_time = self.first_dump_ts- (0.5* self.dump_period)
         for ant in ant_objects:
             ts = start_time
             for offset in offsets:
-                for i in range(num_pos_updates * (n_track + n_slew) / n_pointing):
+                for i in range(num_pos_updates * (n_track + n_slew) // n_pointing):
                     #update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
                     azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]), 
-                                                antenna=ant_objects[0], timestamp=ts)
-                    azel = [katpoint.wrap_angle(azel[0]), azel[1]]
+                                                antenna=ant, timestamp=ts)
+                    azel = [katpoint.rad2deg(katpoint.wrap_angle(azel[0])), katpoint.rad2deg(azel[1])]
                     self.telstate.add(ant.name +'_pos_actual_scan_azim', azel[0], ts=ts)
                     self.telstate.add(ant.name +'_pos_actual_scan_elev', azel[1], ts=ts)
                     ts = ts + (self.dump_period/8)

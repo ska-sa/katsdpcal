@@ -939,7 +939,7 @@ def flush_pipeline(ts, parameters, solution_stores):
     # Calculate offset (x,y) co-ordinates for each pointing
     offsets = get_offsets(ts, parameters, target, mid_times, temp, pres, humi)
     # Extract gains per pointing offset, per receptor and per frequency chunk.
-    data_points = pointing.get_offset_gains(b_solutions.values(), offsets, ants, channel_freqs,
+    data_points = pointing.get_offset_gains(b_solutions.values, offsets, ants, channel_freqs,
                                              pols, num_chunks)
     # Fit primary beams to the gains
     beams = pointing.beam_fit(data_points, ants, num_chunks)
@@ -948,11 +948,8 @@ def flush_pipeline(ts, parameters, solution_stores):
     beam_sol_SNR = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
     for a, ant in enumerate(ts.cal_antlist):
         for c,beam in enumerate(beams[ant]):
-            if beam is None:
-                continue
-            if beam.is_valid:
-                beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
-                beam_sol_SNR[c,:,a]=1/np.r_[beam.std_center, beam.std_width, beam.std_height]
+            beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
+            beam_sol_SNR[c,:,a]=1/np.r_[beam.std_center, beam.std_width, beam.std_height]
             if not beam.is_valid:
                 beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
                 beam_sol_SNR[c, :, a, 4] = 0.0
