@@ -901,25 +901,11 @@ def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):
     return offsets
 
 
-def flush_pipeline(ts, parameters, solution_stores):
-    """Complete any unfinished calibration products remaining in the pipeline.
-    
-    Saves beam solutions and uncertainties to telstate
-    
-    Parameters
-    ----------
-    ts : :class:`katsdptelstate.TelescopeState`
-        Telescope state, scoped to the cal namespace within the capture block
-    parameters : dict
-        The pipeline parameters
-    solution_stores : dict of :class:`~.CalSolutionStore`-like
-        Solution stores for the capture block, indexed by solution type
-    """
-    # TODO: num_chunks should enter through paramters
-    #Group the frequency channels into this many sections
+def _finish_pointing_cal(ts, parameters, b_solutions):
+    """Complete pointing calibration by fitting beams to B gains and saving to telstate."""
+    # TODO: num_chunks should enter through parameters
+    # Group the frequency channels into this many sections
     num_chunks = 16
-    # Extract bandpass gains from solution stores
-    b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time = time.time())
     # Extract some some commonly used constants from the TS and parameters
     # Middle time for each dump
     mid_times = b_solutions.times
@@ -958,3 +944,32 @@ def flush_pipeline(ts, parameters, solution_stores):
                                    soltarget=target.name, solsnr=beam_sol_SNR)
     # Save fitted beam CalSolution and beam SNR to telstate as 
     save_solution(ts, parameters['product_names']['EPOINT'], None, beam_sol)
+
+
+def flush_pipeline(ts, parameters, solution_stores):
+    """Complete any unfinished calibration products remaining in the pipeline.
+
+    Saves beam solutions and uncertainties to telstate.
+
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope state, scoped to the cal namespace within the capture block
+    parameters : dict
+        The pipeline parameters
+    solution_stores : dict of :class:`~.CalSolutionStore`-like
+        Solution stores for the capture block, indexed by solution type
+    """
+    logger.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    logger.info('Flushing pipeline')
+
+    # See if there are any intermediate bandpass gains for pointing cal in solution stores
+    b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time=time.time())
+    n_pointings = len(b_solutions.times)
+    if n_pointings > 0:
+        logger.info(
+            'Finishing pointing cal on target %r (%d pointings)',
+            b_solutions.target,
+            n_pointings
+        )
+        _finish_pointing_cal(ts, parameters, b_solutions)
