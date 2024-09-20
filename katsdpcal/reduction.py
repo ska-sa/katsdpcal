@@ -767,13 +767,13 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # save to G
                 save_solution(None, None, solution_stores['G'], g_soln)
         
-        #POINTING
+        # POINTING
         if any('pointingcal' in k for k in taglist):
             # B solution on pointing cal while dishes are offset
             logger.info('Solving for B on pointing calibrator %s', target_name)
-            p_soln = s.b_sol(bp0_h)
+            b_soln = s.b_sol(bp0_h)
             # Save only to solution stores
-            solution_stores['B_POINTING'].add(p_soln)
+            solution_stores['B_POINTING'].add(b_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
