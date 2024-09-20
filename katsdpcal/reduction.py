@@ -938,9 +938,9 @@ def _finish_pointing_cal(ts, parameters, b_solutions):
             beam_sol_SNR[c,:,a] = 1 / np.r_[beam.std_center, beam.std_width, beam.std_height]
             if not beam.is_valid:
                 beam_sol_SNR[c, :, a, -1] = 0.0
-    beam_sol=solutions.CalSolution(soltype='B', soltime=soltime, solvalues=beam_sol, 
-                                   soltarget=target.name, solsnr=beam_sol_SNR)
-    # Save fitted beam CalSolution and beam SNR to telstate as 
+    beam_sol = solutions.CalSolution(soltype='EPOINT', soltime=soltime, solvalues=beam_sol,
+                                     soltarget=target.name, solsnr=beam_sol_SNR)
+    # Save fitted beam CalSolution and beam SNR to telstate
     save_solution(ts, parameters['product_names']['EPOINT'], None, beam_sol)
 
 
@@ -965,9 +965,5 @@ def flush_pipeline(ts, parameters, solution_stores):
     b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time=time.time())
     n_pointings = len(b_solutions.times)
     if n_pointings > 0:
-        logger.info(
-            'Finishing pointing cal on target %r (%d pointings)',
-            b_solutions.target,
-            n_pointings
-        )
+        logger.info('Finishing pointing cal on %d pointings', n_pointings)
         _finish_pointing_cal(ts, parameters, b_solutions)
