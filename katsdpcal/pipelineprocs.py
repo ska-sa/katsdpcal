@@ -179,6 +179,8 @@ COMPUTED_PARAMETERS = [
     Parameter('product_names', 'names to use in telstate for solutions', dict),
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
               telstate=True),
+    Parameter('product_EPOINT_parts', 'number of separate keys forming beam fit solution', int,
+              telstate=True),
     Parameter('servers', 'number of parallel servers', int),
     Parameter('server_id', 'identity of this server (zero-based)', int),
     Parameter('bcross_sky_spline', 'spline fit to bcross_sky across frequency (in MHz)', tuple,
@@ -506,7 +508,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         'EPOINT': 'product_EPOINT{}'.format(server_id),
         'SNR_EPOINT': 'product_SNR_EPOINT{}'.format(server_id),
     }
-    parameters['product_B_parts'] = servers
+    parameters['product_B_parts'] = parameters['product_EPOINT_parts'] = servers
 
     # Convert spline knots, coefs and degrees into spline tuple to store in telstate
     parameters['bcross_sky_spline'] = (np.array(parameters['bcross_sky_knots']),

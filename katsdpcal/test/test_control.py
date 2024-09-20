@@ -760,6 +760,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         cal_product_B_parts = telstate_cb_cal['product_B_parts']
         assert cal_product_B_parts == self.n_servers
+        cal_product_EPOINT_parts = telstate_cb_cal['product_EPOINT_parts']
+        assert cal_product_EPOINT_parts == self.n_servers
         ret_B, ret_B_ts = self.assemble_bandpass(telstate_cb_cal, 'product_B')
 
         cal_product_G = telstate_cb_cal.get_range('product_G', st=0)
