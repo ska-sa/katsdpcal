@@ -962,6 +962,10 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         offsets_along_x = np.c_[scan, np.zeros_like(scan)]
         offsets_along_y = np.c_[np.zeros_like(scan), scan]
         offsets = np.r_[offsets_along_y, offsets_along_x]
+        # Add atmospheric conditions
+        self.telstate.add('anc_air_pressure', 901.8, ts=0)
+        self.telstate.add('anc_air_temperature', 15.9, ts=0)
+        self.telstate.add('anc_air_relative_humidity', 22.3, ts=0)
 
         # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
         pos_sensor_period = 0.5
