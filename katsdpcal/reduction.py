@@ -903,9 +903,8 @@ def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):
 
 def _finish_pointing_cal(ts, parameters, b_solutions):
     """Complete pointing calibration by fitting beams to B gains and saving to telstate."""
-    # TODO: num_chunks should enter through parameters
-    # Group the frequency channels into this many sections
-    num_chunks = 16
+    # Group the global frequency channels into this many sections (fewer per server)
+    num_chunks = parameters['epoint_freq_chunks']
     # Extract some some commonly used constants from the TS and parameters
     # Middle time for each dump
     mid_times = b_solutions.times

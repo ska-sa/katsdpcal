@@ -140,7 +140,9 @@ USER_PARAMS_CHANS = [
               telstate=False),
     Parameter('bcross_sky_coefs', 'coefs for bcross_sky spline fit across frequency',
               comma_list(float), telstate=False),
-    Parameter('bcross_sky_k', 'degree of spline fit for bcross_sky', int, telstate=False)
+    Parameter('bcross_sky_k', 'degree of spline fit for bcross_sky', int, telstate=False),
+    Parameter('epoint_freq_chunks', 'no of chunks to divide band into when fitting beams', int,
+              converter=FreqChunksConverter),
 ]
 
 

@@ -1001,12 +1001,14 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         # Asserting dtypes, shape of cal product
         if 'pointingcal' in target.tags:
+            num_chunks = telstate_cb_cal['param_epoint_freq_chunks']
             for i in range(self.n_servers):
                 cal_product_EPOINTn = telstate_cb_cal.get_range('product_EPOINT{}'.format(i), st=0)
                 assert len(cal_product_EPOINTn) == 1
                 ret_EPOINTn, ret_EPOINTn_ts = cal_product_EPOINTn[0]
                 assert ret_EPOINTn.dtype == np.float32
-                assert ret_EPOINTn.shape == (16 // self.n_servers, 2, self.n_antennas, 5)
+                assert ret_EPOINTn.shape == (num_chunks // self.n_servers, 2, self.n_antennas, 5)
+            assert 'product_EPOINT{}'.format(self.n_servers) not in telstate_cb_cal
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
