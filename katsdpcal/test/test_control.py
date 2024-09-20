@@ -924,7 +924,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # Number of dumps spent tracking, slewing and awaiting
         n_track = 16
         n_slew = 8
-        n_await = 3
+        n_await = 4
         # Number of pointings
         n_pointing = 8
         n_times = n_track + n_slew + n_await
@@ -936,17 +936,21 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         self.telstate.add('cbf_target', target, ts=0.003)
         target = katpoint.Target(self.telstate.cbf_target)
         telstate_cb = self.telstate.view('cb')
+        start_time = self.first_dump_ts - 0.5 * self.dump_period
+
         # Adding track, track, slew obs activities for each offset
         n_activity=0
         for pointing in range(0,n_pointing):
             telstate_cb.add('obs_activity', 'track',
-                            ts=self.first_dump_ts + (n_activity - 0.5) * self.dump_period)
+                            ts=start_time + n_activity * self.dump_period)
             telstate_cb.add('obs_activity', 'slew',
-                            ts=self.first_dump_ts + ((n_activity + 2) - 0.5) * self.dump_period)
+                            ts=start_time + (n_activity + 2) * self.dump_period)
             n_activity+=3
-
+        # Always track before await_pipeline, otherwise it is ignored :-)
+        telstate_cb.add('obs_activity', 'track',
+                        ts=start_time + (n_track + n_slew) * self.dump_period)
         telstate_cb.add('obs_activity', 'await_pipeline',
-                                ts=self.first_dump_ts + ((n_track+n_slew) - 0.5) * self.dump_period)
+                        ts=start_time + (n_track + n_slew + 1) * self.dump_period)
         
         # Creating antenna objects
         ants = [self.telstate[a+"_observer"] for a in self.antennas]
@@ -962,7 +966,6 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         # Updating pos_actual_scan_azim/elev every 0.5 seconds (4 times per dump)
         pos_sensor_period = 0.5
         num_pos_updates = int(np.round(self.dump_period / pos_sensor_period))
-        start_time = self.first_dump_ts- (0.5* self.dump_period)
         for ant in ant_objects:
             ts = start_time
             for offset in offsets:
