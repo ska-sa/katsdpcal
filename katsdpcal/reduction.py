@@ -902,7 +902,12 @@ def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):
 
 
 def _finish_pointing_cal(ts, parameters, b_solutions):
-    """Complete pointing calibration by fitting beams to B gains and saving to telstate."""
+    """Complete pointing calibration by fitting beams to B gains and saving to telstate.
+
+    Uses katsdpcalproc routines to fit primary beams using banpass solutions 
+    generated on previous target tracks and saves beam solutions to telstate
+    as calibration product EPOINT
+    """
     # Group the global frequency channels into this many sections (fewer per server)
     num_chunks = parameters['epoint_freq_chunks']
     # Extract some some commonly used constants from the TS and parameters
