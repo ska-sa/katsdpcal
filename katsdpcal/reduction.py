@@ -7,6 +7,7 @@ from numbers import Integral
 
 import numpy as np
 import katsdptelstate
+from katsdpcalproc import pointing
 
 from collections import defaultdict
 from katdal.sensordata import TelstateSensorGetter, SensorCache
@@ -765,6 +766,14 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # If there is no model and the target isn't a gaincal as well
                 # save to G
                 save_solution(None, None, solution_stores['G'], g_soln)
+        
+        # POINTING
+        if any('pointingcal' in k for k in taglist):
+            # B solution on pointing cal while dishes are offset
+            logger.info('Solving for B on pointing calibrator %s', target_name)
+            b_soln = s.b_sol(bp0_h)
+            # Save only to solution stores
+            solution_stores['B_POINTING'].add(b_soln)
 
         # GAIN
         if any('gaincal' in k for k in taglist):
@@ -845,9 +854,105 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
     return target_slices, av_corr
 
+def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):
+    """Calculate offset co-ordinates relative to target for each pointing.
+
+    Parameters
+    ----------
+    ts : :class:`katsdptelstate.TelescopeState`
+        Telescope state, scoped to the cal namespace within the capture block
+    parameters : dict
+        The pipeline parameters
+    target : :class:`katpoint.Target`
+        Pointing calibrator as a katpoint target object
+    t_stamps : list
+        Timestamps at which offset co-ordinates must be determined
+    temp, pres, humi : :class: 'float'
+        Atmospheric conditions used for refraction correction
+
+    Returns
+    -------
+    offsets : list of (x,y) co-ordinates for each pointing
+    """
+    rc = katpoint.RefractionCorrection()
+    # Set refant index
+    refant_ind = parameters['refant_index']
+    refant = parameters['antennas'][refant_ind]
+    # Get middle timestamp of each track slice
+    offsets=[]
+    for j in t_stamps:
+        # AZ/EL co-ordinates of target
+        azel=target.azel(timestamp=j, antenna=refant)
+        # apply refraction to target co-ordinates (already in radians)
+        ref_corr_el = rc.apply(azel[1], temp, pres, humi)
+        # Construct target object
+        # TODO The following ideally needs katdal sensor framework for interpolation
+        trgt = katpoint.construct_azel_target(azel[0], ref_corr_el)
+        # Get offset az/el co-ordinates (direction in which reference antenna is pointing)
+        az = ts.get_range(refant.name+'_pos_actual_scan_azim', et=j )
+        el = ts.get_range(refant.name+'_pos_actual_scan_elev', et=j )
+        az_actual = katpoint.deg2rad(az[0][0])
+        el_actual = rc.apply(katpoint.deg2rad(el[0][0]), temp, pres, humi)
+        # Project spherical coordinates to plane with target position as reference
+        offset = trgt.sphere_to_plane(az_actual,el_actual, coord_system='azel', antenna=refant, timestamp=j)
+        offset = (katpoint.rad2deg(offset[0]),katpoint.rad2deg(offset[1]))
+        offsets.append(offset)
+
+    return offsets
+
+
+def _finish_pointing_cal(ts, parameters, b_solutions):
+    """Complete pointing calibration by fitting beams to B gains and saving to telstate.
+
+    Uses katsdpcalproc routines to fit primary beams using banpass solutions 
+    generated on previous target tracks and saves beam solutions to telstate
+    as calibration product EPOINT
+    """
+    # Group the global frequency channels into this many sections (fewer per server)
+    num_chunks = parameters['epoint_freq_chunks']
+    # Extract some some commonly used constants from the TS and parameters
+    # Middle time for each dump
+    mid_times = b_solutions.times
+    # TODO The following ideally needs katdal sensor framework for interpolation
+    target_str = ts.get_range('cbf_target', et = mid_times[0])[0][0]
+    target = katpoint.Target(target_str)
+    # Atmospheric conditions
+    soltime = np.mean(mid_times)
+    pres = ts.get_range('anc_air_pressure', et = soltime)[0][0]
+    temp = ts.get_range('anc_air_temperature', et = soltime)[0][0]
+    humi = ts.get_range('anc_air_relative_humidity', et = soltime)[0][0]
+    ants = parameters['antennas']
+    channel_freqs = parameters['channel_freqs']
+    pols = parameters['pol_ordering']
+    
+    # Calculate offset (x,y) co-ordinates for each pointing
+    offsets = get_offsets(ts, parameters, target, mid_times, temp, pres, humi)
+    # Extract gains per pointing offset, per receptor and per frequency chunk.
+    data_points = pointing.get_offset_gains(b_solutions.values, offsets, ants, channel_freqs,
+                                             pols, num_chunks)
+    # Fit primary beams to the gains
+    beams = pointing.beam_fit(data_points, ants, num_chunks)
+    # Save fitted beams as CalSolution with shape (num_chunks, len(pols), len(ants), 5)
+    beam_sol = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
+    beam_sol_SNR = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
+    for a, ant in enumerate(ants):
+        for c, beam in enumerate(beams[ant.name]):
+            if beam is None:
+                continue
+            beam_sol[c,:,a] = np.r_[beam.center, beam.width, beam.height]
+            beam_sol_SNR[c,:,a] = 1 / np.r_[beam.std_center, beam.std_width, beam.std_height]
+            if not beam.is_valid:
+                beam_sol_SNR[c, :, a, -1] = 0.0
+    beam_sol = solutions.CalSolution(soltype='EPOINT', soltime=soltime, solvalues=beam_sol,
+                                     soltarget=target.name, solsnr=beam_sol_SNR)
+    # Save fitted beam CalSolution and beam SNR to telstate
+    save_solution(ts, parameters['product_names']['EPOINT'], None, beam_sol)
+
 
 def flush_pipeline(ts, parameters, solution_stores):
-    """Flush pending calibration products in pipeline.
+    """Complete any unfinished calibration products remaining in the pipeline.
+
+    Saves beam solutions and uncertainties to telstate.
 
     Parameters
     ----------
@@ -859,4 +964,11 @@ def flush_pipeline(ts, parameters, solution_stores):
         Solution stores for the capture block, indexed by solution type
     """
     logger.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-    logger.info('Flushed pipeline')
+    logger.info('Flushing pipeline')
+
+    # See if there are any intermediate bandpass gains for pointing cal in solution stores
+    b_solutions = solution_stores['B_POINTING'].get_range(start_time=0, end_time=time.time())
+    n_pointings = len(b_solutions.times)
+    if n_pointings > 0:
+        logger.info('Finishing pointing cal on %d pointings', n_pointings)
+        _finish_pointing_cal(ts, parameters, b_solutions)

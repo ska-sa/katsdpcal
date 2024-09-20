@@ -140,7 +140,9 @@ USER_PARAMS_CHANS = [
               telstate=False),
     Parameter('bcross_sky_coefs', 'coefs for bcross_sky spline fit across frequency',
               comma_list(float), telstate=False),
-    Parameter('bcross_sky_k', 'degree of spline fit for bcross_sky', int, telstate=False)
+    Parameter('bcross_sky_k', 'degree of spline fit for bcross_sky', int, telstate=False),
+    Parameter('epoint_freq_chunks', 'no of chunks to divide band into when fitting beams', int,
+              converter=FreqChunksConverter),
 ]
 
 
@@ -178,6 +180,8 @@ COMPUTED_PARAMETERS = [
     Parameter('channel_slice', 'portion of channels handled by this server', slice),
     Parameter('product_names', 'names to use in telstate for solutions', dict),
     Parameter('product_B_parts', 'number of separate keys forming bandpass solution', int,
+              telstate=True),
+    Parameter('product_EPOINT_parts', 'number of separate keys forming beam fit solution', int,
               telstate=True),
     Parameter('servers', 'number of parallel servers', int),
     Parameter('server_id', 'identity of this server (zero-based)', int),
@@ -502,9 +506,11 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         'B': 'product_B{}'.format(server_id),
         'SNR_B': 'product_SNR_B{}'.format(server_id),
         'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id),
-        'BCROSS_DIODE_SKY': 'product_BCROSS_DIODE_SKY{}'.format(server_id)
+        'BCROSS_DIODE_SKY': 'product_BCROSS_DIODE_SKY{}'.format(server_id),
+        'EPOINT': 'product_EPOINT{}'.format(server_id),
+        'SNR_EPOINT': 'product_SNR_EPOINT{}'.format(server_id),
     }
-    parameters['product_B_parts'] = servers
+    parameters['product_B_parts'] = parameters['product_EPOINT_parts'] = servers
 
     # Convert spline knots, coefs and degrees into spline tuple to store in telstate
     parameters['bcross_sky_spline'] = (np.array(parameters['bcross_sky_knots']),

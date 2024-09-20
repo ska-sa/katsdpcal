@@ -130,7 +130,7 @@ class TestParametersForBlankFreqWin(unittest.TestCase):
 
 class TestFinaliseParameters(unittest.TestCase):
     def setUp(self):
-        # These parameters are based on pipeline_parameters_meerkat_L.txt
+        # These parameters are based on pipeline_parameters_meerkat_L_wide.txt
         self.parameters = {
             'k_solint': 5.0,
             'k_chan_sample': 1,
@@ -154,7 +154,8 @@ class TestFinaliseParameters(unittest.TestCase):
                                  26.879, 32.611, 32.973, 66.216, 16.998, 0,  0,  0,  0],
             'bcross_sky_k': 3,
             'rfi_extend_hz': 391845,
-            'rfi_freq_chunks': 8
+            'rfi_freq_chunks': 8,
+            'epoint_freq_chunks': 16,
         }
 
         self.antennas = [
@@ -204,7 +205,7 @@ class TestFinaliseParameters(unittest.TestCase):
 
     def test_normal(self):
         parameters = pipelineprocs.finalise_parameters(
-            self.parameters, self.telstate_l0, 4, 2)
+            self.parameters, self.telstate_l0, servers=4, server_id=2)
         self.assertEqual(None, parameters['refant_index'])
         self.assertEqual(self.antenna_names, parameters['antenna_names'])
         self.assertEqual(self.antennas, parameters['antennas'])
@@ -218,6 +219,7 @@ class TestFinaliseParameters(unittest.TestCase):
         self.assertEqual(202, parameters['g_bchan'])
         self.assertEqual(402, parameters['g_echan'])
         self.assertEqual(2, parameters['rfi_freq_chunks'])
+        self.assertEqual(4, parameters['epoint_freq_chunks'])
         # bls_ordering, pol_ordering, bls_lookup get tested elsewhere
 
     def test_invalid_server_id(self):

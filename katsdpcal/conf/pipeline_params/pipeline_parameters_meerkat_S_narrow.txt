@@ -30,3 +30,6 @@ rfi_freq_chunks : 8                  # No of chunks to divide band into when est
 bcross_sky_knots : 1750, 1968, 2188, 2628, 3124, 3294, 3394, 3500      # knots in MHz
 bcross_sky_coefs : 0, 0, 0, 0, 0, 0, 0, 0, 0                           # coefs of fit (in degrees)
 bcross_sky_k : 3
+
+# pointing calibration
+epoint_freq_chunks : 16              # No of chunks to divide band into when fitting beams
