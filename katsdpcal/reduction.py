@@ -948,11 +948,12 @@ def flush_pipeline(ts, parameters, solution_stores):
     beam_sol_SNR = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
     for a, ant in enumerate(ts.cal_antlist):
         for c,beam in enumerate(beams[ant]):
-            beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
-            beam_sol_SNR[c,:,a]=1/np.r_[beam.std_center, beam.std_width, beam.std_height]
+            if beam is None:
+                continue
+            beam_sol[c,:,a] = np.r_[beam.center, beam.width, beam.height]
+            beam_sol_SNR[c,:,a] = 1 / np.r_[beam.std_center, beam.std_width, beam.std_height]
             if not beam.is_valid:
-                beam_sol[c,:,a]=np.r_[beam.center, beam.width, beam.height]
-                beam_sol_SNR[c, :, a, 4] = 0.0
+                beam_sol_SNR[c, :, a, -1] = 0.0
     beam_sol=solutions.CalSolution(soltype='B', soltime=soltime, solvalues=beam_sol, 
                                    soltarget=target.name, solsnr=beam_sol_SNR)
     # Save fitted beam CalSolution and beam SNR to telstate as 
