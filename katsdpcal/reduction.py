@@ -918,7 +918,6 @@ def _finish_pointing_cal(ts, parameters, b_solutions):
     temp = ts.get_range('anc_air_temperature', et = soltime)[0][0]
     humi = ts.get_range('anc_air_relative_humidity', et = soltime)[0][0]
     ants = parameters['antennas']
-    dump_period = ts['int_time']
     channel_freqs = parameters['channel_freqs']
     pols = parameters['pol_ordering']
     
@@ -932,8 +931,8 @@ def _finish_pointing_cal(ts, parameters, b_solutions):
     # Save fitted beams as CalSolution with shape (num_chunks, len(pols), len(ants), 5)
     beam_sol = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
     beam_sol_SNR = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
-    for a, ant in enumerate(ts.cal_antlist):
-        for c,beam in enumerate(beams[ant]):
+    for a, ant in enumerate(ants):
+        for c, beam in enumerate(beams[ant.name]):
             if beam is None:
                 continue
             beam_sol[c,:,a] = np.r_[beam.center, beam.width, beam.height]
