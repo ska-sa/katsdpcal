@@ -918,7 +918,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                                 expected_K_rtol=3e-3)
 
     async def test_reference_pointing_capture(self):
-        """Tests the reference pointing feature with some data, and checks that 
+        """Tests the reference pointing feature with some data, and checks that
         solutions are computed and checks dtypes and shapes.
         """
         # Number of dumps spent tracking, slewing and awaiting
@@ -975,7 +975,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             for offset in offsets:
                 for i in range(num_pos_updates * (n_track + n_slew) // n_pointing):
                     # update pos_actual_scan 8 times per dump period, ie. every 0.5 seconds
-                    azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]), katpoint.deg2rad(offset[1]),
+                    azel = target.plane_to_sphere(katpoint.deg2rad(offset[0]),
+                                                  katpoint.deg2rad(offset[1]),
                                                   antenna=ant, timestamp=ts)
                     azel = [katpoint.rad2deg(katpoint.wrap_angle(azel[0])),
                             katpoint.rad2deg(azel[1])]
