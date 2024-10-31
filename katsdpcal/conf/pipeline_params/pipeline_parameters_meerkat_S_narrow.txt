@@ -26,9 +26,9 @@ rfi_spike_width_time : 100.0         # 1sigma time width of smoothing Gaussian, 
 rfi_extend_hz : 100135               # Convolution width in frequency to extend flags, Hz
 rfi_freq_chunks : 8                  # No of chunks to divide band into when estimating noise
 
-# HV phase 'to sky' spline, placeholder spline has coefs of zero to be updated in the future
-bcross_sky_knots : 1750, 1968, 2188, 2628, 3124, 3294, 3394, 3500      # knots in MHz
-bcross_sky_coefs : 0, 0, 0, 0, 0, 0, 0, 0, 0                           # coefs of fit (in degrees)
+# HV phase 'to sky' spline
+bcross_sky_knots : 1795, 1795, 1795, 1795, 1812, 1820, 1832, 1838, 1850, 1862, 1888, 1901, 1913, 1938, 1963, 1980, 1993, 2000, 2014, 2026, 2077, 2126, 2177, 2232, 2260, 2285, 2336, 2366, 2391,2441, 2466, 2493, 2544, 2595, 2644, 2745, 2845, 3045, 3095, 3146, 3196, 3221, 3246, 3296, 3346, 3359, 3372, 3399, 3423, 3448, 3448, 3448, 3448      # knots in MHz
+bcross_sky_coefs : -178.465, -176.562, -178.050, -180.612, -180.885 , -179.992, -179.279, -178.560, -177.640, -178.231, -178.658 , -177.303, -179.348, -180.501, -178.381 , -178.165, -178.365, -177.937, -178.954, -178.808, -179.599, -179.084, -179.743, -178.946, -180.475, -179.647, -178.793, -180.519, -178.503, -179.0332, -177.983, -179.129, -178.380, -177.285, -178.603, -178.690, -178.376, -179.075, -178.143, -180.012, -176.854, -179.764, -177.091, -179.395, -177.357, -179.148, -178.701, -175.281, -174.551, -360., -360., -360., -360.              # coefs of fit (in degrees)
 bcross_sky_k : 3
 
 # pointing calibration
