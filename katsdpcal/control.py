@@ -34,7 +34,7 @@ import dask.diagnostics
 import dask.distributed
 
 import katsdpcal
-from .reduction import pipeline, flush_pipeline
+from .reduction import pipeline, flush_pipeline, slots_slices
 from .report import make_cal_report
 
 
@@ -135,29 +135,6 @@ def shared_empty(shape, dtype):
 def _inc_sensor(sensor, delta, status=aiokatcp.Sensor.Status.NOMINAL, timestamp=None):
     """Increment sensor value by `delta`."""
     sensor.set_value(sensor.value + delta, status, timestamp)
-
-
-def _slots_slices(slots):
-    """Compresses a list of slot positions to a list of ranges (given as slices).
-
-    This is a generator that yields the slices
-
-    Example
-    -------
-    >>> list(_slots_slices([2, 3, 4, 6, 7, 8, 0, 1]))
-    [slice(2, 5, None), slice(6, 9, None), slice(0, 2, None)]
-    """
-    start = None
-    end = None
-    for slot in slots:
-        if end is not None and slot != end:
-            yield slice(start, end)
-            start = end = None
-        if start is None:
-            start = slot
-        end = slot + 1
-    if end is not None:
-        yield slice(start, end)
 
 
 def _sum_corr(sum_corr, new_corr, limit=None):
@@ -1131,11 +1108,12 @@ class Pipeline(Task):
                 'Final flag fraction post RFI detection: cross-pol (prometheus: Gauge)')
         ]
 
-    def run_pipeline(self, capture_block_id, data):
+    def run_pipeline(self, capture_block_id, data, flags, slots):
         # run pipeline calibration
         telstate_cb_cal = make_telstate_cb(self.telstate_cal, capture_block_id)
         target_slices, avg_corr = pipeline(data, telstate_cb_cal, self.parameters,
-                                           self.solution_stores, self.l0_name, self.sensors)
+                                           self.solution_stores, self.l0_name, flags,
+                                           slots, self.sensors)
         # put corrected data into pipeline_report_queue
         self.pipeline_report_queue.put(avg_corr)
 
@@ -1205,7 +1183,7 @@ class Pipeline(Task):
                     # set up dask arrays around the chosen slots
                     data = {'times': self.buffers['times'][event.slots],
                             'dump_indices': self.buffers['dump_indices'][event.slots]}
-                    slices = list(_slots_slices(event.slots))
+                    slices = list(slots_slices(event.slots))
                     for key in ('vis', 'flags', 'weights'):
                         buffer = self.buffers[key]
                         parts = [da.from_array(buffer[s], chunks=buffer[s].shape, name=False)
@@ -1214,7 +1192,8 @@ class Pipeline(Task):
                     # run the pipeline
                     error = False
                     try:
-                        self.run_pipeline(event.capture_block_id, data)
+                        self.run_pipeline(event.capture_block_id, data,
+                                          self.buffers['flags'], event.slots)
                     except Exception:
                         logger.exception('Exception when running pipeline')
                         error = True

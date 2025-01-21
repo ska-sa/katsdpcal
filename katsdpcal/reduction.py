@@ -61,6 +61,71 @@ def init_flagger(parameters, dump_period):
     return calib_flagger, targ_flagger
 
 
+def slot_slices_to_time_slices(slices):
+    """Convert a list of slot slices to time slices"""
+    start = 0
+    for s in slices:
+        step = s.stop - s.start
+        yield slice(start, start+step)
+        start = start+step
+
+
+def slots_slices(slots):
+    """Compresses a list of slot positions to a list of ranges (given as slices).
+
+    This is a generator that yields the slices
+
+    Example
+    -------
+    >>> list(_slots_slices([2, 3, 4, 6, 7, 8, 0, 1]))
+    [slice(2, 5, None), slice(6, 9, None), slice(0, 2, None)]
+    """
+    start = None
+    end = None
+    for slot in slots:
+        if end is not None and slot != end:
+            yield slice(start, end)
+            start = end = None
+        if start is None:
+            start = slot
+        end = slot + 1
+    if end is not None:
+        yield slice(start, end)
+
+
+def store_flags(slots, scan_slice, flag_array, scan, auto_ant=False):
+    """Store scan flags in the shared memory flag buffer
+
+    Inputs
+    ------
+    slots: list of slots
+        buffer slots currently being processed by the pipeline
+    scan_slice: slice
+        slice of the current scan
+    flag_array: :class:`np.ndarray` of uint8, shape (ntimes, nchans, npols, nbls)
+        shared memory array containing flag data
+    scan: :class:`Scan`
+        scan corresponding to the scan_slice
+    cross: bool
+        cross-correlations or auto-correlations
+    """
+    # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
+    # all selections on the shared flag array must be done using slices
+    if auto_ant:
+        mask = scan.ac_mask
+        corr = scan.auto_ant
+    else:
+        mask = scan.xc_mask
+        corr = scan.cross_ant
+
+    mask_slice = slice(np.where(mask)[0][0], np.where(mask)[0][-1]+1)
+    slot_slices = list(slots_slices(slots[scan_slice]))
+    time_slices = list(slot_slices_to_time_slices(slot_slices))
+    for slots, times in zip(slot_slices, time_slices):
+        flag_array[slots, :, :2, mask_slice] = corr.tf.auto_pol.flags[times].compute()
+        flag_array[slots, :, 2:, mask_slice] = corr.tf.cross_pol.flags[times].compute()
+
+
 def get_tracks(data, telstate, dump_period):
     """Determine the start and end indices of each track segment in data buffer.
 
@@ -423,7 +488,7 @@ def set_refant(s, ts, parameters, sensors):
             parameters['refant'], timestamp=s.timestamps[0])
 
 
-def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
+def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slots, sensors=None):
     """Pipeline calibration.
 
     Parameters
@@ -439,6 +504,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         Solution stores for the capture block, indexed by solution type
     stream_name : str
         Name of the L0 data stream
+    flag_array : :class: `np.ndarray`, np.uint8,  shape(ntimes, nchans, npol, nbls)
+        shared memory flag array for all slots acquired from the accumulator
+    slots : list of int
+        list of slots acquired from the accumulator
     sensors : dict, optional
         Sensors available in the calling parent
 
@@ -551,7 +620,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, sensors=sensors)
-
+            store_flags(slots, scan_slice, flag_array, s)
             # Set a reference antenna for this cbid if one isn't already set
             if s.refant is None:
                 set_refant(s, ts, parameters, sensors)
@@ -563,6 +632,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         if any('bfcal' in k for k in taglist):
             logger.info('Calibrator flagging, auto-correlations')
             s.rfi(calib_flagger, auto_ant=True, sensors=sensors)
+            store_flags(slots, scan_slice, flag_array, s, auto_ant=True)
             # ---------------------------------------
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
@@ -831,6 +901,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # flag calibrated target
                 logger.info('Flagging calibrated target {0}'.format(target_name,))
                 s.rfi(targ_flagger, sensors=sensors)
+                store_flags(slots, scan_slice, flag_array, s)
 
             # summarize corrected data for data with cal tags
             logger.info('Averaging corrected data for %s:', target_name)

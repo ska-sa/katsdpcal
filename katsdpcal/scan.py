@@ -14,8 +14,6 @@ import katpoint
 from katsdpcalproc import calprocs, calprocs_dask
 from katsdpcalproc.solutions import CalSolution, CalSolutions
 
-from . import inplace
-
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------------------------------
@@ -953,15 +951,10 @@ class Scan:
             vis_xc_cross = self.apply(soln, vis_xc_cross, cross_pol=True)
             vis_ac_auto = self.apply(soln, vis_ac_auto)
             vis_ac_cross = self.apply(soln, vis_ac_cross, cross_pol=True)
-        inplace.store_inplace(vis_xc_auto, self.cross_ant.tf.auto_pol.vis)
-        inplace.store_inplace(vis_xc_cross, self.cross_ant.tf.cross_pol.vis)
-        inplace.store_inplace(vis_ac_auto, self.auto_ant.tf.auto_pol.vis)
-        inplace.store_inplace(vis_ac_cross, self.auto_ant.tf.cross_pol.vis)
-        # bust any dask caches
-        inplace.rename(self.cross_ant.orig.auto_pol.vis)
-        inplace.rename(self.cross_ant.orig.cross_pol.vis)
-        inplace.rename(self.auto_ant.orig.auto_pol.vis)
-        inplace.rename(self.auto_ant.orig.cross_pol.vis)
+        self.cross_ant.orig.auto_pol.vis = vis_xc_auto
+        self.cross_ant.orig.cross_pol.vis = vis_xc_cross
+        self.auto_ant.orig.auto_pol.vis = vis_ac_auto
+        self.auto_ant.orig.cross_pol.vis = vis_ac_cross
         self.cross_ant.reset_chunked()
         self.auto_ant.reset_chunked()
 
@@ -1344,16 +1337,12 @@ class Scan:
         data['cross_pol_flags'] |= rfi_flags
         data['auto_pol_flags'] |= rfi_flags
 
-        # _rfi takes care to be idempotent, so we can use safe=False. The
-        # safety check doesn't handle the case of some chunks being
-        # concatenated, processed, then split back to the original chunks.
-        inplace.store_inplace([data['cross_pol_flags'], data['auto_pol_flags']],
-                              [data['cross_pol'].flags, data['auto_pol'].flags],
-                              safe=False)
-        # Bust any caches of the old values
-        inplace.rename(data['cross_pol_orig'].flags)
-        inplace.rename(data['auto_pol_orig'].flags)
+        cross, auto = da.compute(data['cross_pol_flags'], data['auto_pol_flags'])
+        scandata.orig.cross_pol.flags = da.from_array(cross)
+        scandata.orig.auto_pol.flags = da.from_array(auto)
+
         self.cross_ant.reset_chunked()
+        self.auto_ant.reset_chunked()
 
         for key in ['auto_pol', 'cross_pol']:
             tf_flags = getattr(scandata.tf, key).flags
