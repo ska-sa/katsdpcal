@@ -12,7 +12,8 @@ from katsdpcalproc import pointing
 from collections import defaultdict
 from katdal.sensordata import TelstateSensorGetter, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
-
+from katdal.visdatav4 import VisibilityDataV4
+from katdal.datasources import TelstateDataSource, view_l0_capture_stream
 from katsdpcalproc import solutions
 from katsdpcalproc.calprocs import interpolate_soln
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
@@ -118,6 +119,48 @@ def check_noise_diode(telstate, ant_names, time_range):
             nd_on[n] = max(values) > 0
     return nd_on
 
+
+def check_applied_gain_sensor(telstate, ref_ant, pol):
+
+    """Trigger Function : Check the number of unique values in the Applied Gain Sensor.
+
+       Open the pipeline `telstate` object via Katdal to create a visdatav4 datasource
+       and extract the Applied Gain as a categorical data from Katdal Virtual Sensor store.
+
+       The Applied Gain sensor is calculated on the fly using 
+       the wide_antenna_channelised_voltage sensors for an antenna pol pair. 
+       In SPR1-3188 :  We investigate that for a phase up observation the number of
+       unique voltage values is 2 whilst for a delay cal observation
+       the number of unique voltage values is 1. We use this to set up a trigger condition
+       to check if the observation is a phase-up.
+
+       Inputs:
+       -------
+       telstate: :class: `katsdptelstate.TelescopeState`
+                  Telescope State associated with the pipeline
+       ref_ant: :string  
+                 Name of reference antenna, ref_ant is appended to the `inp`
+                 to create a sensor_name to access a reliable applied gain virtual sensor.
+       pol: :string
+             Set a pol ['h', 'v'], a pol is appended to the `inp`. 
+
+       Returns:
+       --------
+        len(applied_gain_cat.unique_values) : int
+        Number of unique elements found in the applied gain sensor for the observation
+       """
+
+    capture_block_id = telstate['capture_block_id']
+    stream_name = telstate['stream_name']
+    telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(), 
+            capture_block_id, stream_name)
+    source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
+    data_source = VisibilityDataV4(source)
+
+    sensor_name = f'Correlator/Inputs/{ref_ant}{pol}/applied_gain'
+    applied_gain_cat = data_source.sensor.get(sensor_name)
+
+    return len(applied_gain_cat.unique_values)
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=None):
     """Extract and interpolate specified cal solutions for a given scan.
@@ -842,6 +885,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
             nogaintag = ['bpcal', 'delaycal']
+            phase_tag = ['bfcal', 'single_accumulation']
             if any(k in gaintag for k in taglist):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
@@ -852,7 +896,42 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             if any(k in nogaintag for k in taglist):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
-    return target_slices, av_corr
+            # summarise phase_nmad
+            # use the s.timestamps to map to the obs corrected 
+            # and then use the s.timestamps corrected to mapp the corrected data dictionary
+            # Or accumlate a list of corrected scanslices
+            # check if scan_slice.time is in a corrected data list (map obs label to the timestamps)
+
+            def acc_corrected_scans(ts, av_corr):
+                
+                capture_block_id = telstate['capture_block_id']
+                stream_name = telstate['stream_name']
+                telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
+                capture_block_id, stream_name)
+                source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
+                data_source = VisibilityDataV4(source)
+                
+                mapping = defaultdict(list)
+                for scan, index in zip(data_source.sensor['obs_label'], data_source.dumps):
+                    mapping[scan].append(index)
+                corrected_scans =  av_corr['timestamps'][mapping['corrected']]
+
+                return corrected_scans
+            #logger.info('averaged', av_corr.items())
+
+            refant = parameters['refant']
+            applied_gain_check = check_applied_gain_sensor(telstate = ts, ref_ant=refant, pol='h')
+            if applied_gain_check > 1:
+                logger.info('Is Phase Up: Plotting NMAD Phases')
+                
+                if any(k in phase_tag for k in taglist):
+
+                    # only av_corr scans in av_corr_corrected to be passed to this!
+                    s.summarize_stats(av_corr, target_name + '_nmad_phase')
+
+            logger.info('Data Dict:', av_corr.keys())
+            logger.info('NMAD', av_corr[target_name+'_nmad_phase'])
+        return target_slices, av_corr
 
 
 def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):

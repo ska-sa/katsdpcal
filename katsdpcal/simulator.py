@@ -189,10 +189,25 @@ class SimData:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
         # separate keys without times from those with times
+        obs_activity_key = 'obs_activity' 
+        target_activity_key =  'cbf_target'
+        obs_label_key = 'obs_label'
+
         notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                       if not key.endswith('noise_diode')}
+                       if not key.endswith('noise_diode') and not key.endswith('_eq')
+                       and not obs_activity_key in key and not target_activity_key in key
+                       and not obs_label_key in key}
         time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                      if key.endswith('noise_diode')}
+        volt_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
+                     if key.endswith('_eq')}
+        targ_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
+                     if target_activity_key in key}
+        obs_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
+                     if obs_activity_key in key}
+        obs_label_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
+                     if obs_label_key in key}
+
 
         # add parameters to telescope state
         for key, value in sorted(notime_dict.items()):
@@ -200,6 +215,30 @@ class SimData:
             telstate[key] = value
 
         for key, value in sorted(time_dict.items()):
+            logger.info('Setting %s', key)
+            for v, t in value:
+                telstate.add(key, v, ts=t)
+
+
+
+        for key, value in sorted(volt_dict.items()):
+            logger.info('Setting %s', key)
+            for v, t in value:
+                telstate.add(key, v, ts=t)
+
+
+        for key, value in sorted(targ_dict.items()):
+            logger.info('Setting %s', key)
+            for v, t in value:
+                telstate.add(key, v, ts=t)
+
+        for key, value in sorted(obs_dict.items()):
+            logger.info('Setting %s', key)
+            for v, t in value:
+                telstate.add(key, v, ts=t)
+
+
+        for key, value in sorted(obs_label_dict.items()):
             logger.info('Setting %s', key)
             for v, t in value:
                 telstate.add(key, v, ts=t)
@@ -751,8 +790,23 @@ class SimDataKatdal(SimData):
         param_dict['sdp_l0_n_chans'] = spw.num_chans
         param_dict['sdp_l0_int_time'] = self.file.dump_period
         param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
-        param_dict['sdp_l0_sync_time'] = 0.0
+        param_dict['sdp_l0_sync_time'] = self.file.source.telstate['wide_sync_time']
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
+        param_dict['sdp_l0_src_streams'] = self.file.source.telstate['sdp_l0_src_streams']
+        param_dict['sdp_l0_stream_type'] = self.file.source.telstate['sdp_l0_stream_type']
+        param_dict['chunk_info'] = self.file.source.telstate['chunk_info']
+        param_dict['first_timestamp'] = self.file.source.telstate['first_timestamp']
+        param_dict['sub_pool_resources'] = self.file.source.telstate['sub_pool_resources']
+        param_dict['sub_product'] = self.file.source.telstate['sub_product']
+        param_dict['obs_params'] = self.file.source.telstate['obs_params']
+        param_dict['obs_label'] = self.file.sensor['obs_label']
+        param_dict['stream_name'] = self.file.source.telstate['stream_name']
+        param_dict['capture_block_id'] = self.file.source.telstate['capture_block_id']
+        param_dict['wide_baseline_correlation_products_instrument_dev_name'] = self.file.source.telstate['wide_baseline_correlation_products_instrument_dev_name']
+        param_dict['wide_baseline_correlation_products_int_time'] = self.file.source.telstate['wide_baseline_correlation_products_int_time']
+        param_dict['wide_baseline_correlation_products_n_accs'] = self.file.source.telstate['wide_baseline_correlation_products_n_accs']
+        param_dict['wide_antenna_channelised_voltage_instrument_dev_name'] = self.file.source.telstate['wide_antenna_channelised_voltage_instrument_dev_name']
+        param_dict['wide_scale_factor_timestamp'] = self.file.source.telstate['wide_scale_factor_timestamp']
 
         # katsdpmodel keys
         telstate = self.file.source.telstate
@@ -771,6 +825,20 @@ class SimDataKatdal(SimData):
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
             param_dict[nd_name] = telstate.get_range(nd_name, st=0)
+
+            pol_list = ['h', 'v']
+            for pol in pol_list:
+                voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
+                param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
+
+
+        target_activity_sensor = 'cbf_target'
+        param_dict[target_activity_sensor] = telstate.get_range(target_activity_sensor, st=0)
+        obs_activity_sensor = 'obs_activity'
+        param_dict[obs_activity_sensor] = telstate.get_range(obs_activity_sensor, st=0)
+        obs_label_sensor = 'obs_label'
+        param_dict[obs_label_sensor] = telstate.get_range(obs_label_sensor, st=0)
+
         return param_dict
 
     async def tx_data(self, telstate, tx, max_scans):

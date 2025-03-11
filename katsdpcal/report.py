@@ -1102,6 +1102,60 @@ def write_products(report, report_path, ts, parameters,
         insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
 
 
+
+
+def write_phase_stability(report, report_path, flux_cal, targets, av_corr, 
+        correlator_freq, is_calibrator=True, pol = [0, 1]):   
+
+    """
+    Parameters
+    ----------
+    report : file-like
+        report file to write to
+    report_path : str
+        path where report is written
+    targets : list of str
+        targets to plot
+    av_corr : dict
+        dictionary of averaged corrected data from which to
+        select target data that has the nmad_phase tag
+     correlator_freq : :class:`np.ndarray`
+        real (nchan) correlator channel frequencies
+    is_calibrator : bool, optional
+        make plots of amp and phase and label them as calibrator plots if true,
+        else plot only amplitudes and label them as target plots
+    pol : list
+        description of polarisation axes, optional
+
+    """
+    if is_calibrator:
+        suffix = (' and Phase', 'all gain-calibrated calibrators')
+    else:
+        suffix = ('', 'all target fields')
+
+    if len(targets) > 0:
+        report.write_heading_2('Corrected Scan NMAD Phase Stability')
+        report.write_heading_3('Baseline Average NMAD')
+    
+    for cal in targets:
+        kat_target = katpoint.Target(cal)
+        target_name = kat_target.name
+        tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
+       
+    # Add the plots for each time
+    av_data, av_times = list(zip(*av_corr['{}_nmad_phase'.format(target_name)]))
+    av_data = np.stack(av_data)
+    logger.info("av_data shape after stacking: %s", av_data.shape)
+    for ti in range(len(av_times)):
+        logger.info('ti % s', ti)
+        report.writeln()
+        t = utc_tstr(av_times[ti])
+        report.writeln('Time : {0}'.format(t))
+        plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
+        plot = plotting.plot_phase_stability_check(av_data[ti], correlator_freq=correlator_freq, title=plot_title, pol=pol, y_scale=0.5)
+        insert_fig(report_path, report, plot, name=f'Phase_Stability_v_Freq')
+        report.writeln()
+
 def get_cal(ts, cal, ts_name, st, et):
     """Fetch a calibration product from telstate.
 
@@ -1690,6 +1744,9 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                     write_g_uv(cal_rst, report_path, flux_cal, gain, av_corr, cal_bls_lookup,
                                antennas, cal_array_position, correlator_freq, True,
                                pol=pol)
+                    write_phase_stability(cal_rst, report_path, flux_cal, gain, av_corr,
+                              correlator_freq, True, pol=pol) 
+                    # gain tag here has the bfcal (correlator gains)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets
@@ -1698,6 +1755,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                              cal_bls_lookup, correlator_freq, False, pol=pol)
                 write_g_uv(cal_rst, report_path, flux_cal, target, av_corr, cal_bls_lookup,
                            antennas, cal_array_position, correlator_freq, False, pol=pol)
+
 
             cal_rst.writeln()
 
