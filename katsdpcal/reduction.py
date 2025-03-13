@@ -885,7 +885,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
             nogaintag = ['bpcal', 'delaycal']
-            phase_tag = ['bfcal', 'single_accumulation']
+            phase_tag = ['bfcal']
             if any(k in gaintag for k in taglist):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
@@ -897,6 +897,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
             # summarise phase_nmad
+            #add accumulate corrected scans, logic for incase needed
             # use the s.timestamps to map to the obs corrected 
             # and then use the s.timestamps corrected to mapp the corrected data dictionary
             # Or accumlate a list of corrected scanslices
@@ -917,7 +918,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 corrected_scans =  av_corr['timestamps'][mapping['corrected']]
 
                 return corrected_scans
-            #logger.info('averaged', av_corr.items())
 
             refant = parameters['refant']
             applied_gain_check = check_applied_gain_sensor(telstate = ts, ref_ant=refant, pol='h')
@@ -928,10 +928,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
 
                     # only av_corr scans in av_corr_corrected to be passed to this!
                     s.summarize_stats(av_corr, target_name + '_nmad_phase')
-
-            logger.info('Data Dict:', av_corr.keys())
-            logger.info('NMAD', av_corr[target_name+'_nmad_phase'])
-        return target_slices, av_corr
+    return target_slices, av_corr
 
 
 def get_offsets(ts, parameters, target, t_stamps, temp, pres, humi):

@@ -861,7 +861,7 @@ class SimDataKatdal(SimData):
         flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
 
-        self.setup_capture_block(telstate, self.file.timestamps[0])
+        self.setup_capture_block(telstate, (self.file.timestamps - self.file.source.telstate['sync_time'])[0]) # subtract sync_time to realign to the observation timing
         telstate_cb = telstate.view(self.cbid)
 
         # include obs params in telstate
@@ -898,6 +898,7 @@ class SimDataKatdal(SimData):
 
                 # data values to transmit
                 tx_time = self.file.timestamps[i]  # timestamp
+                logger.info('Timestamp %d', tx_time)
                 # visibilities for this time stamp, for specified channel range
                 tx_vis = scan_data[i, :, :]
                 # flags for this time stamp, for specified channel range
