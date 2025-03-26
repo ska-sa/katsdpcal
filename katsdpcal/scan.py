@@ -1291,7 +1291,7 @@ class Scan:
         av_corr[key].insert(0, val)
 
     def summarize_stats(self, av_corr, key, data=None, nchans=8):
-    
+
         """Summarize the Phases Normalised Median Absolute Deviation (NMAD).
 
         Average visibilities per scan, into nchans, frequency, pol, antenna.
@@ -1321,20 +1321,19 @@ class Scan:
             vis, flags, weights = data
 
         # average over time axis
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(vis, flags, weights) 
-        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights) 
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(vis, flags, weights)
+        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
         av_vis[av_flags] = np.nan
         phase_vis = np.angle(av_vis, deg=True)
-        logger.info('av_vis %s', av_vis.shape)
-        logger.info('phase shape %s', phase_vis.shape )
-
         # calculate the phase stability statistic
-        phase_nmad =  1.4826 * (np.nanmedian(np.abs(phase_vis - 
-                      np.nanmedian(phase_vis, axis=0)), axis=2)) 
-        logger.info('phase_nmad %s', phase_nmad.shape) # (freq, pol)
+        phase_nmad = 1.4826 * (np.nanmedian(np.abs(phase_vis -
+                               np.nanmedian(phase_vis, axis=0)), axis=2))
         val = (phase_nmad, np.average(self.timestamps))
-        av_corr[key].insert(0, val)
 
+        timestamp = int(np.average(self.timestamps))  # Convert to an integer for filename
+        filename = f"phase_nmad_{timestamp}.npy"
+        np.save(filename, phase_nmad)
+        av_corr[key].insert(0, val)
 
     # ----------------------------------------------------------------------
     # RFI Functions

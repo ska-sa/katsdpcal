@@ -127,10 +127,9 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
        Open the pipeline `telstate` object via Katdal to create a visdatav4 datasource
        and extract the Applied Gain as a categorical data from Katdal Virtual Sensor store.
 
-       The Applied Gain sensor is calculated on the fly using 
-       the wide_antenna_channelised_voltage sensors for an antenna pol pair. 
-       In SPR1-3188 :  We investigate that for a phase up observation the number of
-       unique voltage values is 2 whilst for a delay cal observation
+       The Applied Gain sensor is calculated on the fly using the wide_antenna_channelised_voltage
+       sensors for an antenna pol pair. In SPR1-3188 :  We investigate that for a phase up
+       observation the number of unique voltage values is 2 whilst for a delay cal observation
        the number of unique voltage values is 1. We use this to set up a trigger condition
        to check if the observation is a phase-up.
 
@@ -138,11 +137,11 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
        -------
        telstate: :class: `katsdptelstate.TelescopeState`
                   Telescope State associated with the pipeline
-       ref_ant: :string  
+       ref_ant: :string
                  Name of reference antenna, ref_ant is appended to the `inp`
                  to create a sensor_name to access a reliable applied gain virtual sensor.
        pol: :string
-             Set a pol ['h', 'v'], a pol is appended to the `inp`. 
+            Set a pol ['h', 'v'], a pol is appended to the `inp`.
 
        Returns:
        --------
@@ -152,8 +151,8 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
 
     capture_block_id = telstate['capture_block_id']
     stream_name = telstate['stream_name']
-    telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(), 
-            capture_block_id, stream_name)
+    telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
+                                                                     capture_block_id, stream_name)
     source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
     data_source = VisibilityDataV4(source)
 
@@ -161,6 +160,7 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
     applied_gain_cat = data_source.sensor.get(sensor_name)
 
     return len(applied_gain_cat.unique_values)
+
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=None):
     """Extract and interpolate specified cal solutions for a given scan.
@@ -897,37 +897,15 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
 
             # summarise phase_nmad
-            #add accumulate corrected scans, logic for incase needed
-            # use the s.timestamps to map to the obs corrected 
-            # and then use the s.timestamps corrected to mapp the corrected data dictionary
-            # Or accumlate a list of corrected scanslices
-            # check if scan_slice.time is in a corrected data list (map obs label to the timestamps)
-
-            def acc_corrected_scans(ts, av_corr):
-                
-                capture_block_id = telstate['capture_block_id']
-                stream_name = telstate['stream_name']
-                telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
-                capture_block_id, stream_name)
-                source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
-                data_source = VisibilityDataV4(source)
-                
-                mapping = defaultdict(list)
-                for scan, index in zip(data_source.sensor['obs_label'], data_source.dumps):
-                    mapping[scan].append(index)
-                corrected_scans =  av_corr['timestamps'][mapping['corrected']]
-
-                return corrected_scans
-
             refant = parameters['refant']
-            applied_gain_check = check_applied_gain_sensor(telstate = ts, ref_ant=refant, pol='h')
+            applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
             if applied_gain_check > 1:
-                logger.info('Is Phase Up: Plotting NMAD Phases')
-                
+                logger.info('Is Phase Up: Calculate NMAD Phases')
+
                 if any(k in phase_tag for k in taglist):
 
-                    # only av_corr scans in av_corr_corrected to be passed to this!
                     s.summarize_stats(av_corr, target_name + '_nmad_phase')
+
     return target_slices, av_corr
 
 

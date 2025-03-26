@@ -574,12 +574,15 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
     fig.subplots_adjust(hspace=0.1)
     return fig
 
-def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol = [0, 1], y_scale = 0.5,  **plot_kwargs):
-    """Plot the Normalised Median Absolute Deviation of the Corrected Data Phases vs Frequency.
 
-    The plot will show that if the phase up of antennas was successful, 
+def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0, 1], y_scale=0.5,
+                               **plot_kwargs):
+    """Plot the Normalised Median Absolute Deviation of the Corrected
+       Data Phases vs Frequency.
+
+    The plot will show that if the phase up of antennas was successful,
     the NMAD phase values will be similar accross frequency channels (RFI Free Regions)
-    and if the phase is unstable, antennas will show high deviations 
+    and if the phase is unstable, antennas will show high deviations
     from the median phase at that frequency. We plot the NMAD Phases for each polarisation
     this further provides information on the variation of phases for different pols.
 
@@ -594,27 +597,23 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol = [
     """
 
     npols = len(pol)
-    nchans = len(correlator_freq)
     nrows, ncols = npols, 1
-    rowsize = max(1, nchans / 1000.0)
-    fig, axes = plt.subplots(nrows=npols, ncols=ncols, figsize = (2 *  FIG_X, 2 * FIG_Y), 
-                squeeze=False, sharex = True)
+    fig, axes = plt.subplots(nrows=npols, ncols=ncols, figsize=(nrows * FIG_X, 2 * FIG_Y),
+                             sharex=True)
     axes = axes.flatten()
 
     if title is not None:
         fig.suptitle(title, y=1)
 
     for idx, p in enumerate(range(npols)):
-        #phase = phase[:, p]np.isnan
-            
 
-        axes[idx].plot(correlator_freq, phase_nmad[:, p], 
-                marker = '.', ls = 'dotted', ms='2',  
-                label=f'Average Phase NMAD :{np.nanmean(phase_nmad[:, p]): .3f}', **plot_kwargs)       
+        axes[idx].plot(correlator_freq, phase_nmad[:, p], marker='.', ls='',
+                       ms='2', label=f'Average Phase NMAD :{np.nanmean(phase_nmad[:, p]): .3f}',
+                       **plot_kwargs)
         axes[idx].set_ylabel('Phase NMAD_{0}'.format(pol[p]))
         axes[idx].set_xlabel('Frequency (Mhz)')
-        axes[idx].legend()
-        #axes[idx].grid(color='grey', which='both', lw=0.1)
+        axes[idx].legend(loc='upper right')
+        axes[idx].grid(color='grey', which='both', lw=0.1)
 
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.2)

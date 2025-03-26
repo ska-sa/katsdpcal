@@ -189,25 +189,24 @@ class SimData:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
         # separate keys without times from those with times
-        obs_activity_key = 'obs_activity' 
-        target_activity_key =  'cbf_target'
+        obs_activity_key = 'obs_activity'
+        target_activity_key = 'cbf_target'
         obs_label_key = 'obs_label'
 
         notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                        if not key.endswith('noise_diode') and not key.endswith('_eq')
-                       and not obs_activity_key in key and not target_activity_key in key
-                       and not obs_label_key in key}
+                       and obs_activity_key not in key and target_activity_key not in key
+                       and obs_label_key not in key}
         time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                      if key.endswith('noise_diode')}
-        volt_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
+        volt_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                      if key.endswith('_eq')}
-        targ_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
+        targ_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
                      if target_activity_key in key}
-        obs_dict = {key: parameter_dict[key] for key in parameter_dict.keys() 
-                     if obs_activity_key in key}
+        obs_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
+                    if obs_activity_key in key}
         obs_label_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                     if obs_label_key in key}
-
+                          if obs_label_key in key}
 
         # add parameters to telescope state
         for key, value in sorted(notime_dict.items()):
@@ -219,13 +218,10 @@ class SimData:
             for v, t in value:
                 telstate.add(key, v, ts=t)
 
-
-
         for key, value in sorted(volt_dict.items()):
             logger.info('Setting %s', key)
             for v, t in value:
                 telstate.add(key, v, ts=t)
-
 
         for key, value in sorted(targ_dict.items()):
             logger.info('Setting %s', key)
@@ -236,7 +232,6 @@ class SimData:
             logger.info('Setting %s', key)
             for v, t in value:
                 telstate.add(key, v, ts=t)
-
 
         for key, value in sorted(obs_label_dict.items()):
             logger.info('Setting %s', key)
@@ -785,33 +780,34 @@ class SimDataKatdal(SimData):
             raise ValueError('Lower sideband is not supported')
         # spw will describe the whole band, ignoring bchan:echan. The caller
         # takes care of the adjustment.
-        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
-        param_dict['sdp_l0_center_freq'] = spw.centre_freq
-        param_dict['sdp_l0_n_chans'] = spw.num_chans
-        param_dict['sdp_l0_int_time'] = self.file.dump_period
-        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
-        param_dict['sdp_l0_sync_time'] = self.file.source.telstate['wide_sync_time']
-        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
-        param_dict['sdp_l0_src_streams'] = self.file.source.telstate['sdp_l0_src_streams']
-        param_dict['sdp_l0_stream_type'] = self.file.source.telstate['sdp_l0_stream_type']
-        param_dict['chunk_info'] = self.file.source.telstate['chunk_info']
-        param_dict['first_timestamp'] = self.file.source.telstate['first_timestamp']
-        param_dict['sub_pool_resources'] = self.file.source.telstate['sub_pool_resources']
-        param_dict['sub_product'] = self.file.source.telstate['sub_product']
-        param_dict['obs_params'] = self.file.source.telstate['obs_params']
-        param_dict['obs_label'] = self.file.sensor['obs_label']
-        param_dict['stream_name'] = self.file.source.telstate['stream_name']
-        param_dict['capture_block_id'] = self.file.source.telstate['capture_block_id']
-        param_dict['wide_baseline_correlation_products_instrument_dev_name'] = self.file.source.telstate['wide_baseline_correlation_products_instrument_dev_name']
-        param_dict['wide_baseline_correlation_products_int_time'] = self.file.source.telstate['wide_baseline_correlation_products_int_time']
-        param_dict['wide_baseline_correlation_products_n_accs'] = self.file.source.telstate['wide_baseline_correlation_products_n_accs']
-        param_dict['wide_antenna_channelised_voltage_instrument_dev_name'] = self.file.source.telstate['wide_antenna_channelised_voltage_instrument_dev_name']
-        param_dict['wide_scale_factor_timestamp'] = self.file.source.telstate['wide_scale_factor_timestamp']
 
         # katsdpmodel keys
         telstate = self.file.source.telstate
         correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
         f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
+        name = 'instrument_dev_name'
+        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
+        param_dict['sdp_l0_center_freq'] = spw.centre_freq
+        param_dict['sdp_l0_n_chans'] = spw.num_chans
+        param_dict['sdp_l0_int_time'] = self.file.dump_period
+        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
+        param_dict['sdp_l0_sync_time'] = telstate['wide_sync_time']
+        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
+        param_dict['sdp_l0_src_streams'] = telstate['sdp_l0_src_streams']
+        param_dict['sdp_l0_stream_type'] = telstate['sdp_l0_stream_type']
+        param_dict['chunk_info'] = telstate['chunk_info']
+        param_dict['first_timestamp'] = telstate['first_timestamp']
+        param_dict['sub_pool_resources'] = telstate['sub_pool_resources']
+        param_dict['sub_product'] = telstate['sub_product']
+        param_dict['obs_params'] = telstate['obs_params']
+        param_dict['obs_label'] = self.file.sensor['obs_label']
+        param_dict['stream_name'] = telstate['stream_name']
+        param_dict['capture_block_id'] = telstate['capture_block_id']
+        param_dict[f'{correlator_stream}_{name}'] = telstate[f'{correlator_stream}_{name}']
+        param_dict[f'{correlator_stream}_int_time'] = telstate[f'{correlator_stream}_int_time']
+        param_dict[f'{correlator_stream}_n_accs'] = telstate[f'{correlator_stream}_n_accs']
+        param_dict[f'{f_engine_stream}_{name}'] = telstate[f'{f_engine_stream}_{name}']
+        param_dict['wide_scale_factor_timestamp'] = telstate['wide_scale_factor_timestamp']
 
         band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
         model_keys = [band_mask_key, 'sdp_model_base_url',
@@ -830,7 +826,6 @@ class SimDataKatdal(SimData):
             for pol in pol_list:
                 voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
                 param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
-
 
         target_activity_sensor = 'cbf_target'
         param_dict[target_activity_sensor] = telstate.get_range(target_activity_sensor, st=0)
@@ -861,7 +856,9 @@ class SimDataKatdal(SimData):
         flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
 
-        self.setup_capture_block(telstate, (self.file.timestamps - self.file.source.telstate['sync_time'])[0]) # subtract sync_time to realign to the observation timing
+        # subtract sync_time to realign to the observation timing
+        sync_time = self.file.source.telstate['sync_time']
+        self.setup_capture_block(telstate, (self.file.timestamps - sync_time)[0])
         telstate_cb = telstate.view(self.cbid)
 
         # include obs params in telstate
@@ -898,7 +895,7 @@ class SimDataKatdal(SimData):
 
                 # data values to transmit
                 tx_time = self.file.timestamps[i]  # timestamp
-                logger.info('Timestamp %d', tx_time)
+                # logger.info('Timestamp %d', tx_time)
                 # visibilities for this time stamp, for specified channel range
                 tx_vis = scan_data[i, :, :]
                 # flags for this time stamp, for specified channel range

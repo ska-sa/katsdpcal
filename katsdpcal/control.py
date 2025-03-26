@@ -219,10 +219,9 @@ def _sum_corr(sum_corr, new_corr, limit=None):
 
             # append the nmad av_corr phase from each scan
             elif key.endswith('_nmad'):
-               sum_corr[key] += new_corr[key]
-               del new_corr[key]
-               keylist.append(key)
-
+                sum_corr[key] += new_corr[key]
+                del new_corr[key]
+                keylist.append(key)
 
             else:
                 sum_corr[key] += new_corr[key]
