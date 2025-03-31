@@ -1133,8 +1133,8 @@ def write_phase_stability(report, report_path, flux_cal, targets, av_corr,
         suffix = ('', 'all target fields')
     """
     if len(targets) > 0:
-        report.write_heading_2('Corrected Scan NMAD Phase Stability')
-        report.write_heading_3('Baseline Average NMAD')
+        report.write_heading_2('Corrected Scan Phase Stability')
+        report.write_heading_3('Baseline Averaged Normalised Median Absolute Deviation (NMAD)')
 
     for cal in targets:
         kat_target = katpoint.Target(cal)

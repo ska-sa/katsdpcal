@@ -614,6 +614,7 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
         axes[idx].set_xlabel('Frequency (Mhz)')
         axes[idx].legend(loc='upper right')
         axes[idx].grid(color='grey', which='both', lw=0.1)
+        axes[idx].set_ylim((0, np.nanstd(phase_nmad[:, p])*5))
 
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.2)
