@@ -1290,7 +1290,7 @@ class Scan:
         val = (av_vis.compute(), np.average(self.timestamps))
         av_corr[key].insert(0, val)
 
-    def summarize_stats(self, av_corr, key, data=None, nchans=8):
+    def summarize_stats(self, av_corr, key, data=None):
 
         """Summarize the Phases Normalised Median Absolute Deviation (NMAD).
 
@@ -1329,10 +1329,6 @@ class Scan:
         phase_nmad = 1.4826 * (np.nanmedian(np.abs(phase_vis -
                                np.nanmedian(phase_vis, axis=0)), axis=2))
         val = (phase_nmad, np.average(self.timestamps))
-
-        timestamp = int(np.average(self.timestamps))  # Convert to an integer for filename
-        filename = f"phase_nmad_{timestamp}.npy"
-        np.save(filename, phase_nmad)
         av_corr[key].insert(0, val)
 
     # ----------------------------------------------------------------------

@@ -188,55 +188,20 @@ class SimData:
         if n_chans % self.n_substreams != 0:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
+
         # separate keys without times from those with times
-        obs_activity_key = 'obs_activity'
-        target_activity_key = 'cbf_target'
-        obs_label_key = 'obs_label'
+        sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity', 'obs_label',
+                               'noise_diode')
+        sensor_keys = [k for k in parameter_dict.keys() if k.endswith(sensor_key_suffixes)]
 
-        notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                       if not key.endswith('noise_diode') and not key.endswith('_eq')
-                       and obs_activity_key not in key and target_activity_key not in key
-                       and obs_label_key not in key}
-        time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                     if key.endswith('noise_diode')}
-        volt_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                     if key.endswith('_eq')}
-        targ_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                     if target_activity_key in key}
-        obs_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                    if obs_activity_key in key}
-        obs_label_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                          if obs_label_key in key}
-
-        # add parameters to telescope state
-        for key, value in sorted(notime_dict.items()):
-            logger.info('Setting %s = %s', key, value)
-            telstate[key] = value
-
-        for key, value in sorted(time_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
-
-        for key, value in sorted(volt_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
-
-        for key, value in sorted(targ_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
-
-        for key, value in sorted(obs_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
-
-        for key, value in sorted(obs_label_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
+        for k in parameter_dict.keys():
+            if k in sensor_keys:
+                logger.info('Setting %s', k)
+                for v, t in parameter_dict[k]:
+                    telstate.add(k, v, ts=t)
+            else:
+                logger.info('Setting %s = %s', k, parameter_dict[k])
+                telstate[k] = parameter_dict[k]
 
     async def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
                             interface=None):

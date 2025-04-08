@@ -120,6 +120,30 @@ def check_noise_diode(telstate, ant_names, time_range):
     return nd_on
 
 
+def check_is_corrected(telstate, time_range):
+    """Helper function that checks if a track has a `corrected` scanstate
+
+    Inputs
+    ------
+    telstate : :class:`katsdptelstate.TelescopeState`
+        Telescope state
+    time_range : sequence of 2 floats
+        Time range as [start_time, end_time]
+
+    Returns
+    -------
+    bool:
+        True for track that has a 'corrected' lable in the `time_range`
+    """
+    obs_label = telstate.get_range('obs_label', st=time_range[0], et=time_range[1],
+                                   include_previous=True)
+    values, times = zip(*obs_label)
+    if 'corrected' in values:
+        return True
+    else:
+        return False
+
+
 def check_applied_gain_sensor(telstate, ref_ant, pol):
 
     """Trigger Function : Check the number of unique values in the Applied Gain Sensor.
@@ -600,6 +624,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 set_refant(s, ts, parameters, sensors)
 
         # run_t0 = time.time()
+
         # perform calibration as appropriate, from scan intent tags:
 
         # BEAMFORMER
@@ -835,7 +860,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                          parameters['g_bchan'], parameters['g_echan'],
                          s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply,
                          use_model=False)
-
         # Apply calibration
         cal_tags = ['gaincal', 'target', 'bfcal', 'bpcal', 'delaycal']
         if any(k in cal_tags for k in taglist):
@@ -857,6 +881,17 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # Interpolate to the target across all the available G solutions
                 solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
                                                     time_range=[t0, t1])
+            phase_tag = ['bfcal']
+            # summarise phase_nmad
+            refant = parameters['refant']
+            applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
+            corrected_track = check_is_corrected(ts, [t0, t1])
+            if applied_gain_check > 1:
+                logger.info('Observation is Phase-Up')
+                if corrected_track:
+                    logger.info('Calculate NMAD on Corrected Track')
+                    if any(k in phase_tag for k in taglist):
+                        s.summarize_stats(av_corr, target_name + '_nmad_phase')
 
             s.apply_inplace(solns_to_apply)
 
@@ -885,7 +920,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # summarize gain-calibrated targets
             gaintag = ['gaincal', 'target', 'bfcal']
             nogaintag = ['bpcal', 'delaycal']
-            phase_tag = ['bfcal']
             if any(k in gaintag for k in taglist):
                 s.summarize_full(av_corr, target_name + '_g_spec', nchans=1024)
                 s.summarize(av_corr, target_name + '_g_bls')
@@ -895,16 +929,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             # summarize non-gain calibrated targets
             if any(k in nogaintag for k in taglist):
                 s.summarize(av_corr, target_name + '_nog_spec', nchans=1024, refant_only=True)
-
-            # summarise phase_nmad
-            refant = parameters['refant']
-            applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
-            if applied_gain_check > 1:
-                logger.info('Is Phase Up: Calculate NMAD Phases')
-
-                if any(k in phase_tag for k in taglist):
-
-                    s.summarize_stats(av_corr, target_name + '_nmad_phase')
 
     return target_slices, av_corr
 

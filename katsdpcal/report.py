@@ -1102,8 +1102,8 @@ def write_products(report, report_path, ts, parameters,
         insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
 
 
-def write_phase_stability(report, report_path, flux_cal, targets, av_corr,
-                          correlator_freq, is_calibrator=True, pol=[0, 1]):
+def write_phase_stability(report, report_path, targets, av_corr,
+                          correlator_freq, pol=[0, 1]):
 
     """
     Parameters
@@ -1119,21 +1119,13 @@ def write_phase_stability(report, report_path, flux_cal, targets, av_corr,
         select target data that has the nmad_phase tag
      correlator_freq : :class:`np.ndarray`
         real (nchan) correlator channel frequencies
-    is_calibrator : bool, optional
-        make plots of amp and phase and label them as calibrator plots if true,
-        else plot only amplitudes and label them as target plots
     pol : list
         description of polarisation axes, optional
 
     """
-    """
-    if is_calibrator:
-        suffix = (' and Phase', 'all gain-calibrated calibrators')
-    else:
-        suffix = ('', 'all target fields')
-    """
+
     if len(targets) > 0:
-        report.write_heading_2('Corrected Scan Phase Stability')
+        report.write_heading_2('Phase Stability : Corrected Track No Pipeline Solution')
         report.write_heading_3('Baseline Averaged Normalised Median Absolute Deviation (NMAD)')
 
     for cal in targets:
@@ -1741,8 +1733,8 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
                     write_g_uv(cal_rst, report_path, flux_cal, gain, av_corr, cal_bls_lookup,
                                antennas, cal_array_position, correlator_freq, True,
                                pol=pol)
-                    write_phase_stability(cal_rst, report_path, flux_cal, gain, av_corr,
-                                          correlator_freq, True, pol=pol)
+                    write_phase_stability(cal_rst, report_path, gain, av_corr,
+                                          correlator_freq, pol=pol)
 
                 # --------------------------------------------------------------------
                 # Corrected data : Targets

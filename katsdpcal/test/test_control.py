@@ -1364,6 +1364,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         rs = np.random.RandomState(seed=1)
         with mock.patch.object(control.Pipeline, 'flush_pipeline', side_effect=ZeroDivisionError):
             await self.assert_sensor_value('pipeline-exceptions', 0)
+
+            # Tag 'pointingcal' prevents test failure for 'bfcal' missing 'sdp.vis' in telstate_cb
             target = ('J1331+3030_2, radec pointingcal, 13:31:08.29, +30:30:33.0, '
                       '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
             self.telstate.add('cbf_target', target, ts=0.003)

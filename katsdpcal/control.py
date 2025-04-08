@@ -186,8 +186,6 @@ def _sum_corr(sum_corr, new_corr, limit=None):
         average of the current pipeline outputs and the previous outputs.
         For keys containing '_model', the output dictionary is a list containing the average of
         the current pipeline outputs and the previous outputs.
-        For keys containing '_nmad', the output dictionary is a list of the appended current
-        pipeline outputs and the previous outputs.
     """
     # list of keys which don't append data on a per scan basis
     keylist = ['t_flags']
@@ -214,12 +212,6 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             elif key.endswith('_model'):
                 sum_corr[key] += new_corr[key]
                 sum_corr[key] = [np.mean(sum_corr[key], 0)]
-                del new_corr[key]
-                keylist.append(key)
-
-            # append the nmad av_corr phase from each scan
-            elif key.endswith('_nmad'):
-                sum_corr[key] += new_corr[key]
                 del new_corr[key]
                 keylist.append(key)
 

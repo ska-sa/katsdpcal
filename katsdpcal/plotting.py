@@ -580,10 +580,10 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
     """Plot the Normalised Median Absolute Deviation of the Corrected
        Data Phases vs Frequency.
 
-    The plot will show that if the phase up of antennas was successful,
+    These plots will show that if the antenna phase-up  was successful,
     the NMAD phase values will be similar accross frequency channels (RFI Free Regions)
-    and if the phase is unstable, antennas will show high deviations
-    from the median phase at that frequency. We plot the NMAD Phases for each polarisation
+    and conversely if phase up was not successful, the NMAD of the phases will show higher
+    deviations across frequency channels. We plot the NMAD Phases for each polarisation
     this further provides information on the variation of phases for different pols.
 
     Parameters:
@@ -598,7 +598,7 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
 
     npols = len(pol)
     nrows, ncols = npols, 1
-    fig, axes = plt.subplots(nrows=npols, ncols=ncols, figsize=(nrows * FIG_X, 2 * FIG_Y),
+    fig, axes = plt.subplots(nrows=npols, ncols=ncols, figsize=(nrows * FIG_X, nrows * FIG_Y),
                              sharex=True)
     axes = axes.flatten()
 
@@ -612,7 +612,7 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
                        **plot_kwargs)
         axes[idx].set_ylabel('Phase NMAD_{0}'.format(pol[p]))
         axes[idx].set_xlabel('Frequency (Mhz)')
-        axes[idx].legend(loc='upper right')
+        axes[idx].legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
         axes[idx].grid(color='grey', which='both', lw=0.1)
         axes[idx].set_ylim((0, np.nanstd(phase_nmad[:, p])*5))
 
