@@ -860,7 +860,6 @@ class SimDataKatdal(SimData):
 
                 # data values to transmit
                 tx_time = self.file.timestamps[i]  # timestamp
-                # logger.info('Timestamp %d', tx_time)
                 # visibilities for this time stamp, for specified channel range
                 tx_vis = scan_data[i, :, :]
                 # flags for this time stamp, for specified channel range
