@@ -1123,9 +1123,9 @@ def write_phase_stability(report, report_path, targets, av_corr,
         description of polarisation axes, optional
 
     """
-    heading_2 = 'Phase Stability : Corrected Track without Pipeline Solutions applied'
     if len(targets) > 0:
-        report.write_heading_2(heading_2)
+        report.write_heading_2(
+               'Phase Stability : Corrected Track without Pipeline Solutions applied')
         report.write_heading_3('Baseline Averaged Normalised Median Absolute Deviation (NMAD)')
 
     for cal in targets:
