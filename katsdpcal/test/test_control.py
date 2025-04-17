@@ -1365,11 +1365,10 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         with mock.patch.object(control.Pipeline, 'flush_pipeline', side_effect=ZeroDivisionError):
             await self.assert_sensor_value('pipeline-exceptions', 0)
 
-            # Target must be altered to only include the `pointingcal` tag.
-            # This is done to avoid triggering the`check_applied_gain_sensor` check. This check
-            # fail/cause an exception as it requires a more comprehensive set of keys to construct
-            # the `sdp.vis` stream, which are not included in the test telstate here
-
+            # Target must be altered to only include the `pointingcal` tag. This is done to avoid
+            # triggering the`check_applied_gain_sensor` check. This check will fail/cause an
+            # exception as it requires a more comprehensive set of keys to construct the `sdp.vis`
+            # stream, which are not included in the test telstate here
             target = ('J1331+3030_2, radec pointingcal, 13:31:08.29, +30:30:33.0, '
                       '(0 50e3 0.1823 1.4757 -0.4739 0.0336)')
             self.telstate.add('cbf_target', target, ts=0.003)
