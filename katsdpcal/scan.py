@@ -1290,6 +1290,47 @@ class Scan:
         val = (av_vis.compute(), np.average(self.timestamps))
         av_corr[key].insert(0, val)
 
+    def summarize_stats(self, av_corr, key, data=None):
+
+        """Summarize the Phases Normalised Median Absolute Deviation (NMAD).
+
+        Average visibilities per scan, into nchans, frequency, pol, antenna.
+        Aggregate the normalised median deviation along the antenna axis.
+        The statistic is accumulated along the frequency dimension.
+        This provides a robust measure of dispersion for phase values.
+
+        Accumulate the  NMAD of the phases to a dictionary with given key.
+        Prefix the target_name to the dictionary key.
+
+        Parameters
+        ----------
+        av_corr : collections.defaultdict
+            dict to add averaged visibilities to
+        key : str
+            dictionary key
+        data : tuple of :class: `da.Array`, optional
+            vis, flags, weights of data to average. Defaults to
+            vis, flags and weights of self.cross_ant.tf.auto_pol
+        """
+
+        if not data:
+            vis = self.cross_ant.tf.auto_pol.vis
+            flags = self.cross_ant.tf.auto_pol.flags
+            weights = self.cross_ant.tf.auto_pol.weights
+        else:
+            vis, flags, weights = data
+
+        # average over time axis
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_full(vis, flags, weights)
+        av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
+        av_vis[av_flags] = np.nan
+        phase_vis = np.angle(av_vis, deg=True)
+        # calculate the phase stability statistic
+        phase_nmad = 1.4826 * (np.nanmedian(np.abs(phase_vis -
+                               np.nanmedian(phase_vis, axis=0)), axis=2))
+        val = (phase_nmad, np.average(self.timestamps))
+        av_corr[key].insert(0, val)
+
     # ----------------------------------------------------------------------
     # RFI Functions
     @logsolutiontime

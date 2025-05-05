@@ -12,7 +12,8 @@ from katsdpcalproc import pointing
 from collections import defaultdict
 from katdal.sensordata import TelstateSensorGetter, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
-
+from katdal.visdatav4 import VisibilityDataV4
+from katdal.datasources import TelstateDataSource, view_l0_capture_stream
 from katsdpcalproc import solutions
 from katsdpcalproc.calprocs import interpolate_soln
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
@@ -117,6 +118,72 @@ def check_noise_diode(telstate, ant_names, time_range):
             values = list(zip(*value_times))[0]
             nd_on[n] = max(values) > 0
     return nd_on
+
+
+def check_is_corrected(telstate, time_range):
+    """Helper function that checks if a track has a `corrected` scanstate
+
+    Inputs
+    ------
+    telstate : :class:`katsdptelstate.TelescopeState`
+        Telescope state
+    time_range : sequence of 2 floats
+        Time range as [start_time, end_time]
+
+    Returns
+    -------
+    bool:
+        True for track that has a 'corrected' label in the `time_range`
+    """
+    obs_label = telstate.get_range('obs_label', st=time_range[0], et=time_range[1],
+                                   include_previous=True)
+    values, times = zip(*obs_label)
+    if 'corrected' in values:
+        return True
+    else:
+        return False
+
+
+def check_applied_gain_sensor(telstate, ref_ant, pol):
+
+    """Trigger Function : Check the number of unique values in the Applied Gain Sensor.
+
+       Open the pipeline `telstate` object via Katdal to create a visdatav4 datasource
+       and extract the Applied Gain as a categorical data from Katdal Virtual Sensor store.
+
+       The Applied Gain sensor is calculated on the fly using the wide_antenna_channelised_voltage
+       sensors for an antenna pol pair. In SPR1-3188 :  We investigate that for a phase up
+       observation the number of unique voltage values is 2 whilst for a delay cal observation
+       the number of unique voltage values is 1. We use this to set up a trigger condition
+       to check if the observation is a phase-up.
+
+       Inputs:
+       -------
+       telstate: :class: `katsdptelstate.TelescopeState`
+                  Telescope State associated with the pipeline
+       ref_ant: :string
+                 Name of reference antenna, ref_ant is appended to the `inp`
+                 to create a sensor_name to access a reliable applied gain virtual sensor.
+       pol: :string
+            Set a pol ['h', 'v'], a pol is appended to the `inp`.
+
+       Returns:
+       --------
+        len(applied_gain_cat.unique_values) : int
+        Number of unique elements found in the applied gain sensor for the observation
+       """
+
+    capture_block_id = telstate['capture_block_id']
+    stream_name = telstate['stream_name']
+    telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
+                                                                     capture_block_id, stream_name)
+    source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
+    data_source = VisibilityDataV4(source)
+
+    sensor_name = f'Correlator/Inputs/{ref_ant}{pol}/applied_gain'
+    applied_gain_cat = data_source.sensor.get(sensor_name)
+
+    return len(applied_gain_cat.unique_values)
 
 
 def get_solns_to_apply(s, solution_stores, sol_list, time_range=[], G_target=None):
@@ -557,6 +624,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 set_refant(s, ts, parameters, sensors)
 
         # run_t0 = time.time()
+
         # perform calibration as appropriate, from scan intent tags:
 
         # BEAMFORMER
@@ -792,7 +860,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                          parameters['g_bchan'], parameters['g_echan'],
                          s.g_sol, g_solint, g0_h, pre_apply=solns_to_apply,
                          use_model=False)
-
         # Apply calibration
         cal_tags = ['gaincal', 'target', 'bfcal', 'bpcal', 'delaycal']
         if any(k in cal_tags for k in taglist):
@@ -814,6 +881,17 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                 # Interpolate to the target across all the available G solutions
                 solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
                                                     time_range=[t0, t1])
+            phase_tag = ['bfcal']
+            # summarise phase_nmad
+            refant = parameters['refant']
+            applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
+            corrected_track = check_is_corrected(ts, [t0, t1])
+            if applied_gain_check > 1:
+                logger.info('Observation is Phase-Up')
+                if corrected_track:
+                    logger.info('Calculate NMAD on Corrected Track')
+                    if any(k in phase_tag for k in taglist):
+                        s.summarize_stats(av_corr, target_name + '_nmad_phase')
 
             s.apply_inplace(solns_to_apply)
 

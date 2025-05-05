@@ -575,6 +575,53 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
     return fig
 
 
+def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0, 1], y_scale=0.5,
+                               **plot_kwargs):
+    """Plot the Normalised Median Absolute Deviation of the Corrected
+       Data Phases vs Frequency.
+
+    These plots will show that if the antenna phase-up  was successful,
+    the NMAD phase values will be similar accross frequency channels (RFI Free Regions)
+    and conversely if phase up was not successful, the NMAD of the phases will show higher
+    deviations across frequency channels. We plot the NMAD Phases for each polarisation
+    this further provides information on the variation of phases for different pols.
+
+    Parameters:
+    ----------
+    phase_nmad : :class: `np.ndarray`
+                 real, shape (freq, pol)
+    correlator_freq : :class: `np.ndarray`
+                       real, shape (freq, )
+    pol : list
+          list of polarisation desciptions
+    """
+
+    npols = len(pol)
+    nrows, ncols = npols, 1
+    fig, axes = plt.subplots(nrows=npols, ncols=ncols, figsize=(nrows * FIG_X, nrows * FIG_Y),
+                             sharex=True)
+    axes = axes.flatten()
+
+    if title is not None:
+        fig.suptitle(title, y=1)
+
+    for idx, p in enumerate(range(npols)):
+
+        axes[idx].plot(correlator_freq, phase_nmad[:, p], marker='.', ls='',
+                       ms='2', label=f'Average Phase NMAD :{np.nanmean(phase_nmad[:, p]): .3f}',
+                       **plot_kwargs)
+        axes[idx].set_ylabel('Phase NMAD_{0}'.format(pol[p]))
+        axes[idx].set_xlabel('Frequency (Mhz)')
+        axes[idx].legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
+        axes[idx].grid(color='grey', which='both', lw=0.1)
+        axes[idx].set_ylim((0, np.nanstd(phase_nmad[:, p])*5))
+
+    fig.tight_layout()
+    fig.subplots_adjust(hspace=0.2)
+
+    return fig
+
+
 def add_freq_axis(ax, chan_range, freq_range):
     """Adds a frequency axis to the top of a given matplotlib Axes.
 
@@ -583,7 +630,7 @@ def add_freq_axis(ax, chan_range, freq_range):
     ax : : class: `matplotlib.axes.Axes`
         Axes to add the frequency axis to
     chan_range : list
-        start and stop channel numbers
+         start and stop channel numbers
     freq_range : list
         start and stop frequencies corresponding to the start and stop channel numbers
     """

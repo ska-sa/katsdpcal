@@ -188,21 +188,20 @@ class SimData:
         if n_chans % self.n_substreams != 0:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
+
         # separate keys without times from those with times
-        notime_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                       if not key.endswith('noise_diode')}
-        time_dict = {key: parameter_dict[key] for key in parameter_dict.keys()
-                     if key.endswith('noise_diode')}
+        sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity', 'obs_label',
+                               'noise_diode')
+        sensor_keys = [k for k in parameter_dict.keys() if k.endswith(sensor_key_suffixes)]
 
-        # add parameters to telescope state
-        for key, value in sorted(notime_dict.items()):
-            logger.info('Setting %s = %s', key, value)
-            telstate[key] = value
-
-        for key, value in sorted(time_dict.items()):
-            logger.info('Setting %s', key)
-            for v, t in value:
-                telstate.add(key, v, ts=t)
+        for k in parameter_dict.keys():
+            if k in sensor_keys:
+                logger.info('Setting %s', k)
+                for v, t in parameter_dict[k]:
+                    telstate.add(k, v, ts=t)
+            else:
+                logger.info('Setting %s = %s', k, parameter_dict[k])
+                telstate[k] = parameter_dict[k]
 
     async def data_to_spead(self, telstate, l0_endpoints, spead_rate=5e8, max_scans=None,
                             interface=None):
@@ -746,18 +745,34 @@ class SimDataKatdal(SimData):
             raise ValueError('Lower sideband is not supported')
         # spw will describe the whole band, ignoring bchan:echan. The caller
         # takes care of the adjustment.
-        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
-        param_dict['sdp_l0_center_freq'] = spw.centre_freq
-        param_dict['sdp_l0_n_chans'] = spw.num_chans
-        param_dict['sdp_l0_int_time'] = self.file.dump_period
-        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
-        param_dict['sdp_l0_sync_time'] = 0.0
-        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
         # katsdpmodel keys
         telstate = self.file.source.telstate
         correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
         f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
+        name = 'instrument_dev_name'
+        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
+        param_dict['sdp_l0_center_freq'] = spw.centre_freq
+        param_dict['sdp_l0_n_chans'] = spw.num_chans
+        param_dict['sdp_l0_int_time'] = self.file.dump_period
+        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
+        param_dict['sdp_l0_sync_time'] = telstate['wide_sync_time']
+        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
+        param_dict['sdp_l0_src_streams'] = telstate['sdp_l0_src_streams']
+        param_dict['sdp_l0_stream_type'] = telstate['sdp_l0_stream_type']
+        param_dict['chunk_info'] = telstate['chunk_info']
+        param_dict['first_timestamp'] = telstate['first_timestamp']
+        param_dict['sub_pool_resources'] = telstate['sub_pool_resources']
+        param_dict['sub_product'] = telstate['sub_product']
+        param_dict['obs_params'] = telstate['obs_params']
+        param_dict['obs_label'] = self.file.sensor['obs_label']
+        param_dict['stream_name'] = telstate['stream_name']
+        param_dict['capture_block_id'] = telstate['capture_block_id']
+        param_dict[f'{correlator_stream}_{name}'] = telstate[f'{correlator_stream}_{name}']
+        param_dict[f'{correlator_stream}_int_time'] = telstate[f'{correlator_stream}_int_time']
+        param_dict[f'{correlator_stream}_n_accs'] = telstate[f'{correlator_stream}_n_accs']
+        param_dict[f'{f_engine_stream}_{name}'] = telstate[f'{f_engine_stream}_{name}']
+        param_dict['wide_scale_factor_timestamp'] = telstate['wide_scale_factor_timestamp']
 
         band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
         model_keys = [band_mask_key, 'sdp_model_base_url',
@@ -771,6 +786,19 @@ class SimDataKatdal(SimData):
             param_dict['{0}_observer'.format(ant.name)] = ant.description
             nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
             param_dict[nd_name] = telstate.get_range(nd_name, st=0)
+
+            pol_list = ['h', 'v']
+            for pol in pol_list:
+                voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
+                param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
+
+        target_activity_sensor = 'cbf_target'
+        param_dict[target_activity_sensor] = telstate.get_range(target_activity_sensor, st=0)
+        obs_activity_sensor = 'obs_activity'
+        param_dict[obs_activity_sensor] = telstate.get_range(obs_activity_sensor, st=0)
+        obs_label_sensor = 'obs_label'
+        param_dict[obs_label_sensor] = telstate.get_range(obs_label_sensor, st=0)
+
         return param_dict
 
     async def tx_data(self, telstate, tx, max_scans):
@@ -793,7 +821,9 @@ class SimDataKatdal(SimData):
         flavour = spead2.Flavour(4, 64, 48)
         ig = spead2.send.ItemGroup(flavour=flavour)
 
-        self.setup_capture_block(telstate, self.file.timestamps[0])
+        # subtract sync_time to realign to the observation timing
+        sync_time = self.file.source.telstate['sync_time']
+        self.setup_capture_block(telstate, (self.file.timestamps - sync_time)[0])
         telstate_cb = telstate.view(self.cbid)
 
         # include obs params in telstate
