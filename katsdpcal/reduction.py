@@ -939,6 +939,10 @@ def _finish_pointing_cal(ts, parameters, b_solutions):
     beam_sol = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
     beam_sol_SNR = np.full((num_chunks, len(pols), len(ants), 5), np.nan, dtype=np.float32)
     for a, ant in enumerate(ants):
+        key = ant.name.strip()  # Ensure it's clean
+        if key not in beams:
+            logger.info(f"Skipping {key}, no beam available")
+            continue
         for c, beam in enumerate(beams[ant.name]):
             if beam is None:
                 continue
