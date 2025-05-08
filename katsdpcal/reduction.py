@@ -133,7 +133,7 @@ def check_is_corrected(telstate, time_range):
     Returns
     -------
     bool:
-        True for track that has a 'corrected' lable in the `time_range`
+        True for track that has a 'corrected' label in the `time_range`
     """
     obs_label = telstate.get_range('obs_label', st=time_range[0], et=time_range[1],
                                    include_previous=True)
