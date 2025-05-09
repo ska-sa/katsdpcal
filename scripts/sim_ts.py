@@ -28,8 +28,8 @@ async def main():
     telstate = opts.telstate
 
     logging.info("Opening file %s", opts.file)
-    simdata = SimData.factory(opts.file, bchan=opts.bchan, echan=opts.echan,
-                              n_substreams=opts.substreams)
+    simdata = SimData(opts.file, bchan=opts.bchan, echan=opts.echan,
+                      n_substreams=opts.substreams)
 
     async with simdata:
         logging.info("Clearing telescope state")
