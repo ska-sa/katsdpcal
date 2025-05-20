@@ -1132,7 +1132,10 @@ def write_phase_stability(report, report_path, targets, av_corr,
         kat_target = katpoint.Target(cal)
         target_name = kat_target.name
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
-        v_data, av_times = list(zip(*av_corr['{}_nmad_phase'.format(target_name)]))
+        try:
+            v_data, av_times = list(zip(*av_corr['{}_nmad_phase'.format(target_name)]))
+        except ValueError:
+            continue
         av_data = np.array(v_data)
         for ti in range(len(av_times)):
             report.writeln()
