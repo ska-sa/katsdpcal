@@ -27,12 +27,8 @@ import ephem
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------------------------
-# --- simdata classes
+# --- simdata class
 # -------------------------------------------------------------------------------------------------
-
-
-class WrongFileType(IOError):
-    """Could not open the file with the lower-level API"""
 
 
 def get_antdesc_relative(names, diameters, positions):
@@ -65,104 +61,8 @@ def get_antdesc_relative(names, diameters, positions):
     return antdesc
 
 
-def get_params(self):
-    param_dict = {}
-    spw = self.file.spectral_windows[self.file.spw]
-    if spw.sideband != 1:
-        raise ValueError('Lower sideband is not supported')
-    # spw will describe the whole band, ignoring bchan:echan. The caller
-    # takes care of the adjustment.
-
-    # katsdpmodel keys
-    telstate = self.file.source.telstate
-    correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
-    f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
-    ins_name = 'instrument_dev_name'
-    # create sensor dictionary here and add them directly to the telstate :)
-
-    param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
-    param_dict['sdp_l0_center_freq'] = spw.centre_freq
-    param_dict['sdp_l0_n_chans'] = spw.num_chans
-    param_dict['sdp_l0_int_time'] = self.file.dump_period
-    param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
-    param_dict['obs_label'] = self.file.sensor['obs_label']
-    param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
-
-    telstate_immutables = ['sdp_l0_sync_time', 'sdp_l0_src_streams', 'sdp_l0_stream_type',
-                           'chunk_info', 'first_timestamp', 'sub_pool_resources', 'sub_product',
-                           'obs_params', 'stream_name', 'capture_block_id',
-                           f'{correlator_stream}_{ins_name}', f'{correlator_stream}_int_time',
-                           f'{correlator_stream}_n_accs', f'{f_engine_stream}_{ins_name}',
-                           'wide_scale_factor_timestamp', 'wide_sync_time']
-
-    for key in telstate_immutables:
-        param_dict[key] = telstate[key]
-
-    telstate_mutables = ['cbf_target', 'obs_label', 'obs_activity']
-    for key in telstate_mutables:
-        param_dict[key] = telstate.get_range(key, st=0)
-
-    band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
-    model_keys = [band_mask_key, 'sdp_model_base_url',
-                  'model_rfi_mask_fixed', 'sdp_l0_src_streams',
-                  telstate.join(correlator_stream, 'src_streams')]
-    for key in model_keys:
-        param_dict[key] = telstate[key]
-
-    # antenna descriptions and noise diodes for all antennas
-    for ant in self.file.ants:
-        param_dict['{0}_observer'.format(ant.name)] = ant.description
-        nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
-        param_dict[nd_name] = telstate.get_range(nd_name, st=0)
-
-        pol_list = ['h', 'v']
-        for pol in pol_list:
-            voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
-            param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
-    return param_dict
-
-
-def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
-               bchan=0, echan=None):
-    """Writes data into katdal file.
-
-    Parameters
-    ----------
-    correlator_data : :class:`np.ndarray`
-        visibilities
-    flags : :class:`np.ndarray`
-        flags
-    ti_max : int
-        index of highest timestamp of supplied correlator_data and flag arrays
-    cal_bls_ordering : list of list
-        baseline ordering of visibility data in the pipeline, shape (nbl, 2)
-    cal_bls_pol_ordering : list of list
-        polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
-    bchan : int, optional
-        start channel to write
-    echan : int, optional
-        end channel to write
-    """
-    # pack data into katdal correlation product list
-    #    by iterating through katdal correlation product list
-    for i, [ant1, ant2] in enumerate(self.file.corr_products):
-
-        # find index of this pair in the cal product array
-        antpair = [ant1[:-1], ant2[:-1]]
-        cal_indx = cal_bls_ordering.index(antpair)
-        # find index of this element in the pol dimension
-        polpair = [ant1[-1], ant2[-1]]
-        pol_indx = cal_bls_pol_ordering.index(polpair)
-
-        # vis shape is (ntimes, nchan, ncorrprod) for real and imag
-        self.file._vis[0:ti_max, bchan:echan, i, 0] = \
-            correlator_data[0:ti_max, :, pol_indx, cal_indx].real
-        self.file._vis[0:ti_max, bchan:echan, i, 1] = \
-            correlator_data[0:ti_max, :, pol_indx, cal_indx].imag
-
-
 class SimData:
-    """Base class for simulated data
+    """Class for simulated data
 
     Parameters
     ----------
@@ -188,13 +88,103 @@ class SimData:
         self.cbid = None
         self.n_substreams = n_substreams
         self._tx_future = None    # Future for heaps in flight
-
-        try:
-            self.file = katdal.open(filename, upgrade_flags=False)
-        except IOError as error:
-            raise WrongFileType(str(error)) from error
+        self.file = katdal.open(filename, upgrade_flags=False)
         self.file.select(channels=slice(bchan, echan))
         self.num_scans = len(self.file.scan_indices)
+
+    def get_params(self):
+        param_dict = {}
+        spw = self.file.spectral_windows[self.file.spw]
+        if spw.sideband != 1:
+            raise ValueError('Lower sideband is not supported')
+        # spw will describe the whole band, ignoring bchan:echan. The caller
+        # takes care of the adjustment.
+
+        # katsdpmodel keys
+        telstate = self.file.source.telstate
+        correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
+        f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
+        ins_name = 'instrument_dev_name'
+        # create sensor dictionary here and add them directly to the telstate :)
+
+        param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
+        param_dict['sdp_l0_center_freq'] = spw.centre_freq
+        param_dict['sdp_l0_n_chans'] = spw.num_chans
+        param_dict['sdp_l0_int_time'] = self.file.dump_period
+        param_dict['sdp_l0_bls_ordering'] = self.file.corr_products
+        param_dict['obs_label'] = self.file.sensor['obs_label']
+        param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
+
+        telstate_immutables = ['sdp_l0_sync_time', 'sdp_l0_src_streams', 'sdp_l0_stream_type',
+                               'chunk_info', 'first_timestamp', 'sub_pool_resources', 'sub_product',
+                               'obs_params', 'stream_name', 'capture_block_id',
+                               f'{correlator_stream}_{ins_name}', f'{correlator_stream}_int_time',
+                               f'{correlator_stream}_n_accs', f'{f_engine_stream}_{ins_name}',
+                               'wide_scale_factor_timestamp', 'wide_sync_time']
+
+        for key in telstate_immutables:
+            param_dict[key] = telstate[key]
+
+        telstate_mutables = ['cbf_target', 'obs_label', 'obs_activity']
+        for key in telstate_mutables:
+            param_dict[key] = telstate.get_range(key, st=0)
+
+        band_mask_key = telstate.join(f_engine_stream, 'model', 'band_mask', 'fixed')
+        model_keys = [band_mask_key, 'sdp_model_base_url',
+                      'model_rfi_mask_fixed', 'sdp_l0_src_streams',
+                      telstate.join(correlator_stream, 'src_streams')]
+        for key in model_keys:
+            param_dict[key] = telstate[key]
+
+        # antenna descriptions and noise diodes for all antennas
+        for ant in self.file.ants:
+            param_dict['{0}_observer'.format(ant.name)] = ant.description
+            nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
+            param_dict[nd_name] = telstate.get_range(nd_name, st=0)
+
+            pol_list = ['h', 'v']
+            for pol in pol_list:
+                voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
+                param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
+        return param_dict
+
+    def write_data(self, correlator_data, flags, ti_max, cal_bls_ordering, cal_bls_pol_ordering,
+                   bchan=0, echan=None):
+        """Writes data into katdal file.
+
+        Parameters
+        ----------
+        correlator_data : :class:`np.ndarray`
+            visibilities
+        flags : :class:`np.ndarray`
+            flags
+        ti_max : int
+            index of highest timestamp of supplied correlator_data and flag arrays
+        cal_bls_ordering : list of list
+            baseline ordering of visibility data in the pipeline, shape (nbl, 2)
+        cal_bls_pol_ordering : list of list
+            polarisation pair ordering of visibility data in the pipleine, shape (npol, 2)
+        bchan : int, optional
+            start channel to write
+        echan : int, optional
+            end channel to write
+        """
+        # pack data into katdal correlation product list
+        #    by iterating through katdal correlation product list
+        for i, [ant1, ant2] in enumerate(self.file.corr_products):
+
+            # find index of this pair in the cal product array
+            antpair = [ant1[:-1], ant2[:-1]]
+            cal_indx = cal_bls_ordering.index(antpair)
+            # find index of this element in the pol dimension
+            polpair = [ant1[-1], ant2[-1]]
+            pol_indx = cal_bls_pol_ordering.index(polpair)
+
+            # vis shape is (ntimes, nchan, ncorrprod) for real and imag
+            self.file._vis[0:ti_max, bchan:echan, i, 0] = \
+                correlator_data[0:ti_max, :, pol_indx, cal_indx].real
+            self.file._vis[0:ti_max, bchan:echan, i, 1] = \
+                correlator_data[0:ti_max, :, pol_indx, cal_indx].imag
 
     async def tx_data(self, telstate, tx, max_scans):
         """Transmits katdal dataset as a SPEAD stream.
@@ -318,7 +308,7 @@ class SimData:
             Telescope state.
         """
         # get parameters
-        parameter_dict = get_params(self)
+        parameter_dict = self.get_params()
         # check that the minimum necessary parameters are set
         min_keys = ['sdp_l0_int_time', 'sdp_l0_bandwidth', 'sdp_l0_center_freq',
                     'sdp_l0_n_chans', 'sdp_l0_bls_ordering',
