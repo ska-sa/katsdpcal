@@ -52,8 +52,8 @@ async def main():
     telstate = opts.telstate
     n_substreams = get_n_substreams(telstate)
 
-    simdata = SimData.factory(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan,
-                              n_substreams=n_substreams)
+    simdata = SimData(opts.file, opts.server, bchan=opts.bchan, echan=opts.echan,
+                      n_substreams=n_substreams)
     async with simdata:
         logger.info("Issuing capture-init")
         await simdata.capture_init()
