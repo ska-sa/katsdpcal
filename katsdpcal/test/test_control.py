@@ -8,6 +8,7 @@ import shutil
 import os
 import itertools
 from unittest import mock, IsolatedAsyncioTestCase
+from unittest.mock import patch
 import asyncio
 import json
 import datetime
@@ -28,7 +29,7 @@ from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
 from katsdpcalproc import calprocs
 
-from katsdpcal import control, pipelineprocs, param_dir
+from katsdpcal import control, pipelineprocs, param_dir, reduction
 
 
 numba.config.THREADING_LAYER = 'safe'
@@ -992,6 +993,29 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G = (rs.uniform(2.0, 4.0, (2, self.n_antennas))
              + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
+        
+        # --- Subtest: test for "missing antenna beam" exception ---
+        expected_message = "Skipping m001, no beam available"
+        K_nan = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
+        G_nan = (rs.uniform(2.0, 4.0, (2, self.n_antennas)) +
+                 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
+        # Inject a NaN into one antenna (e.g., m001, index 0) to simulate a missing beam
+        G_nan[:, 0] = np.nan  # or K_nan[:, 0]
+        vis_nan = self.make_vis(K_nan, G_nan, target)
+        heaps_nan = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis_nan)
+        with patch("katsdpcal.reduction.logger") as mock_logger:
+            for endpoint, heap in heaps_nan:
+                self.l0_streams[endpoint].send_heap(heap)
+            await self.make_request("capture-init", "cb")
+            await asyncio.sleep(1)
+            for stream in self.l0_streams.values():
+                stream.send_heap(self.ig.get_end())
+            await self.shutdown_servers(180)
+            matching_calls = [
+                call for call in mock_logger.info.call_args_list
+                if call.args and expected_message in call.args[0]
+            ]
+            assert len(matching_calls) == self.n_server
 
         # Making visibilities and preparing + sending heaps
         vis = self.make_vis(K, G, target)
