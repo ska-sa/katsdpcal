@@ -1015,7 +1015,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 call for call in mock_logger.info.call_args_list
                 if call.args and expected_message in call.args[0]
             ]
-            assert len(matching_calls) == self.n_server
+            assert len(matching_calls) == self.n_servers
 
         # Making visibilities and preparing + sending heaps
         vis = self.make_vis(K, G, target)
