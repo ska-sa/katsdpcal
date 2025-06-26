@@ -1000,7 +1000,8 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         G_nan = (rs.uniform(2.0, 4.0, (2, self.n_antennas)) +
                  1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
         # Inject a NaN into one antenna (e.g., m001, index 0) to simulate a missing beam
-        G_nan[:, 0] = np.nan  # or K_nan[:, 0]
+        G_nan[:, 0] = np.nan
+        K_nan[:, 0] = np.nan
         vis_nan = self.make_vis(K_nan, G_nan, target)
         heaps_nan = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis_nan)
         with patch("katsdpcal.reduction.logger") as mock_logger:
