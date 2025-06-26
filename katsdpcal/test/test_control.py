@@ -995,11 +995,11 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
              + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
         
         # --- Subtest: test for "missing antenna beam" exception ---
-        expected_message = "Skipping m001, no beam available"
+        expected_message = "Skipping m090, no beam available"
         K_nan = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G_nan = (rs.uniform(2.0, 4.0, (2, self.n_antennas)) +
                  1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
-        # Inject a NaN into one antenna (e.g., m001, index 0) to simulate a missing beam
+        # Inject a NaN into one antenna (e.g., m090, index 0) to simulate a missing beam
         G_nan[:, 0] = np.nan
         K_nan[:, 0] = np.nan
         vis_nan = self.make_vis(K_nan, G_nan, target)
