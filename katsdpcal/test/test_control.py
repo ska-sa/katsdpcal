@@ -990,46 +990,31 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                     ts = ts + (self.dump_period/8)
 
         # Creating antenna delays and gains
-        K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
-        G = (rs.uniform(2.0, 4.0, (2, self.n_antennas))
-             + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
-        
-        # --- Subtest: test for "missing antenna beam" exception ---
-        expected_message = "Skipping m090, no beam available"
         K_nan = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G_nan = (rs.uniform(2.0, 4.0, (2, self.n_antennas)) +
                  1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
         # Inject a NaN into one antenna (e.g., m090, index 0) to simulate a missing beam
         G_nan[:, 0] = np.nan
         K_nan[:, 0] = np.nan
-        vis_nan = self.make_vis(K_nan, G_nan, target)
-        heaps_nan = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis_nan)
+        
+        # Making visibilities and preparing + sending heaps
+        vis = self.make_vis(K_nan, G_nan, target)
         with patch("katsdpcal.reduction.logger") as mock_logger:
-            for endpoint, heap in heaps_nan:
+            heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
+            for endpoint, heap in heaps:
                 self.l0_streams[endpoint].send_heap(heap)
-            await self.make_request("capture-init", "cb")
+            await self.make_request('capture-init', 'cb')
             await asyncio.sleep(1)
+    
             for stream in self.l0_streams.values():
                 stream.send_heap(self.ig.get_end())
             await self.shutdown_servers(180)
+            expected_message = "Skipping m090, no beam available"
             matching_calls = [
                 call for call in mock_logger.info.call_args_list
                 if call.args and expected_message in call.args[0]
             ]
             assert len(matching_calls) == self.n_servers
-
-        # Making visibilities and preparing + sending heaps
-        vis = self.make_vis(K, G, target)
-        heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
-        for endpoint, heap in heaps:
-            self.l0_streams[endpoint].send_heap(heap)
-        await self.make_request('capture-init', 'cb')
-        await asyncio.sleep(1)
-
-        for stream in self.l0_streams.values():
-            stream.send_heap(self.ig.get_end())
-        await self.shutdown_servers(180)
-
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         # Asserting dtypes, shape of cal product
         if 'pointingcal' in target.tags:
