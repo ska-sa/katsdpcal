@@ -28,8 +28,7 @@ import katpoint
 from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
 from katsdpcalproc import calprocs
-
-from katsdpcal import control, pipelineprocs, param_dir, reduction
+from katsdpcal import control, pipelineprocs, param_dir
 
 
 numba.config.THREADING_LAYER = 'safe'
@@ -995,8 +994,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                  1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
         # Inject a NaN into one antenna (e.g., m090, index 0) to simulate a missing beam
         G_nan[:, 0] = np.nan
-        K_nan[:, 0] = np.nan
-        
+        K_nan[:, 0] = np.nan       
         # Making visibilities and preparing + sending heaps
         vis = self.make_vis(K_nan, G_nan, target)
         with patch("katsdpcal.reduction.logger") as mock_logger:
@@ -1005,7 +1003,6 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                 self.l0_streams[endpoint].send_heap(heap)
             await self.make_request('capture-init', 'cb')
             await asyncio.sleep(1)
-    
             for stream in self.l0_streams.values():
                 stream.send_heap(self.ig.get_end())
             await self.shutdown_servers(180)
