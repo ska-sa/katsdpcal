@@ -8,6 +8,7 @@ import shutil
 import os
 import itertools
 from unittest import mock, IsolatedAsyncioTestCase
+from unittest.mock import patch
 import asyncio
 import json
 import datetime
@@ -27,7 +28,6 @@ import katpoint
 from katdal.h5datav3 import FLAG_NAMES
 from katdal.applycal import complex_interp
 from katsdpcalproc import calprocs
-
 from katsdpcal import control, pipelineprocs, param_dir
 
 
@@ -992,19 +992,26 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
         G = (rs.uniform(2.0, 4.0, (2, self.n_antennas))
              + 1j * rs.uniform(-0.1, 0.1, (2, self.n_antennas)))
-
+        # Inject a NaN into one antenna (e.g., m090, index 0) to simulate a missing beam
+        G[:, 0] = np.nan
+        K[:, 0] = np.nan
         # Making visibilities and preparing + sending heaps
         vis = self.make_vis(K, G, target)
-        heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
-        for endpoint, heap in heaps:
-            self.l0_streams[endpoint].send_heap(heap)
-        await self.make_request('capture-init', 'cb')
-        await asyncio.sleep(1)
-
-        for stream in self.l0_streams.values():
-            stream.send_heap(self.ig.get_end())
-        await self.shutdown_servers(180)
-
+        with patch("katsdpcal.reduction.logger") as mock_logger:
+            heaps = self.prepare_heaps(n_times=n_times, rs=rs, vis=vis)
+            for endpoint, heap in heaps:
+                self.l0_streams[endpoint].send_heap(heap)
+            await self.make_request('capture-init', 'cb')
+            await asyncio.sleep(1)
+            for stream in self.l0_streams.values():
+                stream.send_heap(self.ig.get_end())
+            await self.shutdown_servers(180)
+            expected_message = "Skipping m090, no beam available"
+            matching_calls = [
+                call for call in mock_logger.info.call_args_list
+                if call.args and expected_message in call.args[0]
+            ]
+            assert len(matching_calls) == self.n_servers
         telstate_cb_cal = control.make_telstate_cb(self.telstate_cal, 'cb')
         # Asserting dtypes, shape of cal product
         if 'pointingcal' in target.tags:
