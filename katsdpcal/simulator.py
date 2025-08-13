@@ -117,7 +117,7 @@ class SimData:
 
         telstate_immutables = ['sdp_l0_sync_time', 'sdp_l0_src_streams', 'sdp_l0_stream_type',
                                'chunk_info', 'first_timestamp', 'sub_pool_resources', 'sub_product',
-                               'obs_params', 'stream_name', 'capture_block_id',
+                               'obs_params', 'stream_name', 'sdp_capture_block_id',
                                f'{correlator_stream}_{ins_name}', f'{correlator_stream}_int_time',
                                f'{correlator_stream}_n_accs', f'{f_engine_stream}_{ins_name}',
                                'wide_scale_factor_timestamp', 'wide_sync_time']

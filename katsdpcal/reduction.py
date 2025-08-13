@@ -173,7 +173,7 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
         Number of unique elements found in the applied gain sensor for the observation
        """
 
-    capture_block_id = telstate['capture_block_id']
+    capture_block_id = telstate['sdp_capture_block_id']
     stream_name = telstate['stream_name']
     telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
                                                                      capture_block_id, stream_name)
