@@ -125,7 +125,8 @@ class SimData:
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
 
-        telstate_mutables = ['cbf_target', 'obs_label', 'obs_activity']
+        telstate_mutables = ['cbf_target', 'obs_label', 'obs_activity', 'sdp_capture_block_id',
+                             f"{telstate['capture_block_id']}_obs_label"]
         for key in telstate_mutables:
             param_dict[key] = telstate.get_range(key, st=0)
 
@@ -344,10 +345,11 @@ class SimData:
         if n_chans % self.n_substreams != 0:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
+        CBID = parameter_dict['capture_block_id']
 
         # separate keys without times from those with times
         sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity', 'obs_label',
-                               'noise_diode')
+                               'noise_diode', 'sdp_capture_block_id',  f"{CBID}_obs_label")
         sensor_keys = [k for k in parameter_dict.keys() if k.endswith(sensor_key_suffixes)]
 
         for k in parameter_dict.keys():
