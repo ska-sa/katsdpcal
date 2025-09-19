@@ -34,9 +34,9 @@ import dask.diagnostics
 import dask.distributed
 
 import katsdpcal
-from .reduction import pipeline, flush_pipeline, slots_slices
+from .reduction import pipeline, flush_pipeline
 from .report import make_cal_report
-
+from .scan import slots_slices
 
 logger = logging.getLogger(__name__)
 
