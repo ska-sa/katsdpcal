@@ -490,7 +490,7 @@ def set_refant(s, ts, parameters, sensors):
             parameters['refant'], timestamp=s.timestamps[0])
 
 
-def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
+def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slots, sensors=None):
     """Pipeline calibration.
 
     Parameters
@@ -506,6 +506,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         Solution stores for the capture block, indexed by solution type
     stream_name : str
         Name of the L0 data stream
+    flag_array : :class: `np.ndarray`, np.uint8,  shape(ntimes, nchans, npol, nbls)
+        shared memory flag array for all slots acquired from the accumulator
+    slots : list of int
+        list of slots acquired from the accumulator
     sensors : dict, optional
         Sensors available in the calling parent
 
@@ -592,7 +596,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                  parameters['bls_lookup'], target,
                  chans=parameters['channel_freqs'],
                  ants=parameters['antennas'],
-                 refant=refant_ind,
+                 flag_array=flag_array, slots=slots, refant=refant_ind,
                  array_position=parameters['array_position'], logger=logger)
         if s.xc_mask.size == 0:
             logger.info('No XC data - no processing performed.')
@@ -618,7 +622,6 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
         if any(k.endswith('cal') for k in taglist):
             logger.info('Calibrator flagging')
             s.rfi(calib_flagger, sensors=sensors)
-
             # Set a reference antenna for this cbid if one isn't already set
             if s.refant is None:
                 set_refant(s, ts, parameters, sensors)

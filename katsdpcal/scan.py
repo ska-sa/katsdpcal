@@ -14,8 +14,6 @@ import katpoint
 from katsdpcalproc import calprocs, calprocs_dask
 from katsdpcalproc.solutions import CalSolution, CalSolutions
 
-from . import inplace
-
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------------------------------
@@ -35,6 +33,44 @@ def _rfi(vis, flags, flagger, out_bit):
     flagger_mask = calprocs.asbool(flags[:, :, 0, :] & ~out_value)
     out_flags = flagger.get_flags(vis[:, :, 0, :], flagger_mask)
     return out_flags[:, :, np.newaxis, :] * out_value
+
+
+def slot_slices_to_time_slices(slices):
+    """Convert a list of slot slices to time slices
+
+    Example
+    -------
+    >>> slot_slices_to_time_slices([slice(2, 5, None), slice(6, 9, None), slice(0, 2, None)])
+    [slice(0, 3, None), slice(3, 6, None), slice(6, 8, None)]
+    """
+    start = 0
+    for s in slices:
+        step = s.stop - s.start
+        yield slice(start, start+step)
+        start = start+step
+
+
+def slots_slices(slots):
+    """Compresses a list of slot positions to a list of ranges (given as slices).
+
+    This is a generator that yields the slices
+
+    Example
+    -------
+    >>> list(_slots_slices([2, 3, 4, 6, 7, 8, 0, 1]))
+    [slice(2, 5, None), slice(6, 9, None), slice(0, 2, None)]
+    """
+    start = None
+    end = None
+    for slot in slots:
+        if end is not None and slot != end:
+            yield slice(start, end)
+            start = end = None
+        if start is None:
+            start = slot
+        end = slot + 1
+    if end is not None:
+        yield slice(start, end)
 
 
 class ScanData:
@@ -165,6 +201,10 @@ class Scan:
         Array of channel frequencies.
     ants : array of :class:`katpoint.Antenna`
         Array of antennas.
+    flag_array: :class:`np.ndarray`
+        uint8, shape(ntimes, nchans, npols, nbls) shared memory array of flags
+    slots : list of int
+        List of slots that the pipeline is processing
     refant : int
         Index of reference antenna in antenna description list.
     array_position : :class:`katpoint.Antenna`
@@ -211,7 +251,8 @@ class Scan:
     """
 
     def __init__(self, data, time_slice, dump_period, bls_lookup, target,
-                 chans, ants, refant=None, array_position=None, logger=logger):
+                 chans, ants, flag_array, slots, refant=None, array_position=None,
+                 logger=logger):
         # cross-correlation and auto-correlation masks.
         # Must be np arrays so they can be used for indexing
         self.xc_mask = np.array([b0 != b1 for b0, b1 in bls_lookup])
@@ -222,6 +263,8 @@ class Scan:
         self.auto_ant = ScanDataGroupBl(all_data, bls_lookup, self.ac_mask)
         self.timestamps = data['times'][time_slice]
         self.target = katpoint.Target(target)
+        self.flag_array = flag_array
+        self.slots = slots[time_slice]
 
         # uvw coordinates
         self.uvw = None
@@ -953,15 +996,10 @@ class Scan:
             vis_xc_cross = self.apply(soln, vis_xc_cross, cross_pol=True)
             vis_ac_auto = self.apply(soln, vis_ac_auto)
             vis_ac_cross = self.apply(soln, vis_ac_cross, cross_pol=True)
-        inplace.store_inplace(vis_xc_auto, self.cross_ant.tf.auto_pol.vis)
-        inplace.store_inplace(vis_xc_cross, self.cross_ant.tf.cross_pol.vis)
-        inplace.store_inplace(vis_ac_auto, self.auto_ant.tf.auto_pol.vis)
-        inplace.store_inplace(vis_ac_cross, self.auto_ant.tf.cross_pol.vis)
-        # bust any dask caches
-        inplace.rename(self.cross_ant.orig.auto_pol.vis)
-        inplace.rename(self.cross_ant.orig.cross_pol.vis)
-        inplace.rename(self.auto_ant.orig.auto_pol.vis)
-        inplace.rename(self.auto_ant.orig.cross_pol.vis)
+        self.cross_ant.orig.auto_pol.vis = vis_xc_auto
+        self.cross_ant.orig.cross_pol.vis = vis_xc_cross
+        self.auto_ant.orig.auto_pol.vis = vis_ac_auto
+        self.auto_ant.orig.cross_pol.vis = vis_ac_cross
         self.cross_ant.reset_chunked()
         self.auto_ant.reset_chunked()
 
@@ -1355,9 +1393,11 @@ class Scan:
         """
         if auto_ant:
             scandata = self.auto_ant
+            mask = self.ac_mask
             label = ', auto-corrs'
         else:
             scandata = self.cross_ant
+            mask = self.xc_mask
             label = ''
 
         # Get the relevant flag bit from katdal
@@ -1385,16 +1425,22 @@ class Scan:
         data['cross_pol_flags'] |= rfi_flags
         data['auto_pol_flags'] |= rfi_flags
 
-        # _rfi takes care to be idempotent, so we can use safe=False. The
-        # safety check doesn't handle the case of some chunks being
-        # concatenated, processed, then split back to the original chunks.
-        inplace.store_inplace([data['cross_pol_flags'], data['auto_pol_flags']],
-                              [data['cross_pol'].flags, data['auto_pol'].flags],
-                              safe=False)
-        # Bust any caches of the old values
-        inplace.rename(data['cross_pol_orig'].flags)
-        inplace.rename(data['auto_pol_orig'].flags)
+        cross, auto = da.compute(data['cross_pol_flags'], data['auto_pol_flags'])
+        scandata.orig.cross_pol.flags = da.from_array(cross)
+        scandata.orig.auto_pol.flags = da.from_array(auto)
+
         self.cross_ant.reset_chunked()
+        self.auto_ant.reset_chunked()
+
+        # Store computed scan flags in the shared memory flag array
+        # ******* Fancy indexing will not work here, as it returns a copy, not a view *******
+        # all selections on the shared flag array must be done using slices
+        mask_slice = slice(np.where(mask)[0][0], np.where(mask)[0][-1]+1)
+        slot_slices = list(slots_slices(self.slots))
+        time_slices = list(slot_slices_to_time_slices(slot_slices))
+        for slots, times in zip(slot_slices, time_slices):
+            self.flag_array[slots, :, :2, mask_slice] = scandata.tf.auto_pol.flags[times].compute()
+            self.flag_array[slots, :, 2:, mask_slice] = scandata.tf.cross_pol.flags[times].compute()
 
         for key in ['auto_pol', 'cross_pol']:
             tf_flags = getattr(scandata.tf, key).flags
