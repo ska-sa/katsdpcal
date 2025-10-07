@@ -135,7 +135,9 @@ def check_is_corrected(telstate, time_range):
     bool:
         True for track that has a 'corrected' label in the `time_range`
     """
-    capture_block_id = telstate.get_range('sdp_capture_block_id')[0][0]
+    capture_block_id = telstate.get_range('sdp_capture_block_id',
+                                          st=time_range[0], et=time_range[1],
+                                          include_previous=True)[0][0]
     obs_label_key = '{}_obs_label'.format(capture_block_id)
     obs_label = telstate.get_range(obs_label_key, st=time_range[0], et=time_range[1],
                                    include_previous=True)
@@ -146,7 +148,7 @@ def check_is_corrected(telstate, time_range):
         return False
 
 
-def check_applied_gain_sensor(telstate, ref_ant, pol):
+def check_applied_gain_sensor(s, telstate, ref_ant, pol, time_range):
 
     """Trigger Function : Check the number of unique values in the Applied Gain Sensor.
 
@@ -175,11 +177,15 @@ def check_applied_gain_sensor(telstate, ref_ant, pol):
         Number of unique elements found in the applied gain sensor for the observation
        """
 
-    capture_block_id = telstate.get_range('sdp_capture_block_id')[0][0]
+    capture_block_id = telstate.get_range('sdp_capture_block_id',
+                                          st=time_range[0], et=time_range[1],
+                                          include_previous=True)[0][0]
     stream_name = telstate['cal_src_streams'][0]
     telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
                                                                      capture_block_id, stream_name)
-    source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None)
+    timestamps = s.timestamps
+    source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None,
+                                timestamps=timestamps)
     data_source = VisibilityDataV4(source)
 
     sensor_name = f'Correlator/Inputs/{ref_ant}{pol}/applied_gain'
@@ -886,14 +892,19 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             phase_tag = ['bfcal']
             # summarise phase_nmad
             refant = parameters['refant']
-            if any(k in phase_tag for k in taglist):
-                applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
-                corrected_track = check_is_corrected(ts, [t0, t1])
-                if applied_gain_check > 1:
-                    logger.info('Observation is Phase-Up')
-                    if corrected_track:
-                        logger.info('Calculate NMAD on Corrected Track')
-                        s.summarize_stats(av_corr, target_name + '_nmad_phase')
+            try:
+                if any(k in phase_tag for k in taglist):
+                    applied_gain_check = check_applied_gain_sensor(s, telstate=ts,
+                                                                   ref_ant=refant, pol='h',
+                                                                   time_range=[t0, t1])
+                    corrected_track = check_is_corrected(ts, [t0, t1])
+                    if applied_gain_check > 1:
+                        logger.info('Observation is Phase-Up')
+                        if corrected_track:
+                            logger.info('Calculate NMAD on Corrected Track')
+                            s.summarize_stats(av_corr, target_name + '_nmad_phase')
+            except Exception:
+                pass
 
             s.apply_inplace(solns_to_apply)
 

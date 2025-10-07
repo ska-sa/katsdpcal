@@ -116,17 +116,17 @@ class SimData:
         param_dict['sub_band'] = self.file.spectral_windows[self.file.spw].band.lower()[0]
 
         telstate_immutables = ['sdp_l0_sync_time', 'sdp_l0_src_streams', 'sdp_l0_stream_type',
-                               'chunk_info', 'first_timestamp', 'sub_pool_resources', 'sub_product',
-                               'obs_params', 'stream_name', 'capture_block_id',
-                               f'{correlator_stream}_{ins_name}', f'{correlator_stream}_int_time',
-                               f'{correlator_stream}_n_accs', f'{f_engine_stream}_{ins_name}',
-                               'wide_scale_factor_timestamp', 'wide_sync_time']
+                               'sdp_l0_first_timestamp', 'sub_pool_resources', 'sub_product',
+                               'obs_params', f'{correlator_stream}_{ins_name}',
+                               f'{correlator_stream}_int_time', f'{correlator_stream}_n_accs',
+                               f'{f_engine_stream}_{ins_name}', 'wide_scale_factor_timestamp',
+                               'wide_sync_time', 'chunk_info', 'cal_src_streams']
 
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
 
-        telstate_mutables = ['cbf_target', 'obs_label', 'obs_activity', 'sdp_capture_block_id',
-                             f"{telstate['capture_block_id']}_obs_label"]
+        telstate_mutables = ['cbf_target', 'obs_activity', 'sdp_capture_block_id',
+                             f"{telstate.get_range('sdp_capture_block_id', st=0)[-1][0]}_obs_label"]
         for key in telstate_mutables:
             param_dict[key] = telstate.get_range(key, st=0)
 
@@ -345,10 +345,10 @@ class SimData:
         if n_chans % self.n_substreams != 0:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
-        CBID = parameter_dict['capture_block_id']
+        CBID = parameter_dict['sdp_capture_block_id'][1][0]
 
         # separate keys without times from those with times
-        sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity', 'obs_label',
+        sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity',
                                'noise_diode', 'sdp_capture_block_id',  f"{CBID}_obs_label")
         sensor_keys = [k for k in parameter_dict.keys() if k.endswith(sensor_key_suffixes)]
 
