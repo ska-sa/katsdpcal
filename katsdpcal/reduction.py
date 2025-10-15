@@ -884,17 +884,17 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
                 # Interpolate to the target across all the available G solutions
                 solns_to_apply = get_solns_to_apply(s, solution_stores, ['K', 'B', 'G'],
                                                     time_range=[t0, t1])
-            phase_tag = ['bfcal']
+            # phase_tag = ['bfcal']
             # summarise phase_nmad
-            refant = parameters['refant']
-            applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
-            corrected_track = check_is_corrected(ts, [t0, t1])
-            if applied_gain_check > 1:
-                logger.info('Observation is Phase-Up')
-                if corrected_track:
-                    logger.info('Calculate NMAD on Corrected Track')
-                    if any(k in phase_tag for k in taglist):
-                        s.summarize_stats(av_corr, target_name + '_nmad_phase')
+            # refant = parameters['refant']
+            # applied_gain_check = check_applied_gain_sensor(telstate=ts, ref_ant=refant, pol='h')
+            # corrected_track = check_is_corrected(ts, [t0, t1])
+            # if applied_gain_check > 1:
+            #    logger.info('Observation is Phase-Up')
+            #    if corrected_track:
+            #        logger.info('Calculate NMAD on Corrected Track')
+            #        if any(k in phase_tag for k in taglist):
+            #            s.summarize_stats(av_corr, target_name + '_nmad_phase')
 
             s.apply_inplace(solns_to_apply)
 
