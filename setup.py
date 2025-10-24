@@ -33,7 +33,7 @@ setup(
         "numpy>=1.15", "scipy>=1.5.0", "numba>=0.49.0",
         "dask[array,distributed]>=1.1.0", "distributed>=2.2.0", "bokeh",
         "attrs", "sortedcontainers",
-        "aiokatcp", "astropy", "async_timeout",
+        "aiokatcp", "astropy", "async_timeout>=1.4.0",
         'importlib-resources; python_version < "3.9"',
         "katpoint", "katdal", "katsdpcalproc",
         "katsdpmodels[requests]", "katsdptelstate",

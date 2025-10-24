@@ -278,7 +278,7 @@ class SimData:
     async def capture_done(self):
         for client in self.clients:
             try:
-                with async_timeout.timeout(10):
+                async with async_timeout.timeout(10):
                     await client.wait_connected()
                     await client.request('capture-done')
             except asyncio.TimeoutError:
