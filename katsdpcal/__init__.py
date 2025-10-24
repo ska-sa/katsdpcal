@@ -6,10 +6,16 @@ Calibration pipeline package for MeerKAT.
 """
 
 # Config file location
-from pkg_resources import resource_filename
-param_dir = resource_filename(__name__, 'conf/pipeline_params')
-lsm_dir = resource_filename(__name__, 'conf/sky_models')
-docutils_dir = resource_filename(__name__, 'conf/docutil_style')
+import sys
+
+if sys.version_info >= (3, 9):
+    import importlib.resources as importlib_resources
+else:
+    import importlib_resources
+resources = importlib_resources.files("katsdpcal")
+param_dir = resources.joinpath("conf", "pipeline_params")
+lsm_dir = resources.joinpath("conf", "sky_models")
+docutils_dir = resources.joinpath("conf", "docutil_style")
 
 # BEGIN VERSION CHECK
 # Get package version when locally imported from repo or via -e develop install

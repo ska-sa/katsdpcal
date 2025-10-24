@@ -34,6 +34,7 @@ setup(
         "dask[array,distributed]>=1.1.0", "distributed>=2.2.0", "bokeh",
         "attrs", "sortedcontainers",
         "aiokatcp", "astropy", "async_timeout",
+        'importlib-resources; python_version < "3.9"',
         "katpoint", "katdal", "katsdpcalproc",
         "katsdpmodels[requests]", "katsdptelstate",
         "katsdpservices[argparse,aiomonitor]", "katsdpsigproc", "spead2>=3.0.0",
