@@ -39,6 +39,8 @@ from .report import make_cal_report
 from .scan import slots_slices
 
 logger = logging.getLogger(__name__)
+# Prevent many spurious warnings about large graph sizes
+dask.config.set({'distributed.admin.large-graph-warning-threshold': '20GB'})
 
 
 class State(enum.Enum):
@@ -124,7 +126,7 @@ def shared_empty(shape, dtype):
     .. note:: This only works on UNIX-like systems, not Windows.
     """
     dtype = np.dtype(dtype)
-    items = int(np.product(shape))
+    items = int(np.prod(shape))
     n_bytes = items * dtype.itemsize
     raw = mmap.mmap(-1, n_bytes, mmap.MAP_SHARED)
     array = np.frombuffer(raw, dtype)
@@ -753,7 +755,7 @@ class Accumulator:
             # Give it a chance to stop on its own (from stop heaps)
             logger.info('Waiting for capture to finish (5s timeout)...')
             try:
-                with async_timeout.timeout(5):
+                async with async_timeout.timeout(5):
                     await self._drained_rx_event.wait()
             except asyncio.TimeoutError:
                 self._logger.info('Stopping receiver')

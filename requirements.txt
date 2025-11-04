@@ -11,6 +11,7 @@ dask[array,distributed]
 distributed==2.12.0
 docutils
 heapdict==1.0.1         # for distributed
+importlib-resources
 jsonschema
 matplotlib
 numba

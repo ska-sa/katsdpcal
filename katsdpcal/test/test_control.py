@@ -402,7 +402,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         informs : list of lists
             Informs returned with the reply from each server
         """
-        with async_timeout.timeout(timeout):
+        async with async_timeout.timeout(timeout):
             coros = [server.client.request(name, *args)
                      for server in self.servers]
             results = await asyncio.gather(*coros)
@@ -709,7 +709,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         flags = np.zeros(vis.shape, np.uint8)
         # Set flag on one channel per baseline, to test the baseline permutation.
         for i in range(flags.shape[1]):
-            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
+            flags[i, i] = 1 << np.uint8(FLAG_NAMES.index('ingest_rfi'))
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
@@ -885,7 +885,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
                     )
                     out_flags = items['flags'].value
                     # Mask out the ones that get changed by cal
-                    mask = 1 << FLAG_NAMES.index('cal_rfi')
+                    mask = 1 << np.uint8(FLAG_NAMES.index('cal_rfi'))
                     expected = flags[self.servers[i].parameters['channel_slice']]
                     expected = calprocs.wavg_flags_f(expected, continuum_factor, expected, axis=0)
                     np.testing.assert_array_equal(out_flags & ~mask, expected)
@@ -1059,7 +1059,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         # Set flag on one channel per baseline, to test the baseline permutation.
         for i in range(flags.shape[1]):
-            flags[i, i] = 1 << FLAG_NAMES.index('ingest_rfi')
+            flags[i, i] = 1 << np.uint8(FLAG_NAMES.index('ingest_rfi'))
         weights = rs.uniform(64, 255, vis.shape).astype(np.uint8)
         weights_channel = rs.uniform(1.0, 4.0, (self.n_channels,)).astype(np.float32)
 
