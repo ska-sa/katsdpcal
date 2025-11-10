@@ -183,7 +183,11 @@ def check_applied_gain_sensor(s, telstate, ref_ant, pol, time_range):
     stream_name = telstate['cal_src_streams'][0]
     telstate, capture_block_id, stream_name = view_l0_capture_stream(telstate.root(),
                                                                      capture_block_id, stream_name)
-    timestamps = s.timestamps
+    t0 = telstate['sync_time'] + telstate['first_timestamp']
+    int_time = telstate['int_time']
+    chunk_info = telstate['chunk_info']
+    n_dumps = chunk_info['correlator_data']['shape'][0]
+    timestamps = t0 + np.arange(n_dumps) * int_time
     source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None,
                                 timestamps=timestamps)
     data_source = VisibilityDataV4(source)
@@ -903,8 +907,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
                         if corrected_track:
                             logger.info('Calculate NMAD on Corrected Track')
                             s.summarize_stats(av_corr, target_name + '_nmad_phase')
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to check applied gain: {e}")
 
             s.apply_inplace(solns_to_apply)
 

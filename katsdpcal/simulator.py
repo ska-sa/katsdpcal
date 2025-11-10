@@ -120,7 +120,7 @@ class SimData:
                                'obs_params', f'{correlator_stream}_{ins_name}',
                                f'{correlator_stream}_int_time', f'{correlator_stream}_n_accs',
                                f'{f_engine_stream}_{ins_name}', 'wide_scale_factor_timestamp',
-                               'wide_sync_time', 'chunk_info', 'cal_src_streams']
+                               'wide_sync_time', 'cal_src_streams']
 
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
@@ -345,7 +345,7 @@ class SimData:
         if n_chans % self.n_substreams != 0:
             raise ValueError('number of substreams must divide into the number of channels')
         parameter_dict['sdp_l0_n_chans_per_substream'] = n_chans // self.n_substreams
-        CBID = parameter_dict['sdp_capture_block_id'][1][0]
+        CBID = parameter_dict['sdp_capture_block_id'][-1][0]
 
         # separate keys without times from those with times
         sensor_key_suffixes = ('obs_activity', '_eq', 'cbf_target', 'target_activity',
