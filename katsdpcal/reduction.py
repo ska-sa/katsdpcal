@@ -185,7 +185,7 @@ def check_applied_gain_sensor(s, telstate, ref_ant, pol, time_range):
                                                                      capture_block_id, stream_name)
     t0 = telstate['sync_time'] + telstate['first_timestamp']
     int_time = telstate['int_time']
-    chunk_info = telstate['chunk_info']
+    chunk_info = telstate[f'{capture_block_id}_sdp_l0_chunk_info']
     n_dumps = chunk_info['correlator_data']['shape'][0]
     timestamps = t0 + np.arange(n_dumps) * int_time
     source = TelstateDataSource(telstate, capture_block_id, stream_name, chunk_store=None,
