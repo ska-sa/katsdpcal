@@ -894,19 +894,16 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, sensors=None):
             phase_tag = ['bfcal']
             # summarise phase_nmad
             refant = parameters['refant']
-            try:
-                if any(k in phase_tag for k in taglist):
-                    applied_gain_check = check_applied_gain_sensor(s, telstate=ts,
-                                                                   ref_ant=refant, pol='h',
-                                                                   time_range=[t0, t1])
-                    corrected_track = check_is_corrected(ts, [t0, t1])
-                    if applied_gain_check > 1:
-                        logger.info('Observation is Phase-Up')
-                        if corrected_track:
-                            logger.info('Calculate NMAD on Corrected Track')
-                            s.summarize_stats(av_corr, target_name + '_nmad_phase')
-            except Exception as e:
-                logger.warning(f"Failed to check applied gain: {e}")
+            if any(k in phase_tag for k in taglist):
+                applied_gain_check = check_applied_gain_sensor(s, telstate=ts,
+                                                               ref_ant=refant, pol='h',
+                                                               time_range=[t0, t1])
+                corrected_track = check_is_corrected(ts, [t0, t1])
+                if applied_gain_check > 1:
+                    logger.info('Observation is Phase-Up')
+                    if corrected_track:
+                        logger.info('Calculate NMAD on Corrected Track')
+                        s.summarize_stats(av_corr, target_name + '_nmad_phase')
 
             s.apply_inplace(solns_to_apply)
 
