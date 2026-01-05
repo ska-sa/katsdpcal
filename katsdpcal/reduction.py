@@ -190,8 +190,8 @@ def check_applied_gain_sensor(s, telstate, ref_ant, pol, time_range):
                                 timestamps=timestamps)
     data_source = VisibilityDataV4(source)
 
-    #sensor_name = f'Correlator/Inputs/{ref_ant}{pol}/applied_gain'
-    sensor_name ='antenna_channelised_voltage_input62_eq'
+    # sensor_name = f'Correlator/Inputs/{ref_ant}{pol}/applied_gain'
+    sensor_name = 'antenna_channelised_voltage_input62_eq'
     applied_gain_cat = data_source.sensor.get(sensor_name)
 
     return len(applied_gain_cat.unique_values)
