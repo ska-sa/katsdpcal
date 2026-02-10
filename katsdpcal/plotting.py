@@ -611,14 +611,15 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
                        ms='2', label=f'Average Phase NMAD :{np.nanmean(phase_nmad[:, p]): .3f}',
                        **plot_kwargs)
         axes[idx].set_ylabel('Phase NMAD_{0}'.format(pol[p]))
-        axes[idx].set_xlabel('Frequency (Mhz)')
         axes[idx].legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
         axes[idx].grid(color='grey', which='both', lw=0.1)
-        axes[idx].set_ylim((0, np.nanstd(phase_nmad[:, p])*5))
+        axes[idx].set_ylim((0, np.nanmean(phase_nmad[:, p]) + 5 * np.nanstd(phase_nmad[:, p])))
+
+    l_p = npols - 1
+    axes[l_p].set_xlabel('Frequency (MHz)')
 
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.2)
-
     return fig
 
 
