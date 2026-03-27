@@ -355,11 +355,17 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
     # half the size used in wideband (41.8 MHz) to allow it to fit within a single server
     # in the default 32k, 4 server case
     max_chans_per_server = len(channel_freqs) // servers
-    default_width_chans = min(6400, max_chans_per_server)
+    # The bandwidth calculation below uses channel indices directly, so the
+    # widest valid interval spans n_chans - 1 index steps.
+    default_width_chans = min(6400, max_chans_per_server, n_chans - 1)
     len_window = len(chan_window)
     if len_window >= default_width_chans:
-        bchan = chan_window[len_window // 2] - default_width_chans // 2
-        echan = chan_window[len_window // 2] + default_width_chans // 2
+        center_chan = chan_window[len_window // 2]
+        bchan = max(chan_window[0], center_chan - default_width_chans // 2)
+        echan = bchan + default_width_chans
+        if echan > chan_window[-1]:
+            echan = chan_window[-1]
+            bchan = echan - default_width_chans
 
     # Select the full interval if it is narrower than the default of 6400 chans
     else:
