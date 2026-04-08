@@ -1,5 +1,0 @@
-# References:
-# position: Simbad ICRS
-# flux: Ben Hugo, Modelling of alternative primary calibrator J0825-5010
-#
-J0825-5010, radec, 08:25:26.87, -50:10:38.49, (800 1720 -61.3369 50.9431 -13.5880 1.1664)
