@@ -25,7 +25,7 @@ classifiers = [
 ]
 
 dynamic = ["version"]
-# remove the dependcies that were tied down to be very specific, we should leave lose requirements, like it should just import katdal and not clone the repo
+
 dependencies = [
     "aiokatcp",
     "astropy",
@@ -57,4 +57,17 @@ dependencies = [
     "katsdpsigproc"
 ]
 
-# create project scripts table to make the scripts exceutable
+[project.scripts]
+run_cal = "scripts.run_cal:main"
+run_katsdpcal_sim = "scripts.run_katsdpcal_sim:main"
+sim_ts = "scripts.sim_ts:main"
+sim_data_stream = "scripts.sim_data_stream:main"
+create_test_data = "scripts.create_test_data:main"
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["katsdpcal*", "scripts*"]
+
+[tool.setuptools.package-data]
+katsdpcal = ["conf/*/*"]
