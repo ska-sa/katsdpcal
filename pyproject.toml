@@ -60,8 +60,8 @@ dependencies = [
 [project.scripts]
 run_cal = "scripts.run_cal:main"
 run_katsdpcal_sim = "scripts.run_katsdpcal_sim:main"
-sim_ts = "scripts.sim_ts:main"
-sim_data_stream = "scripts.sim_data_stream:main"
+sim_ts = "scripts.sim_ts:main_sync"
+sim_data_stream = "scripts.sim_data_stream:main_sync"
 create_test_data = "scripts.create_test_data:main"
 
 

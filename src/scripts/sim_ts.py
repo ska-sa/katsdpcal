@@ -22,6 +22,13 @@ def parse_opts():
     return parser.parse_args()
 
 
+def main_sync():
+    """Entry point for console script."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
+
+
 async def main():
     setup_logging()
     opts = parse_opts()
@@ -40,6 +47,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    loop.close()
+    main_sync()
