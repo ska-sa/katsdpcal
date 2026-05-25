@@ -10,7 +10,7 @@ import katsdptelstate
 from katsdpcalproc import pointing
 
 from collections import defaultdict
-from katdal.sensordata import TelstateSensorGetter, SensorCache
+from katdal.sensordata import TelstateSensorGetter, SensorCache, TelstateToStr
 from katdal.h5datav3 import SENSOR_PROPS
 from katdal.visdatav4 import VisibilityDataV4
 from katdal.datasources import TelstateDataSource, view_l0_capture_stream
@@ -139,8 +139,9 @@ def check_is_corrected(telstate, time_range):
                                           st=time_range[0], et=time_range[1],
                                           include_previous=True)[0][0]
     obs_label_key = '{}_obs_label'.format(capture_block_id)
-    obs_label = telstate.get_range(obs_label_key, st=time_range[0], et=time_range[1],
-                                   include_previous=True)
+    telstate_to_str = TelstateToStr(telstate)
+    obs_label = telstate_to_str.get_range(obs_label_key, st=time_range[0], et=time_range[1],
+                                          include_previous=True)
     values, times = zip(*obs_label)
     if 'corrected' in values:
         return True
