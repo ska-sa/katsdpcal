@@ -1,13 +1,17 @@
 ARG KATSDPDOCKERBASE_REGISTRY=harbor.sdp.kat.ac.za/dpp
 
-FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build as build
+FROM $KATSDPDOCKERBASE_REGISTRY/base-build:focaluvpip AS build
 
 # Enable Python 3 venv
 ENV PATH="$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
 
 # Install python dependencies
-COPY requirements.txt /tmp/install/
-RUN install_pinned.py -r /tmp/install/requirements.txt
+COPY --chown=kat:kat requirements.txt /tmp/install/requirements.txt
+#RUN install_pinned.py -r /tmp/install/requirements.txt
+
+RUN chmod -R 777 /tmp/install && \
+    uv pip compile /tmp/install/requirements.txt -o /tmp/install/requirements.lock
+RUN uv pip sync /tmp/install/requirements.lock --strict
 
 # Install the current package
 COPY --chown=kat:kat . /tmp/install/katsdpcal
@@ -20,7 +24,7 @@ WORKDIR /tmp
 
 #######################################################################
 
-FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-runtime
+FROM $KATSDPDOCKERBASE_REGISTRY/base-runtime:focaluvpip
 LABEL maintainer="sdpdev+katsdpcal@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve3 /home/kat/ve3
