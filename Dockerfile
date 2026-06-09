@@ -15,10 +15,14 @@ RUN uv pip sync /tmp/install/requirements.lock --strict
 
 # Install the current package
 COPY --chown=kat:kat . /tmp/install/katsdpcal
-WORKDIR /tmp/install/katsdpcal
-RUN python ./setup.py clean
-RUN pip install --no-deps .
-RUN pip check
+#WORKDIR /tmp/install/katsdpcal
+#RUN python ./setup.py clean
+#RUN pip install --no-deps .
+#RUN pip check
+RUN cd /tmp/install/katsdpcal && \
+    python ./setup.py clean   && \
+    uv pip install --no-deps . && \
+    uv pip check
 
 WORKDIR /tmp
 
