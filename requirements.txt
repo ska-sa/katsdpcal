@@ -1,4 +1,4 @@
--c /tmp/install/base-requirements.txt
+-r /tmp/install/base-requirements.txt
 aiokatcp
 astropy
 async_timeout
