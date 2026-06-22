@@ -1,5 +1,4 @@
--d https://raw.githubusercontent.com/ska-sa/katsdpdockerbase/master/docker-base-build/base-requirements.txt
-
+-c /tmp/install/base-requirements.txt
 aiokatcp
 astropy
 async_timeout
