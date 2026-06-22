@@ -7,7 +7,6 @@ ENV PATH="$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
 
 # Install python dependencies
 COPY  --chown=kat:kat requirements.txt /tmp/install/
-COPY --chown=kat:kat base-requirements.txt /tmp/install/
 #RUN install_pinned.py -r /tmp/install/requirements.txt
 RUN chmod -R 777 /tmp/install
 RUN uv pip compile /tmp/install/requirements.txt \
