@@ -105,6 +105,7 @@ class SimData:
         correlator_stream = telstate.view('sdp_l0')['src_streams'][0]
         f_engine_stream = telstate.view(correlator_stream)['src_streams'][0]
         ins_name = 'instrument_dev_name'
+        f_engine_instrument = telstate[f'{f_engine_stream}_{ins_name}']
         # create sensor dictionary here and add them directly to the telstate :)
 
         param_dict['sdp_l0_bandwidth'] = spw.channel_width * spw.num_chans
@@ -119,8 +120,9 @@ class SimData:
                                'sdp_l0_first_timestamp', 'sub_pool_resources', 'sub_product',
                                'obs_params', f'{correlator_stream}_{ins_name}',
                                f'{correlator_stream}_int_time', f'{correlator_stream}_n_accs',
-                               f'{f_engine_stream}_{ins_name}', 'wide_scale_factor_timestamp',
-                               'wide_sync_time', 'cal_src_streams']
+                               f'{f_engine_stream}_{ins_name}',
+                               f'{f_engine_instrument}_scale_factor_timestamp',
+                               f'{f_engine_instrument}_sync_time', 'cal_src_streams']
 
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
@@ -145,7 +147,8 @@ class SimData:
 
             pol_list = ['h', 'v']
             for pol in pol_list:
-                voltage_sensor = 'wide_antenna_channelised_voltage_{0}{1}_eq'.format(ant.name, pol)
+                voltage_sensor = (f'{f_engine_instrument}'
+                                  f'_antenna_channelised_voltage_{ant.name}{pol}_eq')
                 param_dict[voltage_sensor] = telstate.get_range(voltage_sensor, st=0)
         return param_dict
 
