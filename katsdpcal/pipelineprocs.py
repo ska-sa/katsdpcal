@@ -256,6 +256,30 @@ def _get_rfi_mask(telstate_l0):
 
 
 def _get_band_mask(telstate_l0):
+    """
+    Get band mask model, but skip for narrowband with cbfplus-proxy API.
+
+    For narrowband observations (≤ 107.0 MHz) using the cbfplus-proxy API,
+    the band mask is skipped. For wideband observations or narrowband with other APIs,
+    the standard band edge fetching is performed.
+    """
+    # Check if this is a narrowband observation with 'data-cbfplus-proxy'(MeerKAT+ correlator) API
+    try:
+        bandwidth = telstate_l0.get('sdp_l0_bandwidth')
+        bandwidth_mhz = (bandwidth * u.Hz).to(u.MHz).value
+        cbf_api_version = telstate_l0.get('cbf_api_version', '')
+        # Skip band mask only for narrowband + cbfplus-proxy combination
+        if bandwidth_mhz <= 107.0 and isinstance(cbf_api_version, str) \
+                and cbf_api_version.startswith('data-cbfplus-proxy'):
+            logger.info('Skipping band mask for narrowband (%.1f MHz) with cbfplus-proxy API: %s',
+                        bandwidth_mhz, cbf_api_version)
+            return None
+    except (KeyError, AttributeError) as exc:
+        logger.warning('Could not get cbf_api_version, proceeding with band mask fetch: %s', exc)
+
+    # Normal band mask fetching for:
+    # - Wide-band observations
+    # - Narrow-band observations with the non-MeerKAT-plus correlator
     with katsdpmodels.fetch.requests.TelescopeStateFetcher(telstate_l0) as fetcher:
         correlator_stream = telstate_l0['src_streams'][0]
         f_engine_stream = telstate_l0.view(correlator_stream, exclusive=True)['src_streams'][0]
