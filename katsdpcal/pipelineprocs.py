@@ -255,6 +255,12 @@ def _get_rfi_mask(telstate_l0):
             return None
 
 
+def cbf_flavour(telstate_l0):
+    """Return the CBF flavour ('MK+' or 'MK') based on telstate cbf_api_version."""
+    api_version = telstate_l0['cbf_api_version']
+    return 'MK+' if api_version.startswith('data-cbfplus-proxy') else 'MK'
+
+
 def _get_band_mask(telstate_l0):
     """
     Get band mask model, but skip for narrowband with cbfplus-proxy API.
@@ -263,16 +269,13 @@ def _get_band_mask(telstate_l0):
     the band mask is skipped. For wideband observations or narrowband with other APIs,
     the standard band edge fetching is performed.
     """
-    # Check if this is a narrowband observation with 'data-cbfplus-proxy'(MeerKAT+ correlator) API
+    # Check if this is a narrowband observation with 'data-cbfplus-proxy' (MeerKAT+ correlator) API
     try:
-        bandwidth = telstate_l0.get('sdp_l0_bandwidth')
+        bandwidth = telstate_l0['sdp_l0_bandwidth']
         bandwidth_mhz = (bandwidth * u.Hz).to(u.MHz).value
-        cbf_api_version = telstate_l0.get('cbf_api_version', '')
-        # Skip band mask only for narrowband + cbfplus-proxy combination
-        if bandwidth_mhz <= 107.0 and isinstance(cbf_api_version, str) \
-                and cbf_api_version.startswith('data-cbfplus-proxy'):
-            logger.info('Skipping band mask for narrowband (%.1f MHz) with cbfplus-proxy API: %s',
-                        bandwidth_mhz, cbf_api_version)
+        if bandwidth_mhz <= 107.0 and cbf_flavour(telstate_l0) == 'MK+':
+            logger.info('Skipping band mask for narrowband (%.1f MHz) with MK+ correlator',
+                        bandwidth_mhz)
             return None
     except (KeyError, AttributeError) as exc:
         logger.warning('Could not get cbf_api_version, proceeding with band mask fetch: %s', exc)
