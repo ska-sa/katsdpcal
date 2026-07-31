@@ -6,7 +6,6 @@ It generates telstate state information and a SPEAD stream based on an
 existing katdal dataset or Measurement Set.
 """
 
-from dask.array.routines import append
 import logging
 import time
 import asyncio
