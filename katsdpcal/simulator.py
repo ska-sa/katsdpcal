@@ -6,6 +6,7 @@ It generates telstate state information and a SPEAD stream based on an
 existing katdal dataset or Measurement Set.
 """
 
+from dask.array.routines import append
 import logging
 import time
 import asyncio
@@ -120,7 +121,11 @@ class SimData:
                                'obs_params', f'{correlator_stream}_{ins_name}',
                                f'{correlator_stream}_int_time', f'{correlator_stream}_n_accs',
                                f'{f_engine_stream}_{ins_name}', 'wide_scale_factor_timestamp',
-                               'wide_sync_time', 'cal_src_streams', 'cbf_api_version']
+                               'wide_sync_time', 'cal_src_streams']
+
+        # Include cbf_api_version only when the sensor exists in the telstate.
+        if 'cbf_api_version' in telstate:
+            telstate_immutables.append('cbf_api_version')
 
         for key in telstate_immutables:
             param_dict[key] = telstate[key]

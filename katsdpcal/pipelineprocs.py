@@ -271,7 +271,7 @@ def _get_band_mask(telstate_l0):
     """
     # Check if this is a narrowband observation with 'data-cbfplus-proxy' (MeerKAT+ correlator) API
     try:
-        bandwidth = telstate_l0['sdp_l0_bandwidth']
+        bandwidth = telstate_l0['bandwidth']
         bandwidth_mhz = (bandwidth * u.Hz).to(u.MHz).value
         if bandwidth_mhz <= 107.0 and cbf_flavour(telstate_l0) == 'MK+':
             logger.info('Skipping band mask for narrowband (%.1f MHz) with MK+ correlator',
