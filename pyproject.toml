@@ -58,7 +58,7 @@ dependencies = [
 ]
 
 [tool.setuptools_scm]
-write_to = "katsdpcal/_version.py"
+write_to = "src/katsdpcal/_version.py"
 fallback_version = "0.0.0"
 git_describe_command = "git describe --dirty --tags --long --exclude python2"
 
