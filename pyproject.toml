@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"] 
+requires = ["setuptools>=64", "setuptools_scm"] 
 build-backend = "setuptools.build_meta" 
 
 
@@ -46,16 +46,21 @@ dependencies = [
     "scipy",
     "sortedcontainers",
     "spead2",
-    "tblib",        
+    "tblib",
     "zict",
     "katpoint",
-    "katdal", 
+    "katdal",
     "katsdpcalproc",
     "katsdpmodels[requests]",
     "katsdptelstate",
     "katsdpservices[argparse,aiomonitor]",
     "katsdpsigproc"
 ]
+
+[tool.setuptools_scm]
+write_to = "katsdpcal/_version.py"
+fallback_version = "0.0.0"
+git_describe_command = "git describe --dirty --tags --long --exclude python2"
 
 [project.scripts]
 run_cal = "scripts.run_cal:main"
