@@ -11,7 +11,7 @@ from katsdpcalproc.solutions import (
     CalSolutionStore,
     CalSolutionStoreLatest,
 )
-from .. import reduction
+from katsdpcal import reduction
 
 
 class DummyError(Exception):
