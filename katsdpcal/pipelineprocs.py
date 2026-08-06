@@ -262,19 +262,12 @@ def cbf_flavour(telstate_l0):
 
 
 def _get_band_mask(telstate_l0):
-    """
-    Get band mask model, but skip for narrowband with cbfplus-proxy API.
-
-    For narrowband observations (≤ 107.0 MHz) using the cbfplus-proxy API,
-    the band mask is skipped. For wideband observations or narrowband with other APIs,
-    the standard band edge fetching is performed.
-    """
     # Check if this is a narrowband observation with 'data-cbfplus-proxy' (MeerKAT+ correlator) API
-    bandwidth = telstate_l0['bandwidth']* u.Hz
+    bandwidth = telstate_l0['bandwidth'] * u.Hz
     if bandwidth <= 107.0 * u.MHz and cbf_flavour(telstate_l0) == 'MK+':
         logger.info('Skipping band mask for narrowband (%.1f) with MK+ correlator', bandwidth)
         return None
-        
+
     # Normal band mask fetching for:
     # - Wide-band observations
     # - Narrow-band observations with the non-MeerKAT-plus correlator
