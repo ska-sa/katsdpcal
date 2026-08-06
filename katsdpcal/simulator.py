@@ -124,6 +124,10 @@ class SimData:
                                f'{f_engine_instrument}_scale_factor_timestamp',
                                f'{f_engine_instrument}_sync_time', 'cal_src_streams']
 
+        # Include cbf_api_version only when the sensor exists in the telstate.
+        if 'cbf_api_version' in telstate:
+            telstate_immutables.append('cbf_api_version')
+
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
 

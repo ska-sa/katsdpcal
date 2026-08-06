@@ -255,7 +255,22 @@ def _get_rfi_mask(telstate_l0):
             return None
 
 
+def cbf_flavour(telstate_l0):
+    """Return the CBF flavour ('MK+' or 'MK') based on telstate cbf_api_version."""
+    api_version = telstate_l0.get('cbf_api_version', 'data-cbf-proxy-0.1')
+    return 'MK+' if api_version.startswith('data-cbfplus-proxy') else 'MK'
+
+
 def _get_band_mask(telstate_l0):
+    # Check if this is a narrowband observation with 'data-cbfplus-proxy' (MeerKAT+ correlator) API
+    bandwidth = telstate_l0['bandwidth'] * u.Hz
+    if bandwidth <= 107.0 * u.MHz and cbf_flavour(telstate_l0) == 'MK+':
+        logger.info('Skipping band mask for narrowband (%.1f) with MK+ correlator', bandwidth)
+        return None
+
+    # Normal band mask fetching for:
+    # - Wide-band observations
+    # - Narrow-band observations with the non-MeerKAT-plus correlator
     with katsdpmodels.fetch.requests.TelescopeStateFetcher(telstate_l0) as fetcher:
         correlator_stream = telstate_l0['src_streams'][0]
         f_engine_stream = telstate_l0.view(correlator_stream, exclusive=True)['src_streams'][0]
