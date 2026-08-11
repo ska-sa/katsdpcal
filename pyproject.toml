@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "versioningit"] 
+requires = ["setuptools>=64", "versioningit"] 
 build-backend = "setuptools.build_meta" 
 
 
@@ -59,6 +59,7 @@ dependencies = [
 
 [tool.versioningit]
 write = {file = "src/katsdpcal/_version.py"}
+default-version = "0.0.0"
 
 [tool.versioningit.vcs]
 method = "git"
