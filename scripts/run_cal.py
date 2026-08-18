@@ -239,7 +239,7 @@ def setup_logger(log_name, log_path='.'):
     formatter.datefmt = '%Y-%m-%d %H:%M:%S'
     formatter.converter = time.gmtime
 
-    handler = logging.FileHandler('{0}/{1}'.format(log_path, log_name))
+    handler = logging.FileHandler(f'{log_path}/{log_name}')
     handler.setFormatter(formatter)
     logging.getLogger('').addHandler(handler)
 
@@ -294,7 +294,7 @@ def main():
             mode = modes.get('narrowband')[1]
         else:
             mode = modes.get('wideband')
-        param_filename = 'pipeline_parameters_meerkat_{}_{}.txt'.format(band, mode)
+        param_filename = f'pipeline_parameters_meerkat_{band}_{mode}.txt'
         param_file = os.path.join(param_dir, param_filename)
         logger.info('Parameter file for %s-band %s: %s', band, mode, param_file)
     else:

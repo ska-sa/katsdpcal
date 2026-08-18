@@ -86,15 +86,15 @@ def create_pane(sname, tmserver, keep_session=False):
     if not keep_session:
         try:
             tmserver.kill_session(sname)
-            print('killed session {},'.format(sname), end=' ')
+            print(f'killed session {sname},', end=' ')
         except libtmux.exc.LibTmuxException:
-            print('session {} did not exist,'.format(sname), end=' ')
+            print(f'session {sname} did not exist,', end=' ')
     # start new session
     try:
         tmserver.new_session(sname)
-        print('created session {}'.format(sname))
+        print(f'created session {sname}')
     except libtmux.exc.TmuxSessionExists:
-        print('session {} already exists'.format(sname))
+        print(f'session {sname} already exists')
     # get pane
     session = tmserver.find_where({"session_name": sname})
     return session.windows[0].panes[0]
@@ -120,7 +120,7 @@ if __name__ == '__main__':
 
     # set up TS in tmux pane
     sim_ts_pane = create_pane('sim_ts', tmserver, keep_session=opts.keep_sessions)
-    sim_ts_pane.cmd('send-keys', 'sim_ts.py --telstate {0} --file {1}'
+    sim_ts_pane.cmd('send-keys', 'sim_ts.py --telstate {} --file {}'
                     .format(opts.telstate, first_file_fullpath))
     sim_ts_pane.enter()
 
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         # Get full path of h5 file
         file_fullpath = os.path.abspath(f)
         sim_data_pane.cmd(
-            'send-keys', 'sim_data_stream.py --telstate {0} --file {1} --l0-rate {2} '
-            '--max-scans {3}; sleep 60. ; '
+            'send-keys', 'sim_data_stream.py --telstate {} --file {} --l0-rate {} '
+            '--max-scans {}; sleep 60. ; '
             .format(opts.telstate, file_fullpath, opts.l0_rate, opts.max_scans))
     sim_data_pane.enter()

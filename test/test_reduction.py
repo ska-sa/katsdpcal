@@ -34,7 +34,7 @@ class TestSharedSolve(unittest.TestCase):
                     'G': 'product_G',
                     'K': 'product_K',
                     'KCROSS': 'product_KCROSS',
-                    'B': 'product_B{}'.format(i)
+                    'B': f'product_B{i}'
                 },
                 'channel_freqs': np.arange(self.server_chans)  # only length matters
             } for i in range(self.n_servers)]

@@ -104,11 +104,11 @@ def check_noise_diode(telstate, ant_names, time_range):
         True for each antenna with noise diode on at some time in `time_range`
     """
     sub_band = telstate['sub_band']
-    nd_key = 'dig_{}_band_noise_diode'.format(sub_band)
+    nd_key = f'dig_{sub_band}_band_noise_diode'
     nd_on = np.full(len(ant_names), False)
     for n, ant in enumerate(ant_names):
         try:
-            value_times = telstate.get_range('{}_{}'.format(ant, nd_key),
+            value_times = telstate.get_range(f'{ant}_{nd_key}',
                                              st=time_range[0], et=time_range[1],
                                              include_previous=True)
         except KeyError:
@@ -138,7 +138,7 @@ def check_is_corrected(telstate, time_range):
     capture_block_id = telstate.get_range('sdp_capture_block_id',
                                           st=time_range[0], et=time_range[1],
                                           include_previous=True)[0][0]
-    obs_label_key = '{}_obs_label'.format(capture_block_id)
+    obs_label_key = f'{capture_block_id}_obs_label'
     obs_label = telstate.get_range(obs_label_key, st=time_range[0], et=time_range[1],
                                    include_previous=True)
     values, times = zip(*obs_label)
@@ -322,7 +322,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
             # First use
             seq = 0
         _shared_solve_seq.value = seq + 1
-    shared_key = 'shared_solve_{}'.format(seq)
+    shared_key = f'shared_solve_{seq}'
 
     if solution_store is not None:
         telstate_key = parameters['product_names'][solution_store.soltype]
@@ -351,7 +351,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
                         'Solution is not of type :class:`~.CalSolution` or `~.CalSolutions`'
                         ' and won\'t be stored in solution store')
             else:
-                raise TypeError('Unhandled solution type {}'.format(type(soln)))
+                raise TypeError(f'Unhandled solution type {type(soln)}')
         except Exception as error:
             add_info(('Exception', pickle.dumps(error)))
             raise
@@ -395,7 +395,7 @@ def shared_solve(telstate, parameters, solution_store, bchan, echan,
         elif info[0] == 'soln':
             soln = info[1]
         else:
-            raise ValueError('Unknown info type {}'.format(info[0]))
+            raise ValueError(f'Unknown info type {info[0]}')
         if solution_store is not None:
             if isinstance(soln, (solutions.CalSolution, solutions.CalSolutions)):
                 # We don't pass telstate, because we got the value from telstate
@@ -440,10 +440,10 @@ def shared_B_interp_nans(telstate, parameters, b_soln, st, et):
                 parts.append(b_soln.values)
 
             else:
-                key = 'product_B{0}'.format(n)
+                key = f'product_B{n}'
                 try:
                     telstate.wait_key(key, lambda value, ts: ts > st, 30)
-                    valid_part = telstate.get_range('product_B{0}'.format(n), st, et)
+                    valid_part = telstate.get_range(f'product_B{n}', st, et)
                     parts.append(valid_part[0][0])
 
                 except (KeyError, katsdptelstate.TimeoutError):
@@ -587,9 +587,9 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
         target = katpoint.Target(target_str)
         target_name = target.name
         logger.info('-----------------------------------')
-        logger.info('Target: {0}'.format(target_name))
-        logger.info('  Timestamps: {0}'.format(n_times))
-        logger.info('  Time:       {0} - {1}'.format(
+        logger.info(f'Target: {target_name}')
+        logger.info(f'  Timestamps: {n_times}')
+        logger.info('  Time:       {} - {}'.format(
             time.strftime("%H:%M:%S", time.gmtime(t0)),
             time.strftime("%H:%M:%S", time.gmtime(t1))))
 
@@ -599,7 +599,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
         if not taglist:
             logger.info('  Tags:   None')
             continue
-        logger.info('  Tags:       {0}'.format(taglist,))
+        logger.info(f'  Tags:       {taglist}')
         # ---------------------------------------
         # set up scan
         s = Scan(data, scan_slice, dump_period,
@@ -613,7 +613,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
             continue
 
         # Do we have a model for this source?
-        model_key = 'model_{0}'.format(target_name)
+        model_key = f'model_{target_name}'
         try:
             model_params = ts[model_key]
         except KeyError:
@@ -621,10 +621,10 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
             if model_params is not None:
                 s.add_model(model_params)
                 ts[model_key] = model_params
-                logger.info('   Model file: {0}'.format(model_file))
+                logger.info(f'   Model file: {model_file}')
         else:
             s.add_model(model_params)
-        logger.debug('Model parameters for source {0}: {1}'.format(
+        logger.debug('Model parameters for source {}: {}'.format(
             target_name, s.model_raw_params))
 
         # ---------------------------------------
@@ -671,7 +671,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
 
             # ---------------------------------------
             # G solution
-            logger.info('Solving for G on beamformer calibrator {0}'.format(target_name,))
+            logger.info(f'Solving for G on beamformer calibrator {target_name}')
             # get B solutions to apply and interpolate them to scan timestamps along with K
             solns_to_apply.append(s.interpolate(b_soln))
 
@@ -769,7 +769,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
                 # ---------------------------------------
                 # preliminary G solution
                 logger.info(
-                    'Solving for preliminary G on KCROSS calibrator {0}'.format(target_name,))
+                    f'Solving for preliminary G on KCROSS calibrator {target_name}')
                 # solve (pre-applying given solutions)
                 pre_g_soln = shared_solve(ts, parameters, None,
                                           parameters['k_bchan'], parameters['k_echan'],
@@ -925,7 +925,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
                 target_slices.append(scan_slice)
 
                 # flag calibrated target
-                logger.info('Flagging calibrated target {0}'.format(target_name,))
+                logger.info(f'Flagging calibrated target {target_name}')
                 s.rfi(targ_flagger, sensors=sensors)
 
             # summarize corrected data for data with cal tags

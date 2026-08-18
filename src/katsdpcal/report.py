@@ -59,7 +59,7 @@ class rstReport:
         self.write_heading(heading, '+')
 
     def write_color(self, text, color, width):
-        string = ":{0}:`{1}`".format(color, text).ljust(width)
+        string = f":{color}:`{text}`".ljust(width)
         self.write(string)
 
     def writeln(self, line=None):
@@ -111,7 +111,7 @@ def insert_fig(report_path, report, fig, name=None):
     """
     if name is None:
         name = str(fig)
-    figname = "{}.png".format(name)
+    figname = f"{name}.png"
     fig.savefig(os.path.join(report_path, figname), bbox_inches='tight')
     # closing the plot is necessary to relase the memory
     #  (this is a pylab issue)
@@ -145,7 +145,7 @@ def write_bullet_if_present(report, table, var_text, var_name, transform=None):
     value = table.get(var_name, 'unknown')
     if transform is not None:
         value = transform(value)
-    report.writeln('* {0}:  {1}'.format(var_text, value))
+    report.writeln(f'* {var_text}:  {value}')
 
 
 def _get_units(target, av_corr, flux_cal={}):
@@ -255,9 +255,9 @@ def write_summary(report, ts, stream_name, parameters, targets, st=None, et=None
 
     report.writeln('Source list:')
     report.writeln()
-    target_names = list(set(katpoint.Target(target).name for target in targets))
+    target_names = list({katpoint.Target(target).name for target in targets})
     for target in target_names:
-        report.writeln('* {0:s}'.format(target))
+        report.writeln(f'* {target:s}')
     if not target_names:
         report.writeln('* Unknown')
 
@@ -296,9 +296,9 @@ def write_table_timerow(report, colnames, times, data):
 
     # add each time row to the table
     for t, d in zip(timestrings, data):
-        data_string = " ".join(["{:.3f}".format(di.real,).ljust(col_width)
+        data_string = " ".join([f"{di.real:.3f}".ljust(col_width)
                                 for di in np.atleast_1d(d)])
-        report.write("{}".format(t,).ljust(col_width + 1))
+        report.write(f"{t}".ljust(col_width + 1))
         report.writeln(data_string)
 
     # table footer
@@ -328,7 +328,7 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
 
     # create table header
     timestrings = [utc_tstr(t, day=True) for t in times]
-    header = " ".join(["{}".format(t,).ljust(col_width) for t in timestrings])
+    header = " ".join([f"{t}".ljust(col_width) for t in timestrings])
     header = 'Ant'.ljust(col_width + 1) + header
 
     # write table header
@@ -343,13 +343,13 @@ def write_table_timecol(report, antenna_names, times, data, ave=False):
         if 'refant' in a:
             report.write_color(a, 'green', col_width + 1)
             for di in d:
-                report.write_color("{:.3f}".format(di.real,), 'green', col_width + 1)
+                report.write_color(f"{di.real:.3f}", 'green', col_width + 1)
         else:
             report.write(a.ljust(col_width + 1))
             for di in d:
                 # highlight NaN solutions in red
                 if np.isnan(di):
-                    report.write_color("{:.3f}".format(di.real,), 'red', col_width + 1)
+                    report.write_color(f"{di.real:.3f}", 'red', col_width + 1)
                 else:
                     report.write(" {:<{}.3f}".format(di, col_width + 1))
         report.writeln()
@@ -393,8 +393,8 @@ def write_flux_cal(report, flux_cal, flux_std, parameters, targets, telstate):
         freqs = parameters['channel_freqs_all'][g_bchan:g_echan + 1] / 1e6
 
         report.write_heading_2('Flux Calibration')
-        flux_desc = '{:.2f} - {:.2f} MHz'.format(freqs[0], freqs[-1])
-        report.writeln('Frequency range of quoted flux: **{}**'.format(flux_desc))
+        flux_desc = f'{freqs[0]:.2f} - {freqs[-1]:.2f} MHz'
+        report.writeln(f'Frequency range of quoted flux: **{flux_desc}**')
 
         # create table header
         header = ['Calibrator', 'Measured Flux', 'Model Flux']
@@ -417,13 +417,13 @@ def write_flux_cal(report, flux_cal, flux_std, parameters, targets, telstate):
             model_key = name + '_model_flux'
             if model_key in telstate:
                 flux_density = telstate.get(model_key)
-                model_desc = '{:.3f} Jy'.format(flux_density)
+                model_desc = f'{flux_density:.3f} Jy'
 
             else:
                 model_desc = ''
 
             if name in flux_cal.keys():
-                flux_desc = '{:.3f} +/- {:.3f} Jy'.format(flux_cal[name], flux_std[name])
+                flux_desc = f'{flux_cal[name]:.3f} +/- {flux_std[name]:.3f} Jy'
                 for entry in [name, flux_desc, model_desc]:
                     report.write('{:<{}}'.format(entry, col_width + 1))
                 report.writeln()
@@ -471,7 +471,7 @@ def write_elevation(report, report_path, targets, antennas, refant_index, av_cor
         names.append(katpoint.Target(cal).name)
         el.append(el_cal)
 
-    plot_title = 'Elevation vs Time for Antenna: {0}'.format(antenna.name)
+    plot_title = f'Elevation vs Time for Antenna: {antenna.name}'
     plot = plotting.plot_el_v_time(names, ts, el, title=plot_title)
     insert_fig(report_path, report, plot, name='El_v_time')
 
@@ -555,7 +555,7 @@ def write_hv(report, report_path, targets, av_corr,
         key = 'auto_cross'
     else:
         heading3 = 'Cross Hand Cross-correlations,\
-                    Baselines to the reference antenna : {0}'.format(refant_name)
+                    Baselines to the reference antenna : {}'.format(refant_name)
         key = 'cross'
 
     report.write_heading_1(
@@ -570,7 +570,7 @@ def write_hv(report, report_path, targets, av_corr,
 
         report.write_heading_3(heading3)
         # Get cross hand auto-correlation data
-        av_data, av_times = zip(*av_corr['{}_{}'.format(target_name, key)])
+        av_data, av_times = zip(*av_corr[f'{target_name}_{key}'])
         av_data = np.stack(av_data)
 
         # Get channel index in correlator channels
@@ -581,15 +581,15 @@ def write_hv(report, report_path, targets, av_corr,
         for ti in range(av_data.shape[0]):
             report.writeln()
             t = utc_tstr(av_times[ti])
-            report.writeln('Time : {0}'.format(t))
+            report.writeln(f'Time : {t}')
             for idx in range(0, av_data.shape[-1], ANT_CHUNKS):
                 if auto:
                     plot_title = 'Cross Hand Phase vs Frequency'
-                    plot_name = 'HV_v_Freq_{0}_{1}'.format(ti, idx)
+                    plot_name = f'HV_v_Freq_{ti}_{idx}'
                 else:
-                    plot_title = 'Calibrator: {0}, tags are: {1}'.format(
+                    plot_title = 'Calibrator: {}, tags are: {}'.format(
                         target_name, ', '.join(tags))
-                    plot_name = 'HV_v_Freq_{0}_ti_{1}_{2}'.format(
+                    plot_name = 'HV_v_Freq_{}_ti_{}_{}'.format(
                         target_name.replace(' ', '_'), ti, idx)
 
                 data = av_data[ti, ..., idx : idx + ANT_CHUNKS]
@@ -633,7 +633,7 @@ def write_ng_freq(report, report_path, targets, av_corr,
             'Corrected Amp and Phase vs Frequency, delay and bandpass calibrators ')
         report.writeln()
         report.write_heading_3(
-            'Baselines to the reference antenna : {0}'.format(refant_name))
+            f'Baselines to the reference antenna : {refant_name}')
 
     for cal in targets:
         kat_target = katpoint.Target(cal)
@@ -641,9 +641,9 @@ def write_ng_freq(report, report_path, targets, av_corr,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Retrieve visibilities on baselines to the reference antenna
-        ant_data, av_times = zip(*av_corr['{}_nog_spec'.format(target_name)])
+        ant_data, av_times = zip(*av_corr[f'{target_name}_nog_spec'])
         ant_data = np.stack(ant_data)
-        logger.info(' Corrected data for {0} shape: {1}'.format(target_name, ant_data.shape))
+        logger.info(f' Corrected data for {target_name} shape: {ant_data.shape}')
 
         # Get channel index in correlator channels
         n_av_chan = ant_data.shape[-3]
@@ -661,8 +661,8 @@ def write_ng_freq(report, report_path, targets, av_corr,
         for ti in range(len(av_times)):
             report.writeln()
             t = utc_tstr(av_times[ti])
-            report.writeln('Time : {0}'.format(t))
-            plot_title = 'Calibrator: {0} , tags are: {1}'.format(target_name, ', '.join(tags))
+            report.writeln(f'Time : {t}')
+            plot_title = 'Calibrator: {} , tags are: {}'.format(target_name, ', '.join(tags))
 
             # Only plot 16 antennas per plot
             for idx in range(0, ant_data.shape[-1], ANT_CHUNKS):
@@ -671,7 +671,7 @@ def write_ng_freq(report, report_path, targets, av_corr,
                     antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
                     freq_range=freq_range, title=plot_title, pol=pol, amp_model=flux_density,
                     units=units)
-                insert_fig(report_path, report, plot, name='Corr_v_Freq_{0}_ti_{1}_{2}'.format(
+                insert_fig(report_path, report, plot, name='Corr_v_Freq_{}_ti_{}_{}'.format(
                     target_name.replace(' ', '_'), ti, idx))
                 report.writeln()
 
@@ -713,7 +713,7 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
         suffix = ('', 'all target fields')
 
     if len(targets) > 0:
-        report.write_heading_2('Corrected Amp{0} vs Frequency, {1}'.format(suffix[0], suffix[1]))
+        report.write_heading_2(f'Corrected Amp{suffix[0]} vs Frequency, {suffix[1]}')
         report.writeln()
         report.write_heading_3('All baselines, averaged per antenna')
 
@@ -723,13 +723,13 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Get averaged spectrum for gain calibrated targets
-        av_data, av_flags, av_weights = da.compute(*av_corr['{0}_g_spec'.format(target_name)][0])
+        av_data, av_flags, av_weights = da.compute(*av_corr[f'{target_name}_g_spec'][0])
         av_data[av_flags] = np.nan
         # flux calibrate gain calibrators
         if target_name in flux_cal.keys():
             flux = flux_cal[target_name]
             av_data *= flux
-        logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
+        logger.info(f' Corrected data for {target_name} shape: {av_data.shape}')
 
         # Get channel index in correlator channels
         n_av_chan = av_data.shape[-3]
@@ -745,10 +745,10 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
 
         # Set the plot label
         if is_calibrator:
-            plot_title = 'Calibrator: {0} , tags are {1}'.format(target_name, ', '.join(tags))
+            plot_title = 'Calibrator: {} , tags are {}'.format(target_name, ', '.join(tags))
             amp = False
         else:
-            plot_title = 'Target: {0}'.format(target_name)
+            plot_title = f'Target: {target_name}'
             amp = True
 
         # turn flagged data into NaN's so it doesn't appear in the plots
@@ -761,7 +761,7 @@ def write_g_freq(report, report_path, flux_cal, targets, av_corr, antenna_names,
                 freq_range, plot_title, amp=amp, pol=pol, amp_model=flux_density, units=units)
 
             insert_fig(report_path, report, plot,
-                       name='Corr_v_Freq_{0}_{1}'.format(target_name.replace(" ", "_"), idx))
+                       name='Corr_v_Freq_{}_{}'.format(target_name.replace(" ", "_"), idx))
             report.writeln()
 
 
@@ -825,7 +825,7 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
             plot = plotting.plot_corr_v_time(
                 times, av_data[..., idx : idx + ANT_CHUNKS],
                 antenna_names=antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
-            insert_fig(report_path, report, plot, name='Phase_v_Time_{0}'.format(idx))
+            insert_fig(report_path, report, plot, name=f'Phase_v_Time_{idx}')
             report.writeln()
 
         report.write_heading_2(
@@ -841,7 +841,7 @@ def write_g_time(report, report_path, flux_cal, targets, av_corr,
                                              antenna_names=antenna_names[idx : idx + ANT_CHUNKS],
                                              pol=pol, units=units)
 
-            insert_fig(report_path, report, plot, name='Amp_v_Time_{0}'.format(idx))
+            insert_fig(report_path, report, plot, name=f'Amp_v_Time_{idx}')
             report.writeln()
 
 
@@ -887,7 +887,7 @@ def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
 
     if len(targets) > 0:
         report.write_heading_2(
-            'Amp{0} vs UVdist, {1}'.format(suffix[0], suffix[1]))
+            f'Amp{suffix[0]} vs UVdist, {suffix[1]}')
         report.write_heading_3('All baselines')
 
     # Plot vs UV distance for targets with gains applied by the pipeline.
@@ -897,13 +897,13 @@ def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
 
         # Get averaged data on all baselines
-        av_data, av_times = zip(*av_corr['{}_g_bls'.format(target_name)])
+        av_data, av_times = zip(*av_corr[f'{target_name}_g_bls'])
         av_data = np.stack(av_data)
         # flux calibrate gain calibrators
         if target_name in flux_cal.keys():
             flux = flux_cal[target_name]
             av_data *= flux
-        logger.info(' Corrected data for {0} shape: {1}'.format(target_name, av_data.shape))
+        logger.info(f' Corrected data for {target_name} shape: {av_data.shape}')
 
         # Get channel index in correlator channels
         nchan = av_data.shape[-3]
@@ -914,16 +914,16 @@ def write_g_uv(report, report_path, flux_cal, targets, av_corr, cal_bls_lookup,
 
         units = _get_units(kat_target, av_corr, flux_cal)
         if is_calibrator:
-            plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
+            plot_title = 'Calibrator {}, tags are {}'.format(target_name, ', '.join(tags))
             amp = False
         else:
-            plot_title = 'Target {0}'.format(target_name)
+            plot_title = f'Target {target_name}'
             amp = True
 
         plot = plotting.plot_corr_uvdist(uvdist, av_data, freq_chan,
                                          plot_title, amp=amp, pol=pol, units=units)
         insert_fig(report_path, report, plot,
-                   name='Corr_v_UVdist_{0}'.format(target_name.replace(" ", "_")))
+                   name='Corr_v_UVdist_{}'.format(target_name.replace(" ", "_")))
         report.writeln()
 
 
@@ -1041,7 +1041,7 @@ def write_products(report, report_path, ts, parameters,
     cal = 'KCROSS_DIODE'
     vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
-        cal_heading(report, cal, 'Cross polarisation delay {0}'.format(pol[0] + pol[1]), '(ns)')
+        cal_heading(report, cal, f'Cross polarisation delay {pol[0] + pol[1]}', '(ns)')
         # convert delays to nano seconds
         vals = 1e9 * vals
         write_table_timecol(report, antenna_names, times, vals[:, 0, :], True)
@@ -1049,21 +1049,21 @@ def write_products(report, report_path, ts, parameters,
             plot = plotting.plot_delays(times, vals[:, 0:1, idx : idx + ANT_CHUNKS],
                                         antenna_names[idx : idx + ANT_CHUNKS],
                                         pol=[pol[0] + pol[1]])
-            insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
+            insert_fig(report_path, report, plot, name=f'{cal}_{idx}')
 
     # plot number of solutions
         report.writeln()
         report.writeln()
-        title = 'Number of slns : {0}'.format(cal)
+        title = f'Number of slns : {cal}'
         no_k_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
-        plot = plotting.plot_v_antenna(no_k_slns, 'No of slns: {0}'.format(cal), title,
+        plot = plotting.plot_v_antenna(no_k_slns, f'No of slns: {cal}', title,
                                        antenna_names, pol)
-        insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+        insert_fig(report_path, report, plot, name=f'No_{cal}')
 
     cal = 'BCROSS_DIODE'
     vals, times = get_cal(ts, cal, product_names[cal], st, et)
     if len(times) > 0:
-        cal_heading(report, cal, 'Cross polarisation phase {0}'.format(pol[0] + pol[1]))
+        cal_heading(report, cal, f'Cross polarisation phase {pol[0] + pol[1]}')
         write_BCROSS_DIODE(report, report_path, times, vals, antenna_names,
                            correlator_freq, pol)
 
@@ -1090,16 +1090,16 @@ def write_products(report, report_path, ts, parameters,
             plot = plotting.plot_g_solns_legend(
                 times, vals[..., idx: idx + ANT_CHUNKS],
                 antenna_labels[idx: idx + ANT_CHUNKS], pol)
-            insert_fig(report_path, report, plot, name='{0}_{1}'.format(cal, idx))
+            insert_fig(report_path, report, plot, name=f'{cal}_{idx}')
 
         # plot number of solutions
         report.writeln()
         report.writeln()
-        title = 'Number of slns : {0}'.format(cal)
+        title = f'Number of slns : {cal}'
         no_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
-        plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+        plot = plotting.plot_v_antenna(no_slns, f'No of slns: {cal}', title,
                                        antenna_names, pol)
-        insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+        insert_fig(report_path, report, plot, name=f'No_{cal}')
 
 
 def write_phase_stability(report, report_path, targets, av_corr,
@@ -1133,16 +1133,16 @@ def write_phase_stability(report, report_path, targets, av_corr,
         target_name = kat_target.name
         tags = [t for t in kat_target.tags if t in TAG_WHITELIST]
         try:
-            v_data, av_times = list(zip(*av_corr['{}_nmad_phase'.format(target_name)]))
+            v_data, av_times = list(zip(*av_corr[f'{target_name}_nmad_phase']))
         except ValueError:
             continue
         av_data = np.array(v_data)
         for ti in range(len(av_times)):
             report.writeln()
             t = utc_tstr(av_times[ti])
-            report.writeln('Time : {0}'.format(t))
+            report.writeln(f'Time : {t}')
             phase_data = av_data[ti]
-            plot_title = 'Calibrator {0}, tags are {1}'.format(target_name, ', '.join(tags))
+            plot_title = 'Calibrator {}, tags are {}'.format(target_name, ', '.join(tags))
             plot = plotting.plot_phase_stability_check(phase_data, correlator_freq=correlator_freq,
                                                        title=plot_title, pol=pol, y_scale=0.5)
             insert_fig(report_path, report, plot, name=f'Phase_Stability_v_Freq_{ti}')
@@ -1176,10 +1176,10 @@ def get_cal(ts, cal, ts_name, st, et):
     if ts_name in ts:
         product = ts.get_range(ts_name, st=0)
         if len(product) > 0:
-            logger.info('Calibration product: {0}'.format(cal))
+            logger.info(f'Calibration product: {cal}')
             vals, times = zip(*product)
             vals = np.array(vals)
-            logger.info('  shape: {0}'.format(vals.shape))
+            logger.info(f'  shape: {vals.shape}')
     return vals, times
 
 
@@ -1205,25 +1205,25 @@ def write_K(report, report_path, times, vals, antenna_names, pol=[0, 1]):
     vals = 1e9 * vals
     # iterate through polarisation
     for p in range(vals.shape[-2]):
-        report.writeln('**POL {0}**'.format(pol[p],))
+        report.writeln(f'**POL {pol[p]}**')
         kpol = vals[:, p, :]
-        logger.info('  pol {0} shape: {1}'.format(pol[p], kpol.shape))
+        logger.info(f'  pol {pol[p]} shape: {kpol.shape}')
         write_table_timecol(report, antenna_names, times, kpol)
 
     for idx in range(0, vals.shape[-1], ANT_CHUNKS):
         plot = plotting.plot_delays(times, vals[..., idx : idx + ANT_CHUNKS],
                                     antenna_names[idx : idx + ANT_CHUNKS], pol=pol)
-        insert_fig(report_path, report, plot, name='K_{0}'.format(idx))
+        insert_fig(report_path, report, plot, name=f'K_{idx}')
 
     # plot number of solutions
     report.writeln()
     report.writeln()
     cal = 'K'
-    title = 'Number of slns : {0}'.format(cal)
+    title = f'Number of slns : {cal}'
     no_slns = np.sum(~np.isnan(vals), axis=0, dtype=np.uint16)
-    plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+    plot = plotting.plot_v_antenna(no_slns, f'No of slns: {cal}', title,
                                    antenna_names, pol)
-    insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+    insert_fig(report_path, report, plot, name=f'No_{cal}')
 
 
 def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
@@ -1254,12 +1254,12 @@ def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
         bad_ant = np.all(np.isnan(vals[:, p, :]), axis=0)
         if bad_ant.any():
             if bad_ant.all():
-                report.writeln('* {0}: :red:`all`'.format(pol[p]))
+                report.writeln(f'* {pol[p]}: :red:`all`')
             else:
                 names = np.asarray(antenna_names)[bad_ant]
-                report.writeln('* {0}: {1}'.format(pol[p], ', '.join(names)))
+                report.writeln('* {}: {}'.format(pol[p], ', '.join(names)))
         else:
-            report.writeln('* {0}: None'.format(pol[p]))
+            report.writeln(f'* {pol[p]}: None')
             report.writeln()
 
         # modify the antenna labels to indicate the flagged antennas
@@ -1268,7 +1268,7 @@ def write_bad_antennas(report, vals, antenna_names, pol=[0, 1]):
                 if 'bad' in bad_labels[i]:
                     bad_labels[i] += pol[p]
                 else:
-                    bad_labels[i] = bad_labels[i].strip() + ', bad {}'.format(pol[p])
+                    bad_labels[i] = bad_labels[i].strip() + f', bad {pol[p]}'
     return bad_labels
 
 
@@ -1298,7 +1298,7 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
 
     for ti in range(len(times)):
         t = utc_tstr(times[ti])
-        report.writeln('Time: {}'.format(t,))
+        report.writeln(f'Time: {t}')
         report.writeln()
         # summarize bad antennas
         report.writeln('Antennas flagged for all channels:')
@@ -1312,18 +1312,18 @@ def write_B(report, report_path, times, vals, antenna_names, correlator_freq, po
                 antenna_labels[idx : idx + ANT_CHUNKS],
                 freq_range, pol=pol)
             insert_fig(report_path, report, plot,
-                       name='B_ti_{0}_{1}'.format(ti, idx))
+                       name=f'B_ti_{ti}_{idx}')
 
     # plot number of solutions
     report.writeln()
     report.writeln()
     cal = 'B'
-    title = 'Number of slns : {0}'.format(cal)
+    title = f'Number of slns : {cal}'
     b_slns = ~np.all(np.isnan(vals), axis=1)
     no_slns = np.sum(b_slns, axis=0, dtype=np.uint32)
-    plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+    plot = plotting.plot_v_antenna(no_slns, f'No of slns: {cal}', title,
                                    antenna_names, pol)
-    insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+    insert_fig(report_path, report, plot, name=f'No_{cal}')
 
 
 def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlator_freq, pol):
@@ -1350,7 +1350,7 @@ def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlat
     chan_no = np.arange(0, len(correlator_freq))
     for ti in range(len(times)):
         t = utc_tstr(times[ti])
-        report.writeln('Times: {}'.format(t,))
+        report.writeln(f'Times: {t}')
         report.writeln()
         # summarize bad antenn
         report.writeln('Antennas flagged for all channels:')
@@ -1363,18 +1363,18 @@ def write_BCROSS_DIODE(report, report_path, times, vals, antenna_names, correlat
                 antenna_labels[idx : idx + ANT_CHUNKS],
                 freq_range, pol=[pol[0]+pol[1]])
             insert_fig(report_path, report, plot,
-                       name='BCROSS_DIODE_ti_{0}_{1}'.format(ti, idx))
+                       name=f'BCROSS_DIODE_ti_{ti}_{idx}')
 
     # plot number of solutions
     report.writeln()
     report.writeln()
     cal = 'BCROSS_DIODE'
-    title = 'Number of slns : {}'.format(cal)
+    title = f'Number of slns : {cal}'
     b_slns = ~np.all(np.isnan(vals), axis=1)
     no_slns = np.sum(b_slns, axis=0, dtype=np.uint32)
-    plot = plotting.plot_v_antenna(no_slns, 'No of slns: {0}'.format(cal), title,
+    plot = plotting.plot_v_antenna(no_slns, f'No of slns: {cal}', title,
                                    antenna_names, pol)
-    insert_fig(report_path, report, plot, name='No_{0}'.format(cal))
+    insert_fig(report_path, report, plot, name=f'No_{cal}')
 
 
 def cal_heading(report, cal, prefix, suffix=''):
@@ -1391,8 +1391,8 @@ def cal_heading(report, cal, prefix, suffix=''):
     suffix : str, optional
         units of calibration product
     """
-    report.write_heading_2('Calibration product {0}'.format(cal))
-    report.writeln('{0} calibration solutions {1}'.format(prefix, suffix))
+    report.write_heading_2(f'Calibration product {cal}')
+    report.writeln(f'{prefix} calibration solutions {suffix}')
     report.writeln()
 
 
@@ -1622,7 +1622,7 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
     et : float, optional
         end time for reporting parameters, seconds
     """
-    logger.info('Report compiling in directory {0}'.format(report_path))
+    logger.info(f'Report compiling in directory {report_path}')
 
     # --------------------------------------------------------------------
     # open report file
@@ -1639,9 +1639,9 @@ def make_cal_report(ts, capture_block_id, stream_name, parameters, report_path, 
             cal_rst.writeln('.. role:: green')
             cal_rst.writeln()
             cal_rst.write_heading_1('Observation summary')
-            cal_rst.writeln('Capture block: {}'.format(capture_block_id))
+            cal_rst.writeln(f'Capture block: {capture_block_id}')
             cal_rst.writeln()
-            cal_rst.writeln('Stream: {}'.format(stream_name))
+            cal_rst.writeln(f'Stream: {stream_name}')
             cal_rst.writeln()
 
             antennas = parameters['antennas']

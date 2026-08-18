@@ -16,7 +16,7 @@ def average_timer(n, func, *args, **kwargs):
     for ni in range(n):
         func(*args, **kwargs)
     end_ts = time.time()
-    print("{0: .4f}".format((end_ts - beg_ts) / n))
+    print(f"{(end_ts - beg_ts) / n: .4f}")
 
 
 def parse_opts():
@@ -43,7 +43,7 @@ opts = parse_opts()
 if opts.file == '':
     # if we are not provided with a file, simulate interferometer data
     print()
-    print('Data: simulated {0} antenna array'.format(opts.nants))
+    print(f'Data: simulated {opts.nants} antenna array')
 
     vis_av, bls_lookup, gains = calprocs.fake_vis(opts.nants, noise=False)
     if opts.nchans > 1:
@@ -52,7 +52,7 @@ if opts.file == '':
 else:
     # if we are provided with a file, extract data  and metadata from the file
     print()
-    print('Data: open file {0}'.format(opts.file))
+    print(f'Data: open file {opts.file}')
     simdata = init_simdata(opts.file)
 
     print("Data: use HH pol only")
@@ -62,7 +62,7 @@ else:
 
     print("Data: average over time")
     vis_av = np.mean(vis, axis=0)
-    print("Data: shape {0}".format(vis_av.shape))
+    print(f"Data: shape {vis_av.shape}")
     print()
 
     # get data parameters for solver
@@ -71,6 +71,6 @@ else:
 
 # numter of iterations for the timer
 niter = opts.niter
-print("Elapsed time (average over {0} iterations):\n{1}".format(niter, '='*43))
+print("Elapsed time (average over {} iterations):\n{}".format(niter, '='*43))
 
 average_timer(niter, calprocs.g_fit, vis_av, bls_lookup, conv_thresh=0.01)

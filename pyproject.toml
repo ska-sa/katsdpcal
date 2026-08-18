@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 name = "katsdpcal"
 description = "MeerKAT calibration pipeline"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 license = {file = "LICENSE"}
 keywords = ["kat", "kat7", "meerkat", "ska"]
 authors = [

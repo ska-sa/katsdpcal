@@ -180,7 +180,7 @@ def _sum_corr(sum_corr, new_corr, limit=None):
             elif key.endswith('_g_spec'):
                 sum_corr[key] += new_corr[key]
                 wavg = list(zip(*sum_corr[key]))
-                vis, flags, weights = [da.stack(a) for a in wavg]
+                vis, flags, weights = (da.stack(a) for a in wavg)
                 vis, flags, weights = calprocs_dask.wavg_full(vis, flags, weights, threshold=1)
                 sum_corr[key] = [(vis, flags, weights)]
                 del new_corr[key]
@@ -698,10 +698,10 @@ class Accumulator:
             with concurrent.futures.ThreadPoolExecutor(1) as executor:
                 server_id = self.owner.parameters['server_id']
                 n_servers = self.owner.parameters['servers']
-                self.telstate_cb_cal['last_dump_index{}'.format(server_id)] = self._last_idx
+                self.telstate_cb_cal[f'last_dump_index{server_id}'] = self._last_idx
                 for i in range(n_servers):
                     if i != server_id:
-                        key = 'last_dump_index{}'.format(i)
+                        key = f'last_dump_index{i}'
                         self._logger.debug('Waiting for %s', key)
                         await loop.run_in_executor(
                             executor, self.telstate_cb_cal.wait_key, key)
@@ -1532,8 +1532,8 @@ class ReportWriter(Task):
         logger.info('===========================')
 
         if self.full_log is not None:
-            shutil.copy('{0}/{1}'.format(self.log_path, self.full_log),
-                        '{0}/{1}'.format(current_report_dir, self.full_log))
+            shutil.copy(f'{self.log_path}/{self.full_log}',
+                        f'{current_report_dir}/{self.full_log}')
 
         # change report and log directory to final name for archiving
         os.rename(current_report_dir, report_dir)
@@ -1668,7 +1668,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
         if self._shutting_down:
             raise FailReply('server is shutting down')
         if capture_block_id in self._capture_block_state:
-            raise FailReply('capture block ID {} is already active'.format(capture_block_id))
+            raise FailReply(f'capture block ID {capture_block_id} is already active')
         self._set_capture_block_state(capture_block_id, State.CAPTURING)
         self.accumulator.capture_init(capture_block_id)
 
@@ -1705,7 +1705,7 @@ class CalDeviceServer(aiokatcp.DeviceServer):
                 progress('Accumulator stopped')
                 for task in self.children:
                     await loop.run_in_executor(executor, task.join)
-                    progress('{} stopped'.format(task.name))
+                    progress(f'{task.name} stopped')
             elif hasattr(self.report_writer, 'terminate'):
                 # Kill off all the tasks. This is done in reverse order, to avoid
                 # triggering a report writing only to kill it half-way.

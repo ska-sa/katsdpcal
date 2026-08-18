@@ -259,7 +259,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             # The position is irrelevant for now, so just give all the
             # antennas the same position.
             telstate.add(
-                '{}_observer'.format(antenna),
+                f'{antenna}_observer',
                 '{}, -30:42:47.4, 21:26:38.0, 1035.0, 13.5, -351.163669759 384.481835294, '
                 '-0:05:44.7 0 0:00:22.6 -0:09:04.2 0:00:11.9 -0:00:12.8 -0:04:03.5 0 0 '
                 '-0:01:33.0 0:01:45.6 0 0 0 0 0 -0:00:03.6 -0:00:17.5, 1.22'.format(antenna))
@@ -334,14 +334,14 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         telstate_cb_l0 = control.make_telstate_cb(self.telstate_l0, 'cb')
         self.first_dump_ts = self.telstate_l0.sync_time + telstate_cb_l0.first_timestamp
 
-        self.l0_endpoints = [Endpoint('239.102.255.{}'.format(i), 7148)
+        self.l0_endpoints = [Endpoint(f'239.102.255.{i}', 7148)
                              for i in range(self.n_endpoints)]
         substreams_per_endpoint = self.n_substreams // self.n_endpoints
         self.substream_endpoints = [self.l0_endpoints[i // substreams_per_endpoint]
                                     for i in range(self.n_substreams)]
         self.flags_endpoints = [
-            [Endpoint('239.102.253.{}'.format(i), 7148) for i in range(self.n_servers)],
-            [Endpoint('239.102.254.{}'.format(i), 7148) for i in range(self.n_servers)]
+            [Endpoint(f'239.102.253.{i}', 7148) for i in range(self.n_servers)],
+            [Endpoint(f'239.102.254.{i}', 7148) for i in range(self.n_servers)]
         ]
 
         self.l0_queues = {endpoint: spead2.InprocQueue() for endpoint in self.l0_endpoints}
@@ -433,7 +433,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         for i, value in enumerate(values):
             value = type(expected)(value)
             assert value == expected, \
-                "Wrong value for {} ({!r} != {!r})".format(name, value, expected)
+                f"Wrong value for {name} ({value!r} != {expected!r})"
 
     async def assert_request_fails(self, msg_re, name, *args):
         """Assert that a request fails, and test the error message against
@@ -642,13 +642,13 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         """
         B = []
         for i in range(self.n_servers):
-            cal_product_Bn = telstate_cb_cal.get_range(bp_key+'{}'.format(i), st=0)
+            cal_product_Bn = telstate_cb_cal.get_range(bp_key+f'{i}', st=0)
             assert len(cal_product_Bn) == 1
             Bn, Bn_ts = cal_product_Bn[0]
             assert Bn.dtype == np.complex64
             assert Bn.shape == (self.n_channels // self.n_servers, 2, self.n_antennas)
             B.append(Bn)
-        assert bp_key+'{}'.format(self.n_servers) not in telstate_cb_cal
+        assert bp_key+f'{self.n_servers}' not in telstate_cb_cal
         return np.concatenate(B), Bn_ts
 
     def interp_B(self, B):
@@ -693,9 +693,9 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         target = katpoint.Target(self.telstate.cbf_target)
         for antenna in self.antennas:
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+            self.telstate.add(f'{antenna}_dig_l_band_noise_diode',
                               1, ts=self.first_dump_ts - 2 * self.dump_period)
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+            self.telstate.add(f'{antenna}_dig_l_band_noise_diode',
                               0, ts=self.first_dump_ts + (n_times + 2) * self.dump_period)
         telstate_cb = self.telstate.view('cb')
         telstate_cb.add('obs_activity', 'await_pipeline',
@@ -744,7 +744,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             assert len(reports) == 1
             report = os.path.join(server.report_path, reports[0])
             assert os.path.isfile(
-                os.path.join(report, 'calreport{}.html'.format(server.server_id + 1))
+                os.path.join(report, f'calreport{server.server_id + 1}.html')
             )
             assert os.path.samefile(report, report_last_path[server.server_id])
             # Check that metadata file is written and correct
@@ -753,7 +753,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             meta_expected['Run'] = server.server_id + 1
             meta_file = os.path.join(report, 'metadata.json')
             assert os.path.isfile(meta_file)
-            with open(meta_file, 'r') as infile:
+            with open(meta_file) as infile:
                 meta_out = json.load(infile)
             assert meta_out == meta_expected
 
@@ -796,7 +796,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         assert ret_SNR_K_ts == ret_K_ts
 
         for i in range(self.n_servers):
-            cal_product_SNR_B = telstate_cb_cal.get_range('product_SNR_B{0}'.format(i))
+            cal_product_SNR_B = telstate_cb_cal.get_range(f'product_SNR_B{i}')
             assert len(cal_product_SNR_B) == 1
             ret_SNR_B, ret_SNR_B_ts = cal_product_SNR_B[0]
             assert ret_SNR_K.dtype == np.float32
@@ -1017,12 +1017,12 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
         if 'pointingcal' in target.tags:
             num_chunks = telstate_cb_cal['param_epoint_freq_chunks']
             for i in range(self.n_servers):
-                cal_product_EPOINTn = telstate_cb_cal.get_range('product_EPOINT{}'.format(i), st=0)
+                cal_product_EPOINTn = telstate_cb_cal.get_range(f'product_EPOINT{i}', st=0)
                 assert len(cal_product_EPOINTn) == 1
                 ret_EPOINTn, ret_EPOINTn_ts = cal_product_EPOINTn[0]
                 assert ret_EPOINTn.dtype == np.float32
                 assert ret_EPOINTn.shape == (num_chunks // self.n_servers, 2, self.n_antennas, 5)
-            assert 'product_EPOINT{}'.format(self.n_servers) not in telstate_cb_cal
+            assert f'product_EPOINT{self.n_servers}' not in telstate_cb_cal
 
     async def test_set_refant(self):
         """Tests the capture with a noisy antenna, and checks that the reference antenna is
@@ -1034,9 +1034,9 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
 
         target = katpoint.Target(self.telstate.cbf_target)
         for antenna in self.antennas:
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+            self.telstate.add(f'{antenna}_dig_l_band_noise_diode',
                               1, ts=self.first_dump_ts - 2 * self.dump_period)
-            self.telstate.add('{0}_dig_l_band_noise_diode'.format(antenna),
+            self.telstate.add(f'{antenna}_dig_l_band_noise_diode',
                               0, ts=self.first_dump_ts + (n_times + 2) * self.dump_period)
 
         K = rs.uniform(-50e-12, 50e-12, (2, self.n_antennas))
@@ -1132,7 +1132,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             if total_heaps == num_heaps:
                 print('all heaps received')
                 break
-            print('waiting {} ({}/{} received)'.format(i, total_heaps, num_heaps))
+            print(f'waiting {i} ({total_heaps}/{num_heaps} received)')
         else:
             raise RuntimeError('Timed out waiting for the heaps to be received')
 
@@ -1277,7 +1277,7 @@ class TestCalDeviceServer(IsolatedAsyncioTestCase):
             if rw == value:
                 break
         else:
-            raise RuntimeError('Timed out waiting for %s to be %s' % (sensor, value))
+            raise RuntimeError(f'Timed out waiting for {sensor} to be {value}')
 
     async def test_reset_solution_stores(self):
         """Test that the solution stores are reset between calls to capture_init"""
