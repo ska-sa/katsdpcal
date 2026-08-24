@@ -4,9 +4,12 @@ Calibration node code.
 
 ## Dependencies
 
-Refer to setup.py, or just run `pip install -e .` You will need to install
-katsdpservices, katsdpsigproc and katsdptelstate separately from Github. You
-will also need a redis server (2.8.19+).
+Dependencies are declared in [pyproject.toml](pyproject.toml). Install with:
+
+       pip install -e .
+
+This includes the katsdp* dependencies via normal package metadata.
+You will also need a Redis server (2.8.19+).
 
 ## Simulator
 

@@ -67,5 +67,3 @@ run_cal = "katsdpcal.scripts.run_cal:main"
 sim_ts = "katsdpcal.scripts.sim_ts:main_sync"
 sim_data_stream = "katsdpcal.scripts.sim_data_stream:main_sync"
 create_test_data = "katsdpcal.scripts.create_test_data:main"
-
-
