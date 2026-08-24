@@ -20,15 +20,15 @@ The simulator uses either an H5 or MS file as the data source.
 
 2. Run the h5 Telescope State simulator:
 
-       sim_ts.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
+       sim_ts --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
 
 3. Run the pipeline controller:
 
-       run_cal.py --telstate 127.0.0.1:6379
+       run_cal --telstate 127.0.0.1:6379
 
 4. Run the h5 data stream:
 
-       sim_data_stream.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
+       sim_data_stream --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms>
 
 You can pass `--max-scans` to restrict the number of scans to replay from a large file.
 
@@ -59,13 +59,13 @@ it can scale up to higher numbers.
 
 3. Run the pipeline controller (in parallel):
 
-       run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
+       run_cal --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
          --servers 2 -p 2060 --server-id 1
-       run_cal.py --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
+       run_cal --telstate 127.0.0.1:6379 --l0-spead 239.102.254.0+1:7148 --l0-interface lo \
          --servers 2 -p 2061 --server-id 2
 
 4. Run the h5 data stream:
 
-       sim_data_stream.py --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms> \
+       sim_data_stream --telstate 127.0.0.1:6379 --file <file.rdb/h5/ms> \
          --l0-spead 239.102.254.0+1:7148 --l0-interface=lo \
          --server localhost:2060,localhost:2061
