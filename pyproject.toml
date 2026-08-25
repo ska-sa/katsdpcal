@@ -51,6 +51,10 @@ dependencies = [
     "spead2>=3.0.0",
 ]
 
+[tool.versioningit]
+write = {file = "src/katsdpcal/_version.py"}
+default-version = "0.0.0"
+
 [tool.versioningit.vcs]
 method = "git"
 match = ["v*"]
