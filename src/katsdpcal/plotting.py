@@ -87,11 +87,11 @@ def plot_g_solns_legend(times, data, antenna_names=None, pol=[0, 1], **plot_kwar
     for p in range(npols):
         # plot amplitude
         p1 = axes[p, 0].plot(dates, np.abs(data[:, p, :]), '.-', **plot_kwargs)
-        axes[p, 0].set_ylabel('Amplitude Pol_{0}'.format(pol[p]))
+        axes[p, 0].set_ylabel(f'Amplitude Pol_{pol[p]}')
 
         # plot phase
         axes[p, 1].plot(dates, np.angle(data[:, p, :], deg=True), '.-', **plot_kwargs)
-        axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+        axes[p, 1].set_ylabel(f'Phase Pol_{pol[p]}')
 
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
@@ -139,7 +139,7 @@ def flags_bl_v_chan(data, chan, uvlist, freq_range=None, pol=[0, 1], **plot_kwar
         im = axes[0, p].imshow(data[:, p, :].transpose(), extent=(
             chan[0], chan[-1], 0, nbls), aspect='auto', origin='lower',
             cmap=plt.cm.jet, **plot_kwargs)
-        axes[0, p].set_ylabel('Pol {0} Antenna separation [m]'.format(pol[p]))
+        axes[0, p].set_ylabel(f'Pol {pol[p]} Antenna separation [m]')
         axes[0, p].set_xlabel('Channels')
         bl_labels(axes[0, p], uvlist)
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
@@ -205,7 +205,7 @@ def flags_t_v_chan(data, chan, targets, freq_range=None, pol=[0, 1], **plot_kwar
         im = axes[0, p].imshow(data[..., p], extent=(
             chan[0], chan[-1], 0, nscans), aspect='auto', origin='lower',
             cmap=plt.cm.jet, **plot_kwargs)
-        axes[0, p].set_ylabel('Pol {0}  Scans'.format(pol[p]))
+        axes[0, p].set_ylabel(f'Pol {pol[p]}  Scans')
         axes[0, p].set_xlabel('Channels')
     plt.setp(axes[0, 1].get_yticklabels(), visible=False)
 
@@ -343,7 +343,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
         fig.suptitle(title, y=0.95)
 
     if units is not None:
-        unit_str = '({})'.format(units)
+        unit_str = f'({units})'
     else:
         unit_str = ''
 
@@ -367,14 +367,14 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
             axes[p, 0].set_prop_cycle(None)
             axes[p, 1].set_prop_cycle(None)
 
-        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
+        axes[p, 0].set_ylabel(f'Amplitude Pol_{pol[p]} {unit_str}')
         if amp:
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
+            axes[p, 1].set_ylabel(f'Zoom Amplitude Pol_{pol[p]} {unit_str}')
             lim = amp_range(data)
             if not np.isnan(lim).any():
                 axes[p, 1].set_ylim(*lim)
         else:
-            axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel(f'Phase Pol_{pol[p]}')
             axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         plt.setp(axes[p, 1].get_xticklabels(), visible=False)
@@ -387,7 +387,7 @@ def plot_corr_uvdist(uvdist, data, freqlist=None, title=None, amp=False,
     plt.setp(axes[l_p, 1].get_xticklabels(), visible=True)
 
     if freqlist is not None:
-        freqlabel = ['{0} MHz'.format(int(i / 1e6)) for i in freqlist]
+        freqlabel = [f'{int(i / 1e6)} MHz' for i in freqlist]
         axes[0, 1].legend(p1, freqlabel, bbox_to_anchor=(1.0, 1.0),
                           loc="upper left", frameon=False, markerscale=2)
     fig.subplots_adjust(hspace=0.1)
@@ -420,7 +420,7 @@ def plot_delays(times, data, antenna_names=None, pol=[0, 1], **plot_kwargs):
 
     for p in range(npols):
         p1 = axes[0, p].plot(dates, data[:, p, :], marker='.', ls='dotted', **plot_kwargs)
-        axes[0, p].set_ylabel('Delays Pol {0} [ns]'.format(pol[p]))
+        axes[0, p].set_ylabel(f'Delays Pol {pol[p]} [ns]')
         time_label(axes[0, p], [datetimes[0], datetimes[-1]])
 
     if antenna_names is not None:
@@ -467,7 +467,7 @@ def plot_phaseonly_spec(data, chan, antenna_names=None, freq_range=None, title=N
         p1 = axes[0, p].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1,
                              **plot_kwargs)
         axes[0, p].set_ylim(phase_range[0], phase_range[-1])
-        axes[0, p].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+        axes[0, p].set_ylabel(f'Phase Pol_{pol[p]}')
         axes[0, p].set_xlabel('Channels')
 
     if antenna_names is not None:
@@ -520,22 +520,22 @@ def plot_spec(data, chan, antenna_names=None, freq_range=None, title=None, amp=F
         fig.suptitle(title, y=0.95)
 
     if units is not None:
-        unit_str = '({})'.format(units)
+        unit_str = f'({units})'
     else:
         unit_str = ''
 
     for p in range(npols):
         # plot full range amplitude plots
         p1 = axes[p, 0].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-        axes[p, 0].set_ylabel('Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
+        axes[p, 0].set_ylabel(f'Amplitude Pol_{pol[p]} {unit_str}')
         plt.setp(axes[p, 0].get_xticklabels(), visible=False)
         if amp:
             # plot limited range amplitude plots
             axes[p, 1].plot(chan, np.absolute(data[..., p, :]), '.', ms=1, **plot_kwargs)
-            axes[p, 1].set_ylabel('Zoom Amplitude Pol_{0} {1}'.format(pol[p], unit_str))
+            axes[p, 1].set_ylabel(f'Zoom Amplitude Pol_{pol[p]} {unit_str}')
         else:
             # plot phase plots
-            axes[p, 1].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+            axes[p, 1].set_ylabel(f'Phase Pol_{pol[p]}')
             axes[p, 1].plot(chan, np.angle(data[..., p, :], deg=True), '.', ms=1,
                             **plot_kwargs)
             axes[p, 1].set_ylim(phase_range[0], phase_range[-1])
@@ -610,7 +610,7 @@ def plot_phase_stability_check(phase_nmad, correlator_freq, title=None,  pol=[0,
         axes[idx].plot(correlator_freq, phase_nmad[:, p], marker='.', ls='',
                        ms='2', label=f'Average Phase NMAD :{np.nanmean(phase_nmad[:, p]): .3f}',
                        **plot_kwargs)
-        axes[idx].set_ylabel('Phase NMAD_{0}'.format(pol[p]))
+        axes[idx].set_ylabel(f'Phase NMAD_{pol[p]}')
         axes[idx].legend(bbox_to_anchor=(1.0, 1.0), loc="upper left", frameon=False)
         axes[idx].grid(color='grey', which='both', lw=0.1)
         axes[idx].set_ylim((0, np.nanmean(phase_nmad[:, p]) + 5 * np.nanstd(phase_nmad[:, p])))
@@ -711,7 +711,7 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         fig.suptitle(title, y=0.95)
 
     if units is not None:
-        unit_str = '({})'.format(units)
+        unit_str = f'({units})'
     else:
         unit_str = ''
 
@@ -724,11 +724,11 @@ def plot_corr_v_time(times, data, plottype='p', antenna_names=None, title=None,
         for chan in range(data_pol.shape[-2]):
             if plottype == 'a':
                 p1 = axes[p, 0].plot(dates, np.absolute(data_pol[:, chan, :]), '.', **plot_kwargs)
-                axes[p, 0].set_ylabel('Amp Pol_{0} {1}'.format(pol[p], unit_str))
+                axes[p, 0].set_ylabel(f'Amp Pol_{pol[p]} {unit_str}')
             else:
                 p1 = axes[p, 0].plot(dates, np.angle(data_pol[:, chan, :], deg=True), '.',
                                      **plot_kwargs)
-                axes[p, 0].set_ylabel('Phase Pol_{0}'.format(pol[p]))
+                axes[p, 0].set_ylabel(f'Phase Pol_{pol[p]}')
                 axes[p, 0].set_ylim(phase_range[0], phase_range[-1])
             # Reset the colour cycle, so that all channels have the same plot color
             axes[p, 0].set_prop_cycle(None)
@@ -839,7 +839,7 @@ def draw_errorplot(times, data, ax, pol_label=0, **kwargs):
 
     error = np.array([low_error, up_error])
     ax.errorbar(times, median, yerr=error, linestyle='None', **kwargs)
-    ax.set_ylabel('SNR Pol {0}'.format(pol_label))
+    ax.set_ylabel(f'SNR Pol {pol_label}')
 
 
 def draw_below_thresh(times, snr, ax, pol_label=0, snrthresh=10, **kwargs):
@@ -862,4 +862,4 @@ def draw_below_thresh(times, snr, ax, pol_label=0, snrthresh=10, **kwargs):
     snr_nonans = np.where(np.isnan(snr), 0, snr)
     n_low = np.sum(snr_nonans < snrthresh, axis=-1)
     ax.plot(times, n_low, linestyle='', **kwargs)
-    ax.set_ylabel('No of ants, Pol {0}'.format(pol_label))
+    ax.set_ylabel(f'No of ants, Pol {pol_label}')

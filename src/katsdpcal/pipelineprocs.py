@@ -412,7 +412,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     """
     n_chans = telstate_l0['n_chans']
     if not 0 <= server_id < servers:
-        raise ValueError('Server ID {} is out of range [0, {})'.format(server_id, servers))
+        raise ValueError(f'Server ID {server_id} is out of range [0, {servers})')
     if n_chans % servers != 0:
         raise ValueError('Number of channels ({}) is not a multiple of number of servers ({})'
                          .format(n_chans, servers))
@@ -437,7 +437,7 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     antenna_names = sorted(ants)
     _, bls_ordering, bls_pol_ordering = calprocs.get_reordering(antenna_names,
                                                                 telstate_l0['bls_ordering'])
-    antennas = [katpoint.Antenna(telstate_l0['{0}_observer'.format(ant)]) for ant in antenna_names]
+    antennas = [katpoint.Antenna(telstate_l0[f'{ant}_observer']) for ant in antenna_names]
     parameters['antenna_names'] = antenna_names
     parameters['antennas'] = antennas
     parameters['bls_ordering'] = bls_ordering
@@ -503,12 +503,12 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         'SNR_K': 'product_SNR_K',
         'KCROSS': 'product_KCROSS',
         'KCROSS_DIODE': 'product_KCROSS_DIODE',
-        'B': 'product_B{}'.format(server_id),
-        'SNR_B': 'product_SNR_B{}'.format(server_id),
-        'BCROSS_DIODE': 'product_BCROSS_DIODE{}'.format(server_id),
-        'BCROSS_DIODE_SKY': 'product_BCROSS_DIODE_SKY{}'.format(server_id),
-        'EPOINT': 'product_EPOINT{}'.format(server_id),
-        'SNR_EPOINT': 'product_SNR_EPOINT{}'.format(server_id),
+        'B': f'product_B{server_id}',
+        'SNR_B': f'product_SNR_B{server_id}',
+        'BCROSS_DIODE': f'product_BCROSS_DIODE{server_id}',
+        'BCROSS_DIODE_SKY': f'product_BCROSS_DIODE_SKY{server_id}',
+        'EPOINT': f'product_EPOINT{server_id}',
+        'SNR_EPOINT': f'product_SNR_EPOINT{server_id}',
     }
     parameters['product_B_parts'] = parameters['product_EPOINT_parts'] = servers
 
@@ -519,11 +519,11 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
 
     # Sanity check: make sure we didn't set any parameters for which we don't
     # have a description.
-    valid_parameters = set(parameter.name for parameter in
-                           USER_PARAMS_CHANS + COMPUTED_PARAMETERS)
+    valid_parameters = {parameter.name for parameter in
+                        USER_PARAMS_CHANS + COMPUTED_PARAMETERS}
     for key in parameters:
         if key not in valid_parameters:
-            raise ValueError('Unexpected parameter {}'.format(key))
+            raise ValueError(f'Unexpected parameter {key}')
     return parameters
 
 
@@ -565,7 +565,7 @@ def parameters_to_channels(parameters, channel_freqs):
                 logger.info('Parameters %s and %s both set, using %s', chan, freq, chan)
         else:
             if freq not in parameters:
-                raise ValueError('Parameters {} and {} both not set'.format(chan, freq))
+                raise ValueError(f'Parameters {chan} and {freq} both not set')
 
     # convert frequency params to channel params
     chan_width = channel_freqs[1] - channel_freqs[0]
@@ -694,7 +694,7 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
         model_list = []
         # iterate over all aliases
         for name in allnames:
-            model_list += glob.glob('{0}/*{1}*.txt'.format(glob.os.path.abspath(lsm_dir), name))
+            model_list += glob.glob(f'{glob.os.path.abspath(lsm_dir)}/*{name}*.txt')
 
         if len(model_list) == 1:
             model_file = model_list[0]
@@ -702,7 +702,7 @@ def get_model(target, lsm_dir_list=[], sub_band='l'):
             # if there is more than one model file for the source IN THE SAME
             # DIRECTORY use the one that matches the sub_band of the observation
 
-            band_list = [m for m in model_list if m.endswith('_{0}.txt'.format(BAND_MAP[sub_band]))]
+            band_list = [m for m in model_list if m.endswith(f'_{BAND_MAP[sub_band]}.txt')]
             if band_list:
                 if len(band_list) > 1:
                     logger.warning(

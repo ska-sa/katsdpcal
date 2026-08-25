@@ -56,7 +56,7 @@ def get_antdesc_relative(names, diameters, positions):
         # antenna description string
         e, n, u = katpoint.ecef_to_enu(longitude_ref, latitude_ref, altitude_ref,
                                        pos[0], pos[1], pos[2])
-        antdesc[ant] = '{0}, {1}, {2}, {3}, {4}, {5} {6} {7}'.format(
+        antdesc[ant] = '{}, {}, {}, {}, {}, {} {} {}'.format(
             ant, longitude_ref, latitude_ref, altitude_ref, diam, e, n, u)
     return antdesc
 
@@ -141,8 +141,8 @@ class SimData:
 
         # antenna descriptions and noise diodes for all antennas
         for ant in self.file.ants:
-            param_dict['{0}_observer'.format(ant.name)] = ant.description
-            nd_name = '{0}_dig_{1}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
+            param_dict[f'{ant.name}_observer'] = ant.description
+            nd_name = '{}_dig_{}_band_noise_diode'.format(ant.name, param_dict['sub_band'])
             param_dict[nd_name] = telstate.get_range(nd_name, st=0)
 
             pol_list = ['h', 'v']
@@ -273,7 +273,7 @@ class SimData:
         logger.info('Total timestamps: %d', total_ts)
 
     async def capture_init(self):
-        cbid = '{}'.format(int(time.time()))
+        cbid = f'{int(time.time())}'
         self.cbid = cbid
         for client in self.clients:
             await client.wait_connected()
@@ -319,7 +319,7 @@ class SimData:
                     'sdp_l0_sync_time']
         for key in min_keys:
             if key not in parameter_dict:
-                raise KeyError('Required parameter {0} not set by simulator.'.format(key))
+                raise KeyError(f'Required parameter {key} not set by simulator.')
 
         parameter_dict['sdp_l0_need_weights_power_scale'] = False
         parameter_dict['sdp_l0_excise'] = True
@@ -335,7 +335,7 @@ class SimData:
         bchan = self.bchan
         echan = self.echan if self.echan is not None else n_chans
         if not 0 <= bchan < echan <= n_chans:
-            raise ValueError('Invalid channel range {}:{}'.format(bchan, echan))
+            raise ValueError(f'Invalid channel range {bchan}:{echan}')
         center_freq += (bchan + echan - n_chans) / 2 * channel_width
         parameter_dict['sdp_l0_center_freq'] = center_freq
         parameter_dict['sdp_l0_bandwidth'] = bandwidth * (echan - bchan) / n_chans

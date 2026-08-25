@@ -27,7 +27,7 @@ def parse_opts():
 
 def h5toms(filename):
     # convert h5 to MS
-    proc = subprocess.Popen('h5toms.py -f {0}'.format(filename),
+    proc = subprocess.Popen(f'h5toms.py -f {filename}',
                             stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
     # if the MS file already exists, raise an error
@@ -39,9 +39,9 @@ def h5toms(filename):
 def get_msname(filename):
     # check if there is an MS for the base filename
     name_base = filename.split('.h5')[0]
-    ms_name = glob.glob('{0}*.ms'.format(name_base))
+    ms_name = glob.glob(f'{name_base}*.ms')
     if len(ms_name) > 1:
-        raise ValueError('Multiple matching MS files?! {0}'.format(ms_name))
+        raise ValueError(f'Multiple matching MS files?! {ms_name}')
     elif ms_name == []:
         return None
     else:
@@ -50,16 +50,16 @@ def get_msname(filename):
 
 def extract_scans(msfile, num_scans):
     # extract the number of scans requored (starting at scan 0)
-    new_ms = 'TEST_{0}scans.ms'.format(num_scans)
+    new_ms = f'TEST_{num_scans}scans.ms'
     scan_list = ','.join([str(i) for i in range(opts.num_scans)])
     casa_command = (
-        'casapy -c \"split(vis=\'{0}\',outputvis=\'{1}\',scan=\'{2}\',datacolumn=\'data\')\"'
+        'casapy -c \"split(vis=\'{}\',outputvis=\'{}\',scan=\'{}\',datacolumn=\'data\')\"'
         .format(msfile, new_ms, scan_list))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
     # if the MS file already exists, raise an error
     if 'already exists' in errs:
-        print('ms file {0} already exists - using it!'.format(new_ms))
+        print(f'ms file {new_ms} already exists - using it!')
     return new_ms
 
 
@@ -160,8 +160,8 @@ def create_point_simple(orig_msfile, basename='TEST0'):
     msfile = basename+'.ms'
     a0, a1, a2, a3 = [1.15, 0, 0, 0]
 
-    os.system('rm -rf {0}'.format(msfile))
-    os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
+    os.system(f'rm -rf {msfile}')
+    os.system(f'cp -r {orig_msfile} {msfile}')
 
     t = tables.table(msfile, readonly=False)
     d = t.getcol('DATA')
@@ -198,28 +198,28 @@ def create_point_simple(orig_msfile, basename='TEST0'):
 
     # change uvw coords in the MS file to reflect then new phase centre position
     casa_command = (
-        'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'
+        'casapy -c \"fixvis(vis=\'{}\',outputvis=\'{}\',reuse=False)\"'
         .format(msfile, msfile))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
+    casa_command = f'casapy -c \"clearcal(vis=\'{msfile}\')\"'
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename)
+    heading = f'Test data set {basename}'
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading))
-    f.write('# {0}\n'.format(underlining))
+    f.write(f'# {heading}\n')
+    f.write(f'# {underlining}\n')
     f.write('# Simple point source in the phase centre\n')
-    f.write('# a0 = {0}\n'.format(a0))
-    f.write('# a1 = {0}\n'.format(a1))
-    f.write('# a2 = {0}\n'.format(a2))
-    f.write('# a3 = {0}\n'.format(a3))
-    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'
+    f.write(f'# a0 = {a0}\n')
+    f.write(f'# a1 = {a1}\n')
+    f.write(f'# a2 = {a2}\n')
+    f.write(f'# a3 = {a3}\n')
+    f.write('S0, P, {}, 0, {}, 0, {}, {}, {}, {}, 0, 0, 0'
             .format(ra_string, dec_string, a0, a1, a2, a3))
     f.write('\n')  # python will convert \n to os.linesep
     f.close()
@@ -240,8 +240,8 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
     msfile = basename+'.ms'
     a0, a1, a2, a3 = [1.8077, -0.8018, -0.1157, 0]
 
-    os.system('rm -rf {0}'.format(msfile))
-    os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
+    os.system(f'rm -rf {msfile}')
+    os.system(f'cp -r {orig_msfile} {msfile}')
 
     t = tables.table(msfile, readonly=False)
     d = t.getcol('DATA')
@@ -286,28 +286,28 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
 
     # change uvw coords in the MS file to reflect then new phase centre position
     casa_command = (
-        'casapy -c \"fixvis(vis=\'{0}\',outputvis=\'{1}\',reuse=False)\"'
+        'casapy -c \"fixvis(vis=\'{}\',outputvis=\'{}\',reuse=False)\"'
         .format(msfile, msfile))
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
+    casa_command = f'casapy -c \"clearcal(vis=\'{msfile}\')\"'
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename)
+    heading = f'Test data set {basename}'
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading))
-    f.write('# {0}\n'.format(underlining))
+    f.write(f'# {heading}\n')
+    f.write(f'# {underlining}\n')
     f.write('# Point source in the phase centre, with frequency slope (from 3C123 model)\n')
-    f.write('# a0 = {0}\n'.format(a0))
-    f.write('# a1 = {0}\n'.format(a1))
-    f.write('# a2 = {0}\n'.format(a2))
-    f.write('# a3 = {0}\n'.format(a3))
-    f.write('S0, P, {0}, 0, {1}, 0, {2}, {3}, {4}, {5}, 0, 0, 0'
+    f.write(f'# a0 = {a0}\n')
+    f.write(f'# a1 = {a1}\n')
+    f.write(f'# a2 = {a2}\n')
+    f.write(f'# a3 = {a3}\n')
+    f.write('S0, P, {}, 0, {}, 0, {}, {}, {}, {}, 0, 0, 0'
             .format(ra_string, dec_string, a0, a1, a2, a3))
     f.write('\n')  # python will convert \n to os.linesep
     f.close()
@@ -324,8 +324,8 @@ def create_point_spectral(orig_msfile, basename='TEST1'):
 def create_points_two(orig_msfile, basename='TEST2'):
     msfile = basename+'.ms'
 
-    os.system('rm -rf {0}'.format(msfile))
-    os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
+    os.system(f'rm -rf {msfile}')
+    os.system(f'cp -r {orig_msfile} {msfile}')
 
     t = tables.table(msfile, readonly=False)
     d = t.getcol('DATA')
@@ -363,7 +363,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
     dec0 = ephem.degrees(dec0_string)
 
     # set up phase centre as katpoint target
-    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'
+    centre_target = katpoint.Target('{}, radec target, {}, {}'
                                     .format(basename, ra0_string, dec0_string))
     # calculate uvw
     uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
@@ -371,10 +371,10 @@ def create_points_two(orig_msfile, basename='TEST2'):
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename)
+    heading = f'Test data set {basename}'
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading))
-    f.write('# {0}\n'.format(underlining))
+    f.write(f'# {heading}\n')
+    f.write(f'# {underlining}\n')
     f.write('# Two points: point source in the phase centre and an offset point, '
             'both with no frequency slope.\n')
     f.write('#\n')
@@ -428,7 +428,7 @@ def create_points_two(orig_msfile, basename='TEST2'):
     source_table.close()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
+    casa_command = f'casapy -c \"clearcal(vis=\'{msfile}\')\"'
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
@@ -450,8 +450,8 @@ def create_points_two(orig_msfile, basename='TEST2'):
 def create_points_five(orig_msfile, basename='TEST3'):
     msfile = basename+'.ms'
 
-    os.system('rm -rf {0}'.format(msfile))
-    os.system('cp -r {0} {1}'.format(orig_msfile, msfile))
+    os.system(f'rm -rf {msfile}')
+    os.system(f'cp -r {orig_msfile} {msfile}')
 
     t = tables.table(msfile, readonly=False)
     d = t.getcol('DATA')
@@ -493,7 +493,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
     dec0 = ephem.degrees(dec0_string)
 
     # set up phase centre as katpoint target
-    centre_target = katpoint.Target('{0}, radec target, {1}, {2}'
+    centre_target = katpoint.Target('{}, radec target, {}, {}'
                                     .format(basename, ra0_string, dec0_string))
     # calculate uvw
     uvw = calc_uvw(centre_target, timestamps, antlist, ant1, ant2, antenna_descriptions)
@@ -501,10 +501,10 @@ def create_points_five(orig_msfile, basename='TEST3'):
 
     # write fake source parameters into a sky model file
     f = open(basename+'.txt', 'w')
-    heading = 'Test data set {0}'.format(basename)
+    heading = f'Test data set {basename}'
     underlining = '-'*len(heading)
-    f.write('# {0}\n'.format(heading))
-    f.write('# {0}\n'.format(underlining))
+    f.write(f'# {heading}\n')
+    f.write(f'# {underlining}\n')
     f.write('# Five points: point source in the phase centre and four offset points, '
             'all with frequency slope.\n')
     f.write('#\n')
@@ -516,7 +516,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
         f.write('\n')  # python will convert \n to os.linesep
 
         source_params = source.split(',')
-        a0, a1, a2, a3 = [float(s) for s in source_params[6:10]]
+        a0, a1, a2, a3 = (float(s) for s in source_params[6:10])
         log_nu = np.log10(nu_ghz)
         S = 10.**(a0 + a1*log_nu + a2*(log_nu**2.0) + a3*(log_nu**3.0))
 
@@ -556,7 +556,7 @@ def create_points_five(orig_msfile, basename='TEST3'):
     source_table.close()
 
     # clearcal to initialise CORRECTED column for imaging
-    casa_command = 'casapy -c \"clearcal(vis=\'{0}\')\"'.format(msfile)
+    casa_command = f'casapy -c \"clearcal(vis=\'{msfile}\')\"'
     proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
     outs, errs = proc.communicate()
 
@@ -586,7 +586,7 @@ if __name__ == "__main__":
     create_point_simple(msfile, basename=basename)
     if opts.image:
         # don't clean, just invert (niter=0)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)     # noqa: E501
+        casa_command = f'casapy -c \"clean(vis=\'{basename}.ms\',imagename=\'{basename}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'     # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -594,7 +594,7 @@ if __name__ == "__main__":
     create_point_spectral(msfile, basename=basename)
     if opts.image:
         # don't clean, just invert (niter=0)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)     # noqa: E501
+        casa_command = f'casapy -c \"clean(vis=\'{basename}.ms\',imagename=\'{basename}_image\',niter=0,cell=\'30arcsec\',imsize=256)\"'     # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -602,7 +602,7 @@ if __name__ == "__main__":
     create_points_two(msfile, basename=basename)
     if opts.image:
         # clean (niter=100)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)   # noqa: E501
+        casa_command = f'casapy -c \"clean(vis=\'{basename}.ms\',imagename=\'{basename}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'   # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()
 
@@ -610,6 +610,6 @@ if __name__ == "__main__":
     create_points_five(msfile, basename=basename)
     if opts.image:
         # clean (niter=100)
-        casa_command = 'casapy -c \"clean(vis=\'{0}.ms\',imagename=\'{1}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'.format(basename, basename)   # noqa: E501
+        casa_command = f'casapy -c \"clean(vis=\'{basename}.ms\',imagename=\'{basename}_image\',niter=100,cell=\'30arcsec\',imsize=256)\"'   # noqa: E501
         proc = subprocess.Popen(casa_command, stderr=subprocess.PIPE, shell=True)
         outs, errs = proc.communicate()

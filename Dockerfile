@@ -12,7 +12,6 @@ RUN install_pinned.py -r /tmp/install/requirements.txt
 # Install the current package
 COPY --chown=kat:kat . /tmp/install/katsdpcal
 WORKDIR /tmp/install/katsdpcal
-RUN python ./setup.py clean
 RUN pip install --no-deps .
 RUN pip check
 

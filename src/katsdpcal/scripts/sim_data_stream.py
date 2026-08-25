@@ -44,6 +44,11 @@ def get_n_substreams(telstate):
     return telstate['sdp_l0_n_chans'] // telstate['sdp_l0_n_chans_per_substream']
 
 
+def main_sync():
+    """Wrapper for async main"""
+    asyncio.run(main())
+
+
 async def main():
     setup_logging()
     opts = parse_opts()
@@ -66,7 +71,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
-    loop.close()
+    main_sync()

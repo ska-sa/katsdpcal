@@ -20,3 +20,5 @@ nosetests.xml
 
 # Developer tools
 *~
+
+src/katsdpcal/_version.py

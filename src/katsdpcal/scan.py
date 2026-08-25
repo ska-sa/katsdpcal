@@ -294,7 +294,7 @@ class Scan:
             te = time.time()
 
             scanlogger = args[0].logger
-            scanlogger.info('  - Solution time ({0}): {1} s'.format(f.__name__, te-ts,))
+            scanlogger.info(f'  - Solution time ({f.__name__}): {te-ts} s')
             return result
         return timed
 
@@ -400,7 +400,7 @@ class Scan:
         solint, dumps_per_solint = calprocs.solint_from_nominal(input_solint, self.dump_period,
                                                                 len(self.timestamps))
         self.logger.info(
-            '  - G solution interval: {} s ({} dumps)'.format(solint, dumps_per_solint))
+            f'  - G solution interval: {solint} s ({dumps_per_solint} dumps)')
         # determine channel range for fit
         if echan == 0:
             echan = None
@@ -734,7 +734,7 @@ class Scan:
             b_soln = b_soln.values[bchan:echan]
             norm_fact = calprocs.normalise_complex(b_soln)
         else:
-            raise ValueError('b_soln has soltype {}, expected soltype B'.format(b_soln.soltype))
+            raise ValueError(f'b_soln has soltype {b_soln.soltype}, expected soltype B')
         return norm_fact
 
     def bcross_to_sky(self, bcross_soln, spline, pol):
@@ -936,7 +936,7 @@ class Scan:
         elif soln.soltype in ['B', 'BCROSS_DIODE_SKY']:
             return self._apply(soln_values, vis, weights, cross_pol)
         else:
-            raise ValueError('Solution type {} is invalid.'.format(soln.soltype))
+            raise ValueError(f'Solution type {soln.soltype} is invalid.')
 
     def pre_apply(self, pre_apply_solns, data=None, cross_pol=False):
         """Apply a set of solutions to the visibilities.
@@ -972,7 +972,7 @@ class Scan:
 
         for soln in pre_apply_solns:
             self.logger.info(
-                '  - Pre-apply {0} solution to {1}'.format(soln.soltype, self.target.name))
+                f'  - Pre-apply {soln.soltype} solution to {self.target.name}')
             modvis, modweights = self.apply(soln, modvis, modweights, cross_pol)
         return modvis, modweights
 
@@ -991,7 +991,7 @@ class Scan:
         vis_ac_cross = self.auto_ant.tf.cross_pol.vis
         for soln in solns_to_apply:
             self.logger.info(
-                '  - Apply {0} solution to {1} (inplace)'.format(soln.soltype, self.target.name))
+                f'  - Apply {soln.soltype} solution to {self.target.name} (inplace)')
             vis_xc_auto = self.apply(soln, vis_xc_auto)
             vis_xc_cross = self.apply(soln, vis_xc_cross, cross_pol=True)
             vis_ac_auto = self.apply(soln, vis_ac_auto)
@@ -1314,8 +1314,8 @@ class Scan:
 
         # select only baselines to refant
         if refant_only:
-            ant_idx = np.where(((self.cross_ant.bls_lookup[:, 0] == self.refant)
-                               ^ (self.cross_ant.bls_lookup[:, 1] == self.refant)))[0]
+            ant_idx = np.where((self.cross_ant.bls_lookup[:, 0] == self.refant)
+                               ^ (self.cross_ant.bls_lookup[:, 1] == self.refant))[0]
             av_vis = av_vis[..., ant_idx]
             av_flags = av_flags[..., ant_idx]
         # Average per antenna
@@ -1453,7 +1453,7 @@ class Scan:
             self.logger.info('  - New flags: %.3f%%', data[key+'_final_flag_fraction'])
             if sensors:
                 now = time.time()
-                sensors['pipeline-start-flag-fraction-{}'.format(flag_type)].set_value(
+                sensors[f'pipeline-start-flag-fraction-{flag_type}'].set_value(
                     data[key + '_start_flag_fraction'], timestamp=now)
-                sensors['pipeline-final-flag-fraction-{}'.format(flag_type)].set_value(
+                sensors[f'pipeline-final-flag-fraction-{flag_type}'].set_value(
                     data[key + '_final_flag_fraction'], timestamp=now)

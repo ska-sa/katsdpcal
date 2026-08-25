@@ -13,7 +13,7 @@ import katsdptelstate
 import katpoint
 from unittest import mock
 
-from .. import pipelineprocs
+from katsdpcal import pipelineprocs
 
 
 class TestArgparseParameters(unittest.TestCase):
