@@ -12,12 +12,15 @@ import attr
 import numpy as np
 import astropy.units as u
 import requests
+import h5py
 
 import katpoint
 
 import katsdpmodels.fetch.requests
 import katsdpmodels.band_mask
 import katsdpmodels.rfi_mask
+import katsdpmodels.primary_beam
+import katsdpmodels.models
 
 from collections import OrderedDict
 from katsdpcalproc import calprocs
@@ -188,7 +191,11 @@ COMPUTED_PARAMETERS = [
     Parameter('bcross_sky_spline', 'spline fit to bcross_sky across frequency (in MHz)', tuple,
               telstate=True),
     Parameter('reset_solution_stores', 'reset the solution stores between capture blocks',
-              bool, telstate=True)
+              bool, telstate=True),
+    Parameter('mkat_beam_model', 'beam model for meerkat antennas',
+              katsdpmodels.primary_beam.PrimaryBeam),
+    Parameter('ext_beam_model', 'beam model for ska antennas',
+              katsdpmodels.primary_beam.PrimaryBeam)
 ]
 
 
@@ -241,6 +248,12 @@ def _check_blank_freqwin(parameters):
         except KeyError:
             pass
     return blank_freqwin
+
+
+def _get_primary_beam_model(beam_path, antenna_type, band):
+    f = h5py.File('{}/{}_mkat_{}.hdf5'.format(beam_path, antenna_type, band))
+    model = katsdpmodels.primary_beam.PrimaryBeamAperturePlane.from_hdf5(f)
+    return model
 
 
 def _get_rfi_mask(telstate_l0):
@@ -379,7 +392,7 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
                     p, channel_freqs[bchan].to_value(u.MHz), channel_freqs[echan].to_value(u.MHz))
 
 
-def finalise_parameters(parameters, telstate_l0, servers, server_id):
+def finalise_parameters(parameters, telstate_l0, servers, server_id, beam_path):
     """Set the defaults and computed parameters in `parameters`.
 
     On input, `parameters` contains keys from :const:`USER_PARAMS_CHANS` or
@@ -400,6 +413,8 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
         Number of cooperating servers
     server_id : int
         Number of this server amongst `servers` (0-based)
+    beam_path : str
+        Path where beam models are stored
 
     Raises
     ------
@@ -444,6 +459,19 @@ def finalise_parameters(parameters, telstate_l0, servers, server_id):
     parameters['bls_pol_ordering'] = bls_pol_ordering
     parameters['pol_ordering'] = [p[0] for p in bls_pol_ordering if p[0] == p[1]]
     parameters['bls_lookup'] = calprocs.get_bls_lookup(antenna_names, bls_ordering)
+
+    # select first meerkat and ska antennas as canonical antennas to retrieve beam
+    # antenna types are distinguished based on antenna names which may not be a very
+    # reliable identifier, if another identifier (e.g. a sensor) becomes available
+    # this should be adopted instead
+    ant_type_names = ['mkat', 'ext']
+    for name in ant_type_names:
+        ants = [a for a in antennas if a.name[0] == name[0]]
+        if ants:
+            parameters[name + '_beam_model'] = _get_primary_beam_model(
+                    beam_path, ants[0].name[0], telstate_l0['sub_band'])
+        else:
+            parameters[name + '_beam_model'] = None
 
     # array_position can be set by user, but if not specified we need to
     # get the default from one of the antennas.

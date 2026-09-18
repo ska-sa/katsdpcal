@@ -609,7 +609,7 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
                  flag_array=flag_array, slots=slots, refant=refant_ind,
                  array_position=parameters['array_position'],
                  mkat_beam_model=parameters['mkat_beam_model'],
-                 ska_beam_model=parameters['ska_beam_model'],
+                 ska_beam_model=parameters['ext_beam_model'],
                  logger=logger)
 
         if s.xc_mask.size == 0:

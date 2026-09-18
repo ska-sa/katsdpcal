@@ -198,6 +198,9 @@ def parse_opts():
     parser.add_argument(
         '--server-id', type=int, default=1,
         help='index of this server amongst parallel servers (1-based) [default: %(default)s]')
+    parser.add_argument(
+        '--beam-path', type=str, default='/home/kat/katsdpbeam/beams',
+        help='Path where beam model files are located. [default: ...]')
     register_argparse_parameters(parser)
     args = parser.parse_args()
     if args.telstate is None:
@@ -307,7 +310,8 @@ def main():
     parameters.update(parameters_from_argparse(opts))
     logger.info('Finalising parameters')
     parameters = finalise_parameters(parameters, telstate_l0,
-                                     opts.servers, opts.server_id - 1)
+                                     opts.servers, opts.server_id - 1,
+                                     opts.beam_path)
     parameters_to_telstate(parameters, telstate_cal, opts.l0_name)
 
     nant = len(parameters['antennas'])
