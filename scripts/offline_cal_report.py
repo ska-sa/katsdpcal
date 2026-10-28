@@ -82,6 +82,7 @@ def interp_b_nans(b_gain, channel_freqs):
                 out[:, pol, ant] = complex_interp(channel_freqs, channel_freqs[valid], col[valid])
     return out
 
+
 def apply_parallel_pol(solval, vis, index0=None, index1=None):
     """Apply calibration solutions to parallel-pol (HH/VV) visibilities
        auto- or cross-correlation.
@@ -168,9 +169,10 @@ def valid_allfreq(model_cat, freqs):
     return max(min_valid) <= min(freqs_MHz) and min(max_valid) >= max(freqs_MHz)
 
 
-
-def build_model(target, target_name, timestamps, telstate, antennas, array_position,
-                channel_freqs, bls_lookup, max_offset=8.0):
+def build_model(
+    target, target_name, timestamps, telstate, antennas, array_position,
+    channel_freqs, bls_lookup, max_offset=8.0
+):
     """Reconstruct a target's own flux model. Mirrors scan.py _create_model.
 
     Case A: a single source at the phase center -- model is a scalar
@@ -213,7 +215,7 @@ def build_model(target, target_name, timestamps, telstate, antennas, array_posit
         return None
 
     model_targets = [katpoint.Target(','.join(mc.split(',')[:-1])) for mc in model_params]
-    model_fluxes  = [calprocs.FluxDensityModel(''.join(mc.split(',')[-1])) for mc in model_params]
+    model_fluxes = [calprocs.FluxDensityModel(''.join(mc.split(',')[-1])) for mc in model_params]
 
     if not valid_allfreq(model_fluxes, channel_freqs) and len(model_params) > 1:
         # If not every component covers the full band -- fall back to just the first source
@@ -228,24 +230,32 @@ def build_model(target, target_name, timestamps, telstate, antennas, array_posit
         if not valid_allfreq(model_fluxes, channel_freqs):
             model = np.ones((1, len(channel_freqs), 1, 1), np.complex64)
         else:
-            # reshape to (1, nchan, 1, 1) 
-            model = model_fluxes[0].flux_density(channel_freqs / 1.0e6)[np.newaxis, :, np.newaxis, np.newaxis]
+            # reshape to (1, nchan, 1, 1)
+            model = model_fluxes[0].flux_density(channel_freqs / 1.0e6)[
+                np.newaxis, :, np.newaxis, np.newaxis
+            ]
             model = np.require(model, dtype=np.float32)
     else:
         # Case B:
         uvw = target.uvw(antennas, timestamps, array_position)
         uvw = np.array(uvw, np.float64)
 
-        ntimes, nchans, nants, nbls = len(timestamps), len(channel_freqs), len(antennas), len(bls_lookup)
+        ntimes, nchans, nants, nbls = (
+            len(timestamps), len(channel_freqs), len(antennas), len(bls_lookup)
+        )
         k_ant = np.zeros((ntimes, nchans, nants), np.complex128)
         complexmodel = np.zeros((ntimes, nchans, nbls), np.complex64)
         wl = katpoint.lightspeed / channel_freqs
 
         for source, flux_model in zip(model_targets, model_fluxes):
             S = flux_model.flux_density(channel_freqs / 1.0e6)
-            l, m = target.sphere_to_plane(*source.radec(), projection_type='SIN', coord_system='radec')
+            l, m = target.sphere_to_plane(
+                *source.radec(), projection_type='SIN', coord_system='radec'
+            )
             k_ant = calprocs.K_ant(uvw, l, m, wl, k_ant)
-            complexmodel = calprocs.add_model_vis(k_ant, bls_lookup[:, 0], bls_lookup[:, 1], S, complexmodel)
+            complexmodel = calprocs.add_model_vis(
+                k_ant, bls_lookup[:, 0], bls_lookup[:, 1], S, complexmodel
+            )
 
         # add a pol axis so it matches Case A's (ntimes, nchans, 1, nbls) shape
         model = complexmodel[:, :, np.newaxis, :]
@@ -301,7 +311,7 @@ def solve_g_flux(vis_autopol, flags_autopol, weights_autopol, model, xc_lookup, 
     with ProgressBar():
         av_vis, av_weights = da.compute(av_vis, av_weights)
 
-    #Solve for gain
+    # Solve for gain
     g_soln = calprocs.g_fit(av_vis, av_weights, xc_lookup, None, refant)
     return g_soln[0]   # shape (npol, nant)
 
@@ -472,7 +482,9 @@ def gather_flag_av_corr(d, cal_tags):
             continue
 
         ant_names = [a.name for a in d.ants]
-        reorder_idx, bls_ordering, bls_pol_ordering = calprocs.get_reordering(ant_names, d.corr_products)
+        reorder_idx, bls_ordering, bls_pol_ordering = calprocs.get_reordering(
+            ant_names, d.corr_products
+        )
         flags = d.raw_flags.dataset[1:]
         flags_reordered = flags[:, :, reorder_idx]
 
@@ -567,7 +579,7 @@ def summarise_av_corr(d, telstate, merged_params, xc_lookup, refant, cbf_targets
             continue
 
         d.select(scans="track", compscans=compscan_index, corrprods='cross')
-        t0, t1 = d.timestamps[0], d.timestamps[-1]
+        t1 = d.timestamps[-1]
         logger.info("scan %d: %s", compscan_index, target.name)
 
         is_gaintag = any(k in target.tags for k in gaintag)
@@ -583,7 +595,9 @@ def summarise_av_corr(d, telstate, merged_params, xc_lookup, refant, cbf_targets
             g_val = get_telstate_product(telstate, g_key, t1)
 
         ant_names = [a.name for a in d.ants]
-        reorder_idx, bls_ordering, bls_pol_ordering = calprocs.get_reordering(ant_names, d.corr_products)
+        reorder_idx, bls_ordering, bls_pol_ordering = calprocs.get_reordering(
+            ant_names, d.corr_products
+        )
         flags = d.raw_flags.dataset[1:]
         flags_reordered = flags[:, :, reorder_idx]
         vis = d.vis.dataset[1:]
@@ -607,7 +621,7 @@ def summarise_av_corr(d, telstate, merged_params, xc_lookup, refant, cbf_targets
         g_from_k = np.exp(2j * np.pi * k_delay[np.newaxis, np.newaxis, :, :]
                           * channel_freqs[np.newaxis, :, np.newaxis, np.newaxis])
         vis_autopol = apply_parallel_pol(g_from_k, vis_autopol, index0, index1)
-        
+
         # Add time axis to B
         b_broadcast = b_gain[np.newaxis, :, :, :]
         vis_autopol = apply_parallel_pol(b_broadcast, vis_autopol, index0, index1)
@@ -631,13 +645,15 @@ def summarise_av_corr(d, telstate, merged_params, xc_lookup, refant, cbf_targets
                     # add same time, freq axes as G
                     g_flux_broadcast = g_flux_soln[np.newaxis, np.newaxis, :, :]
                     vis_autopol = apply_parallel_pol(g_flux_broadcast, vis_autopol,
-                                                              index0, index1)
+                                                     index0, index1)
                 except Exception as e:
                     print(f"G_FLUX reconstruction failed for {target.name}: {e}")
 
         if is_nogaintag:
             # NOG_SPEC: K,B-only
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis_autopol, flags_autopol, weights_autopol, nchans)
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(
+                vis_autopol, flags_autopol, weights_autopol, nchans
+            )
             ant_idx = np.where(((xc_lookup[:, 0] == refant)
                                ^ (xc_lookup[:, 1] == refant)))[0]
             av_vis = av_vis[..., ant_idx]
@@ -651,34 +667,44 @@ def summarise_av_corr(d, telstate, merged_params, xc_lookup, refant, cbf_targets
 
         if is_gaintag:
             # G_SPEC: full K,B,G-correction
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis_autopol, flags_autopol, weights_autopol, nchans)
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
-                                                                  merged_params['antennas'], xc_lookup)
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(
+                vis_autopol, flags_autopol, weights_autopol, nchans
+            )
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(
+                av_vis, av_flags, av_weights, merged_params['antennas'], xc_lookup
+            )
             logger.info("Computing _g_spec for %s", target.name)
             with ProgressBar():
                 av_vis, av_flags, av_weights = da.compute(av_vis, av_flags, av_weights)
             summarise[target.name + '_g_spec'].append((av_vis, av_flags, av_weights))
 
-            # G_BLS: same corrected spectrum, just not antenna-averaged and coarser in frequency averaging
-            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis_autopol, flags_autopol, weights_autopol, 8)
+            # G_BLS: same corrected spectrum, just not antenna-averaged and coarser in
+            # frequency averaging
+            av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(
+                vis_autopol, flags_autopol, weights_autopol, 8
+            )
             av_vis[av_flags] = np.nan
             logger.info("Computing _g_bls for %s", target.name)
             with ProgressBar():
                 val = (av_vis.compute(), np.mean(timestamps))
             summarise[target.name + '_g_bls'].append(val)
 
-            ## G_PHASE: antenna-averaged, coarse-frequency
+            # G_PHASE: antenna-averaged, coarse-frequency
             if any(k in target.tags for k in gaincaltag):
-                av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis_autopol, flags_autopol, weights_autopol, 8)
-                av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(av_vis, av_flags, av_weights,
-                                                                      merged_params['antennas'], xc_lookup)
+                av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(
+                    vis_autopol, flags_autopol, weights_autopol, 8
+                )
+                av_vis, av_flags, av_weights = calprocs_dask.wavg_ant(
+                    av_vis, av_flags, av_weights, merged_params['antennas'], xc_lookup
+                )
                 av_vis[av_flags] = np.nan
                 logger.info("Computing _g_phase for %s", target.name)
                 with ProgressBar():
                     val = (av_vis.compute(), np.mean(timestamps))
                 summarise[target.name + '_g_phase'].append(val)
 
-    # Combine each gain target's per-scan '_g_spec' entries into the single weighted-averaged entry av_corr
+    # Combine each gain target's per-scan '_g_spec' entries into the single
+    # weighted-averaged entry av_corr
     summarise_final = summarise.copy()
     for key in summarise.keys():
         if key.endswith('_g_spec') and summarise[key]:
@@ -776,7 +802,7 @@ def auto_cross_av_corr(d, telstate, telstate_full, merged_params):
         vis_cross = apply_cross_pol(g_from_k, vis_cross)
 
         # B:
-        # add time axis to B 
+        # add time axis to B
         b_broadcast = b_gain[np.newaxis, :, :, :]
         vis_cross = apply_cross_pol(b_broadcast, vis_cross)
         flags_cross = flags_cross | np.isnan(vis_cross)   # B can have NaN at invalid channels
@@ -808,7 +834,9 @@ def auto_cross_av_corr(d, telstate, telstate_full, merged_params):
         vis_cross = apply_cross_pol(bcross_broadcast, vis_cross)
         flags_cross = flags_cross | np.isnan(vis_cross)
 
-        av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(vis_cross, flags_cross, weights_cross, 1024)
+        av_vis, av_flags, av_weights = calprocs_dask.wavg_t_f(
+            vis_cross, flags_cross, weights_cross, 1024
+        )
         av_vis[av_flags] = np.nan
         logger.info("Computing _auto_cross for %s", target_name)
         with ProgressBar():
@@ -910,7 +938,7 @@ def main():
     # The parameters here are not yet finalised, this step is done per server with
     # katsdpcal finalise_parameters
     base_params = file_params | pipeline_params
-    
+
     # Cluster reports of the same CBID in one directory
     base_path = os.path.join(args.output_dir, f'{CBID}_cal_reports')
 
@@ -938,7 +966,7 @@ def main():
         av_corr.update(gather_model_av_corr(d, telstate, merged_params, xc_lookup, cbf_targets))
         av_corr.update(gather_flag_av_corr(d, cal_tags))
         av_corr.update(summarise_av_corr(d, telstate, merged_params, xc_lookup,
-                                                refant, cbf_targets, cal_tags))
+                                         refant, cbf_targets, cal_tags))
         av_corr.update(auto_cross_av_corr(d, telstate, telstate_full, merged_params))
 
         av_corr_dd = defaultdict(list, av_corr)
@@ -949,7 +977,8 @@ def main():
 
         logger.info("Writing report for server %d to %s", server_id + 1, server_path)
         with ProgressBar():
-            report.make_cal_report(telstate, CBID, stream_name, merged_params, server_path, av_corr_dd, st=0)
+            report.make_cal_report(telstate, CBID, stream_name, merged_params,
+                                   server_path, av_corr_dd, st=0)
         logger.info("Wrote %s/calreport%d.rst --", server_path, server_id + 1)
 
     logger.info("Done -- %d report(s) written under %s", SERVERS, base_path)
