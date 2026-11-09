@@ -29,6 +29,143 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------------------------------------
 
 BAND_MAP = {'u': 'UHF', 'l': 'L', 's': 'S', 'x': 'X'}
+# ADD complete secant_fft
+
+def k_fit_secant(data, weights, corrprod_lookup, chans, refant,
+                 cross=True, chan_sample=1, fft_factor=2,
+                 epsilon=1e-10, max_iters=100, discard_unconverged=True):
+
+
+    chans = np.asarray(chans, dtype=np.float64)
+    corrprod_lookup = np.asarray(corrprod_lookup)
+    if chan_sample != 1:
+        data = data[::chan_sample, ...]
+        weights = weights[::chan_sample, ...]
+        chans = chans[::chan_sample]
+
+    chan_spacing = chans[1] - chans[0]
+    num_pol = data.shape[-2] if data.ndim > 2 else 1
+    num_ants = calprocs.ants_from_bllist(corrprod_lookup)
+    n_bls = len(corrprod_lookup)
+    to_baseline = np.zeros((n_bls, num_ants), dtype=np.float64)
+    for n, (ant1, ant2) in enumerate(corrprod_lookup):
+        to_baseline[n, ant1] = -1.0
+        to_baseline[n, ant2] = +1.0
+    non_ref_cols = [i for i in range(num_ants) if i != refant]
+    to_baseline_nonref = to_baseline[:, non_ref_cols]
+
+    kdelay = []
+    for p in range(num_pol):
+        pol_data = data[:, p, :] if data.ndim > 2 else data          # (n_chans, n_bls)
+        pol_weights = weights[:, p, :] if weights.ndim > 2 else weights
+
+        good_pol_data = np.nan_to_num(pol_data)
+        good_pol_data *= (pol_weights > 0)
+
+        # --- Coarse delay via fft_secant (rad/channel -> seconds) ---
+        # fft_secant expects (n_bls, n_chans)
+        x = good_pol_data.T.astype(np.complex128)
+        n_fft = fft_factor * x.shape[-1] # 2 or 4
+        coarse_bl = fft_secant(
+            x, n_fft, epsilon=epsilon, max_iters=max_iters,
+            discard_unconverged=discard_unconverged
+        )  
+        delay_per_bl = -coarse_bl / (2.0 * np.pi * chan_spacing)  # seconds # baseline delays
+
+        if cross:
+            valid = np.isfinite(delay_per_bl)
+            ant_k = np.full(num_ants, np.nan, dtype=np.float64)
+            if np.count_nonzero(valid) >= len(non_ref_cols):
+                ant_k[refant] = 0.0
+                ant_k_nonref, _, _, _ = np.linalg.lstsq(
+                    to_baseline_nonref[valid], delay_per_bl[valid], rcond=None)
+                ant_k[non_ref_cols] = ant_k_nonref
+            else:
+                ant_k[refant] = 0.0
+                for ai in range(num_ants):
+                    mask = (corrprod_lookup == (ai, refant)).all(axis=1)
+                    if mask.any() and np.isfinite(delay_per_bl[mask]).any():
+                        ant_k[ai] = delay_per_bl[mask][0]
+                    mask = (corrprod_lookup == (refant, ai)).all(axis=1)
+                    if mask.any() and np.isfinite(delay_per_bl[mask]).any():
+                        ant_k[ai] = -delay_per_bl[mask][0]
+            kdelay.append(ant_k)
+
+    return np.stack(kdelay, axis=0)
+
+
+
+def _fft_abs_peak(x, NFFT):
+    absX = np.abs(np.fft.fft(x, NFFT))
+    fft_peak = absX.argmax(axis=-1)
+    return absX, fft_peak
+
+
+def _index_to_freq(k, NFFT):
+    deshift = np.where(k < NFFT // 2, k, k - NFFT)
+    return 2. * np.pi * deshift / NFFT
+
+
+def fft_coarse(x, NFFT=None):
+    """FFT (no interpolation, nearest bin)."""
+    if NFFT is None:
+        NFFT = np.shape(x)[-1]
+    _, fft_peak = _fft_abs_peak(x, NFFT)
+    return _index_to_freq(fft_peak, NFFT)
+def _deriv_fast(f, x, n, temp):
+    temp.real = 0.0
+    np.outer(-f, n, temp.imag)
+    np.exp(temp, temp) 
+    temp *= x 
+    X = temp.mean(axis=-1)
+    temp *= -1j * n 
+    dX = temp.mean(axis=-1)
+    return 2 * (X * dX.conj()).real 
+
+
+def _secant_fast(x, left, right, epsilon, max_iters, discard_unconverged):
+    delta = np.ones_like(left)
+    active = delta >= epsilon
+    N = np.shape(x)[-1] # get the number of channels in the input signal x
+    n = np.arange(N, dtype=float)
+    temp = np.empty(x.shape, dtype=np.complex128) 
+    f_old = left.copy()
+    f_new = right.copy()
+    d_old = _deriv_fast(f_old, x, n, temp)
+    d_new = _deriv_fast(f_new, x, n, temp)
+    iteration = 0
+    while np.any(active) and iteration < max_iters:
+        iteration += 1
+        with np.errstate(divide='ignore', invalid='ignore'):
+            delta = d_new * (f_new - f_old) / (d_new - d_old)
+        delta[np.isnan(delta)] = 0.0
+        active = ~np.isinf(delta) & (np.abs(delta) >= epsilon)
+        f_old[:] = f_new
+        d_old[:] = d_new
+        f_new[active] = f_old[active] - delta[active]
+        d_new[active] = _deriv_fast(f_new[active], x[active], n, temp[:sum(active)])
+    if discard_unconverged:
+        unconverged = np.isinf(delta) | active
+        f_new[unconverged] = np.nan
+    return f_new
+
+
+def fft_secant(x, NFFT=None, epsilon=1e-10, max_iters=100,
+               discard_unconverged=False):
+    print('using fft secant')
+    front_shape = x.shape[:x.ndim - 1] 
+    if front_shape != (): 
+        x = x.reshape(-1, x.shape[-1])
+    if NFFT is None:
+        NFFT = np.shape(x)[-1]
+    initial_guess = fft_coarse(x, NFFT)
+    coarse_bin_width = 2 * np.pi / NFFT
+    left = initial_guess - 0.5 * coarse_bin_width
+    right = initial_guess + 0.5 * coarse_bin_width
+    freq = _secant_fast(x, left, right, epsilon, max_iters, discard_unconverged)
+    if front_shape != ():
+        freq = freq.reshape(front_shape)
+    return freq 
 
 
 class Converter:
@@ -106,6 +243,8 @@ USER_PARAMS_CHANS = [
     # delay calibration
     Parameter('k_solint', 'nominal pre-k g solution interval, seconds', float),
     Parameter('k_chan_sample', 'sample every nth channel for pre-K BP soln', int),
+    Parameter('k_solver', 'K delay solver implementation (secant or secant_stefcal)', str,
+              telstate=False),
     Parameter('k_bchan', 'first channel for K fit, (channel no)', int, converter=ChannelConverter),
     Parameter('k_echan', 'last channel for K fit, (channel no)', int, converter=ChannelConverter),
     Parameter('kcross_chanave', 'number of channels to average together to kcross solution', int),
@@ -316,9 +455,7 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
 
     Set the solution interval parameters (e.g. k_bfreq). The interval is selected by
     finding the largest interval of channels which is not masked by the static mask
-    and fits within a single server. A default number of channels is selected from
-    the center of this interval. If the interval is narrower than the default
-    width the whole interval is used.
+    and fits within a single server. The full interval is used.
 
     Parameters
     ----------
@@ -351,25 +488,8 @@ def parameters_for_blank_freqwin(parameters, channel_freqs, static_mask, prefix)
             if len(window) >= len(chan_window):
                 chan_window = window
 
-    # This default gain window size for narrowband (chan_width = 3.265 kHz * 6400 = 20.9 MHz) is
-    # half the size used in wideband (41.8 MHz) to allow it to fit within a single server
-    # in the default 32k, 4 server case
-    max_chans_per_server = len(channel_freqs) // servers
-    default_width_chans = min(6400, max_chans_per_server)
-    len_window = len(chan_window)
-    if len_window >= default_width_chans:
-        bchan = chan_window[len_window // 2] - default_width_chans // 2
-        echan = chan_window[len_window // 2] + default_width_chans // 2
-
-    # Select the full interval if it is narrower than the default of 6400 chans
-    else:
-        bchan = chan_window[0]
-        echan = chan_window[-1]
-        actual_sol_bandwidth = (channel_freqs[echan] - channel_freqs[bchan]).to(u.MHz)
-        default_sol_bandwidth = (channel_freqs[default_width_chans] - channel_freqs[0]).to(u.MHz)
-        logger.warning("The selected gain window is narrower (%.3f MHz)"
-                       " than the default (%.3f MHz)", actual_sol_bandwidth.value,
-                       default_sol_bandwidth.value)
+    bchan = chan_window[0]
+    echan = chan_window[-1]
 
     # Parameters are in units of MHz
     for p in prefix:

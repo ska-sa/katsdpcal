@@ -35,8 +35,6 @@ class TestArgparseParameters(unittest.TestCase):
         args = parser.parse_args(argv)
         parameters = pipelineprocs.parameters_from_argparse(args)
         self.assertEqual([], parameters['rfi_windows_freq'])
-
-
 class TestParametersToChannels(unittest.TestCase):
     def setUp(self):
         self.parameters = {
@@ -105,8 +103,8 @@ class TestParametersForBlankFreqWin(unittest.TestCase):
         parameters = self.parameters.copy()
         prefix = ['k', 'g']
         pipelineprocs.parameters_for_blank_freqwin(parameters, self.freqs, self.mask, prefix)
-        self.assertEqual(self.freqs[9088], parameters['k_bfreq'] * u.MHz)
-        self.assertEqual(self.freqs[15488], parameters['k_efreq'] * u.MHz)
+        self.assertEqual(self.freqs[8192], parameters['k_bfreq'] * u.MHz)
+        self.assertEqual(self.freqs[16383], parameters['k_efreq'] * u.MHz)
         self.assertEqual(parameters['k_bfreq'], parameters['g_bfreq'])
         self.assertEqual(parameters['k_efreq'], parameters['g_efreq'])
 
@@ -115,8 +113,8 @@ class TestParametersForBlankFreqWin(unittest.TestCase):
         pipelineprocs.parameters_for_blank_freqwin(parameters, self.freqs, self.mask, ['g'])
         self.assertEqual([], parameters['k_bfreq'])
         self.assertEqual([], parameters['k_efreq'])
-        self.assertEqual(self.freqs[9088], parameters['g_bfreq'] * u.MHz)
-        self.assertEqual(self.freqs[15488], parameters['g_efreq'] * u.MHz)
+        self.assertEqual(self.freqs[8192], parameters['g_bfreq'] * u.MHz)
+        self.assertEqual(self.freqs[16383], parameters['g_efreq'] * u.MHz)
 
     def test_narrow_width(self):
         parameters = self.parameters.copy()

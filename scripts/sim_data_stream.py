@@ -46,10 +46,7 @@ def get_n_substreams(telstate):
 
 def main_sync():
     """Wrapper for async main"""
-    loop = asyncio.get_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
-    loop.close()
+    asyncio.run(main())
 
 
 async def main():

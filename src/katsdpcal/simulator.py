@@ -89,7 +89,8 @@ class SimData:
         self.n_substreams = n_substreams
         self._tx_future = None    # Future for heaps in flight
         self.file = katdal.open(filename, upgrade_flags=False)
-        self.file.select(channels=slice(bchan, echan))
+        self.file.select(channels=slice(bchan, echan), scans=48)
+        print(self.file)
         self.num_scans = len(self.file.scan_indices)
 
     def get_params(self):
@@ -124,11 +125,15 @@ class SimData:
                                f'{f_engine_instrument}_scale_factor_timestamp',
                                f'{f_engine_instrument}_sync_time', 'cal_src_streams']
 
+        print(f'{f_engine_instrument}_scale_factor_timestamp') # set as narrow1_antenna_channelied_voltage
+        print(f"{[key for key in telstate.keys() if 'scale' in key]}")
+        print(telstate_immutables)
         for key in telstate_immutables:
             param_dict[key] = telstate[key]
 
         telstate_mutables = ['cbf_target', 'obs_activity', 'sdp_capture_block_id',
-                             f"{telstate.get_range('sdp_capture_block_id', st=0)[-1][0]}_obs_label"]
+                             f"{telstate.get_range('sdp_capture_block_id', st=0)[0][0]}_obs_label"]
+        print(f"{telstate.get_range('sdp_capture_block_id', st=0)[0][0]}_obs_label:")
         for key in telstate_mutables:
             param_dict[key] = telstate.get_range(key, st=0)
 

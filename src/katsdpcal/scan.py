@@ -13,6 +13,7 @@ import katpoint
 
 from katsdpcalproc import calprocs, calprocs_dask
 from katsdpcalproc.solutions import CalSolution, CalSolutions
+from katsdpcal import pipelineprocs
 
 logger = logging.getLogger(__name__)
 
@@ -589,9 +590,9 @@ class Scan:
         Parameters
         ----------
         bchan : int, optional
-            start channel for fit
+            Deprecated for k_sol. Kept for API compatibility.
         echan : int, optional
-            end channel for fit
+            Deprecated for k_sol. Kept for API compatibility.
         chan_sample : int, optional
             channel sampling to use in delay fit
         pre_apply : list of :class:`CalSolutions`, optional
@@ -606,10 +607,11 @@ class Scan:
         """
         modvis, modweights = self.pre_apply(pre_apply)
 
-        # determine channel range for fit
-        chan_slice = np.s_[:, bchan:echan, :, :]
-        # use specified channel range for frequencies
-        k_freqs = self.channel_freqs[bchan:echan]
+        # Always solve K over the full local channel span.
+        chan_slice = np.s_[:, :, :, :]
+        #chan_slice = np.s_[:, bchan:echan, :, :]
+        k_freqs = self.channel_freqs
+        #k_freqs = self.channel_freqs[bchan:echan]
 
         # initialise model, if this scan target has an associated model
         self._init_model()
@@ -846,6 +848,15 @@ class Scan:
             Apply corrections appropriate for cross hand data if True, else apply
             parallel hand corrections.
         """
+        # Some single-pol datasets may omit the explicit pol axis.
+        # Add a singleton axis so shape checks and broadcasting still work.
+        added_pol_axis = False
+        if vis.ndim == solval.ndim - 1:
+            vis = vis[..., np.newaxis, :]
+            if weights is not None:
+                weights = weights[..., np.newaxis, :]
+            added_pol_axis = True
+
         # check solution and vis shapes are compatible
         if solval.shape[-2] != vis.shape[-2]:
             raise Exception('Polarisation axes do not match!')
@@ -872,9 +883,16 @@ class Scan:
 
         if weights is not None:
             modweights = da.where(np.abs(correction)**2 > 0, weights / np.abs(correction)**2, 0)
-            return vis * correction, modweights
+            modvis = vis * correction
+            if added_pol_axis:
+                modvis = da.squeeze(modvis, axis=-2)
+                modweights = da.squeeze(modweights, axis=-2)
+            return modvis, modweights
         else:
-            return vis * correction
+            modvis = vis * correction
+            if added_pol_axis:
+                modvis = da.squeeze(modvis, axis=-2)
+            return modvis
 
     def apply(self, soln, vis, weights=None, cross_pol=False, channel_freqs=None):
         """Applies calibration solutions.

@@ -14,6 +14,7 @@ from katdal.sensordata import TelstateSensorGetter, SensorCache
 from katdal.h5datav3 import SENSOR_PROPS
 from katdal.visdatav4 import VisibilityDataV4
 from katdal.datasources import TelstateDataSource, view_l0_capture_stream
+from katdal.sensordata import TelstateToStr
 from katsdpcalproc import solutions
 from katsdpcalproc.calprocs import interpolate_soln
 from katsdpsigproc.rfi.twodflag import SumThresholdFlagger
@@ -135,11 +136,12 @@ def check_is_corrected(telstate, time_range):
     bool:
         True for track that has a 'corrected' label in the `time_range`
     """
-    capture_block_id = telstate.get_range('sdp_capture_block_id',
+    telstate_to_str = TelstateToStr(telstate)
+    capture_block_id = telstate_to_str.get_range('sdp_capture_block_id',
                                           st=time_range[0], et=time_range[1],
                                           include_previous=True)[0][0]
     obs_label_key = '{}_obs_label'.format(capture_block_id)
-    obs_label = telstate.get_range(obs_label_key, st=time_range[0], et=time_range[1],
+    obs_label = telstate_to_str.get_range(obs_label_key, st=time_range[0], et=time_range[1],
                                    include_previous=True)
     values, times = zip(*obs_label)
     if 'corrected' in values:
@@ -648,7 +650,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
             # K solution
             logger.info('Solving for K on beamformer calibrator %s', target_name)
             k_soln = shared_solve(ts, parameters, solution_stores['K'],
-                                  parameters['k_bchan'], parameters['k_echan'], s.k_sol)
+                                  parameters['k_bchan'], parameters['k_echan'], s.k_sol,
+                                  )
 
             # ---------------------------------------
             # B solution
@@ -753,7 +756,8 @@ def pipeline(data, ts, parameters, solution_stores, stream_name, flag_array, slo
             logger.info('Solving for K on delay calibrator %s', target_name)
             shared_solve(ts, parameters, solution_stores['K'],
                          parameters['k_bchan'], parameters['k_echan'],
-                         s.k_sol, chan_sample=k_chan_sample, pre_apply=[g_to_apply])
+                         s.k_sol, chan_sample=k_chan_sample, pre_apply=[g_to_apply],
+                         )
 
         # DELAY POL OFFSET
         if any('polcal' in k for k in taglist):
