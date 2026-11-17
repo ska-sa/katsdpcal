@@ -24,7 +24,11 @@ pyyaml                  # for distributed
 scipy
 sortedcontainers
 spead2
+# tbb 2023.0.0 is the last release with official Ubuntu 22.04 support.
+# It provides libtbb12 binaries so don't apt install those (too old anyway).
+tbb==2023.0.0
 tblib==3.2.2            # for distributed
+tcmlib==1.6.0           # for tbb
 toolz                   # for distributed
 tornado                 # for distributed
 zict==3.0.0             # for distributed
