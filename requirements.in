@@ -1,0 +1,27 @@
+aiokatcp
+astropy
+async_timeout
+attrs
+bokeh
+dask[array,distributed]
+distributed
+docutils
+importlib-resources
+jsonschema
+matplotlib
+numba
+numpy
+scipy
+sortedcontainers
+spead2
+# tbb 2023.0.0 is the last release with official Ubuntu 22.04 support.
+# It provides libtbb12 binaries so don't apt install those (too old anyway).
+tbb==2023.0.0
+
+katdal @ git+https://github.com/ska-sa/katdal
+katpoint @ git+https://github.com/ska-sa/katpoint
+katsdpcalproc @ git+https://github.com/ska-sa/katsdpcalproc
+katsdpmodels[requests] @ git+https://github.com/ska-sa/katsdpmodels
+katsdpservices[argparse,aiomonitor] @ git+https://github.com/ska-sa/katsdpservices
+katsdpsigproc @ git+https://github.com/ska-sa/katsdpsigproc
+katsdptelstate @ git+https://github.com/ska-sa/katsdptelstate

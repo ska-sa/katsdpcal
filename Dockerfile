@@ -2,22 +2,18 @@ ARG KATSDPDOCKERBASE_REGISTRY=harbor.sdp.kat.ac.za/dpp
 
 FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-build AS build
 
-# Enable Python 3 venv
-ENV PATH="/home/kat/.local/bin:$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
+
 
 # Install python dependencies
 COPY  --chown=kat:kat requirements.txt /tmp/install/
 RUN chmod -R 777 /tmp/install
-RUN uv pip compile /tmp/install/requirements.txt \
-      -o /tmp/install/requirements.lock && \
-    uv pip install --no-deps -r /tmp/install/requirements.lock&&\
+RUN uv pip install --no-deps -r /tmp/install/requirements.txt&&\
     uv pip check
 
 # Install the current package
 COPY --chown=kat:kat . /tmp/install/katsdpcal
 
 RUN cd /tmp/install/katsdpcal && \
-    python3 ./setup.py clean   && \
     uv pip install --no-deps . && \
     uv pip check
 
@@ -29,9 +25,6 @@ FROM $KATSDPDOCKERBASE_REGISTRY/docker-base-runtime
 LABEL maintainer="sdpdev+katsdpcal@ska.ac.za"
 
 COPY --from=build --chown=kat:kat /home/kat/ve3 /home/kat/ve3
-COPY --from=build --chown=kat:kat /home/kat/.local /home/kat/.local
-ENV PATH="/home/kat/.local/bin:$PATH_PYTHON3" VIRTUAL_ENV="$VIRTUAL_ENV_PYTHON3"
-ENV LD_LIBRARY_PATH="/home/kat/ve3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 # katcp port
 EXPOSE 2048
